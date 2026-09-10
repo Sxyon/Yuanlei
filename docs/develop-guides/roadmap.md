@@ -24,6 +24,11 @@
 - 增加子智能体向主智能体提问的 `ask_for_main_agent` 能力。
 - 设计子智能体之间的通信机制。
 
+## Project 与 OPC 事业部
+> 由Codex对话中持续完善
+
+[Project 规划归档](./planning/project-opc/README.md)保存 V0.1 整体草稿与四个场景，以及 V0.2 方向修正。后续按最小可执行版本和实际使用反馈推进；具体上线范围尚未确定。
+
 ## 其他
 
 - 继续完善基于 DeepAgents 文件后端的 Memory 方案，并明确它与现有用户级 Memory 的边界。

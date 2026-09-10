@@ -116,6 +116,16 @@ export default defineConfig({
           { text: '工程信任系统', link: '/develop-guides/engineering-trust' },
           { text: '工程决策记录', link: '/develop-guides/decisions/README' },
           { text: '工程事故复盘', link: '/develop-guides/postmortems/README' },
+          {
+            text: 'Project 规划归档',
+            collapsed: true,
+            items: [
+              { text: '归档说明', link: '/develop-guides/planning/project-opc/README' },
+              { text: 'V0.1 整体规划', link: '/develop-guides/planning/project-opc/v0.1-overview' },
+              { text: 'V0.1 场景详解', link: '/develop-guides/planning/project-opc/v0.1-scenarios' },
+              { text: 'V0.2 方向修正', link: '/develop-guides/planning/project-opc/v0.2-direction' }
+            ]
+          },
         ]
       }
     ],
