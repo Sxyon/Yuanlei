@@ -154,6 +154,45 @@ def test_workspace_boundary_rejects_deleting_its_root(tmp_path: Path, monkeypatc
         Workspace("user-1").delete_authorized_path("/", root="/")
 
 
+def test_workspace_owner_cleanup_unlinks_symlink_without_touching_target(tmp_path: Path, monkeypatch) -> None:
+    workspace_root = tmp_path / "workspace"
+    repository = workspace_root / "repository"
+    repository.mkdir(parents=True)
+    (repository / "tracked.txt").write_text("tracked", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    (repository / "linked").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    with pytest.raises(PermissionError, match="symlink"):
+        Workspace("user-1").delete_authorized_path("/repository", root="/")
+
+    Workspace("user-1").delete_authorized_path("/repository", root="/", unlink_symlinks=True)
+
+    assert not repository.exists()
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_workspace_owner_cleanup_still_rejects_symlink_parent(tmp_path: Path, monkeypatch) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    (workspace_root / "linked-parent").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    with pytest.raises(PermissionError, match="symlink"):
+        Workspace("user-1").delete_authorized_path(
+            "/linked-parent/keep.txt",
+            root="/",
+            unlink_symlinks=True,
+        )
+
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_search_tree_prunes_hidden_excluded_and_overdeep_directories(tmp_path: Path, monkeypatch) -> None:
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()

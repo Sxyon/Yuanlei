@@ -237,6 +237,7 @@ import {
 import GlobalSearchModal from '@/components/GlobalSearchModal.vue'
 import { normalizePreviewResponse } from '@/utils/file_preview'
 import { parseDownloadFilename } from '@/utils/file_utils'
+import { deleteWorkspaceEntries } from '@/utils/workspaceDelete'
 
 const userStore = useUserStore()
 const route = useRoute()
@@ -826,24 +827,45 @@ const confirmDeleteEntries = (targetEntries) => {
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => deleteEntries(validEntries)
+    onOk: () => {
+      void deleteEntries(validEntries)
+    }
   })
 }
+
+const confirmSafeSymlinkCleanup = () =>
+  new Promise((resolve) => {
+    Modal.confirm({
+      title: '确认安全清理符号链接？',
+      content: '将删除选中目录及其中的符号链接本身，不会访问或删除链接指向的位置。删除后不可恢复。',
+      okText: '安全清理',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false)
+    })
+  })
 
 const deleteEntries = async (targetEntries) => {
   const paths = targetEntries.map((entry) => entry.path)
   deletingPaths.value = paths
   try {
-    await Promise.all(paths.map((path) => deleteWorkspacePath(path)))
+    const { deletedPaths, cancelled } = await deleteWorkspaceEntries({
+      entries: targetEntries,
+      deletePath: deleteWorkspacePath,
+      confirmSafeCleanup: confirmSafeSymlinkCleanup
+    })
     if (
       selectedEntry.value &&
-      paths.some((path) => isSameOrChildPath(selectedEntry.value.path, path))
+      deletedPaths.some((path) => isSameOrChildPath(selectedEntry.value.path, path))
     ) {
       closePreview()
     }
     clearWorkspaceSelection()
     await loadWorkspaceEntries(currentPath.value)
-    message.success(paths.length > 1 ? '选中项删除成功' : '删除成功')
+    if (!cancelled && deletedPaths.length === paths.length) {
+      message.success(paths.length > 1 ? '选中项删除成功' : '删除成功')
+    }
   } catch (error) {
     console.warn('删除个人空间文件失败:', error)
     message.error(error?.message || '删除失败')

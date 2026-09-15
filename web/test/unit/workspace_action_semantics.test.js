@@ -34,3 +34,12 @@ test('交付物保存使用工作区路径选择器并传递目标目录', () =>
   assert.match(component, /v-model="selectedDestination"/)
   assert.match(api, /destination_path: destinationPath/)
 })
+
+test('个人空间仅在固定 symlink 冲突后提供安全清理重试', () => {
+  const view = readSource('../../src/views/WorkspaceView.vue')
+  const api = readSource('../../src/apis/workspace_api.js')
+
+  assert.match(view, /不会访问或删除链接指向的位置/)
+  assert.match(view, /confirmSafeCleanup: confirmSafeSymlinkCleanup/)
+  assert.match(api, /safe_unlink_symlinks: safeUnlinkSymlinks \|\| undefined/)
+})

@@ -49,3 +49,23 @@ def test_open_existing_rejects_symlinked_workdir(tmp_path: Path, monkeypatch: py
 
     with pytest.raises(PermissionError, match="symlink"):
         Workdir.open_existing("user-1", workdir_path)
+
+
+def test_project_workdir_delete_keeps_default_symlink_rejection(tmp_path: Path, monkeypatch) -> None:
+    workdir_path = "projects/11111111-1111-4111-8111-111111111111"
+    workspace_root = tmp_path / "workspace"
+    project_root = workspace_root / workdir_path
+    target = tmp_path / "outside"
+    project_root.mkdir(parents=True)
+    target.mkdir()
+    (project_root / "repository").mkdir()
+    (project_root / "repository" / "linked").symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    workdir = Workdir.open_existing("user-1", workdir_path)
+
+    with pytest.raises(PermissionError, match="symlink"):
+        workdir.delete("/repository")
+
+    assert (project_root / "repository").exists()
+    assert target.exists()

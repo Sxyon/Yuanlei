@@ -6,8 +6,48 @@ from uuid import uuid4
 
 import pytest
 from yuxi.config import get_legacy_storage_dir, get_runtime_dir
+from yuxi.workspace.paths import user_workspace_dir
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
+
+
+async def test_workspace_owner_safe_cleanup_unlinks_symlink_without_following_target(test_client, admin_headers):
+    """真实个人空间 API 必须先冲突，再仅删除链接目录项并保留外部目标。"""
+
+    profile = await test_client.get("/api/auth/me", headers=admin_headers)
+    assert profile.status_code == 200, profile.text
+    workspace_root = user_workspace_dir(profile.json()["uid"])
+    suffix = uuid4().hex
+    directory = workspace_root / f"pytest-symlink-cleanup-{suffix}"
+    outside = workspace_root.parent / f"pytest-symlink-target-{suffix}"
+    outside.mkdir(parents=True)
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    directory.mkdir(parents=True)
+    (directory / "tracked.txt").write_text("tracked", encoding="utf-8")
+    (directory / "linked").symlink_to(outside, target_is_directory=True)
+    workspace_path = f"/{directory.name}"
+
+    try:
+        rejected = await test_client.delete(
+            "/api/workspace/file",
+            params={"path": workspace_path},
+            headers=admin_headers,
+        )
+        assert rejected.status_code == 409, rejected.text
+        assert rejected.json()["detail"]["code"] == "workspace_contains_symlinks"
+        assert directory.exists()
+
+        cleaned = await test_client.delete(
+            "/api/workspace/file",
+            params={"path": workspace_path, "safe_unlink_symlinks": True},
+            headers=admin_headers,
+        )
+        assert cleaned.status_code == 200, cleaned.text
+        assert not directory.exists()
+        assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+        shutil.rmtree(outside, ignore_errors=True)
 
 
 def _file_snapshot(roots: list[Path]) -> dict[Path, tuple[int, int]]:

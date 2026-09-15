@@ -23,7 +23,7 @@ from yuxi.utils.filepreview import (
     preview_too_large,
 )
 from yuxi.utils.upload_utils import MAX_UPLOAD_SIZE_BYTES, write_upload_to_path
-from yuxi.workspace.errors import FileTransferLimitError
+from yuxi.workspace.errors import FileTransferLimitError, WorkspaceContainsSymlinkError
 from yuxi.workspace.filesystem import Workspace
 from yuxi.workspace.paths import (
     ensure_user_workspace,
@@ -211,7 +211,8 @@ async def write_workspace_file_content(*, path: str, content: str, current_user:
     }
 
 
-async def delete_workspace_path(*, path: str, current_user: User) -> dict:
+async def delete_workspace_path(*, path: str, current_user: User, safe_unlink_symlinks: bool = False) -> dict:
+    """删除个人空间路径；确认模式只 unlink 目标树内的 symlink 目录项。"""
     backend = _workspace_backend(current_user)
     workspace_path = _workspace_path(path)
     if workspace_path == WORKSPACE_SCOPE_ROOT:
@@ -222,9 +223,18 @@ async def delete_workspace_path(*, path: str, current_user: User) -> dict:
             backend.delete_authorized_path,
             workspace_path,
             root=WORKSPACE_SCOPE_ROOT,
+            unlink_symlinks=safe_unlink_symlinks,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="文件不存在") from exc
+    except WorkspaceContainsSymlinkError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "workspace_contains_symlinks",
+                "message": "目录包含符号链接，可确认后安全清理链接本身",
+            },
+        ) from exc
     except (PermissionError, NotADirectoryError, ValueError) as exc:
         raise HTTPException(status_code=403, detail="Access denied") from exc
 

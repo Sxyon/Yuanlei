@@ -45,6 +45,17 @@ function safeResponseHeaders(headers) {
 }
 
 function safeErrorData(errorData, status, publicMessage) {
+  if (
+    status === 409 &&
+    errorData?.detail?.code === 'workspace_contains_symlinks'
+  ) {
+    return {
+      detail: {
+        code: 'workspace_contains_symlinks',
+        message: '目录包含符号链接，可确认后安全清理链接本身'
+      }
+    }
+  }
   if (status !== 422) return { detail: publicMessage }
   const detail = errorData?.detail
   if (!Array.isArray(detail)) return { detail: publicMessage }

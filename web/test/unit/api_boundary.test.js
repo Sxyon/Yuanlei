@@ -227,6 +227,41 @@ test('用户 Store 的普通错误传播链不附着或记录服务端任意响�
   })
 })
 
+test('个人空间 symlink 冲突只保留固定操作码和公开文案', async () => {
+  await withServer(async (server) => {
+    storageValues.clear()
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          detail: {
+            code: 'workspace_contains_symlinks',
+            message: 'untrusted server detail'
+          }
+        }),
+        {
+          status: 409,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+
+    setActivePinia(createPinia())
+    const { useUserStore } = await server.ssrLoadModule('/src/stores/user.js')
+    const userStore = useUserStore()
+    userStore.token = 'test-token'
+    userStore.userId = 1
+    const { deleteWorkspacePath } = await server.ssrLoadModule('/src/apis/workspace_api.js')
+
+    await assert.rejects(deleteWorkspacePath('/repository'), (error) => {
+      assert.equal(error.status, 409)
+      assert.deepEqual(error.response.data.detail, {
+        code: 'workspace_contains_symlinks',
+        message: '目录包含符号链接，可确认后安全清理链接本身'
+      })
+      return true
+    })
+  })
+})
+
 test('用户管理分页 API 只请求当前页并编码服务端筛选条件', async () => {
   await withServer(async (server) => {
     storageValues.set('user_token', 'test-token')
