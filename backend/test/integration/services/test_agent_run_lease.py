@@ -228,6 +228,100 @@ async def _cleanup_runs(session_factory, thread_ids: list[str]) -> None:
         await db.commit()
 
 
+async def test_runtime_cleanup_releases_database_locks_before_sandbox_delete(
+    lease_database,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """阻塞的外部删除不得占用 Run 行锁或 runtime advisory transaction lock。"""
+
+    _, session_factory = lease_database
+    run_id, thread_id, _ = await _create_run(session_factory, status="failed")
+    release_started = threading.Event()
+    release_allowed = threading.Event()
+
+    def blocking_release(*_args, **_kwargs):
+        release_started.set()
+        assert release_allowed.wait(timeout=5)
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", lambda: _session_context(session_factory))
+    monkeypatch.setattr(run_worker, "get_sandbox_provider", lambda: SimpleNamespace(release=blocking_release))
+    monkeypatch.setattr(run_worker, "RUNTIME_CLEANUP_TIMEOUT_SECONDS", 5)
+
+    try:
+        async with session_factory() as db:
+            run = await db.get(AgentRun, run_id)
+            run.runtime_cleanup_pending = True
+            uid = str(run.uid)
+            await db.commit()
+
+        async with session_factory() as db:
+            detached_run = await db.get(AgentRun, run_id)
+
+        cleanup = asyncio.create_task(run_worker._release_runtime_if_idle(detached_run))
+        assert await asyncio.to_thread(release_started.wait, 5)
+
+        async with session_factory() as db:
+            locked_run = await db.scalar(select(AgentRun).where(AgentRun.id == run_id).with_for_update(nowait=True))
+            advisory_acquired = await db.scalar(
+                text("SELECT pg_try_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"yuxi-runtime-cleanup:{uid}:{thread_id}"},
+            )
+            assert locked_run is not None
+            assert advisory_acquired is True
+            assert locked_run.runtime_cleanup_pending is True
+            await db.rollback()
+
+        release_allowed.set()
+        assert await asyncio.wait_for(cleanup, 5) is True
+
+        async with session_factory() as db:
+            persisted = await db.get(AgentRun, run_id)
+            assert persisted.runtime_cleanup_pending is False
+    finally:
+        release_allowed.set()
+        await _cleanup_runs(session_factory, [thread_id])
+
+
+async def test_runtime_cleanup_timeout_keeps_durable_fence(
+    lease_database,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """外部删除超过上限时保留 cleanup fence，供 reconciler 安全重试。"""
+
+    _, session_factory = lease_database
+    run_id, thread_id, _ = await _create_run(session_factory, status="failed")
+    release_started = threading.Event()
+    release_allowed = threading.Event()
+
+    def blocking_release(*_args, **_kwargs):
+        release_started.set()
+        release_allowed.wait(timeout=5)
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", lambda: _session_context(session_factory))
+    monkeypatch.setattr(run_worker, "get_sandbox_provider", lambda: SimpleNamespace(release=blocking_release))
+    monkeypatch.setattr(run_worker, "RUNTIME_CLEANUP_TIMEOUT_SECONDS", 0.05)
+
+    try:
+        async with session_factory() as db:
+            run = await db.get(AgentRun, run_id)
+            run.runtime_cleanup_pending = True
+            await db.commit()
+
+        async with session_factory() as db:
+            detached_run = await db.get(AgentRun, run_id)
+
+        with pytest.raises(TimeoutError):
+            await run_worker._release_runtime_if_idle(detached_run)
+        assert release_started.is_set()
+
+        async with session_factory() as db:
+            persisted = await db.get(AgentRun, run_id)
+            assert persisted.runtime_cleanup_pending is True
+    finally:
+        release_allowed.set()
+        await _cleanup_runs(session_factory, [thread_id])
+
+
 @pytest.mark.parametrize("run_type", ["chat", "resume"])
 async def test_approval_flush_overlap_preserves_terminal_publication(lease_database, monkeypatch, run_type):
     """本 attempt 已提交审批终态时，flush 与心跳重叠仍完成清理和发布。"""

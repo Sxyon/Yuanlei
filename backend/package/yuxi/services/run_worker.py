@@ -77,6 +77,7 @@ RUN_CANCEL_POLL_SECONDS = 0.2
 RUN_DURABLE_CANCEL_POLL_SECONDS = 1.0
 RUN_LEASE_SECONDS = 120
 RUN_HEARTBEAT_SECONDS = 30
+RUNTIME_CLEANUP_TIMEOUT_SECONDS = get_int_env("SANDBOX_RUNTIME_CLEANUP_TIMEOUT_SECONDS", 155)
 SUPPORTED_RUN_TYPES = {"chat", "resume", "subagent"}
 WORKER_ID = f"worker-{uuid.uuid4().hex}"
 _RECONCILIATION_TASK_KEY = "agent_run_reconciliation_task"
@@ -98,6 +99,15 @@ class RuntimeCleanupPendingError(RetryJob):
 
 class NonRetryableRunError(Exception):
     """Error type that should not trigger ARQ retry."""
+
+
+@dataclass(frozen=True, slots=True)
+class _RuntimeCleanupTarget:
+    """两段 cleanup 事务之间传递的持久身份快照。"""
+
+    uid: str
+    runtime_scope_id: str
+    workdir_path: str
 
 
 async def _validate_run_workdir_binding(run: AgentRun) -> AuthorizedWorkdir:
@@ -290,18 +300,22 @@ class ChunkedEventWriter:
 
 
 async def _release_runtime_if_idle(run: AgentRun) -> bool:
-    """在 PostgreSQL cleanup fence 内串行销毁根 execution runtime。"""
+    """保留持久 cleanup fence，并在数据库事务外销毁根 runtime。"""
     if run.run_type == "subagent":
         return False
     runtime_scope_id = str(getattr(run, "runtime_scope_id", None) or run.conversation_thread_id)
+    lock_key = f"yuxi-runtime-cleanup:{run.uid}:{runtime_scope_id}"
     async with pg_manager.get_async_session_context() as db:
         await db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-            {"lock_key": f"yuxi-runtime-cleanup:{run.uid}:{runtime_scope_id}"},
+            {"lock_key": lock_key},
         )
         current = await db.scalar(select(AgentRun).where(AgentRun.id == run.id).with_for_update())
         if current is None:
             raise RuntimeError(f"Run {run.id} 不存在，不能确认 runtime cleanup Owner")
+        current_scope_id = str(current.runtime_scope_id or current.conversation_thread_id)
+        if str(current.uid) != str(run.uid) or current_scope_id != runtime_scope_id:
+            raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
         if not current.runtime_cleanup_pending:
             return True
         result = await db.execute(
@@ -323,13 +337,54 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
             uid=str(current.uid),
             db=db,
         )
-        await asyncio.to_thread(
-            get_sandbox_provider().release,
-            runtime_scope_id,
+        target = _RuntimeCleanupTarget(
             uid=str(current.uid),
-            clear_cache_on_delete_failure=True,
+            runtime_scope_id=runtime_scope_id,
             workdir_path=workdir_path,
         )
+
+    await asyncio.wait_for(
+        asyncio.to_thread(
+            get_sandbox_provider().release,
+            target.runtime_scope_id,
+            uid=target.uid,
+            clear_cache_on_delete_failure=True,
+            workdir_path=target.workdir_path,
+        ),
+        timeout=RUNTIME_CLEANUP_TIMEOUT_SECONDS,
+    )
+
+    async with pg_manager.get_async_session_context() as db:
+        await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": lock_key})
+        current = await db.scalar(select(AgentRun).where(AgentRun.id == run.id).with_for_update())
+        if current is None:
+            raise RuntimeError(f"Run {run.id} 不存在，不能确认 runtime cleanup Owner")
+        current_scope_id = str(current.runtime_scope_id or current.conversation_thread_id)
+        if str(current.uid) != target.uid or current_scope_id != target.runtime_scope_id:
+            raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
+        if not current.runtime_cleanup_pending:
+            return True
+        result = await db.execute(
+            select(AgentRun.id)
+            .where(
+                AgentRun.runtime_scope_id == target.runtime_scope_id,
+                AgentRun.id != current.id,
+                AgentRun.status.notin_(TERMINAL_RUN_STATUSES),
+            )
+            .limit(1)
+        )
+        if result.scalar_one_or_none() is not None:
+            return False
+        conversation = await db.scalar(select(Conversation).where(Conversation.id == current.conversation_id))
+        if conversation is None or conversation.uid != target.uid:
+            raise RuntimeError(f"Run {run.id} 的 Conversation 身份不一致")
+        current_workdir_path = await resolve_conversation_workdir_path(
+            conversation=conversation,
+            uid=target.uid,
+            db=db,
+        )
+        if current_workdir_path != target.workdir_path:
+            raise RuntimeError(f"Run {run.id} 的 Workdir 在 runtime cleanup 期间发生变化")
         current.runtime_cleanup_pending = False
         await db.flush()
     return True
