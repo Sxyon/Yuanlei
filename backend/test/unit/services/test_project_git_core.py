@@ -18,6 +18,7 @@ from yuxi.workspace.git_paths import (
     derive_task_key,
     require_commit_sha,
     resolve_project_git_host_paths,
+    runtime_git_worktree_path,
 )
 
 
@@ -82,6 +83,16 @@ def test_git_path_resolution_rejects_agent_created_repos_symlink(monkeypatch, tm
         resolve_project_git_host_paths(
             "user", "projects/project-id", "repo-safe", create_parents=True
         )
+
+
+def test_runtime_git_worktree_path_uses_agent_backend_runtime_root():
+    assert (
+        runtime_git_worktree_path("projects/project-id", "repos/api/worktrees/task-1")
+        == "/home/gem/user-data/projects/project-id/repos/api/worktrees/task-1"
+    )
+
+    with pytest.raises(ValueError):
+        runtime_git_worktree_path("projects/project-id", "../escape")
 
 
 def test_public_git_models_never_serialize_credentials_or_trust_anchor():

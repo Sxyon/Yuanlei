@@ -8,8 +8,9 @@ import re
 import unicodedata
 from pathlib import Path, PurePosixPath
 
-from yuxi.workspace.paths import runtime_workdir_path, user_workdir_host_dir
+from yuxi.agents.backends.paths import runtime_workdir_path
 from yuxi.utils.paths import open_directory_fd
+from yuxi.workspace.paths import user_workdir_host_dir
 
 _UNSAFE_SLUG = re.compile(r"[^a-z0-9]+")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")

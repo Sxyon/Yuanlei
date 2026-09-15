@@ -77,6 +77,7 @@ async def test_storage_migration_reads_legacy_schema_before_cutover(monkeypatch)
     )
     monkeypatch.setattr(storage_migration, "migrate_shared_skills", lambda _db: _record(calls, "skills"))
     monkeypatch.setattr(storage_migration, "mark_v071_skills_migrated", lambda: calls.append("mark_skills"))
+    monkeypatch.setattr(storage_migration, "_ensure_yuanlei_schema", lambda: _record(calls, "yuanlei_schema"))
     monkeypatch.setattr(
         storage_migration,
         "migrate_runtime_storage_identity",
@@ -153,6 +154,7 @@ async def test_current_schema_skips_schema_ddl(monkeypatch):
             {
                 "business": storage_migration.BUSINESS_SCHEMA_VERSION,
                 "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION,
+                "yuanlei": storage_migration.YUANLEI_SCHEMA_VERSION,
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
@@ -271,6 +273,7 @@ async def test_supported_business_schema_is_converged_and_versioned_as_current(m
         "_converge_database_state",
         lambda *, fail_nonterminal_runs: _record(calls, f"converge:{fail_nonterminal_runs}"),
     )
+    monkeypatch.setattr(storage_migration, "_ensure_yuanlei_schema", lambda: _record(calls, "yuanlei_schema"))
     monkeypatch.setattr(storage_migration, "migrate_shared_skills", lambda _db: _record(calls, "skills"))
     monkeypatch.setattr(storage_migration, "mark_v071_skills_migrated", lambda: calls.append("mark_skills"))
     monkeypatch.setattr(storage_migration, "migrate_runtime_storage_identity", lambda: calls.append("runtime_identity"))
@@ -364,6 +367,7 @@ async def test_current_schema_does_not_rewrite_workdir_data(monkeypatch):
         "_converge_database_state",
         lambda *, fail_nonterminal_runs: _record(calls, f"converge:{fail_nonterminal_runs}"),
     )
+    monkeypatch.setattr(storage_migration, "_ensure_yuanlei_schema", lambda: _record(calls, "yuanlei_schema"))
     monkeypatch.setattr(storage_migration, "import_v071_workdirs", lambda *_args: calls.append("import"))
     monkeypatch.setattr(storage_migration, "rewrite_v071_workdir_paths", lambda _db: _record(calls, "rewrite"))
     monkeypatch.setattr(storage_migration, "verify_workdir_bindings", lambda _db: _record(calls, "verify"))
