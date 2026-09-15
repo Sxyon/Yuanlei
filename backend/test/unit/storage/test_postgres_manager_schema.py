@@ -65,6 +65,25 @@ def test_project_lifecycle_columns_and_constraint_are_in_fresh_schema():
     assert "ck_projects_status" in {constraint.name for constraint in projects.constraints}
 
 
+def test_project_git_schema_owns_user_bound_foreign_keys_and_alias_index():
+    """Fresh schema 在数据库层拒绝跨用户绑定并约束大小写 alias。"""
+    assert {
+        "git_credentials",
+        "git_connections",
+        "project_git_repositories",
+        "project_git_worktrees",
+    }.issubset(BusinessBase.metadata.tables)
+    repositories = BusinessBase.metadata.tables["project_git_repositories"]
+    assert {
+        "fk_project_git_repositories_project_uid",
+        "fk_project_git_repositories_connection_uid",
+        "fk_project_git_repositories_credential_uid",
+    }.issubset({constraint.name for constraint in repositories.foreign_key_constraints})
+    assert "uq_project_git_repositories_project_lower_alias" in {
+        index.name for index in repositories.indexes
+    }
+
+
 class _RecordingConnection:
     def __init__(self):
         self.statements: list[str] = []

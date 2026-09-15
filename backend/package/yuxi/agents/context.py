@@ -205,6 +205,11 @@ class BaseContext:
         metadata={"name": "Workdir Virtual Path", "configurable": False, "hide": True},
     )
 
+    git_repositories: list[dict] = field(
+        default_factory=list,
+        metadata={"name": "Project Git Worktrees", "configurable": False, "hide": True},
+    )
+
     system_prompt: str = field(
         default="You are a helpful assistant.",
         metadata={"name": "系统提示词", "description": "用来描述智能体的角色和行为", "kind": "prompt"},

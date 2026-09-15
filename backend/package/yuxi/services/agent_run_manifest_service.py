@@ -23,7 +23,7 @@ from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.storage.postgres.models_business import AgentRun, Skill, User
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 # 直接进入 manifest 的关键 limit 字段；未列出的 context 字段只以 config_digest 形式存在。
 MANIFEST_LIMIT_FIELDS = (
     "max_execution_steps",
@@ -77,6 +77,7 @@ def build_manifest_payload(
     skill_entries: list[dict],
     code_revision: str | None,
     limits: dict,
+    git_repositories: list[dict] | None = None,
 ) -> dict:
     """从已解析的执行资产组装 manifest；直接字段仅限稳定标识、摘要与关键 limit。
 
@@ -97,6 +98,17 @@ def build_manifest_payload(
             "tools": _resource_keys(normalized_context.get("tools")),
             "mcps": _resource_keys(normalized_context.get("mcps")),
             "skills": skill_entries,
+            "git_repositories": [
+                {
+                    "alias": item["alias"],
+                    "repository_id": item["repository_id"],
+                    "path": item["path"],
+                    "branch": item["branch"],
+                    "base_branch": item["base_branch"],
+                    "base_sha": item["base_sha"],
+                }
+                for item in (git_repositories or [])
+            ],
         },
         "limits": limits,
         "config_digest": compute_config_digest(normalized_context),
@@ -164,7 +176,9 @@ def resolve_code_revision() -> str | None:
     return revision or None
 
 
-async def build_run_manifest_result(*, run: AgentRun, user: User, db: AsyncSession) -> RunManifestBuildResult:
+async def build_run_manifest_result(
+    *, run: AgentRun, user: User, db: AsyncSession, git_repositories: list[dict] | None = None
+) -> RunManifestBuildResult:
     """在执行边界构建 manifest 与不可分叉的运行时快照。"""
     agent_item = await AgentRepository(db).get_visible_by_slug(
         slug=run.agent_slug,
@@ -208,6 +222,7 @@ async def build_run_manifest_result(*, run: AgentRun, user: User, db: AsyncSessi
             personal_skill_slugs=personal_slugs,
         ),
         code_revision=resolve_code_revision(),
+        git_repositories=git_repositories,
     )
     return RunManifestBuildResult(
         manifest=manifest,
@@ -216,9 +231,11 @@ async def build_run_manifest_result(*, run: AgentRun, user: User, db: AsyncSessi
     )
 
 
-async def build_run_manifest(*, run: AgentRun, user: User, db: AsyncSession) -> dict:
+async def build_run_manifest(
+    *, run: AgentRun, user: User, db: AsyncSession, git_repositories: list[dict] | None = None
+) -> dict:
     """构建只含稳定标识和摘要的持久化运行清单。"""
-    return (await build_run_manifest_result(run=run, user=user, db=db)).manifest
+    return (await build_run_manifest_result(run=run, user=user, db=db, git_repositories=git_repositories)).manifest
 
 
 def _effective_limits(backend, normalized_context: dict) -> dict:

@@ -88,12 +88,13 @@ async def submit_run_command(
     if not agent_item:
         raise HTTPException(status_code=404, detail="智能体不存在")
 
+    # todo 搞明白  agentRun 创建的时候  什么时候去创建的repository 二者关系
     existing_request = await AgentRunRequestRepository(db).get_by_request_id(command.request_id)
     existing_run = await AgentRunRepository(db).get_run_by_request_id(command.request_id)
     if existing_run and not existing_request:
         if existing_run.uid != str(current_user.uid):
             raise HTTPException(status_code=409, detail="request_id 冲突")
-        if existing_run.agent_slug != agent_item.slug or existing_run.run_type != "chat":
+        if existing_run.agent_slug != agent_item.slug or existing_run.run_type != "chat":  # todo 不理解为什么同一个 agent  如果不是chat 也不行
             raise HTTPException(status_code=409, detail="request_id 冲突")
         if command.thread_id and existing_run.conversation_thread_id != command.thread_id:
             raise HTTPException(status_code=409, detail="request_id 冲突")

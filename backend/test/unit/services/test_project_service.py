@@ -310,7 +310,16 @@ async def test_delete_project_soft_deletes_all_conversations_in_one_commit(monke
             calls.append((actual_project, deleted_at))
             return 3
 
+    class _ProjectGitRepositoryStore:
+        def __init__(self, _db):
+            pass
+
+        async def list_project_bindings(self, project_id, uid):
+            assert (project_id, uid) == ("project-1", "user-1")
+            return []
+
     monkeypatch.setattr(svc, "ProjectRepository", _ProjectRepository)
+    monkeypatch.setattr(svc, "ProjectGitRepositoryStore", _ProjectGitRepositoryStore)
     db = _Db()
 
     result = await svc.delete_project_view(uid="user-1", project_id="project-1", db=db)

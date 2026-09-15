@@ -271,7 +271,7 @@ async def _assert_persisted_execution_facts(run_id: str, agent_slug: str) -> Non
         raw_manifest = row["manifest"]
         manifest = json.loads(raw_manifest) if isinstance(raw_manifest, str) else raw_manifest
         assert manifest is not None, "执行完成的 Run 必须已固化运行清单"
-        assert manifest["manifest_version"] == 1
+        assert manifest["manifest_version"] == 2
         assert manifest["agent"] == {"slug": agent_slug, "backend_id": "ChatbotAgent"}
         assert manifest["model"] == {"spec": MODEL_SPEC}
         assert len(manifest["resources"]["skills"]) == 1

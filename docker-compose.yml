@@ -80,6 +80,9 @@ services:
       <<: *api-worker-env
       YUXI_RUNTIME_DIR: /app/runtime/api
       YUXI_USER_DATA_DIR: /app/user-data
+      YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-http://gitea:3000}
     # endregion api_envs
     command: uv run --no-sync --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050 --reload --reload-dir /app/server --reload-dir /app/package --timeout-graceful-shutdown 5
     restart: unless-stopped
@@ -135,6 +138,9 @@ services:
       <<: *api-worker-env
       YUXI_RUNTIME_DIR: /app/runtime/worker
       YUXI_USER_DATA_DIR: /app/user-data
+      YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-http://gitea:3000}
     command: watchfiles --filter python "arq server.worker_main.WorkerSettings" /app/server /app/package
     restart: unless-stopped
     healthcheck:
@@ -428,6 +434,35 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+
+  gitea:
+    image: gitea/gitea:1.24-rootless
+    profiles:
+      - git-integration
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__database__PATH: /var/lib/gitea/data/gitea.db
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__DOMAIN: gitea
+      GITEA__server__ROOT_URL: http://gitea:3000/
+      GITEA__server__START_SSH_SERVER: "true"
+      GITEA__server__SSH_DOMAIN: gitea
+      GITEA__server__SSH_PORT: "2222"
+      GITEA__server__SSH_LISTEN_PORT: "2222"
+    volumes:
+      - type: bind
+        source: ${YUXI_STATE_DIR:-./docker/volumes}/gitea-git-integration
+        target: /var/lib/gitea
+    ports:
+      - "127.0.0.1:${YUXI_GITEA_HTTP_PORT:-3300}:3000"
+      - "127.0.0.1:${YUXI_GITEA_SSH_PORT:-2222}:2222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/api/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - app-network
 
   # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   mineru-api:

@@ -53,6 +53,12 @@
                       <template #overlay>
                         <a-menu>
                           <a-menu-item
+                            key="git"
+                            :icon="h(GitFork, { size: 14 })"
+                            @click="emit('manage-project-git', group.project)"
+                            >Git 仓库</a-menu-item
+                          >
+                          <a-menu-item
                             key="rename"
                             :icon="h(SquarePen, { size: 14 })"
                             @click="renameProject(group.project)"
@@ -142,7 +148,15 @@
 <script setup>
 import { computed, h, ref } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { ChevronDown, FolderClosed, FolderOpen, MoreVertical, SquarePen, Trash2 } from '@lucide/vue'
+import {
+  ChevronDown,
+  FolderClosed,
+  FolderOpen,
+  GitFork,
+  MoreVertical,
+  SquarePen,
+  Trash2
+} from '@lucide/vue'
 import ConversationNavItem from '@/components/ConversationNavItem.vue'
 import CollapseTransition from '@/components/common/CollapseTransition.vue'
 import { buildProjectConversationGroups } from '@/utils/projectConversationGroups'
@@ -168,6 +182,7 @@ const emit = defineEmits([
   'load-more-chats',
   'rename-project',
   'delete-project',
+  'manage-project-git',
   'retry-projects'
 ])
 const projectsExpanded = ref(true)

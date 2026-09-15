@@ -25,17 +25,20 @@ def create_tool_approval_middleware(
     current_project_path: str | None = None,
 ):
     """按审批模式与当前 Project 构造敏感工具审批。"""
-    if mode == "always_trust":
-        return None
-
     write_requires_approval = _project_write_requires_approval(current_project_path or "")
-    return HumanInTheLoopMiddleware(
-        interrupt_on={
+    interrupt_on = {
+        "git_push_branch": {"allowed_decisions": _ALLOWED_DECISIONS},
+    }
+    if mode == "always_trust":
+        return HumanInTheLoopMiddleware(interrupt_on=interrupt_on)
+    interrupt_on.update(
+        {
             "write_file": {"allowed_decisions": _ALLOWED_DECISIONS, "when": write_requires_approval},
             "edit_file": {"allowed_decisions": _ALLOWED_DECISIONS, "when": write_requires_approval},
             "execute": {"allowed_decisions": _ALLOWED_DECISIONS},
         }
     )
+    return HumanInTheLoopMiddleware(interrupt_on=interrupt_on)
 
 
 def _project_write_requires_approval(current_project_path: str):

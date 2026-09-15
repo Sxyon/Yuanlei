@@ -126,7 +126,7 @@ async def main() -> None:
                 "business",
                 business_version,
                 BUSINESS_SCHEMA_VERSION,
-                upgrade_from=(1,),
+                upgrade_from=(1, 2),
             )
             if not lite_mode_enabled():
                 _require_supported_version("knowledge", versions.get("knowledge"), KNOWLEDGE_SCHEMA_VERSION)

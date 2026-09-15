@@ -164,6 +164,26 @@ def test_api_image_applies_owner_only_umask_before_dropping_to_runtime_identity(
     assert 'exec "$@"' in entrypoint
 
 
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_git_credential_key_is_exposed_only_to_api_and_worker(filename: str) -> None:
+    """Git master key 不得进入 migrator、provisioner 或共享环境 anchor。"""
+    compose = _load_compose(filename)
+    key = "YUXI_GIT_CREDENTIAL_KEY"
+
+    assert key not in (compose.get("x-api-worker-env") or {})
+    assert key in compose["services"]["api"]["environment"]
+    assert key in compose["services"]["worker"]["environment"]
+    assert key not in compose["services"]["storage-migrator"]["environment"]
+    assert key not in compose["services"]["sandbox-provisioner"]["environment"]
+
+
+def test_api_image_installs_trusted_ssh_client() -> None:
+    """可信 Git executor 的镜像必须显式包含 OpenSSH client。"""
+    dockerfile = (_project_root() / "docker/api.Dockerfile").read_text()
+
+    assert "openssh-client" in dockerfile
+
+
 def test_workspace_owners_do_not_reintroduce_cross_uid_permission_patches() -> None:
     """运行时 Owner 不得重新承担部署身份兼容。"""
     source = "\n".join((_project_root() / path).read_text() for path in WORKSPACE_PERMISSION_OWNER_PATHS)

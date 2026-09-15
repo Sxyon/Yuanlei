@@ -183,14 +183,50 @@ def test_manifest_excludes_prompts_and_secret_shaped_values():
     assert "tok-live-abcdef" not in serialized
     # 未列入直接字段的 context 值只能以 config_digest 摘要存在。
     assert manifest["config_digest"] == compute_config_digest(context)
-    assert manifest["resources"] == {"tools": ["fs"], "mcps": [], "skills": []}
+    assert manifest["resources"] == {
+        "tools": ["fs"],
+        "mcps": [],
+        "skills": [],
+        "git_repositories": [],
+    }
 
 
 def test_missing_code_revision_is_explicitly_unresolved():
     manifest = _manifest()
 
     assert manifest["code_revision"] == "unresolved"
-    assert manifest["manifest_version"] == 1
+    assert manifest["manifest_version"] == 2
+
+
+def test_git_snapshot_is_explicit_and_excludes_remote_credentials():
+    manifest = build_manifest_payload(
+        run_type="chat",
+        agent_slug="main",
+        backend_id="chatbot",
+        model_spec=None,
+        tool_approval_mode="default",
+        normalized_context={},
+        skill_entries=[],
+        code_revision="revision",
+        limits={},
+        git_repositories=[
+            {
+                "alias": "api",
+                "repository_id": "repository-id",
+                "path": "/home/gem/user-data/projects/p/repos/api/worktrees/task",
+                "branch": "codex/task-abc",
+                "base_branch": "main",
+                "base_sha": "a" * 40,
+                "remote_url": "ssh://secret@example.invalid/repo.git",
+                "private_key": "SECRET",
+            }
+        ],
+    )
+
+    serialized = canonical_json(manifest)
+    assert "remote_url" not in serialized
+    assert "private_key" not in serialized
+    assert "SECRET" not in serialized
 
 
 def test_non_string_model_spec_normalizes_to_none():

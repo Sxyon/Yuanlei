@@ -26,6 +26,13 @@ from yuxi.services.agent_request_queue_service import (
 from yuxi.services.agent_run_manifest_service import build_run_manifest_result, compute_manifest_fingerprint
 from yuxi.services.chat_service import get_agent_state_view, stream_agent_chat, stream_agent_resume
 from yuxi.services.input_message_service import restore_chat_input_message
+from yuxi.services.project_git_service import (
+    ProjectGitBusyError,
+    prepare_project_git_worktrees,
+    process_project_git_operation,
+    process_project_git_worktree_cleanup,
+    reconcile_project_git_operations,
+)
 from yuxi.services.run_queue_service import (
     RUN_RECONCILIATION_SECONDS,
     WORKER_HEALTH_INTERVAL_SECONDS,
@@ -515,10 +522,12 @@ def _require_persisted_manifest_match(persisted_run: AgentRun | None, *, recorde
         raise RuntimeError("运行资产已在重试前变化，与已固化 manifest 不一致")
 
 
-async def persist_run_manifest(*, run: AgentRun, user, worker_id: str) -> dict:
+async def persist_run_manifest(
+    *, run: AgentRun, user, worker_id: str, git_repositories: list[dict] | None = None
+) -> dict:
     """在执行上下文构造前固化运行清单与指纹；固化失败由调用方显式失败。"""
     async with pg_manager.get_async_session_context() as db:
-        result = await build_run_manifest_result(run=run, user=user, db=db)
+        result = await build_run_manifest_result(run=run, user=user, db=db, git_repositories=git_repositories)
         fingerprint = compute_manifest_fingerprint(result.manifest)
         persisted_run, recorded = await AgentRunRepository(db).record_run_manifest(
             run.id,
@@ -530,6 +539,7 @@ async def persist_run_manifest(*, run: AgentRun, user, worker_id: str) -> dict:
         return {
             "normalized_context": result.normalized_context,
             "skill_runtime_snapshot": result.skill_runtime_snapshot,
+            "git_repositories": git_repositories or [],
         }
 
 
@@ -592,7 +602,7 @@ def _is_last_try(ctx) -> bool:
 def _is_retryable_exception(exc: Exception) -> bool:
     if isinstance(exc, NonRetryableRunError):
         return False
-    return isinstance(exc, (RetryableRunError, OperationalError, ConnectionError, TimeoutError, asyncio.TimeoutError))
+    return isinstance(exc, RetryableRunError | OperationalError | ConnectionError | TimeoutError | asyncio.TimeoutError)
 
 
 def _worker_identity(ctx) -> str:
@@ -773,10 +783,11 @@ async def _consume_stream_with_cancel(agen, run_ctx: RunContext):
 async def process_agent_run(ctx, run_id: str):
     """执行队列中的 AgentRun，并只从 run 列和输入消息恢复运行参数。"""
     run = await _get_run(run_id)
+    # 异常态兜底处理
     if not run:
         logger.warning(f"Run not found: {run_id}")
         return
-
+    # 非运行状态清理
     if run.status in TERMINAL_RUN_STATUSES:
         await _finish_execution_tree_children(run)
         cleanup_was_pending = bool(getattr(run, "runtime_cleanup_pending", False))
@@ -792,7 +803,7 @@ async def process_agent_run(ctx, run_id: str):
             )
         logger.info(f"Run already terminal, skip: {run_id}, status={run.status}")
         return
-
+    # 检测runtime_cleanup_pending 状态  todo 疑似agent run 对于  provisioner/并发清理失败 的状态
     if bool(getattr(run, "runtime_cleanup_pending", False)):
         await _require_runtime_cleanup(run, f"Run {run_id} 尚未完成 retry runtime cleanup")
         run = await _get_run(run_id)
@@ -899,6 +910,18 @@ async def process_agent_run(ctx, run_id: str):
             )
             return
 
+        await run_ctx.start()
+        try:
+            git_repositories = await prepare_project_git_worktrees(
+                uid=str(uid),
+                project_id=workdir_binding.project_id,
+                workdir_path=workdir_binding.workdir_path,
+                runtime_scope_id=str(run.runtime_scope_id),
+                worker_id=worker_id,
+            )
+        except ProjectGitBusyError as exc:
+            raise RetryableRunError(str(exc)) from exc
+
         resume_input = None
         if run_type == "resume":
             resume_input = input_metadata.get("resume")
@@ -930,7 +953,12 @@ async def process_agent_run(ctx, run_id: str):
 
         # 运行清单必须在真正构造执行上下文前固化；固化失败时执行不得开始。
         try:
-            execution_snapshot = await persist_run_manifest(run=run, user=user, worker_id=worker_id)
+            execution_snapshot = await persist_run_manifest(
+                run=run,
+                user=user,
+                worker_id=worker_id,
+                git_repositories=git_repositories,
+            )
         except Exception as manifest_error:
             logger.error(f"Failed to persist AgentRun manifest: run={run_id}", exc_info=True)
             await mark_run_terminal(
@@ -962,6 +990,7 @@ async def process_agent_run(ctx, run_id: str):
             "runtime_scope_id": str(getattr(run, "runtime_scope_id", None) or thread_id),
             "workdir_relative_path": workdir_binding.workdir_path,
             "workdir_path": runtime_workdir_path(workdir_binding.workdir_path),
+            "git_repositories": git_repositories,
         }
         if run_type == "subagent":
             meta["parent_thread_id"] = runtime.get("parent_thread_id")
@@ -970,7 +999,6 @@ async def process_agent_run(ctx, run_id: str):
         if isinstance(input_metadata.get("agent_invocation_meta"), dict):
             meta["agent_invocation_meta"] = input_metadata.get("agent_invocation_meta") or {}
 
-        await run_ctx.start()
         metadata_event = {
             "request_id": request_id,
             "agent_slug": agent_slug,
@@ -1399,6 +1427,7 @@ async def _reconcile_agent_run_leases_forever() -> None:
             if cleaned_ids:
                 logger.warning(f"Reconciled pending runtime cleanups: count={len(cleaned_ids)}")
             await recover_pending_dispatches()
+            await reconcile_project_git_operations()
             await _publish_reconciliation_health()
         except asyncio.CancelledError:
             raise
@@ -1450,6 +1479,7 @@ async def _worker_startup(ctx):
         logger.warning(f"Reconciled expired AgentRun leases at startup: count={len(reconciled_ids)}")
     await reconcile_pending_runtime_cleanups()
     await recover_pending_dispatches()
+    await reconcile_project_git_operations()
     await _publish_reconciliation_health()
     ctx[_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_agent_run_leases_forever())
 
@@ -1469,7 +1499,7 @@ async def _worker_shutdown(ctx):
 
 
 class WorkerSettings:
-    functions = [process_agent_run]
+    functions = [process_agent_run, process_project_git_operation, process_project_git_worktree_cleanup]
     max_tries = 2
     retry_jobs = True
     # 单任务最长执行时间（秒），可配置：超长图谱构建/深度检索场景需调大，

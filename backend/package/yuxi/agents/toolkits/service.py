@@ -150,4 +150,11 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
         selected_tool_names.add(tool.name)
         selected_tool_sources[tool.name] = "local"
 
+    if getattr(context, "git_repositories", None):
+        from yuxi.agents.toolkits.git_tools import git_push_branch
+
+        if git_push_branch.name in selected_tool_names:
+            raise RuntimeError("工具名冲突：运行时 Git push 工具已被其他来源占用")
+        selected_tools.append(git_push_branch)
+
     return selected_tools

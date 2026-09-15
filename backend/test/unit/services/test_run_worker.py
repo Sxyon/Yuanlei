@@ -249,9 +249,15 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, run_obj: SimpleNamespace):
     monkeypatch.setattr(run_worker, "persist_run_manifest", fake_noop)
     monkeypatch.setattr(
         run_worker,
+        "prepare_project_git_worktrees",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        run_worker,
         "_validate_run_workdir_binding",
         AsyncMock(
             return_value=SimpleNamespace(
+                project_id="project-1",
                 workdir_path="projects/11111111-1111-4111-8111-111111111111",
                 virtual_path="/home/gem/user-data/projects/11111111-1111-4111-8111-111111111111",
             )
@@ -1232,6 +1238,10 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         calls.append("reconcile_pending_runtime_cleanups")
         return []
 
+    async def fake_reconcile_project_git_operations():
+        calls.append("reconcile_project_git_operations")
+        return []
+
     async def fake_reconciliation_loop():
         calls.append("reconciliation_loop")
 
@@ -1248,6 +1258,11 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         run_worker,
         "reconcile_pending_runtime_cleanups",
         fake_reconcile_pending_runtime_cleanups,
+    )
+    monkeypatch.setattr(
+        run_worker,
+        "reconcile_project_git_operations",
+        fake_reconcile_project_git_operations,
     )
     monkeypatch.setattr(run_worker, "_publish_reconciliation_health", fake_publish_reconciliation_health)
     monkeypatch.setattr(run_worker, "_reconcile_agent_run_leases_forever", fake_reconciliation_loop)
@@ -1268,6 +1283,7 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "reconcile_expired_run_leases",
         "reconcile_pending_runtime_cleanups",
         "recover_pending_dispatches",
+        "reconcile_project_git_operations",
         "publish_reconciliation_health",
         "reconciliation_loop",
     ]

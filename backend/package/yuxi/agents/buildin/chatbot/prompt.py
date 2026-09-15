@@ -52,7 +52,24 @@ def build_prompt_with_context(context):
 - 未经用户明确要求，不得在当前 Project Workdir 之外创建、修改、移动或删除文件
 - 父子智能体共享同一个 Project Workdir 与执行树 runtime；并发写同一路径遵循真实 POSIX 结果
 """
-    system_prompt = (
-        f"{current_date}\n\n{PROMPT.strip()}\n\n{filesystem_prompt.strip()}\n\n{context.system_prompt or ''}"
-    )
+    git_repositories = getattr(context, "git_repositories", None) or []
+    git_prompt = ""
+    if git_repositories:
+        rows = "\n".join(
+            f"- {item['alias']}: path={item['path']}, branch={item['branch']}, base={item['base_branch']}"
+            for item in git_repositories
+        )
+        git_prompt = f"""
+<| Project Git 工作区 |>
+以下 worktree 已按根任务分配，Root Agent 与 SubAgent 共享，同一 Project 的其他根任务使用不同目录：
+{rows}
+- 使用 execute 与 `git -C <path>` 完成 status、diff、add、commit；不要 clone、fetch、push 或修改 remote
+- 只在已分配分支提交，不切换、创建或删除其他分支，不操作 bare repository.git
+- 推送时先确认 worktree clean，读取完整 HEAD SHA，再由 Root Agent 调用 git_push_branch
+"""
+    sections = [current_date, PROMPT.strip(), filesystem_prompt.strip()]
+    if git_prompt:
+        sections.append(git_prompt.strip())
+    sections.append(context.system_prompt or "")
+    system_prompt = "\n\n".join(sections)
     return system_prompt.strip()

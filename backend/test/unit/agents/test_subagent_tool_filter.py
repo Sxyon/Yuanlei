@@ -37,6 +37,7 @@ def test_filter_disabled_tools_removes_sensitive_backend_tools_only_in_default_m
         SimpleNamespace(name="write_file"),
         SimpleNamespace(name="edit_file"),
         SimpleNamespace(name="execute"),
+        SimpleNamespace(name="git_push_branch"),
     ]
 
     default_mode_filtered = subagent_graph._filter_disabled_tools(

@@ -197,7 +197,8 @@ async def test_current_schema_skips_schema_ddl(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_business_v1_schema_is_converged_and_versioned_as_current(monkeypatch):
+@pytest.mark.parametrize("previous_version", [1, 2])
+async def test_supported_business_schema_is_converged_and_versioned_as_current(monkeypatch, previous_version):
     calls: list[str] = []
     sessions = [_Session(), _Session(), _Session()]
 
@@ -210,7 +211,7 @@ async def test_business_v1_schema_is_converged_and_versioned_as_current(monkeypa
         schema_migration_lock=lambda: _async_context(calls, "schema_lock"),
         create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
         get_schema_versions=lambda: _async_value(
-            {"business": 1, "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION}
+            {"business": previous_version, "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION}
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         create_business_tables=lambda: _record(calls, "create_business"),
