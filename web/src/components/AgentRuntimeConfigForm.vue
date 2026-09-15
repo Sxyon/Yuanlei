@@ -83,6 +83,23 @@
 
                 <!-- 多选 / 工具列表 (统一处理) -->
                 <div v-else-if="isListConfig(key, value)" class="list-config-container">
+                  <div v-if="value.kind === 'subagents'" class="hidden-selection-note">
+                    未指定子智能体时，使用全部可访问的子智能体。
+                  </div>
+                  <div
+                    v-if="getHiddenSelection(key).length"
+                    class="hidden-selection-note"
+                    role="status"
+                  >
+                    另有 {{ getHiddenSelection(key).length }} 项当前不可访问，修改可见选择时会保留。
+                    <template v-if="!isReadOnlyConfig">
+                      {{
+                        value.kind === 'subagents'
+                          ? '使用全部会替换固定选择范围。'
+                          : '清空全部会移除这些选择。'
+                      }}
+                    </template>
+                  </div>
                   <!-- Case 1: <= 5 options, inline list -->
                   <div v-if="getConfigOptions(value).length <= 5" class="multi-select-cards">
                     <div class="multi-select-label">
@@ -96,9 +113,9 @@
                           size="small"
                           class="clear-btn"
                           @click="clearSelection(key)"
-                          v-if="getSelectedCount(key) > 0"
+                          v-if="canResetSelection(key)"
                         >
-                          清空
+                          {{ value.kind === 'subagents' ? '使用全部' : '清空全部' }}
                         </a-button>
                         <template v-if="isToolsKind(value.kind)">
                           <a-divider type="vertical" />
@@ -165,13 +182,13 @@
                         >
 
                         <a-button
-                          v-if="!isReadOnlyConfig && getSelectedCount(key) > 0"
+                          v-if="!isReadOnlyConfig && canResetSelection(key)"
                           type="link"
                           size="small"
                           class="clear-btn"
                           @click="clearSelection(key)"
                         >
-                          清空
+                          {{ value.kind === 'subagents' ? '使用全部' : '清空全部' }}
                         </a-button>
                       </div>
 
@@ -396,7 +413,9 @@ import {
   getAgentConfigOptions as getConfigOptions,
   getAgentConfigOptionValue as getOptionValue,
   isDefaultAllAgentResourceKind,
-  isSingleSelectAgentConfig
+  isSingleSelectAgentConfig,
+  mergeVisibleAgentResourceSelection,
+  getVisibleAgentResourceSelection
 } from '@/utils/agentConfigUtils'
 import { storeToRefs } from 'pinia'
 
@@ -627,19 +646,12 @@ const handleModelChange = (key, spec) => {
 
 // 多选相关方法
 const ensureArray = (key) => {
-  const config = agentConfig.value || {}
   const configItem = configurableItems.value[key]
-  if (config[key] === null && isDefaultAllAgentResourceKind(configItem?.kind)) {
-    return getConfigOptions(configItem).map((option) => getOptionValue(option))
-  }
-  if (!config[key] || !Array.isArray(config[key])) {
-    return []
-  }
-  const validValues = new Set(
-    getConfigOptions(configItem).map((option) => String(getOptionValue(option)))
+  return getVisibleAgentResourceSelection(
+    agentConfig.value[key],
+    configItem?.kind,
+    getConfigOptions(configItem).map(getOptionValue)
   )
-  if (validValues.size === 0) return config[key]
-  return config[key].filter((value) => validValues.has(String(value)))
 }
 
 const isOptionSelected = (key, option) => {
@@ -664,7 +676,11 @@ const toggleOption = (key, option) => {
   }
 
   agentStore.updateAgentConfig({
-    [key]: currentOptions
+    [key]: mergeVisibleAgentResourceSelection(
+      agentConfig.value[key],
+      getConfigOptions(configurableItems.value[key]).map(getOptionValue),
+      currentOptions
+    )
   })
 }
 
@@ -706,7 +722,11 @@ const confirmSelection = () => {
   }
   if (currentConfigKey.value) {
     agentStore.updateAgentConfig({
-      [currentConfigKey.value]: [...tempSelectedValues.value]
+      [currentConfigKey.value]: mergeVisibleAgentResourceSelection(
+        agentConfig.value[currentConfigKey.value],
+        getConfigOptions(configurableItems.value[currentConfigKey.value]).map(getOptionValue),
+        tempSelectedValues.value
+      )
     })
   }
   closeSelectionModal()
@@ -746,40 +766,32 @@ const saveSystemPrompt = () => {
   closeSystemPromptModal()
 }
 
-// 验证和过滤配置项
-const validateAndFilterConfig = () => {
-  const validatedConfig = { ...agentConfig.value }
-  const configItems = configurableItems.value
+/** 不可访问的既有选择仅用于保留，不作为当前用户可用选项。 */
+const getHiddenSelection = (key) =>
+  mergeVisibleAgentResourceSelection(
+    agentConfig.value[key],
+    getConfigOptions(configurableItems.value[key]).map(getOptionValue),
+    []
+  )
 
-  // 遍历所有配置项
-  Object.keys(configItems).forEach((key) => {
-    const configItem = configItems[key]
-    const currentValue = validatedConfig[key]
-
-    if (
-      Array.isArray(currentValue) &&
-      (configItem.kind === 'tools' || configItem.type === 'list')
-    ) {
-      const options = getConfigOptions(configItem)
-      const validValues = new Set(options.map((opt) => String(getOptionValue(opt))))
-      if (validValues.size === 0) return
-
-      validatedConfig[key] = currentValue.filter((value) => validValues.has(String(value)))
-      if (validatedConfig[key].length !== currentValue.length) {
-        console.warn(`配置项 ${key} 中包含无效选项，已自动过滤`)
-      }
-    }
-  })
-
-  return validatedConfig
+/** 子智能体仅在固定列表模式提供恢复全部的动作。 */
+const canResetSelection = (key) => {
+  if (configurableItems.value[key]?.kind === 'subagents') {
+    return Array.isArray(agentConfig.value[key]) && agentConfig.value[key].length > 0
+  }
+  return getSelectedCount(key) > 0 || getHiddenSelection(key).length > 0
 }
-
-defineExpose({ validateAndFilterConfig })
 </script>
 
 <style lang="less" scoped>
 .agent-runtime-config-form {
   background: var(--gray-0);
+
+  .hidden-selection-note {
+    margin-bottom: 8px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
 
   .runtime-config-content {
     flex: 1;

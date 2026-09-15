@@ -350,6 +350,7 @@ import ResourceEmptyState from '@/components/shared/ResourceEmptyState.vue'
 import BenchmarkUploadModal from '@/components/modals/BenchmarkUploadModal.vue'
 import BenchmarkGenerateModal from '@/components/modals/BenchmarkGenerateModal.vue'
 import EvaluationRunCreateModal from '@/components/evaluation/EvaluationRunCreateModal.vue'
+import { parseDownloadFilename } from '@/utils/file_utils'
 
 const props = defineProps({
   kbId: { type: String, required: true },
@@ -481,18 +482,6 @@ const openRun = (run) => {
     params: { kbId: props.kbId, datasetId: run.dataset_id },
     query: { view: 'results', run: run.run_id }
   })
-}
-
-const parseDownloadFilename = (contentDisposition) => {
-  const utf8Match = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)
-  if (utf8Match?.[1]) {
-    try {
-      return decodeURIComponent(utf8Match[1])
-    } catch {
-      return ''
-    }
-  }
-  return contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || ''
 }
 
 const downloadDataset = async (dataset) => {

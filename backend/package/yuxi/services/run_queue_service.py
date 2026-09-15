@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 
 from yuxi.storage.redis import close_async_redis_client, create_arq_redis_pool, get_async_redis_client
@@ -14,7 +13,6 @@ from yuxi.utils.logging_config import logger
 RUN_CANCEL_KEY_TTL_SECONDS = int(os.getenv("RUN_CANCEL_KEY_TTL_SECONDS", "1800"))
 RUN_EVENTS_STREAM_TTL_SECONDS = int(os.getenv("RUN_EVENTS_STREAM_TTL_SECONDS", "7200"))
 RUN_EVENTS_STREAM_MAXLEN = int(os.getenv("RUN_EVENTS_STREAM_MAXLEN", "0"))
-RUN_CANCEL_CHANNEL = os.getenv("RUN_CANCEL_CHANNEL", "run:cancel:ch")
 WORKER_HEALTH_CONTRACT = "agent-run-v1"
 WORKER_HEALTH_KEY = f"yuxi:worker:health:{WORKER_HEALTH_CONTRACT}"
 WORKER_HEALTH_INTERVAL_SECONDS = float(os.getenv("WORKER_HEALTH_INTERVAL_SECONDS", "5"))
@@ -117,30 +115,18 @@ async def enqueue_project_git_worktree_cleanup(worktree_id: str) -> None:
     )
 
 
-@asynccontextmanager
-async def redis_pubsub(channel: str):
-    redis = await get_redis_client()
-    pubsub = redis.pubsub()
-    try:
-        await pubsub.subscribe(channel)
-        try:
-            yield pubsub
-        finally:
-            with suppress(Exception):
-                await pubsub.unsubscribe(channel)
-    finally:
-        with suppress(Exception):
-            await pubsub.close()
-
-
 async def publish_cancel_signal(run_id: str) -> None:
     try:
         redis = await get_redis_client()
         key = _cancel_key(run_id)
         await redis.set(key, "1", ex=RUN_CANCEL_KEY_TTL_SECONDS)
-        await redis.publish(RUN_CANCEL_CHANNEL, run_id)
     except Exception as e:
         logger.warning(f"Failed to publish cancel signal for run {run_id}: {e}")
+
+
+async def publish_cancel_signals(run_ids: list[str]) -> None:
+    """并发发布一组 best-effort Run 取消信号。"""
+    await asyncio.gather(*(publish_cancel_signal(run_id) for run_id in run_ids))
 
 
 async def _read_cancel_signal(run_id: str) -> bool:
@@ -148,68 +134,29 @@ async def _read_cancel_signal(run_id: str) -> bool:
     return bool(await redis.get(_cancel_key(run_id)))
 
 
-async def has_cancel_signal(run_id: str) -> bool:
-    try:
-        return await _read_cancel_signal(run_id)
-    except Exception as e:
-        logger.warning(f"Failed to read cancel signal for run {run_id}: {e}")
-        return False
+async def wait_for_cancel_signal(run_id: str, poll_interval_seconds: float = 1.0) -> bool:
+    """按固定间隔读取 Redis key，直到收到取消或 watcher 被关闭。"""
 
-
-async def wait_for_cancel_signal(run_id: str, poll_timeout_seconds: float = 1.0) -> bool:
-    poll_timeout_seconds = max(0.0, float(poll_timeout_seconds))
+    poll_interval_seconds = max(0.0, float(poll_interval_seconds))
     loop = asyncio.get_running_loop()
     key_failure_logged = False
-    pubsub_failure_logged = False
 
     while True:
         attempt_started_at = loop.time()
         try:
-            try:
-                if await _read_cancel_signal(run_id):
-                    return True
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                if not key_failure_logged:
-                    logger.warning(f"Failed to read cancel signal for run {run_id}: {e}")
-                    key_failure_logged = True
-            else:
-                key_failure_logged = False
-
-            async with redis_pubsub(RUN_CANCEL_CHANNEL) as pubsub:
-                while True:
-                    poll_started_at = loop.time()
-                    msg = await pubsub.get_message(
-                        ignore_subscribe_messages=True,
-                        timeout=poll_timeout_seconds,
-                    )
-                    pubsub_failure_logged = False
-                    if msg and str(msg.get("data")) == run_id:
-                        return True
-                    try:
-                        if await _read_cancel_signal(run_id):
-                            return True
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        if not key_failure_logged:
-                            logger.warning(f"Failed to read cancel signal for run {run_id}: {e}")
-                            key_failure_logged = True
-                    else:
-                        key_failure_logged = False
-                    remaining = poll_timeout_seconds - (loop.time() - poll_started_at)
-                    if remaining > 0:
-                        await asyncio.sleep(remaining)
+            if await _read_cancel_signal(run_id):
+                return True
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            if not pubsub_failure_logged:
-                logger.warning(f"Failed to wait cancel signal for run {run_id}: {e}")
-                pubsub_failure_logged = True
-            remaining = poll_timeout_seconds - (loop.time() - attempt_started_at)
-            if remaining > 0:
-                await asyncio.sleep(remaining)
+            if not key_failure_logged:
+                logger.warning(f"Failed to read cancel signal for run {run_id}: {e}")
+                key_failure_logged = True
+        else:
+            key_failure_logged = False
+
+        remaining = poll_interval_seconds - (loop.time() - attempt_started_at)
+        await asyncio.sleep(max(0.0, remaining))
 
 
 async def clear_cancel_signal(run_id: str) -> None:
@@ -245,9 +192,40 @@ async def append_run_stream_event(run_id: str, event_type: str, payload: dict, *
         kwargs["maxlen"] = RUN_EVENTS_STREAM_MAXLEN
         kwargs["approximate"] = True
 
-    event_id = await redis.xadd(key, fields, **kwargs)
-    await redis.expire(key, RUN_EVENTS_STREAM_TTL_SECONDS)
+    # 同一连接顺序发出写入和续期，省去两次往返之间的事件循环等待。
+    async with redis.pipeline(transaction=False) as pipeline:
+        pipeline.xadd(key, fields, **kwargs)
+        pipeline.expire(key, RUN_EVENTS_STREAM_TTL_SECONDS)
+        event_id, _ = await pipeline.execute()
     return str(event_id)
+
+
+def _decode_run_stream_row(run_id: str, event_id: str, fields: dict) -> dict:
+    """解码单条 Redis Stream 事件，兼容旧载荷并保持统一返回形状。"""
+    payload_raw = fields.get("payload") or "{}"
+    try:
+        payload = json.loads(payload_raw)
+    except Exception:
+        payload = {}
+
+    event_type = fields.get("event_type") or "message"
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        payload = {
+            "schema_version": 1,
+            "run_id": run_id,
+            "thread_id": None,
+            "event": event_type,
+            "payload": payload if isinstance(payload, dict) else {},
+            "created_at": None,
+        }
+
+    ts_value = fields.get("ts")
+    return {
+        "seq": str(event_id),
+        "event_type": event_type,
+        "payload": payload,
+        "ts": int(ts_value) if ts_value else None,
+    }
 
 
 async def list_run_stream_events(
@@ -263,32 +241,7 @@ async def list_run_stream_events(
     events = []
 
     for event_id, fields in rows:
-        payload_raw = fields.get("payload") or "{}"
-        try:
-            payload = json.loads(payload_raw)
-        except Exception:
-            payload = {}
-
-        event_type = fields.get("event_type") or "message"
-        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-            payload = {
-                "schema_version": 1,
-                "run_id": run_id,
-                "thread_id": None,
-                "event": event_type,
-                "payload": payload if isinstance(payload, dict) else {},
-                "created_at": None,
-            }
-
-        ts_value = fields.get("ts")
-        events.append(
-            {
-                "seq": str(event_id),
-                "event_type": event_type,
-                "payload": payload,
-                "ts": int(ts_value) if ts_value else None,
-            }
-        )
+        events.append(_decode_run_stream_row(run_id, event_id, fields))
     return events
 
 
@@ -300,32 +253,7 @@ async def list_recent_run_stream_events(run_id: str, *, limit: int = 100) -> lis
     events = []
 
     for event_id, fields in rows:
-        payload_raw = fields.get("payload") or "{}"
-        try:
-            payload = json.loads(payload_raw)
-        except Exception:
-            payload = {}
-
-        event_type = fields.get("event_type") or "message"
-        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-            payload = {
-                "schema_version": 1,
-                "run_id": run_id,
-                "thread_id": None,
-                "event": event_type,
-                "payload": payload if isinstance(payload, dict) else {},
-                "created_at": None,
-            }
-
-        ts_value = fields.get("ts")
-        events.append(
-            {
-                "seq": str(event_id),
-                "event_type": event_type,
-                "payload": payload,
-                "ts": int(ts_value) if ts_value else None,
-            }
-        )
+        events.append(_decode_run_stream_row(run_id, event_id, fields))
     return events
 
 

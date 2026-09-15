@@ -19,6 +19,8 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from random import uniform
+from time import monotonic
 from typing import Any, Literal
 
 from fastapi import HTTPException
@@ -45,17 +47,16 @@ from yuxi.services.run_queue_service import (
     list_recent_run_stream_events,
     list_run_stream_events,
     normalize_after_seq,
-    publish_cancel_signal,
+    publish_cancel_signals,
 )
 from yuxi.storage.postgres.manager import pg_manager
-from yuxi.storage.postgres.models_business import Message, User
+from yuxi.storage.postgres.models_business import Message, User, build_agent_run_timing
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.hash_utils import hash_id
 from yuxi.utils.logging_config import logger
 from yuxi.utils.sse_utils import (
     SSE_HEARTBEAT_SECONDS,
     SSE_MAX_CONNECTION_MINUTES,
-    SSE_POLL_INTERVAL_SECONDS,
     format_heartbeat,
     format_sse,
 )
@@ -63,6 +64,12 @@ from yuxi.utils.sse_utils import (
 RUN_PROGRESS_RECENT_EVENT_SCAN_LIMIT = 100
 RUN_PROGRESS_MESSAGE_LIMIT = 3
 RUN_PROGRESS_CONTENT_MAX_CHARS = 800
+RUN_SSE_ACTIVE_POLL_SECONDS = 0.1
+RUN_SSE_SHORT_IDLE_MAX_POLL_SECONDS = 1.0
+RUN_SSE_LONG_IDLE_AFTER_SECONDS = 120.0
+RUN_SSE_LONG_IDLE_MAX_POLL_SECONDS = 4.0
+RUN_SSE_STATUS_POLL_SECONDS = 5.0
+RUN_SSE_POLL_JITTER_RATIO = 0.2
 
 
 def _resolve_agent_run_request_id(
@@ -847,8 +854,16 @@ async def get_agent_run_result(*, run_id: str, current_uid: str, db: AsyncSessio
         "agent_run_id": run.id,
         "request_id": run.request_id,
         "final_message_id": output_message.id if output_message else None,
-        "langfuse_trace_id": output_metadata.get("langfuse_trace_id"),
+        "langfuse_trace_id": getattr(run, "langfuse_trace_id", None) or output_metadata.get("langfuse_trace_id"),
         "token_usage": getattr(run, "token_usage", None) or {},
+        "timing": build_agent_run_timing(
+            created_at=getattr(run, "created_at", None),
+            started_at=getattr(run, "started_at", None),
+            prepared_at=getattr(run, "prepared_at", None),
+            first_output_at=getattr(run, "first_output_at", None),
+            finished_at=getattr(run, "finished_at", None),
+            first_model_request_at=getattr(run, "first_model_request_at", None),
+        ),
     }
     if run.error_type or run.error_message:
         payload["error"] = {"type": run.error_type, "message": run.error_message}
@@ -856,7 +871,7 @@ async def get_agent_run_result(*, run_id: str, current_uid: str, db: AsyncSessio
 
 
 async def get_agent_run_langfuse_link(*, run_id: str, current_uid: str, db: AsyncSession) -> dict:
-    """按用户可见 Run 的权威输出绑定解析 Langfuse 跳转地址。"""
+    """按用户可见 Run 自身的 trace 关联解析 Langfuse 跳转地址。"""
     result = await get_agent_run_result(run_id=run_id, current_uid=current_uid, db=db)
     if result.get("error", {}).get("type") == "run_not_found":
         raise HTTPException(status_code=404, detail="运行任务不存在")
@@ -912,7 +927,7 @@ async def request_cancel_agent_run(
     if run is None:
         raise HTTPException(status_code=404, detail="运行任务不存在")
     await db.commit()
-    await asyncio.gather(*(publish_cancel_signal(cid) for cid in cancelled_ids))
+    await publish_cancel_signals(cancelled_ids)
     return run
 
 
@@ -920,6 +935,34 @@ async def cancel_agent_run_view(*, run_id: str, current_uid: str, db: AsyncSessi
     """HTTP 取消入口：取消父 run 时默认级联取消活跃子 run。"""
     run = await request_cancel_agent_run(run_id=run_id, current_uid=current_uid, db=db, cascade_children=True)
     return {"run": run.to_dict() if run else None}
+
+
+async def _load_stream_run_for_user(run_id: str, current_uid: str):
+    """读取当前用户可见的 Run，供 SSE 建连鉴权。"""
+    async with pg_manager.get_async_session_context() as db:
+        return await AgentRunRepository(db).get_run_for_user(run_id, str(current_uid))
+
+
+async def _load_stream_run(run_id: str):
+    """按 ID 读取 Run 的权威状态，供已鉴权 SSE 低频终态补偿。"""
+    async with pg_manager.get_async_session_context() as db:
+        return await AgentRunRepository(db).get_run(run_id)
+
+
+def _next_run_sse_poll_interval(current_interval: float, idle_seconds: float) -> float:
+    """按空闲时长扩大 Run 事件轮询间隔。"""
+    max_interval = (
+        RUN_SSE_LONG_IDLE_MAX_POLL_SECONDS
+        if idle_seconds >= RUN_SSE_LONG_IDLE_AFTER_SECONDS
+        else RUN_SSE_SHORT_IDLE_MAX_POLL_SECONDS
+    )
+    return min(max(current_interval * 2, RUN_SSE_ACTIVE_POLL_SECONDS), max_interval)
+
+
+def _jitter_run_sse_poll_interval(interval: float) -> float:
+    """为轮询间隔增加有限抖动，分散并发连接尖峰。"""
+    multiplier = uniform(1 - RUN_SSE_POLL_JITTER_RATIO, 1 + RUN_SSE_POLL_JITTER_RATIO)
+    return interval * multiplier
 
 
 async def stream_agent_run_events(
@@ -932,32 +975,33 @@ async def stream_agent_run_events(
     """按 SSE 格式读取 run 事件流；终结事件缺失时根据数据库状态补发 end。"""
     started_at = utc_now_naive()
     last_heartbeat_ts = started_at
-
     last_seq = normalize_after_seq(after_seq)
+    started_monotonic = monotonic()
+    last_event_at = started_monotonic
+    next_status_check_at = started_monotonic + RUN_SSE_STATUS_POLL_SECONDS
+    poll_interval = RUN_SSE_ACTIVE_POLL_SECONDS
 
     try:
-        while True:
-            try:
-                async with pg_manager.get_async_session_context() as db:
-                    repo = AgentRunRepository(db)
-                    run = await repo.get_run_for_user(run_id, str(current_uid))
-                    if not run:
-                        yield format_sse({"run_id": run_id, "message": "运行任务不存在"}, event="error")
-                        return
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning(f"Run SSE DB error for run {run_id}: {e}")
-                yield format_sse(
-                    {
-                        "run_id": run_id,
-                        "message": "运行事件流暂时不可用，请重连",
-                        "reason": "db_error",
-                    },
-                    event="error",
-                )
+        try:
+            run = await _load_stream_run_for_user(run_id, current_uid)
+            if not run:
+                yield format_sse({"run_id": run_id, "message": "运行任务不存在"}, event="error")
                 return
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Run SSE DB error for run {run_id}: {e}")
+            yield format_sse(
+                {
+                    "run_id": run_id,
+                    "message": "运行事件流暂时不可用，请重连",
+                    "reason": "db_error",
+                },
+                event="error",
+            )
+            return
 
+        while True:
             try:
                 events = await list_run_stream_events(run_id, after_seq=last_seq, limit=200)
             except Exception as e:
@@ -971,6 +1015,10 @@ async def stream_agent_run_events(
                     event="error",
                 )
                 return
+
+            if events:
+                last_event_at = monotonic()
+                poll_interval = RUN_SSE_ACTIVE_POLL_SECONDS
 
             emitted_terminal = False
             for event in events:
@@ -988,6 +1036,28 @@ async def stream_agent_run_events(
 
             if emitted_terminal:
                 return
+
+            now_monotonic = monotonic()
+            if now_monotonic >= next_status_check_at:
+                try:
+                    run = await _load_stream_run(run_id)
+                    if not run:
+                        yield format_sse({"run_id": run_id, "message": "运行任务不存在"}, event="error")
+                        return
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Run SSE DB error for run {run_id}: {e}")
+                    yield format_sse(
+                        {
+                            "run_id": run_id,
+                            "message": "运行事件流暂时不可用，请重连",
+                            "reason": "db_error",
+                        },
+                        event="error",
+                    )
+                    return
+                next_status_check_at = monotonic() + RUN_SSE_STATUS_POLL_SECONDS
 
             if (
                 run.status in TERMINAL_RUN_STATUSES
@@ -1025,7 +1095,12 @@ async def stream_agent_run_events(
             if elapsed_seconds >= SSE_MAX_CONNECTION_MINUTES * 60:
                 return
 
-            await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+            status_check_delay = max(0.0, next_status_check_at - monotonic())
+            sleep_seconds = min(_jitter_run_sse_poll_interval(poll_interval), status_check_delay)
+            await asyncio.sleep(sleep_seconds)
+            if not events:
+                idle_seconds = monotonic() - last_event_at
+                poll_interval = _next_run_sse_poll_interval(poll_interval, idle_seconds)
     except asyncio.CancelledError:
         return
 

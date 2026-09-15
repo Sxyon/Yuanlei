@@ -6,16 +6,16 @@
 
 - 已安装 [Docker Engine](https://docs.docker.com/get-docker/) 和 Docker Compose v2。
 - 一个可用的大模型 API。下面的初始化脚本以 SiliconFlow 为例；也可以先复制 `.env.template`，改用其他受支持的供应商。
-- 能够访问 Docker 镜像仓库和模型服务的网络。完整模式会启动知识库和图谱依赖，但 OCR 服务只在需要时通过 `all` profile 启动。
+- 能够访问 Docker 镜像仓库和模型服务的网络。默认拓扑会启动知识库和图谱依赖，但 OCR 服务只在需要时通过 `all` profile 启动。
 
 默认开发拓扑不要求 GPU。MinerU 和 PP-Structure-V3 等本地 OCR 服务需要 GPU，配置方法见[文档处理与 OCR](../advanced/document-processing.md)。
 
 ## 1. 获取代码
 
-仓库当前默认配置对应 `v0.7.2`。这个版本仍处于 Beta 阶段；用于重要数据前，请先阅读[生产部署与升级](../advanced/deployment.md)中的备份和迁移说明。
+仓库当前默认配置对应 `v0.7.3`。用于重要数据前，请先阅读[生产部署与升级](../advanced/deployment.md)中的备份和迁移说明。
 
 ```bash
-git clone --branch v0.7.2 --depth 1 https://github.com/xerrors/Yuxi.git
+git clone --branch v0.7.3 --depth 1 https://github.com/xerrors/Yuxi.git
 cd Yuxi
 ```
 
@@ -84,21 +84,6 @@ curl --fail http://localhost:5050/api/system/ready
 
 首次打开 Web 界面时，按页面提示初始化超级管理员账号。登录成功后，可以从“智能体”页面配置模型，从“知识库”页面创建文档知识库。
 
-## 可选：使用 LITE 模式
-
-如果当前只想体验聊天、工作区、Skills 或 MCP，不需要知识库、知识图谱和评估，可以启动 LITE 模式：
-
-```bash
-make up-lite
-```
-
-LITE 模式由 `LITE_MODE=true` 启动。后端不会注册知识库、图谱和评估路由，也不会初始化这些重运行时；前端会根据能力发现结果隐藏对应入口。切回完整模式前先停止当前环境，再执行：
-
-```bash
-make down
-make up
-```
-
 ## 常见问题
 
 ### 容器没有变成 healthy
@@ -136,14 +121,14 @@ docker compose up --build -d
 
 ### 知识库依赖启动失败
 
-完整模式需要 Milvus、etcd、MinIO 和 Neo4j。先查看对应服务的日志和健康状态：
+默认拓扑需要 Milvus、etcd、MinIO 和 Neo4j。先查看对应服务的日志和健康状态：
 
 ```bash
 docker compose ps milvus etcd minio graph
 docker compose logs --tail=100 milvus etcd minio graph
 ```
 
-如果当前不需要知识库，使用 LITE 模式可以避开这些服务；不要用一个“看起来启动成功”的空结果代替依赖故障排查。
+这些服务是默认拓扑的一部分；不要用一个“看起来启动成功”的空结果代替依赖故障排查。
 
 ### 需要查看详细对话事件
 

@@ -81,10 +81,7 @@ export function useAgentThreadState({
     delete chatState.threadStates[threadId]
   }
 
-  const resetOnGoingConv = (
-    threadId = null,
-    { preserveRunStream = false, preserveRequestStreams = false } = {}
-  ) => {
+  const resetOnGoingConv = (threadId = null, { preserveRequestStreams = false } = {}) => {
     const targetThreadId =
       threadId || (typeof getCurrentThreadId === 'function' ? getCurrentThreadId() : null)
 
@@ -96,7 +93,7 @@ export function useAgentThreadState({
         onBeforeResetThread(targetThreadId)
       }
 
-      if (!preserveRunStream && threadState.runStreamAbortController) {
+      if (threadState.runStreamAbortController) {
         threadState.runStreamAbortController.abort()
         threadState.runStreamAbortController = null
       }

@@ -1,6 +1,6 @@
 # 生产部署
 
-本页说明如何用 Docker Compose 部署 Yuxi、验证服务状态，以及从 v0.7.1 升级到当前 `v0.7.2`。当前版本仍是 Beta，重要数据上线前请先在备份环境演练恢复。
+本页说明如何用 Docker Compose 部署 Yuxi、验证服务状态，以及从 v0.7.1 或 v0.7.2 升级到 `v0.7.3`。重要数据上线前请先在备份环境演练恢复。
 
 ## 前置条件
 
@@ -62,21 +62,35 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml --profile all up 
 
 `storage-migrator` 是启动依赖的一部分。迁移器成功后会退出，退出码为 0 是正常结果；API、worker 和 provisioner 会等待它成功。
 
-## 3. 从 v0.7.1 升级
+## 3. 升级到 v0.7.3
 
-升级前安排停机窗口，并在同一时点备份：
+### 从 v0.7.2 升级的变化
+
+`v0.7.2` 正式版的 Schema 基线是 business=2、knowledge=1。迁移器一次补齐业务结构并记录 business=7，知识域升级到 knowledge=2；无需逐级执行 3～6。业务版本号保留开发期间的 revision，不与产品版本号一一对应。未发布的中间 Schema 会被明确拒绝；不要手工修改版本表绕过结构校验。
+
+- LITE 模式已移除，原 LITE 部署须补齐 Milvus、etcd、Neo4j 等完整拓扑资源，并清理失效的 LITE 配置。
+- Sandbox 默认规格为 `SANDBOX_RUNTIME_PROFILE=core`，不启动浏览器、browser MCP、VNC、Jupyter、code-server 或 NodeJS REPL 服务。依赖网页自动化的部署在 `.env.prod` 设置 `SANDBOX_RUNTIME_PROFILE=browser`；需要完整交互式开发环境时设置 `full`。升级时重新创建 provisioner，规格对随后创建的沙盒生效；能力范围见[沙盒配置](../agents/sandbox-architecture.md)。
+- 通用后台任务改由独立 worker 执行。迁移后须用同一版本协调启动 API 与 worker；混用旧 worker 不能满足新版本的就绪条件。
+- 旧知识文件中没有执行 owner 的 `parsing` / `indexing` 状态会收敛为 `error_parsing` / `error_indexing`，升级后检查失败文件并显式重试，不假定旧任务会自动续跑。
+- 新建托管 Project 使用可读的时间戳目录名；既有 UUID 目录继续有效，无需重命名。
+
+### 停机、备份与迁移
+
+升级前安排停机窗口，先结束运行中的任务与沙盒会话，再使用旧部署的 Compose 配置停止 API、worker 和 provisioner，确认没有业务写入后再做同一时点的备份：
 
 - PostgreSQL 数据目录；
 - MinIO 数据目录；
+- Milvus、etcd、Neo4j 等已启用服务的持久数据；
 - `docker/volumes/yuxi` 中的历史文件、UserWorkspace 和 Skill 数据；
 - 当前 Compose、`.env.prod` 和目标版本代码。
 
-备份后至少做一次成套恢复演练。只恢复数据库或只恢复文件卷，会让数据库记录与文件字节不一致。
+使用各存储服务支持的一致性备份方式；直接复制数据目录时，先停止对应存储服务，备份完成后按原配置启动存储依赖，业务服务保持停止。备份后至少做一次成套恢复演练。只恢复数据库或只恢复文件卷，会让数据库记录与文件字节不一致。
 
-检出目标版本后，先停止 API、worker 和 provisioner，再运行仓库提供的迁移入口：
+目标 tag 发布后检出该版本，再运行仓库提供的迁移入口；脚本会停止 API、worker 和 provisioner：
 
 ```bash
-git checkout v0.7.2
+git checkout v0.7.3
+docker compose --env-file .env.prod -f docker-compose.prod.yml build storage-migrator
 bash scripts/migrate-storage.sh \
   --env-file .env.prod \
   -f docker-compose.prod.yml
@@ -84,13 +98,23 @@ bash scripts/migrate-storage.sh \
 
 迁移脚本会使用同一组 Compose、env file 和 profile 参数建立停机证明，阻止新的沙盒创建，等待现有沙盒清空，然后运行 storage migrator。迁移成功前不要启动新的 API 或 worker。
 
-迁移会处理历史 Conversation 的 Project/Workdir 绑定、附件和产物路径、系统配置、共享 Skill 以及持久目录的所有权；未完成的历史 AgentRun 会被收敛为可观察失败，旧 SQLite checkpoint 不会迁移。历史知识库 Markdown 中指向 `public` bucket 的图片也不会自动变成私有对象，敏感知识库升级后需要重新解析并核对图片访问权限。
-
-这两件事不要混淆：旧 Markdown 中已经写入的 `http://localhost:9000/public/...` 或其他 `<host>:9000/public/...` 图片地址，前端渲染时会自动转换为同源的 `/minio/public/...` 路径，因此不需要仅为了更新 URL 而重新解析 PDF；但对象仍在公开的 `public` bucket 中，不能把 URL 转换当作权限收紧。
-
 迁移按 PostgreSQL、对象存储和文件卷分别提交，不是跨存储的单事务。命令失败时保持服务停止并保留日志；修复冲突后使用完全相同的参数重跑，迁移器会校验已提交的确定性目标并继续。
 
+迁移成功后，用相同的配置启动目标版本，再完成下节的就绪与真实对话验证：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+使用可选 profile 的部署在迁移和重启时保持相同参数。
+
 需要放弃升级时，保持服务停止，检出旧版本，并从同一停机时点的成套备份恢复。不要只恢复其中一个存储域。
+
+### 从 v0.7.1 升级的额外影响
+
+迁移还会处理历史 Conversation 的 Project/Workdir 绑定、附件和产物路径、系统配置、共享 Skill 以及持久目录的所有权；未完成的历史 AgentRun 会被收敛为可观察失败，旧 SQLite checkpoint 不会迁移。
+
+历史知识库 Markdown 中的 `http://localhost:9000/public/...` 或其他 `<host>:9000/public/...` 图片地址会在前端转换为同源 `/minio/public/...`，无需仅为更新 URL 而重新解析 PDF。对象仍在公开的 `public` bucket 中；敏感知识库需要重新解析、核对图片权限并清理旧公开对象，URL 转换不改变访问权限。
 
 ### Kubernetes 存储
 
@@ -197,7 +221,7 @@ Yuxi 本体使用 MIT License。Compose 依赖以独立进程运行，Yuxi 通�
 | 组件 | 镜像引用 | 许可证 |
 | --- | --- | --- |
 | Neo4j Community | `neo4j:5.26.29` | GPL-3.0-only |
-| MinIO | `minio/minio:RELEASE.2023-03-20T20-16-18Z` | AGPL-3.0 |
+| MinIO | `quay.io/minio/minio:RELEASE.2023-03-20T20-16-18Z` | AGPL-3.0 |
 | Milvus | `milvusdb/milvus:v2.5.6` | Apache-2.0 |
 | etcd | `quay.io/coreos/etcd:v3.5.5` | Apache-2.0 |
 | PostgreSQL | `postgres:16` | PostgreSQL License |

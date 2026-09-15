@@ -125,15 +125,16 @@ jobs:
 jobs:
   system:
     steps:
-      - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/api/test_system_router_api.py::test_health_endpoint_is_public test/integration/api/test_system_router_api.py::test_readiness_endpoint_proves_core_runtime_dependencies test/integration/api/test_system_router_api.py::test_discovery_declares_cli_knowledge_capabilities test/integration/api/test_system_router_api.py::test_lite_startup_does_not_create_knowledge_schema -q
+      - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/api/test_system_router_api.py::test_health_endpoint_is_public test/integration/api/test_system_router_api.py::test_readiness_endpoint_proves_core_runtime_dependencies test/integration/api/test_system_router_api.py::test_discovery_and_openapi_declare_full_knowledge_capabilities -q
       - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/services/test_schema_migration_version.py -q
       - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/services/test_agent_request_queue_concurrency.py -q
       - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/services/test_agent_run_lease.py -q
-      - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/api/test_agent_run_result_causality.py -q
+      - run: docker compose exec -T -e TEST_USERNAME="$E2E_USERNAME" -e TEST_PASSWORD="$E2E_PASSWORD" api uv run --no-sync --no-dev pytest test/integration/api/test_agent_run_result_causality.py -q
+      - run: docker compose exec -T -e TEST_USERNAME="$E2E_USERNAME" -e TEST_PASSWORD="$E2E_PASSWORD" api uv run --no-sync --no-dev pytest test/integration/api/test_chat_router.py::test_thread_message_audits_return_persisted_facts_without_leaking_into_history -q --setup-show -o faulthandler_timeout=60
       - run: docker compose exec -T -e E2E_USERNAME -e E2E_PASSWORD api uv run --no-sync --no-dev pytest test/e2e/test_deterministic_agent_path_e2e.py -q
-      - run: docker compose exec -T api uv run --no-sync --no-dev pytest test/integration/services/test_identity_admin_service.py test/integration/services/test_api_key_schema_migration.py test/integration/services/test_api_key_user_lifecycle.py test/integration/api/test_apikey_router.py -q
+      - run: docker compose exec -T -e TEST_USERNAME="$E2E_USERNAME" -e TEST_PASSWORD="$E2E_PASSWORD" api uv run --no-sync --no-dev pytest test/integration/services/test_identity_admin_service.py test/integration/services/test_api_key_schema_migration.py test/integration/services/test_api_key_user_lifecycle.py test/integration/api/test_apikey_router.py -q
       - run: |
-          docker compose exec -T api uv run --no-sync --no-dev pytest \\
+          docker compose exec -T -e TEST_USERNAME="$E2E_USERNAME" -e TEST_PASSWORD="$E2E_PASSWORD" api uv run --no-sync --no-dev pytest \\
           test/integration/services/test_workdir_user_workspace.py \\
           test/integration/services/test_user_skill_projection.py \\
           test/integration/api/test_skill_artifact_authorization.py -q
@@ -448,6 +449,7 @@ jobs:
         for test_path in (
             "test/integration/services/test_project_workdir_provisioner.py",
             "test/e2e/test_deterministic_agent_path_e2e.py",
+            'docker compose exec -T -e TEST_USERNAME="$E2E_USERNAME" -e TEST_PASSWORD="$E2E_PASSWORD" api uv run --no-sync --no-dev pytest test/integration/api/test_chat_router.py::test_thread_message_audits_return_persisted_facts_without_leaking_into_history -q --setup-show -o faulthandler_timeout=60',
         ):
             with self.subTest(test_path=test_path):
                 path.write_text(
@@ -460,6 +462,29 @@ jobs:
                 self.assertTrue(
                     any("缺少实际 run step" in error for error in self._errors())
                 )
+
+    def test_authenticated_system_steps_cannot_drop_credentials(self) -> None:
+        """恢复 HTTP 测试缺少账号的接线时 gate 必须拒绝。"""
+        path = self.root / ".github/workflows/system-tests.yml"
+        original = path.read_text(encoding="utf-8")
+        for credential in (
+            '-e TEST_USERNAME="$E2E_USERNAME" ',
+            '-e TEST_PASSWORD="$E2E_PASSWORD" ',
+        ):
+            with self.subTest(credential=credential):
+                path.write_text(original.replace(credential, ""), encoding="utf-8")
+                errors = self._errors()
+                for test_file in (
+                    "test_agent_run_result_causality.py",
+                    "test_apikey_router.py",
+                    "test_skill_artifact_authorization.py",
+                ):
+                    self.assertTrue(
+                        any(
+                            "缺少实际 run step" in error and test_file in error
+                            for error in errors
+                        )
+                    )
 
     def test_real_provider_probe_requires_manual_trigger(self) -> None:
         path = self.root / ".github/workflows/real-provider-probe.yml"

@@ -13,6 +13,7 @@ import pytest
 import yuxi.services.run_worker as run_worker
 from arq.worker import RetryJob
 from yuxi.config import options as config_options
+from yuxi.services import task_service
 
 
 @pytest.fixture(autouse=True)
@@ -32,8 +33,158 @@ class _RaisingAsyncIter:
     async def __anext__(self):
         raise self._exc
 
+    async def aclose(self):
+        """模拟可关闭的执行流。"""
+
+
+@pytest.mark.parametrize("cancellation", ["signal", "outer", "consumer_body"])
+async def test_stream_cancellation_closes_execution_before_owner_cleanup(cancellation):
+    """用户信号、基础设施取消及消费侧取消均不得留下旧执行副作用。"""
+    entered, release, closed = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    effects = []
+    ctx = run_worker.RunContext(run_id="run-cancel", worker_id="owner")
+
+    async def stream():
+        """用独立屏障检测取消后仍继续执行的旧任务。"""
+        try:
+            if cancellation == "consumer_body":
+                yield b"first"
+            entered.set()
+            await release.wait()
+            effects.append("old execution continued")
+            yield b"late"
+        finally:
+            closed.set()
+
+    producer = stream()
+
+    async def consume():
+        """以 Worker 的相同 close 边界消费，退出代表允许外层释放 owner。"""
+        async with run_worker.aclosing(run_worker._consume_stream_with_cancel(producer, ctx)) as chunks:
+            async for _ in chunks:
+                entered.set()
+                await release.wait()
+
+    consumer = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        if cancellation == "signal":
+            ctx.cancel_event.set()
+        else:
+            consumer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(consumer, 1)
+        assert closed.is_set(), "释放 owner 时旧执行尚未关闭"
+        release.set()
+        await asyncio.sleep(0)
+        assert effects == []
+    finally:
+        release.set()
+        consumer.cancel()
+        await asyncio.gather(consumer, return_exceptions=True)
+        await asyncio.sleep(0)
+        await producer.aclose()
+
+
+async def test_cancel_waiter_is_reused_for_all_stream_chunks():
+    """完整输出保持顺序，一个 Run 的取消等待器只启动一次。"""
+    waiter_starts = 0
+
+    class Context:
+        """只提供消费器需要的取消协议。"""
+
+        async def wait_cancelled(self):
+            """持续等待，记录逻辑等待器的创建次数。"""
+            nonlocal waiter_starts
+            waiter_starts += 1
+            await asyncio.Event().wait()
+
+    async def stream():
+        """生成连续事件。"""
+        for index in range(50):
+            yield index
+
+    results = [row async for row in run_worker._consume_stream_with_cancel(stream(), Context())]
+    assert results == list(range(50))
+    assert waiter_starts == 1
+
+
+async def test_repeated_cancel_waits_for_async_execution_cleanup():
+    """二次取消不能越过异步收尾屏障而释放执行 owner。"""
+    entered, cleanup_started, release_cleanup, closed = (asyncio.Event() for _ in range(4))
+    ctx = run_worker.RunContext(run_id="repeat-cancel", worker_id="owner")
+
+    async def stream():
+        """用异步屏障模拟节点和执行流的清理。"""
+        try:
+            entered.set()
+            await asyncio.Event().wait()
+            yield b"unreachable"
+        finally:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            closed.set()
+
+    async def consume():
+        """外层退出是 owner 允许释放的时点。"""
+        async with run_worker.aclosing(run_worker._consume_stream_with_cancel(stream(), ctx)) as chunks:
+            async for _ in chunks:
+                pass
+
+    consumer = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        consumer.cancel()
+        await asyncio.wait_for(cleanup_started.wait(), 1)
+        consumer.cancel()
+        await asyncio.sleep(0)
+        assert not consumer.done(), "二次取消提前释放了仍在清理的 owner"
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(consumer, 1)
+        assert closed.is_set(), "执行流的异步清理被二次取消打断"
+    finally:
+        release_cleanup.set()
+        consumer.cancel()
+        await asyncio.gather(consumer, return_exceptions=True)
+
+
+def test_durable_task_outer_timeout_tracks_configured_worker_default():
+    durable_function = next(
+        function
+        for function in run_worker.WorkerSettings.functions
+        if getattr(function, "name", getattr(function, "__name__", None)) == "process_task"
+    )
+
+    assert task_service.tasker.default_timeout_seconds == task_service.TASKER_DEFAULT_TIMEOUT_SECONDS
+    assert durable_function.timeout_s == task_service.TASKER_DEFAULT_TIMEOUT_SECONDS + 30
+
+
+def test_durable_task_shipping_worker_accepts_default_above_24_hours():
+    env = os.environ.copy()
+    env["TASKER_DEFAULT_TIMEOUT_SECONDS"] = "172800"
+    script = """
+from yuxi.services.run_worker import WorkerSettings
+from yuxi.services.task_service import tasker
+
+durable = next(
+    function
+    for function in WorkerSettings.functions
+    if getattr(function, "name", getattr(function, "__name__", None)) == "process_task"
+)
+assert tasker.default_timeout_seconds == 172800
+assert durable.timeout_s == 172830
+"""
+
+    completed = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, check=False)
+
+    assert completed.returncode == 0, completed.stderr
+
 
 class _BytesAsyncIter:
+    async def aclose(self):
+        """模拟真实 async generator 的显式收尾协议。"""
+
     def __init__(self, values: list[bytes]):
         self._values = list(values)
         self._idx = 0
@@ -168,6 +319,7 @@ async def test_validate_run_workdir_binding_requires_subagent_creator_tree(
 async def test_cancelling_subagent_preserves_shared_runtime(monkeypatch: pytest.MonkeyPatch):
     run = _build_run()
     run.run_type = "subagent"
+    release_runtime = AsyncMock()
 
     async def fake_noop(*args, **kwargs):
         del args, kwargs
@@ -183,11 +335,12 @@ async def test_cancelling_subagent_preserves_shared_runtime(monkeypatch: pytest.
 
     monkeypatch.setattr(run_worker, "_flush_writer_best_effort", fake_noop)
     monkeypatch.setattr(run_worker, "_finish_execution_tree_children", fake_tree_finished)
+    monkeypatch.setattr(run_worker, "_release_runtime_before_terminal_event", release_runtime)
     monkeypatch.setattr(run_worker, "mark_run_terminal", fake_mark_terminal)
     monkeypatch.setattr(run_worker, "_append_run_event_best_effort", fake_noop)
     monkeypatch.setattr(run_worker, "_append_end_event", fake_noop)
 
-    await run_worker._finish_user_cancel(
+    transition = await run_worker._finish_user_cancel(
         run_id=run.id,
         request_id=run.request_id,
         thread_id=run.conversation_thread_id,
@@ -196,6 +349,9 @@ async def test_cancelling_subagent_preserves_shared_runtime(monkeypatch: pytest.
         writer=SimpleNamespace(),
         run=run,
     )
+
+    assert transition == run_worker.TerminalTransition(status="cancelled", changed=True)
+    release_runtime.assert_not_awaited()
 
 
 def _patch_common(monkeypatch: pytest.MonkeyPatch, run_obj: SimpleNamespace):
@@ -247,6 +403,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, run_obj: SimpleNamespace):
     monkeypatch.setattr(run_worker, "mark_run_running", fake_mark_run_running)
     monkeypatch.setattr(run_worker, "release_run_lease_for_retry", fake_mark_run_running)
     monkeypatch.setattr(run_worker, "persist_run_manifest", fake_noop)
+    monkeypatch.setattr(run_worker, "_record_run_timing_best_effort", fake_noop)
     monkeypatch.setattr(
         run_worker,
         "prepare_project_git_worktrees",
@@ -677,7 +834,7 @@ async def test_committed_interrupt_cleanup_failure_keeps_terminal_events_unpubli
         run_worker,
         "stream_agent_chat",
         lambda **_kwargs: _BytesAsyncIter(
-            [b'{"status":"interrupted","thread_id":"thread-1","message":"content guard","terminal_committed":true}\n']
+            [b'{"status":"interrupted","thread_id":"thread-1","message":"input required","terminal_committed":true}\n']
         ),
     )
 
@@ -869,6 +1026,21 @@ async def test_release_failure_does_not_mask_infrastructure_cancel(monkeypatch: 
 
     with pytest.raises(asyncio.CancelledError, match="worker shutdown"):
         await run_worker.process_agent_run({"worker_id": "worker-shutdown", "job_try": 1}, "run-1")
+
+
+@pytest.mark.asyncio
+async def test_run_context_stream_checks_only_local_cancel_event(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """模型事件循环不得把取消检查放大为逐事件 PostgreSQL 查询。"""
+    run_context = run_worker.RunContext(run_id="run-1", worker_id="worker-1:attempt-1")
+    durable_read = AsyncMock(side_effect=AssertionError("stream check must not query PostgreSQL"))
+    monkeypatch.setattr(run_worker, "_is_cancel_requested", durable_read)
+
+    assert await run_context.is_cancelled() is False
+    run_context.cancel_event.set()
+    assert await run_context.is_cancelled() is True
+    durable_read.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1169,6 +1341,34 @@ async def test_chunked_event_writer_flushes_semantic_tool_call_immediately(monke
     ]
 
 
+def test_model_output_detection_accepts_text_reasoning_and_tool_calls_only():
+    assert run_worker._contains_model_output({"stream_event": {"type": "message_delta", "content": "你"}})
+    assert run_worker._contains_model_output({"stream_event": {"type": "message_delta", "reasoning_content": "思考"}})
+    assert run_worker._contains_model_output({"stream_event": {"type": "tool_call_delta", "args_delta": "{"}})
+    assert not run_worker._contains_model_output({"status": "metadata", "run_id": "run-1"})
+    assert not run_worker._contains_model_output({"stream_event": {"type": "message_delta", "content": ""}})
+    assert not run_worker._contains_model_output({"stream_event": {"type": "tool_call_delta", "args_delta": ""}})
+
+
+@pytest.mark.asyncio
+async def test_timing_persistence_failure_does_not_fail_agent_execution(monkeypatch: pytest.MonkeyPatch):
+    class FailingRepository:
+        def __init__(self, _db):
+            pass
+
+        async def record_prepared(self, *_args, **_kwargs):
+            raise RuntimeError("timing storage unavailable")
+
+    @asynccontextmanager
+    async def fake_session():
+        yield object()
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session)
+    monkeypatch.setattr(run_worker, "AgentRunRepository", FailingRepository)
+
+    await run_worker._record_run_timing_best_effort("run-1", "worker-1:token", "prepared")
+
+
 def test_run_owner_token_has_stable_worker_prefix_and_unique_attempt_suffix():
     ctx = {"worker_id": "worker-stable"}
 
@@ -1185,6 +1385,7 @@ async def test_run_context_stops_when_heartbeat_cannot_renew(monkeypatch: pytest
     renew = AsyncMock(return_value=False)
     monkeypatch.setattr(run_worker, "RUN_HEARTBEAT_SECONDS", 0)
     monkeypatch.setattr(run_worker, "renew_run_lease", renew)
+    monkeypatch.setattr(run_worker, "_run_attempt_finished", AsyncMock(return_value=False))
     run_ctx = run_worker.RunContext(run_id="run-1", worker_id="worker-1:attempt-1")
 
     await run_ctx._heartbeat_lease()
@@ -1195,14 +1396,28 @@ async def test_run_context_stops_when_heartbeat_cannot_renew(monkeypatch: pytest
 
 
 @pytest.mark.asyncio
+async def test_run_context_fails_closed_when_terminal_attempt_check_fails(monkeypatch: pytest.MonkeyPatch):
+    """无法确认本 attempt 的终态时，继续按丢失 ownership 停止执行。"""
+    monkeypatch.setattr(run_worker, "RUN_HEARTBEAT_SECONDS", 0)
+    monkeypatch.setattr(run_worker, "renew_run_lease", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        run_worker, "_run_attempt_finished", AsyncMock(side_effect=RuntimeError("database unavailable"))
+    )
+    context = run_worker.RunContext(run_id="run-1", worker_id="worker-1:attempt-1")
+
+    await context._heartbeat_lease()
+
+    assert context.lease_lost and context.cancel_event.is_set()
+
+
+@pytest.mark.asyncio
 async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.MonkeyPatch):
     calls: list[str] = []
 
     def fake_initialize():
         calls.append("initialize")
 
-    async def fake_require_current_schema(*, include_knowledge: bool):
-        assert include_knowledge is True
+    async def fake_require_current_schema():
         calls.append("require_current_schema")
 
     async def fake_ensure_builtin_mcp_servers_in_db():
@@ -1230,6 +1445,9 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
     async def fake_publish_reconciliation_health():
         calls.append("publish_reconciliation_health")
 
+    async def fake_publish_task_reconciliation_health():
+        calls.append("publish_task_reconciliation_health")
+
     async def fake_reconcile_expired_run_leases():
         calls.append("reconcile_expired_run_leases")
         return []
@@ -1244,6 +1462,19 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
 
     async def fake_reconciliation_loop():
         calls.append("reconciliation_loop")
+
+    async def fake_reconcile_and_publish_tasks():
+        calls.append("reconcile_and_publish_tasks")
+        return []
+
+    async def fake_task_reconciliation_loop():
+        calls.append("task_reconciliation_loop")
+
+    async def fake_recover_scheduled_dispatches():
+        calls.append("recover_scheduled_dispatches")
+
+    async def fake_claim_and_dispatch_due_jobs():
+        calls.append("claim_and_dispatch_due_jobs")
 
     monkeypatch.setattr(run_worker.pg_manager, "initialize", fake_initialize)
     monkeypatch.setattr(run_worker.pg_manager, "require_current_schema", fake_require_current_schema)
@@ -1265,13 +1496,19 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         fake_reconcile_project_git_operations,
     )
     monkeypatch.setattr(run_worker, "_publish_reconciliation_health", fake_publish_reconciliation_health)
+    monkeypatch.setattr(run_worker, "_publish_task_reconciliation_health", fake_publish_task_reconciliation_health)
     monkeypatch.setattr(run_worker, "_reconcile_agent_run_leases_forever", fake_reconciliation_loop)
+    monkeypatch.setattr(run_worker, "reconcile_and_publish_tasks", fake_reconcile_and_publish_tasks)
+    monkeypatch.setattr(run_worker, "_reconcile_durable_tasks_forever", fake_task_reconciliation_loop)
+    monkeypatch.setattr(run_worker, "recover_scheduled_dispatches", fake_recover_scheduled_dispatches)
+    monkeypatch.setattr(run_worker, "claim_and_dispatch_due_jobs", fake_claim_and_dispatch_due_jobs)
     options_module = importlib.import_module("yuxi.config.options")
     monkeypatch.setattr(options_module, "ensure_options_in_db", fake_ensure_options_in_db)
 
     ctx = {}
     await run_worker._worker_startup(ctx)
     await ctx[run_worker._RECONCILIATION_TASK_KEY]
+    await ctx[run_worker._TASK_RECONCILIATION_TASK_KEY]
 
     assert calls == [
         "initialize",
@@ -1284,15 +1521,63 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "reconcile_pending_runtime_cleanups",
         "recover_pending_dispatches",
         "reconcile_project_git_operations",
+        "reconcile_and_publish_tasks",
+        "publish_task_reconciliation_health",
+        "recover_scheduled_dispatches",
+        "claim_and_dispatch_due_jobs",
         "publish_reconciliation_health",
         "reconciliation_loop",
+        "task_reconciliation_loop",
     ]
     assert ctx["worker_id"] == run_worker.WORKER_ID
 
 
+async def test_durable_task_publication_failure_does_not_refresh_health(monkeypatch):
+    sleep_calls = 0
+    health_calls = 0
+
+    async def controlled_sleep(_seconds):
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls > 1:
+            raise asyncio.CancelledError
+
+    async def fail_reconciliation():
+        raise ConnectionError("arq publication failed")
+
+    async def publish_health():
+        nonlocal health_calls
+        health_calls += 1
+
+    monkeypatch.setattr(run_worker.asyncio, "sleep", controlled_sleep)
+    monkeypatch.setattr(run_worker, "reconcile_and_publish_tasks", fail_reconciliation)
+    monkeypatch.setattr(run_worker, "_publish_task_reconciliation_health", publish_health)
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_worker._reconcile_durable_tasks_forever()
+
+    assert health_calls == 0
+
+
 def test_worker_settings_publish_short_ttl_versioned_health_contract():
+    assert run_worker.WorkerSettings.max_jobs == run_worker.worker_max_jobs()
     assert run_worker.WorkerSettings.health_check_key == "yuxi:worker:health:agent-run-v1"
     assert 0 < run_worker.WorkerSettings.health_check_interval <= 10
+
+
+async def test_worker_polls_new_requests_within_interactive_latency_budget():
+    """真实 ARQ 配置必须把空闲队列轮询等待限制在 50ms 内。"""
+    from arq.worker import create_worker
+
+    worker = create_worker(run_worker.WorkerSettings, handle_signals=False)
+    assert 0 < worker.poll_delay_s <= 0.05
+
+
+def test_worker_settings_max_jobs_uses_environment():
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("ARQ_MAX_JOBS", "50")
+
+        assert run_worker.worker_max_jobs() == 50
 
 
 def test_worker_settings_reject_invalid_redis_dsn_instead_of_using_arq_default():

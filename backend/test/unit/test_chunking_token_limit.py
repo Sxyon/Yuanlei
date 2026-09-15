@@ -114,7 +114,7 @@ class TestHardSplitByTokenLimit:
         text = "a b c"  # 3 个独立 token（单词）
         result = nlp.hard_split_by_token_limit(text, 0)
         # max_tokens = max(0, 1) = 1, 每个 token 单独一个 chunk
-        assert len(result) == 3
+        assert result == ["a", "b", "c"]
 
 
 # ── general._ensure_chunk_token_limit ──────────────────────────────
@@ -176,7 +176,7 @@ class TestGeneralChunkMarkdown:
         assert general.chunk_markdown("", {"chunk_token_num": 512}) == []
 
     def test_default_config_uses_512(self):
-        doc = "测试\n" * 200
+        doc = "测试\n" * 400  # 约 800 token；默认值错误放宽到 1024 时不会切分
         chunks = general.chunk_markdown(doc)
-        for chunk in chunks:
-            assert nlp.count_tokens(chunk) <= 512
+        token_counts = [nlp.count_tokens(chunk) for chunk in chunks]
+        assert token_counts == [514, 286]

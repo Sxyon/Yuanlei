@@ -4,119 +4,44 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-import nltk
-from nltk.tokenize import sent_tokenize
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score
 
-_punkt_checked = False
-
-
-def _ensure_punkt_tab() -> None:
-    """首次使用分句能力时检查 NLTK punkt_tab 资源，缺失时给出可操作错误。"""
-    global _punkt_checked
-    if _punkt_checked:
-        return
-
-    try:
-        nltk.data.find("tokenizers/punkt_tab")
-    except LookupError as e:
-        raise RuntimeError("缺少 NLTK 资源 punkt_tab。请先执行: python -m nltk.downloader punkt_tab") from e
-
-    _punkt_checked = True
-
-
-def split_sentences_chinese(text: str) -> list[str]:
-    """
-    使用正则表达式将中文文本分割成句子。
-
-    逻辑：
-    - 匹配中文句号、感叹号、问号（。！？）作为分隔点。
-    - 使用正向/反向预查处理引号：确保如果标点后面紧跟引号（”’"），该引号会被保留在当前句子末尾，而不是被切分到下一句。
-    - 返回去除两端空格且非空的句子列表。
-    """
-    pattern = r'(?<=[。！？][”’"])|(?<=[。！？])(?![”’"])'
-    sentences = re.split(pattern, text)
-    return [s.strip() for s in sentences if s.strip()]
-
-
-def split_mixed_sentences(text: str) -> list[str]:
-    """
-    处理中英文混合文本的分句逻辑，支持按物理段落分发不同的分句策略。
-
-    该函数采用“分而治之”的策略来处理复杂的混合文本：
-    1. **物理分块**：首先按换行符 (`\\n+`) 将原始文本切分为多个物理段落（chunks），确保物理结构不被破坏。
-    2. **语言检测与分发**：
-       - **英文/混合路径**：若段落中包含英文字母 (`[A-Za-z]`)，则视为英文或混合文本，
-         调用 NLTK 的 `sent_tokenize` 进行处理。NLTK 能更好地处理英文缩写、句点等复杂情况。
-       - **中文路径**：若段落不含字母，则视为纯中文文本，调用 `split_sentences_chinese`。
-         该方法通过正则精准匹配中文标点及后续引号。
-       - **兜底方案**：若上述方法未产生结果，则使用简单的正则表达式按中文标点强制分割。
-    3. **清洗与过滤**：汇总所有子句，去除两端空白字符，并过滤掉空字符串。
-
-    Args:
-        text: 待分句的原始字符串。
-
-    Returns:
-        List[str]: 分割后的句子列表。
-    """
-    _ensure_punkt_tab()
-
-    chunks = re.split(r"(\n+)", text)
-    sentences = []
-
-    for ch in chunks:
-        if not ch.strip():
-            continue
-        if re.search(r"[A-Za-z]", ch):
-            parts = sent_tokenize(ch)
-            sentences.extend([p.strip() for p in parts if p.strip()])
-        else:
-            sents = split_sentences_chinese(ch)
-            if sents:
-                sentences.extend([s.strip() for s in sents if s.strip()])
-            else:
-                parts = re.split(r"(?<=[。！？])", ch)
-                sentences.extend([p.strip() for p in parts if p.strip()])
-    return sentences
-
-
-def find_best_num_clusters(embeddings: Any, min_clusters: int = 2, max_clusters: int = 10) -> int:
-    """
-    使用轮廓系数选择最佳聚类数量。让每个分段语义集中，且分段之间界限分明
-
-    逻辑：
-    - 遍历可能的聚类数量（从 min_clusters 到 max_clusters）。
-    - 对每个聚类数量，使用 `AgglomerativeClustering` 进行聚类。
-    - 计算轮廓系数（Silhouette Score）。
-    - 选择轮廓系数最高的聚类数量作为最佳聚类数量。
-    - 如果聚类数量为 1 或更少，直接返回 1。
-
-    Args:
-        embeddings: 待聚类的向量数据（所有句子的嵌入向量列表）。
-        min_clusters: 搜索的最佳聚类数量下限，默认为 2。
-        max_clusters: 搜索的最佳聚类数量上限，默认为 10。
-
-    Returns:
-        int: 轮廓系数表现最好的聚类数量。
-    """
-    if len(embeddings) <= min_clusters:
-        return len(embeddings)
-
-    best_score = -1
-    best_k = min_clusters
-
-    limit_k = min(max_clusters, len(embeddings))
-    for k in range(min_clusters, limit_k + 1):
-        labels = AgglomerativeClustering(n_clusters=k, metric="cosine", linkage="average").fit_predict(embeddings)
-        if len(set(labels)) <= 1:
-            continue
-        score = silhouette_score(embeddings, labels, metric="cosine")
-        if score > best_score:
-            best_score = score
-            best_k = k
-
-    return best_k
+_ENGLISH_ABBREVIATIONS = {
+    "approx.",
+    "dept.",
+    "dr.",
+    "e.g.",
+    "etc.",
+    "i.e.",
+    "jr.",
+    "mr.",
+    "mrs.",
+    "ms.",
+    "no.",
+    "prof.",
+    "rev.",
+    "sr.",
+    "st.",
+    "vs.",
+}
+_ENGLISH_TITLE_ABBREVIATIONS = {"dr.", "jr.", "mr.", "mrs.", "ms.", "prof.", "rev.", "sr.", "st."}
+_ENGLISH_SENTENCE_STARTERS = {
+    "he",
+    "however",
+    "i",
+    "it",
+    "meanwhile",
+    "next",
+    "she",
+    "that",
+    "then",
+    "these",
+    "this",
+    "those",
+    "they",
+    "we",
+    "you",
+}
 
 
 def semantic_chunking_with_auto_clusters(
@@ -129,7 +54,7 @@ def semantic_chunking_with_auto_clusters(
     对传入的文本进行语义切分，过程中会自动选择最佳的聚集数量。
 
     逻辑：
-    - 先将文本中的句子按语言进行分发，英文/混合文本使用NLTK的sent_tokenize，中文文本使用split_sentences_chinese。
+    - 先将文本中的句子按语言进行分发，英文/混合文本使用标准库分句，中文文本使用split_sentences_chinese。
     - 对每个句子进行嵌入向量化。
     - 确定最佳的聚类数量（根据轮廓系数）。
     - 对句子进行聚类后，按原文顺序遍历：当聚类标签变化或达到长度上限时切分，形成连续分块。
@@ -191,3 +116,118 @@ def semantic_chunking_with_auto_clusters(
         chunks.append(current_chunk.strip())
 
     return chunks
+
+
+def split_mixed_sentences(text: str) -> list[str]:
+    """
+    处理中英文混合文本的分句逻辑，支持按物理段落分发不同的分句策略。
+
+    该函数采用“分而治之”的策略来处理复杂的混合文本：
+    1. **物理分块**：首先按换行符 (`\\n+`) 将原始文本切分为多个物理段落（chunks），确保物理结构不被破坏。
+    2. **语言检测与分发**：
+       - **英文/混合路径**：若段落中包含英文字母 (`[A-Za-z]`)，则视为英文或混合文本，
+         使用标准库按句末标点分句，并保留常见英文缩写、数字和引号边界。
+       - **中文路径**：若段落不含字母，则视为纯中文文本，调用 `split_sentences_chinese`。
+         该方法通过正则精准匹配中文标点及后续引号。
+       - **兜底方案**：若上述方法未产生结果，则使用简单的正则表达式按中文标点强制分割。
+    3. **清洗与过滤**：汇总所有子句，去除两端空白字符，并过滤掉空字符串。
+
+    Args:
+        text: 待分句的原始字符串。
+
+    Returns:
+        List[str]: 分割后的句子列表。
+    """
+    chunks = re.split(r"(\n+)", text)
+    sentences = []
+
+    for ch in chunks:
+        if not ch.strip():
+            continue
+        if re.search(r"[A-Za-z]", ch):
+            parts = _split_english_sentences(ch)
+            sentences.extend([p.strip() for p in parts if p.strip()])
+        else:
+            sents = split_sentences_chinese(ch)
+            if sents:
+                sentences.extend([s.strip() for s in sents if s.strip()])
+            else:
+                parts = re.split(r"(?<=[。！？])", ch)
+                sentences.extend([p.strip() for p in parts if p.strip()])
+    return sentences
+
+
+def split_sentences_chinese(text: str) -> list[str]:
+    """
+    使用正则表达式将中文文本分割成句子。
+
+    逻辑：
+    - 匹配中文句号、感叹号、问号（。！？）作为分隔点。
+    - 使用正向/反向预查处理引号：确保如果标点后面紧跟引号（”’"），该引号会被保留在当前句子末尾，而不是被切分到下一句。
+    - 返回去除两端空格且非空的句子列表。
+    """
+    pattern = r'(?<=[。！？][”’"])|(?<=[。！？])(?![”’"])'
+    sentences = re.split(pattern, text)
+    return [s.strip() for s in sentences if s.strip()]
+
+
+def _split_english_sentences(text: str) -> list[str]:
+    """使用标准库按英文句末标点分句，并保留常见缩写。"""
+    sentences: list[str] = []
+    start = 0
+    index = 0
+    closing_chars = "\"'”’)]}"
+
+    while index < len(text):
+        if text[index] not in ".!?。！？":
+            index += 1
+            continue
+
+        punctuation_end = index + 1
+        while punctuation_end < len(text) and text[punctuation_end] in ".!?。！？":
+            punctuation_end += 1
+        boundary_end = punctuation_end
+        while boundary_end < len(text) and text[boundary_end] in closing_chars:
+            boundary_end += 1
+
+        is_boundary = boundary_end == len(text) or text[boundary_end].isspace()
+        if text[index] == "." and _is_english_abbreviation(text, start, index):
+            is_boundary = False
+        if is_boundary:
+            sentence = text[start:boundary_end].strip()
+            if sentence:
+                sentences.append(sentence)
+            start = boundary_end
+        index = boundary_end
+
+    remainder = text[start:].strip()
+    if remainder:
+        sentences.append(remainder)
+    return sentences
+
+
+def _is_english_abbreviation(text: str, start: int, punctuation: int) -> bool:
+    """判断句点是否属于常见英文缩写或单字母首字母。"""
+    prefix = text[start : punctuation + 1].rstrip()
+    match = re.search(r"([A-Za-z](?:[A-Za-z.]*)\.)$", prefix)
+    if match is None:
+        return False
+
+    token = match.group(1).lower()
+    letters = token.replace(".", "")
+    if token in _ENGLISH_TITLE_ABBREVIATIONS:
+        return True
+    next_index = punctuation + 1
+    while next_index < len(text) and text[next_index].isspace():
+        next_index += 1
+    next_character = text[next_index] if next_index < len(text) else ""
+    if token in _ENGLISH_ABBREVIATIONS:
+        return bool(next_character) and next_character.islower()
+    if len(letters) == 1:
+        return True
+    if re.fullmatch(r"(?:[A-Z]\.){2,}", match.group(1)):
+        next_word = re.match(r"[A-Za-z]+", text[next_index:])
+        return next_word is not None and next_word.group(0).lower() not in _ENGLISH_SENTENCE_STARTERS
+    if re.fullmatch(r"(?:[a-z]\.){2,}", token):
+        return next_index == len(text) or text[next_index].islower()
+    return False

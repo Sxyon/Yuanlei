@@ -1,5 +1,5 @@
 <template>
-  <div v-if="normalizedToolCalls.length > 0" class="tool-calls-container">
+  <div v-if="displayEntries.length > 0" class="tool-calls-container">
     <button
       v-if="shouldCollapseToolCalls"
       type="button"
@@ -36,13 +36,15 @@
     >
       <div class="tool-calls-collapse-inner">
         <div class="tool-calls-panel">
-          <div
-            v-for="(toolCall, index) in normalizedToolCalls"
-            :key="toolCall.id || `${getToolCallId(toolCall)}-${index}`"
-            class="tool-call-container"
-          >
+          <div v-for="entry in displayEntries" :key="entry.key" class="tool-call-container">
+            <ReasoningBlockComponent
+              v-if="entry.type === 'reasoning'"
+              :content="entry.content"
+              :is-active="isActive && entry === displayEntries[displayEntries.length - 1]"
+            />
             <ToolCallRenderer
-              :tool-call="toolCall"
+              v-else
+              :tool-call="entry.toolCall"
               appearance="timeline"
               :default-expanded="false"
             />
@@ -58,12 +60,13 @@ import { computed, ref, watch, inject } from 'vue'
 import { ChevronDown, Atom } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
 import { useAgentStore } from '@/stores/agent'
+import ReasoningBlockComponent from '@/components/ReasoningBlockComponent.vue'
 import { ToolCallRenderer } from '@/components/ToolCallingResult'
 import {
   getToolCallId,
+  getToolCallDisplayStatus,
   getToolName,
   findToolInList,
-  isSubagentToolCall,
   normalizeToolCalls
 } from '@/components/ToolCallingResult/toolRegistry'
 
@@ -72,19 +75,12 @@ const { availableTools, toolMetadata } = storeToRefs(agentStore)
 
 const activeSubagentToolCallIds = inject('activeSubagentToolCallIds', null)
 
-// task 工具结果不随流式返回，不能用 tool_call_result 判断运行中：只有「活跃」的 task 才算运行中。
-const toolRunState = (toolCall) => {
-  if (toolCall.status === 'error') return 'error'
-  if (toolCall.tool_call_result || toolCall.status === 'success') return 'completed'
-  if (isSubagentToolCall(toolCall)) {
-    if (getToolCallId(toolCall) !== 'task') return 'running'
-    return activeSubagentToolCallIds?.value?.has(String(toolCall.id)) ? 'running' : 'completed'
-  }
-  return 'running'
-}
-
 const props = defineProps({
   toolCalls: {
+    type: Array,
+    default: () => []
+  },
+  entries: {
     type: Array,
     default: () => []
   },
@@ -96,7 +92,19 @@ const props = defineProps({
 
 const normalizedToolCalls = computed(() => normalizeToolCalls(props.toolCalls))
 
-const shouldCollapseToolCalls = computed(() => normalizedToolCalls.value.length > 0)
+const displayEntries = computed(() =>
+  props.entries.length
+    ? props.entries
+    : normalizedToolCalls.value.map((toolCall, index) => ({
+        type: 'tool',
+        key: toolCall.id || `${getToolCallId(toolCall)}-${index}`,
+        toolCall
+      }))
+)
+const hasReasoning = computed(() =>
+  displayEntries.value.some((entry) => entry.type === 'reasoning')
+)
+const shouldCollapseToolCalls = computed(() => displayEntries.value.length > 0)
 const areToolCallsExpanded = ref(false)
 
 watch(
@@ -138,6 +146,8 @@ const getToolCallLabel = (toolCall) => {
 }
 
 const toolCallsSummaryTitle = computed(() => {
+  if (normalizedToolCalls.value.length === 0) return props.isActive ? 'Thinking...' : '推理过程'
+  if (hasReasoning.value) return `推理与工具调用 · ${normalizedToolCalls.value.length} 个工具`
   if (normalizedToolCalls.value.length === 1) {
     return `调用: ${getToolCallLabel(normalizedToolCalls.value[0])}`
   }
@@ -155,7 +165,9 @@ const toolCallsNamesMeta = computed(() => {
 })
 
 const statusSummary = computed(() => {
-  const states = normalizedToolCalls.value.map(toolRunState)
+  const states = normalizedToolCalls.value.map((toolCall) =>
+    getToolCallDisplayStatus(toolCall, activeSubagentToolCallIds?.value)
+  )
   const runningCount = states.filter((state) => state === 'running').length
   const errorCount = states.filter((state) => state === 'error').length
 
@@ -195,6 +207,11 @@ const toggleToolCallsExpanded = () => {
     transition: color 0.15s ease;
     user-select: none;
     background: transparent;
+
+    &:focus-visible {
+      outline: 2px solid var(--main-300);
+      outline-offset: 2px;
+    }
 
     &:hover {
       color: var(--gray-800);

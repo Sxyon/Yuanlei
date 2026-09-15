@@ -38,6 +38,7 @@ RUN set -ex \
         libpq5 \
         libsm6 \
         libxext6 \
+        libreoffice-calc-nogui \
         libreoffice-impress-nogui \
         libreoffice-writer-nogui \
     # (D) 清理垃圾，减小体积
@@ -61,12 +62,11 @@ COPY docker/api-entrypoint.sh /usr/local/bin/yuxi-entrypoint
 
 RUN groupadd --gid 1000 yuxi \
     && useradd --uid 1000 --gid 1000 --create-home yuxi \
-    && mkdir -p /app/runtime /home/yuxi/nltk_data /home/yuxi/.cache/rapidocr/models \
+    && mkdir -p /app/runtime /home/yuxi/.cache/rapidocr/models \
     && chown -R 1000:1000 /app/runtime /home/yuxi \
     && chmod 0755 /usr/local/bin/yuxi-entrypoint
 
 ENV HOME=/home/yuxi \
-    NLTK_DATA=/home/yuxi/nltk_data \
     RAPIDOCR_MODEL_DIR=/home/yuxi/.cache/rapidocr/models
 
 USER 1000:1000

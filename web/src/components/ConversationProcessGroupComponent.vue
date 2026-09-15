@@ -18,7 +18,7 @@
               :hide-tool-calls="true"
               :mention="mention"
             />
-            <ToolCallsGroupComponent v-else :tool-calls="item.toolCalls" />
+            <ToolCallsGroupComponent v-else :tool-calls="item.toolCalls" :entries="item.entries" />
           </template>
         </div>
       </div>
@@ -36,7 +36,7 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   messageCount: { type: Number, default: 0 },
   toolCallCount: { type: Number, default: 0 },
-  durationMs: { type: Number, default: 0 },
+  durationMs: { type: Number, default: null },
   mention: { type: Object, default: () => null }
 })
 
@@ -110,6 +110,7 @@ const summary = computed(() => formatProcessDuration(props.durationMs))
 .process-content {
   display: flex;
   flex-direction: column;
+  padding-top: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -88,3 +88,25 @@ export function getContextUsageTone(ratio) {
   if (ratio >= 0.75) return 'is-warning'
   return 'is-normal'
 }
+
+/**
+ * 选择完成当前回复后、下一轮实际会承受的压力估算。
+ * @param {Object|null|undefined} usage
+ * @returns {number|null}
+ */
+export function resolveContextPressureTokens(usage) {
+  if (!usage || typeof usage !== 'object') return null
+  const value = usage.next_llm_input_tokens ?? usage.llm_input_tokens
+  if (value === null || value === undefined || value === '') return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(numeric, 0) : null
+}
+
+/**
+ * 85% 是只用于提示的派生线，不参与自动压缩判断。
+ * @param {number|null} ratio
+ * @returns {boolean}
+ */
+export function shouldSuggestContextCompression(ratio) {
+  return Number.isFinite(Number(ratio)) && Number(ratio) >= 0.85
+}

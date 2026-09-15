@@ -8,14 +8,14 @@ echo "========================"
 PYTEST_CMD=("docker" "compose" "exec" "api" "uv" "run" "--group" "test" "pytest")
 
 check_server() {
-    echo "检查测试服务器状态..."
-    if docker compose exec -T api curl -fsS http://localhost:5050/api/system/health > /dev/null 2>&1; then
-        echo "✓ 测试服务器运行正常"
+    echo "检查测试服务是否就绪..."
+    if docker compose exec -T api curl -fsS http://localhost:5050/api/system/ready > /dev/null 2>&1; then
+        echo "✓ 测试服务已就绪"
         return 0
     fi
 
-    echo "✗ 警告: 测试服务器未运行或无法访问"
-    echo "  请先执行 docker compose up -d 并确认 api 服务健康"
+    echo "✗ 测试服务未就绪或无法访问"
+    echo "  请先执行 docker compose up -d 并确认 api 服务 readiness"
     return 1
 }
 

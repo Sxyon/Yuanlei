@@ -1,12 +1,11 @@
+import { formatRunTimingDuration, getRunTotalLatencyMs } from './runTiming.js'
+
 export const formatProcessDuration = (durationMs) => {
-  if (!durationMs) return '处理过程'
-  const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `耗时${minutes}分钟${seconds}秒`
+  const formattedDuration = formatRunTimingDuration(durationMs)
+  return formattedDuration ? `耗时 ${formattedDuration}` : '处理过程'
 }
 
-export const collapseConversationProcess = (items, enabled = false) => {
+export const collapseConversationProcess = (items, enabled = false, runTiming = null) => {
   if (!enabled) return items
 
   const finalIndex = items.findLastIndex(
@@ -33,13 +32,7 @@ export const collapseConversationProcess = (items, enabled = false) => {
   )
   if (!messageCount && !toolCallCount) return items
 
-  const finalMessage = items[finalIndex].message
-  const startedAt = Date.parse(finalMessage?.run_started_at || '')
-  const finishedAt = Date.parse(finalMessage?.run_finished_at || finalMessage?.created_at || '')
-  const durationMs =
-    Number.isFinite(startedAt) && Number.isFinite(finishedAt) && finishedAt > startedAt
-      ? finishedAt - startedAt
-      : 0
+  const durationMs = getRunTotalLatencyMs(runTiming)
 
   return [
     ...items.slice(0, processStart),
@@ -54,3 +47,26 @@ export const collapseConversationProcess = (items, enabled = false) => {
     items[finalIndex]
   ]
 }
+
+/** 只有关联到本次运行的后续 resume 才延后当前回答的操作栏。 */
+export const isConversationSettled = (conversations, conv, isProcessing = false) => {
+  const index = conversations.indexOf(conv)
+  if (index === -1) return false
+  const next = conversations[index + 1]
+  if (next?.run) {
+    return !(next.run.run_type === 'resume' && next.run.created_by_run_id === conv.run?.run_id)
+  }
+  if (next) return next.messages?.[0]?.type === 'human'
+  return !isProcessing
+}
+
+/** 为没有普通消息的 Run 提供可观察状态。 */
+export const formatEmptyRunStatus = (status) => ({
+  pending: '等待运行',
+  running: '正在处理',
+  cancel_requested: '正在取消',
+  cancelled: '本次运行已取消',
+  failed: '本次运行失败',
+  interrupted: '本次运行已中断',
+  completed: '本次运行已结束'
+})[status] || '暂无消息'

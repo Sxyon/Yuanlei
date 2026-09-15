@@ -66,7 +66,7 @@ class Option:
         resolved = {}
         for field in self.fields:
             field_key = field["key"]
-            if field_key in stored and field.get("type") in {"list[str]", "boolean"}:
+            if field_key in stored and field.get("type") == "list[str]":
                 resolved[field_key] = stored[field_key]
                 continue
 
@@ -92,28 +92,16 @@ system_options = Option(
         "internal": True,
         "fields": [
             {
-                "key": "enable_content_guard",
-                "label": "是否启用内容审查",
-                "type": "boolean",
-                "default": False,
-            },
-            {
-                "key": "enable_content_guard_llm",
-                "label": "是否启用 LLM 内容审查",
-                "type": "boolean",
-                "default": False,
-            },
-            {
                 "key": "default_model",
                 "label": "默认对话模型",
                 "type": "model",
-                "default": "siliconflow-cn:Pro/MiniMaxAI/MiniMax-M2.5",
+                "default": "siliconflow-cn:deepseek-ai/DeepSeek-V4-Flash",
             },
             {
                 "key": "fast_model",
                 "label": "快速响应模型",
                 "type": "model",
-                "default": "siliconflow-cn:Pro/MiniMaxAI/MiniMax-M2.5",
+                "default": "siliconflow-cn:deepseek-ai/DeepSeek-V4-Flash",
             },
             {
                 "key": "embed_model",
@@ -126,12 +114,6 @@ system_options = Option(
                 "label": "默认 Re-Ranker 模型",
                 "type": "model",
                 "default": "siliconflow-cn:Pro/BAAI/bge-reranker-v2-m3",
-            },
-            {
-                "key": "content_guard_llm_model",
-                "label": "内容审查 LLM 模型",
-                "type": "model",
-                "default": "siliconflow-cn:Pro/MiniMaxAI/MiniMax-M2.5",
             },
             {
                 "key": "default_ocr_engine",
@@ -388,11 +370,6 @@ def _fields(record: ConfigOption) -> list[dict[str, Any]]:
 
 
 def normalize_option_value(field: dict[str, Any], value: Any) -> Any:
-    if field.get("type") == "boolean":
-        if not isinstance(value, bool):
-            raise ValueError("配置值必须是布尔值")
-        return value
-
     if field.get("type") == "list[str]":
         if not isinstance(value, list):
             raise ValueError("配置值必须是列表")
@@ -404,9 +381,9 @@ def normalize_option_value(field: dict[str, Any], value: Any) -> Any:
     if field.get("type") == "url" and normalized:
         return str(_URL_ADAPTER.validate_python(normalized))
     if field.get("type") == "ocr_engine" and normalized:
-        from yuxi.knowledge.parser.registry import PROCESSOR_TYPES
+        from yuxi.knowledge.parser.capabilities import get_ocr_engine_ids
 
-        if normalized not in {"disable", *PROCESSOR_TYPES}:
+        if normalized not in {"disable", *get_ocr_engine_ids()}:
             raise ValueError(f"不支持的默认 OCR 引擎: {normalized}")
     return normalized
 

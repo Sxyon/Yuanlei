@@ -8,6 +8,8 @@ from pathlib import Path
 import httpx
 import pytest
 from PIL import Image, ImageDraw, ImageFont
+
+from e2e_helpers import delete_agent
 from test.live_api_cleanup import make_test_conversation_metadata, make_test_conversation_title
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.slow]
@@ -146,11 +148,6 @@ async def _run(
     pytest.fail(f"read_file E2E run timed out: {run_id}")
 
 
-async def _delete_agent(client: httpx.AsyncClient, headers: dict[str, str], slug: str) -> None:
-    response = await client.delete(f"/api/agent/{slug}", headers=headers)
-    assert response.status_code in {200, 404}, response.text
-
-
 def _write_test_image(path: Path) -> None:
     image = Image.new("RGB", (128, 128), "red")
     ImageDraw.Draw(image).rectangle((40, 40, 88, 88), fill="blue")
@@ -213,7 +210,7 @@ async def test_read_file_image_and_document_real_agent_runs(
         )
         assert "ocr_parse_file" in document_output, document_output
     finally:
-        await _delete_agent(e2e_client, e2e_headers, slug)
+        await delete_agent(e2e_client, e2e_headers, slug)
 
 
 async def test_non_vision_model_uses_ocr_fallback(
@@ -246,4 +243,4 @@ async def test_non_vision_model_uses_ocr_fallback(
         )
         assert "OCR FALLBACK OK" in " ".join(output.upper().split()), output
     finally:
-        await _delete_agent(e2e_client, e2e_headers, slug)
+        await delete_agent(e2e_client, e2e_headers, slug)

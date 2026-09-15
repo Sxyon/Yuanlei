@@ -5,22 +5,18 @@ import { collapseConversationProcess } from '@/utils/conversationProcessGrouping
 const hasVisibleAssistantBody = (message) => {
   if (!message || message.type !== 'ai') return true
 
-  const { content, reasoningContent } = MessageProcessor.parseAssistantMessageBody(message)
+  const { content } = MessageProcessor.parseAssistantMessageBody(message)
   return Boolean(
-    content ||
-    reasoningContent ||
-    message.error_type ||
-    message.extra_metadata?.error_type ||
-    message.isStoppedByUser
+    content || message.error_type || message.extra_metadata?.error_type || message.isStoppedByUser
   )
 }
 
 const defaultEnrichToolCalls = (message) => enrichTaskToolCalls(message?.tool_calls)
 
-// 将 AI 消息拆成“正文块”和“工具块”，再跨消息合并相邻工具块。
+/** 将相邻推理和工具调用按顺序归组，正文保持独立。 */
 export const getConversationDisplayItems = (
   conv,
-  { enrichToolCalls = defaultEnrichToolCalls, collapseIntermediate = false } = {}
+  { enrichToolCalls = defaultEnrichToolCalls, collapseIntermediate = false, runTiming = null } = {}
 ) => {
   if (!Array.isArray(conv?.messages) || conv.messages.length === 0) return []
 
@@ -28,7 +24,7 @@ export const getConversationDisplayItems = (
   let pendingToolGroup = null
 
   const flushToolGroup = () => {
-    if (pendingToolGroup && pendingToolGroup.toolCalls.length > 0) {
+    if (pendingToolGroup && pendingToolGroup.entries.length > 0) {
       items.push(pendingToolGroup)
     }
     pendingToolGroup = null
@@ -46,29 +42,53 @@ export const getConversationDisplayItems = (
       return
     }
 
+    const { reasoningContent } = MessageProcessor.parseAssistantMessageBody(message)
+    const toolCalls = enrichToolCalls(message)
+
+    /** 为当前连续处理过程保留稳定的分组标识。 */
+    const ensureToolGroup = (segment) => {
+      if (!pendingToolGroup) {
+        pendingToolGroup = {
+          type: 'tool-group',
+          key: `tool-group-${message.id || index}-${segment}`,
+          toolCalls: [],
+          entries: []
+        }
+      }
+      return pendingToolGroup
+    }
+
+    if (reasoningContent) {
+      ensureToolGroup('reasoning').entries.push({
+        type: 'reasoning',
+        key: `reasoning-${message.id || index}`,
+        content: reasoningContent
+      })
+    }
+
     if (hasVisibleAssistantBody(message)) {
       flushToolGroup()
       items.push({
         type: 'message',
         key: message.id || `message-${index}`,
-        message,
+        message: reasoningContent ? { ...message, reasoning_content: '' } : message,
         sourceIndex: index
       })
     }
 
-    const toolCalls = enrichToolCalls(message)
-    if (toolCalls.length === 0) return
-
-    if (!pendingToolGroup) {
-      pendingToolGroup = {
-        type: 'tool-group',
-        key: `tool-group-${message.id || index}`,
-        toolCalls: []
-      }
+    if (toolCalls.length > 0) {
+      const group = ensureToolGroup('tools')
+      group.toolCalls.push(...toolCalls)
+      group.entries.push(
+        ...toolCalls.map((toolCall, toolIndex) => ({
+          type: 'tool',
+          key: `tool-${message.id || index}-${toolCall.id || toolIndex}`,
+          toolCall
+        }))
+      )
     }
-    pendingToolGroup.toolCalls.push(...toolCalls)
   })
 
   flushToolGroup()
-  return collapseConversationProcess(items, collapseIntermediate)
+  return collapseConversationProcess(items, collapseIntermediate, runTiming)
 }

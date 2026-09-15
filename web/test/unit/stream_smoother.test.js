@@ -3,125 +3,224 @@ import test from 'node:test'
 
 import { useStreamSmoother } from '../../src/composables/useStreamSmoother.js'
 
-test('流式微增量按帧平滑输出', async () => {
-  const threadState = {
-    onGoingConv: {
-      msgChunks: {}
+/** 用确定性帧时钟回放输入，并核对实际输出正文。 */
+function createPlayback(t, frameMs = 1000 / 60) {
+  let now = 0
+  let sequence = 0
+  const frames = new Map()
+  t.mock.method(performance, 'now', () => now)
+  t.mock.method(globalThis, 'setTimeout', (callback) => {
+    frames.set(++sequence, callback)
+    return sequence
+  })
+  t.mock.method(globalThis, 'clearTimeout', (id) => frames.delete(id))
+  const states = Object.fromEntries(
+    ['a', 'b'].map((id) => [id, { onGoingConv: { msgChunks: {} } }])
+  )
+  const smoother = useStreamSmoother({ getThreadState: (id) => states[id] })
+  t.after(() => smoother.resetThread())
+  const chunks = (thread = 'a', id = 'm') => states[thread].onGoingConv.msgChunks[id] || []
+  const content = (thread = 'a', id = 'm') =>
+    chunks(thread, id)
+      .map((c) => c.content || '')
+      .join('')
+  const samples = []
+  return {
+    smoother,
+    chunks,
+    content,
+    samples,
+    frames,
+    push: (text, thread = 'a', id = 'm') =>
+      smoother.pushChunk({ id, type: 'AIMessageChunk', content: text }, thread),
+    advance(ms) {
+      const end = now + ms
+      while (now + frameMs <= end + 0.001) {
+        now += frameMs
+        const callbacks = [...frames.values()]
+        frames.clear()
+        callbacks.forEach((callback) => callback())
+        samples.push({ time: now, text: content() })
+      }
     }
   }
+}
 
-  const smoother = useStreamSmoother({
-    getThreadState: () => threadState
-  })
-
-  smoother.pushChunk(
-    {
-      id: 'msg-1',
-      type: 'ai',
-      content: 'Hello'
-    },
-    'thread-1'
-  )
-
-  // 初始骨架 chunk 已进入 msgChunks
-  assert.ok(threadState.onGoingConv.msgChunks['msg-1'])
-  assert.strictEqual(threadState.onGoingConv.msgChunks['msg-1'][0].content, '')
-
-  // 模拟等待 50ms（多个 animation frame）
-  await new Promise((resolve) => setTimeout(resolve, 50))
-
-  const totalContent = threadState.onGoingConv.msgChunks['msg-1']
-    .map((c) => c.content || '')
-    .join('')
-
-  assert.ok(totalContent.length > 0)
-  assert.ok('Hello'.startsWith(totalContent))
+test('突发大文本先缓冲并渐进追赶，不同步倾倒整批', (t) => {
+  const p = createPlayback(t)
+  p.push('文'.repeat(200))
+  assert.equal(p.content(), '')
+  p.advance(150)
+  assert.equal(p.content(), '')
+  p.advance(150)
+  assert.ok(p.content().length > 0 && p.content().length < 100)
+  p.advance(1200)
+  assert.equal(p.content(), '文'.repeat(200))
+  const increments = p.samples.slice(1).map((s, i) => s.text.length - p.samples[i].text.length)
+  assert.ok(Math.max(...increments) < 20, '单帧不能倾倒大部分正文')
+  assert.equal(p.frames.size, 0)
 })
 
-test('重新进入对话或历史补发大文本时 fast-forward 快速放行不重放打字', () => {
-  const threadState = {
-    onGoingConv: {
-      msgChunks: {}
-    }
+test('每 300 ms 一批正文持续推进，包到达不会立即改变显示', (t) => {
+  const p = createPlayback(t)
+  for (let i = 0; i < 8; i++) {
+    const before = p.content()
+    p.push('测'.repeat(24))
+    assert.equal(p.content(), before)
+    p.advance(300)
   }
-
-  const smoother = useStreamSmoother({
-    getThreadState: () => threadState
-  })
-
-  const longHistory = 'A'.repeat(200)
-
-  smoother.pushChunk(
-    {
-      id: 'msg-catchup',
-      type: 'ai',
-      content: longHistory
-    },
-    'thread-catchup'
-  )
-
-  // 应该直接触发 fast-forward，绝大多数内容立即进入 msgChunks
-  const emittedContent = threadState.onGoingConv.msgChunks['msg-catchup']
-    .map((c) => c.content || '')
-    .join('')
-
-  assert.ok(emittedContent.length >= 190, `预期立即放行历史绝大多数内容，实际长度: ${emittedContent.length}`)
+  p.advance(1000)
+  assert.equal(p.content(), '测'.repeat(192))
+  const changes = p.samples.filter((s, i) => i > 0 && s.text !== p.samples[i - 1].text)
+  const gaps = changes.slice(1).map((s, i) => s.time - changes[i].time)
+  assert.ok(Math.max(...gaps) <= 100, `播放最大停顿 ${Math.max(...gaps)} ms`)
 })
 
-test('flushThread 立即将所有缓冲区内容同步清空', () => {
-  const threadState = {
-    onGoingConv: {
-      msgChunks: {}
-    }
-  }
-
-  const smoother = useStreamSmoother({
-    getThreadState: () => threadState
-  })
-
-  smoother.pushChunk(
+test('flush 完整交付正文、推理和工具参数，并取消全部残留帧', (t) => {
+  const p = createPlayback(t)
+  p.push('文'.repeat(80))
+  p.push('本'.repeat(80))
+  p.smoother.pushChunk(
     {
-      id: 'msg-flush',
-      type: 'ai',
-      content: 'Thinking and answering smoothly'
+      id: 'm',
+      content: '',
+      reasoning_content: '思考'
     },
-    'thread-flush'
+    'a'
   )
-
-  smoother.flushThread('thread-flush')
-
-  const emittedContent = threadState.onGoingConv.msgChunks['msg-flush']
-    .map((c) => c.content || '')
-    .join('')
-
-  assert.strictEqual(emittedContent, 'Thinking and answering smoothly')
+  p.push('另一条正文', 'a', 'other')
+  p.smoother.flushThread('a')
+  assert.equal(p.content(), '文'.repeat(80) + '本'.repeat(80))
+  assert.equal(p.content('a', 'other'), '另一条正文')
+  assert.equal(p.frames.size, 0)
+  p.smoother.pushChunk(
+    {
+      id: 'm',
+      content: '',
+      tool_call_chunks: [{ index: 0, id: 'tool', name: 'search', args: '{"q":' }]
+    },
+    'a'
+  )
+  p.smoother.pushChunk(
+    { id: 'm', content: '', tool_call_chunks: [{ index: 0, args: '"查询"}' }] },
+    'a'
+  )
+  p.smoother.flushThread('a')
+  assert.equal(p.content(), '文'.repeat(80) + '本'.repeat(80))
+  assert.equal(
+    p
+      .chunks()
+      .map((c) => c.reasoning_content || '')
+      .join(''),
+    '思考'
+  )
+  assert.equal(
+    p
+      .chunks()
+      .flatMap((c) => c.tool_call_chunks || [])
+      .map((c) => c.args)
+      .join(''),
+    '{"q":"查询"}'
+  )
+  const count = p.chunks().length
+  assert.equal(p.frames.size, 0)
+  p.advance(1000)
+  assert.equal(p.chunks().length, count)
 })
 
-test('resetThread 清除待处理任务且不再发射延迟事件', async () => {
-  const threadState = {
-    onGoingConv: {
-      msgChunks: {}
-    }
-  }
-
-  const smoother = useStreamSmoother({
-    getThreadState: () => threadState
-  })
-
-  smoother.pushChunk(
+test('工具调用立即透传，之前的同消息文本先完整呈现', (t) => {
+  const p = createPlayback(t)
+  p.push('开始查询')
+  p.smoother.pushChunk(
     {
-      id: 'msg-reset',
-      type: 'ai',
-      content: 'This should be aborted'
+      id: 'm',
+      content: '',
+      tool_call_chunks: [{ index: 0, id: 'call', name: 'search', args: '{"q":"问题"}' }]
     },
-    'thread-reset'
+    'a'
   )
+  assert.equal(p.content(), '开始查询')
+  assert.deepEqual(p.chunks().at(-1).tool_call_chunks, [
+    { index: 0, id: 'call', name: 'search', args: '{"q":"问题"}' }
+  ])
+  assert.equal(p.frames.size, 0)
+})
 
-  smoother.resetThread('thread-reset')
-  const countAtReset = (threadState.onGoingConv.msgChunks['msg-reset'] || []).length
+test('已知完整字素不会在逐帧切片时被拆开', (t) => {
+  const p = createPlayback(t)
+  const unit = '👨‍👩‍👧‍👦'
+  p.push(unit.repeat(5))
+  p.advance(1500)
+  assert.equal(p.content(), unit.repeat(5))
+  for (const sample of p.samples) {
+    assert.equal(sample.text.length % unit.length, 0, `残缺字素：${sample.text}`)
+  }
+})
 
-  await new Promise((resolve) => setTimeout(resolve, 50))
+test('reset 只清理对应线程，重复消息 ID 不串流', (t) => {
+  const p = createPlayback(t)
+  p.push('丢弃内容', 'a')
+  p.push('保留内容', 'b')
+  p.smoother.resetThread('a')
+  p.advance(1000)
+  assert.equal(p.content('a'), '')
+  assert.equal(p.content('b'), '保留内容')
+  assert.equal(p.frames.size, 0)
+})
 
-  const countLater = (threadState.onGoingConv.msgChunks['msg-reset'] || []).length
-  assert.strictEqual(countLater, countAtReset)
+test('播放进度按经过时间计算，120 Hz 不会比 60 Hz 倍速', (t) => {
+  const slow = createPlayback(t)
+  slow.push('测'.repeat(300))
+  slow.advance(400)
+  const slowLength = slow.content().length
+  slow.smoother.resetThread()
+  t.mock.restoreAll()
+  const fast = createPlayback(t, 1000 / 120)
+  fast.push('测'.repeat(300))
+  fast.advance(400)
+  assert.ok(slowLength > 0 && slowLength < 300)
+  assert.ok(
+    Math.abs(fast.content().length - slowLength) <= 8,
+    `60 Hz=${slowLength}, 120 Hz=${fast.content().length}`
+  )
+})
+
+test('一秒断流时显示完已有文字，恢复后继续且最终内容准确', (t) => {
+  const p = createPlayback(t)
+  p.push('第一段文字')
+  p.advance(1000)
+  assert.equal(p.content(), '第一段文字')
+  assert.equal(p.frames.size, 0)
+  p.push('恢复后的文字')
+  p.advance(500)
+  assert.equal(p.content(), '第一段文字恢复后的文字')
+  assert.equal(p.frames.size, 0)
+})
+
+test('用户启用减少动态效果后及时交付已有缓冲与新内容', (t) => {
+  const p = createPlayback(t)
+  p.push('缓冲文字')
+  globalThis.window = { matchMedia: () => ({ matches: true }) }
+  t.after(() => {
+    delete globalThis.window
+  })
+  p.push('新文字')
+  assert.equal(p.content(), '缓冲文字新文字')
+  assert.equal(p.frames.size, 0)
+})
+
+test('reset 全部线程后晚到帧不再输出，重新使用同一 ID 可独立播放', (t) => {
+  const p = createPlayback(t)
+  p.push('旧正文', 'a')
+  p.push('旧子线程', 'b')
+  const callbacks = [...p.frames.values()]
+  p.smoother.resetThread()
+  callbacks.forEach((callback) => callback())
+  p.advance(1000)
+  assert.equal(p.content('a'), '')
+  assert.equal(p.content('b'), '')
+  assert.equal(p.frames.size, 0)
+  p.push('新正文')
+  p.advance(500)
+  assert.equal(p.content(), '新正文')
 })

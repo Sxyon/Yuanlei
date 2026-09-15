@@ -1,6 +1,6 @@
 """PDF 解析前置检查。
 
-本模块在文档进入 MinerU、PyPDFLoader 等解析器之前，
+本模块在文档进入 MinerU、pypdf 等解析器之前，
 先用 Yuxi 已有的 pypdfium2 依赖检查 PDF 页面树是否能逐页加载。
 它只负责识别明显的 PDF 结构异常，例如页树中存在 null 页槽、非 Page 对象或循环引用；
 不负责修复 PDF，也不能被当作内容 OCR 或页数统计的业务事实源。

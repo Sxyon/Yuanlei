@@ -216,7 +216,8 @@ async def test_enable_skills_updates_explicit_agent_selection(monkeypatch, confi
     assert calls["thread_id"] == "thread-1"
     assert calls["agent_slug"] == "agent-1"
     assert calls["update"]["updated_by"] == "user-1"
-    assert calls["update"]["config_json"] == {"context": {"skills": expected_skills, "model": "provider:model"}}
+    assert calls["update"]["config_json"] == {"context": {"skills": expected_skills}}
+    assert calls["update"]["config_resource_access"] == {"skills": {"existing-skill", "new-skill"}}
 
 
 @pytest.mark.asyncio
@@ -314,7 +315,7 @@ def test_prepare_skill_from_sandbox_uses_sandbox_api_without_host_path_resolutio
             assert thread_id == "thread-1"
             assert uid == "user-1"
             assert workdir_path is None
-            assert create_if_missing is False
+            assert create_if_missing is True
 
         def ls(self, path):
             assert path == remote_dir
@@ -347,7 +348,7 @@ def test_prepare_skill_from_sandbox_preserves_download_error_message(monkeypatch
             assert thread_id == "thread-1"
             assert uid == "user-1"
             assert workdir_path is None
-            assert create_if_missing is False
+            assert create_if_missing is True
 
         def ls(self, _path):
             return SimpleNamespace(

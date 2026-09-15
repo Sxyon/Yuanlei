@@ -241,7 +241,12 @@ async def test_explicit_project_creation_locks_project_until_commit(monkeypatch)
         directory_mode="linked",
         workdir_path="clients/acme",
     )
-    conversation = SimpleNamespace(thread_id="thread-1")
+    conversation = SimpleNamespace(
+        id=1,
+        thread_id="thread-1",
+        project_id="project-1",
+        uid="user-1",
+    )
     lock_calls = []
 
     class _Db:

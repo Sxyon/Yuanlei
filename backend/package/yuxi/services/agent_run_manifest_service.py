@@ -31,7 +31,6 @@ MANIFEST_LIMIT_FIELDS = (
     "summary_threshold",
     "summary_keep_messages",
     "summary_tool_result_token_limit",
-    "summary_l2_trigger_ratio",
 )
 
 

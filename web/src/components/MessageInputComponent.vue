@@ -13,31 +13,16 @@
     </div>
 
     <div class="expand-options" v-if="hasOptionsLeft">
-      <a-dropdown
-        v-model:open="optionsExpanded"
-        :trigger="['click']"
-        placement="topLeft"
-        overlay-class-name="config-dropdown-overlay"
-      >
-        <template #overlay>
-          <div ref="optionsPanelRef" class="options-dropdown-content">
-            <slot name="options-left">
-              <div class="no-options">没有配置 options</div>
-            </slot>
-          </div>
+      <ActionDropdown upward v-model:open="optionsExpanded">
+        <template #trigger>
+          <ActionTrigger label="添加内容" :open="optionsExpanded" icon-only>
+            <template #icon><Plus :size="17" /></template>
+          </ActionTrigger>
         </template>
-        <button
-          ref="optionsTriggerRef"
-          type="button"
-          class="expand-btn"
-          :class="{ active: optionsExpanded }"
-          aria-label="添加内容"
-          aria-haspopup="menu"
-          :aria-expanded="optionsExpanded"
-        >
-          <Plus :size="17" />
-        </button>
-      </a-dropdown>
+        <slot name="options-left">
+          <div class="no-options">没有配置 options</div>
+        </slot>
+      </ActionDropdown>
       <slot name="actions-left"></slot>
     </div>
 
@@ -301,7 +286,8 @@ import { SendOutlined, ArrowUpOutlined, PauseOutlined } from '@ant-design/icons-
 import { Plus } from '@lucide/vue'
 import { searchMentionFiles } from '@/apis/mention_api'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
-import { useOutsidePointerdown } from '@/composables/useOutsidePointerdown'
+import ActionDropdown from '@/components/common/ActionDropdown.vue'
+import ActionTrigger from '@/components/common/ActionTrigger.vue'
 import { buildMentionResourceItems } from '@/utils/mention_resource_items'
 import {
   getMentionIconComponent,
@@ -330,8 +316,6 @@ const closeMentionPopup = (e) => {
 
 const inputRef = ref(null)
 const optionsExpanded = ref(false)
-const optionsTriggerRef = ref(null)
-const optionsPanelRef = ref(null)
 // 用于防抖的定时器
 const debounceTimer = ref(null)
 const props = defineProps({
@@ -1245,8 +1229,6 @@ watch(optionsExpanded, (open) => {
   }
 })
 
-useOutsidePointerdown(optionsExpanded, [optionsTriggerRef, optionsPanelRef])
-
 const adjustTextareaHeight = () => {
   if (!inputRef.value) {
     return
@@ -1514,68 +1496,6 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.expand-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  padding: 0;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-  border: 1px solid transparent;
-  background-color: transparent;
-
-  &:hover {
-    color: var(--gray-900);
-    background: var(--gray-50);
-  }
-
-  &.active {
-    color: var(--gray-900);
-    background: var(--gray-100);
-  }
-}
-
-// Popover 选项样式
-.popover-options {
-  min-width: 160px;
-  max-width: 200px;
-  padding: 4px;
-
-  .no-options {
-    color: var(--gray-500);
-    font-size: 12px;
-    text-align: center;
-    padding: 12px 8px;
-  }
-
-  :deep(.opt-item) {
-    border-radius: 8px;
-    padding: 6px 10px;
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--gray-700);
-    transition: all 0.2s ease;
-    margin: 2px;
-    display: inline-block;
-
-    &:hover {
-      background-color: var(--main-10);
-      color: var(--main-600);
-    }
-
-    &.active {
-      color: var(--main-600);
-      background-color: var(--main-10);
-    }
-  }
 }
 
 .send-button.ant-btn-icon-only {

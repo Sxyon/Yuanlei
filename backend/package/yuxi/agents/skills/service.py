@@ -33,7 +33,7 @@ from yuxi.config import (
 from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_skill_permission
 from yuxi.storage.postgres.models_business import Skill, User
 from yuxi.utils.logging_config import logger
-from yuxi.utils.paths import ensure_within_root
+from yuxi.utils.paths import ensure_within_root, open_directory_fd, open_regular_file_fd
 
 SKILL_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SKILL_NAME_PATTERN = SKILL_SLUG_PATTERN
@@ -414,9 +414,9 @@ def sync_user_accessible_skills(
             target_dir = user_skills_root / slug
             temp_target = user_skills_root / f".{slug}.tmp-{uuid.uuid4().hex[:8]}"
             try:
-                copy_skill_tree_no_symlinks(source_dir, temp_target)
-                if target_dir.is_dir() and not target_dir.is_symlink() and skill_dirs_equal(target_dir, temp_target):
+                if skill_dirs_equal(source_dir, target_dir):
                     continue
+                copy_skill_tree_no_symlinks(source_dir, temp_target)
                 _remove_skill_projection_entry(target_dir)
                 temp_target.rename(target_dir)
             except FileNotFoundError:
@@ -493,10 +493,47 @@ def _copy_skill_snapshot(
 
 
 def skill_dirs_equal(dir1: Path, dir2: Path) -> bool:
-    """检查两个目录的文件路径与内容是否完全一致。"""
-    if not dir1.exists() or not dir2.exists():
+    """按 no-follow 字节与执行位比较来源和投影，非法来源显式失败。"""
+    source_hash = _compute_projection_hash(dir1)
+    try:
+        return source_hash == _compute_projection_hash(dir2)
+    except OSError:
+        # 缺失或被替换为链接的投影必须重建，不能沿用相同字节的链接。
         return False
-    return _compute_dir_hash(dir1) == _compute_dir_hash(dir2)
+
+
+def _compute_projection_hash(path: Path) -> bytes:
+    """通过目录 fd 读取投影比较摘要，拒绝链接和特殊文件。"""
+    hasher = hashlib.sha256()
+
+    def visit(directory_fd: int) -> None:
+        """在已打开的目录内递归比较所需的类型、执行位和字节。"""
+        for name in sorted(os.listdir(directory_fd)):
+            hasher.update(os.fsencode(name) + b"\0")
+            mode = os.stat(name, dir_fd=directory_fd, follow_symlinks=False).st_mode
+            if stat.S_ISDIR(mode):
+                child_fd = open_directory_fd(directory_fd, (name,))
+                try:
+                    hasher.update(b"directory\0")
+                    visit(child_fd)
+                    hasher.update(b"end-directory\0")
+                finally:
+                    os.close(child_fd)
+            else:
+                with open_regular_file_fd(directory_fd, (name,)) as (file_fd, file_stat):
+                    hasher.update(b"file\0" + bytes([stat.S_IMODE(file_stat.st_mode) & 0o111]))
+                    content_hash = hashlib.sha256()
+                    while chunk := os.read(file_fd, 1024 * 1024):
+                        content_hash.update(chunk)
+                    hasher.update(content_hash.digest())
+
+    absolute = Path(os.path.abspath(path))
+    directory_fd = open_directory_fd(Path(absolute.anchor), absolute.parts[1:])
+    try:
+        visit(directory_fd)
+    finally:
+        os.close(directory_fd)
+    return hasher.digest()
 
 
 def _compute_dir_hash(source_dir: Path) -> str:
@@ -949,8 +986,7 @@ async def enable_personal_skills_for_agent_config(
     if not agent or agent.created_by != str(uid):
         return False
 
-    config = dict(agent.config_json or {})
-    context = dict(config.get("context") or {})
+    context = (agent.config_json or {}).get("context") or {}
     configured_skills = context.get("skills")
     if configured_skills is None:
         return True
@@ -960,9 +996,12 @@ async def enable_personal_skills_for_agent_config(
     if updated_skills == selected_skills:
         return True
 
-    context["skills"] = updated_skills
-    config["context"] = context
-    await agent_repo.update(agent, config_json=config, updated_by=str(uid))
+    await agent_repo.update(
+        agent,
+        config_json={"context": {"skills": updated_skills}},
+        config_resource_access={"skills": set(skill_slugs)},
+        updated_by=str(uid),
+    )
     return True
 
 

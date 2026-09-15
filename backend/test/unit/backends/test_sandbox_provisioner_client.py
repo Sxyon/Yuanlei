@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+import yuxi.agents.backends.sandbox.provider as provider_module
 
 from yuxi.agents.backends.sandbox.provider import sandbox_provisioner_token
 from yuxi.agents.backends.sandbox.provisioner_client import ProvisionerClient
@@ -106,6 +107,33 @@ def test_provisioner_client_delete_sends_expected_generation(monkeypatch):
     client.delete("sandbox-1", expected_generation="generation-1")
 
     assert calls[0]["params"] == {"expected_generation": "generation-1"}
+    assert calls[0]["timeout"] is client._delete_timeout
+    assert client._delete_timeout.read == 120
+
+
+def test_sandbox_provider_uses_configured_delete_timeout(monkeypatch):
+    captured = {}
+
+    def create_client(_url, *, token, delete_timeout_seconds):
+        captured.update(
+            token=token,
+            delete_timeout_seconds=delete_timeout_seconds,
+        )
+        return SimpleNamespace()
+
+    monkeypatch.setenv(
+        "SANDBOX_PROVISIONER_TOKEN",
+        "test-provisioner-token-that-is-long-enough",
+    )
+    monkeypatch.setenv("SANDBOX_PROVISIONER_DELETE_TIMEOUT_SECONDS", "90")
+    monkeypatch.setattr(provider_module, "ProvisionerClient", create_client)
+
+    provider_module.ProvisionerSandboxProvider()
+
+    assert captured == {
+        "token": "test-provisioner-token-that-is-long-enough",
+        "delete_timeout_seconds": 90,
+    }
 
 
 def test_sandbox_provisioner_token_reads_environment(monkeypatch):

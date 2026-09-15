@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -82,7 +83,7 @@ async def test_retrieve_uses_cached_config_without_postgres(monkeypatch, tmp_pat
         "yuxi.repositories.knowledge_base_repository.KnowledgeBaseRepository.get_by_kb_id",
         fail_postgres,
     )
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda kb_type: fake_kb)
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=fake_kb))
 
     result = await manager.retrieve("kb_1", "hello", top_k=2)
 
@@ -125,7 +126,7 @@ async def test_retrieve_falls_back_to_postgres_and_populates_cache(monkeypatch, 
         "yuxi.repositories.knowledge_base_repository.KnowledgeBaseRepository.get_by_kb_id",
         fake_get_by_kb_id,
     )
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda kb_type: fake_kb)
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=fake_kb))
 
     result = await manager.retrieve("kb_1", "hello")
 
@@ -169,7 +170,7 @@ async def test_cache_miss_rechecks_snapshot_after_acquiring_lock(monkeypatch, tm
         "yuxi.repositories.knowledge_base_repository.KnowledgeBaseRepository.get_by_kb_id",
         fail_postgres,
     )
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda kb_type: fake_kb)
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=fake_kb))
 
     config = await manager.get_kb_config("kb_1")
 
@@ -205,7 +206,7 @@ async def test_cache_lock_connection_failure_reads_postgres_without_refill(monke
         "yuxi.repositories.knowledge_base_repository.KnowledgeBaseRepository.get_by_kb_id",
         fake_get_by_kb_id,
     )
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda kb_type: fake_kb)
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=fake_kb))
 
     config = await manager.get_kb_config("kb_1")
 
@@ -238,7 +239,7 @@ async def test_retrieve_refreshes_runtime_config_on_each_call(monkeypatch, tmp_p
         return snapshots.pop(0)
 
     monkeypatch.setattr("yuxi.knowledge.manager.get_cached_kb_config", fake_get_cached)
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda kb_type: fake_kb)
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=fake_kb))
 
     await manager.retrieve("kb_1", "first")
     await manager.retrieve("kb_1", "second")

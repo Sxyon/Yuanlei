@@ -1,4 +1,5 @@
 import types
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,9 +22,6 @@ class FakeKnowledgeBase(KnowledgeBase):
 
     async def index_file(self, slug: str, file_id: str, operator_id: str | None = None) -> dict:
         return {}
-
-    async def update_content(self, slug: str, file_ids: list[str], params: dict | None = None) -> list[dict]:
-        return []
 
     async def aquery(self, query_text: str, slug: str, **kwargs) -> list[dict]:
         return []
@@ -56,8 +54,11 @@ class FakeKnowledgeBaseRepository:
     async def get_by_kb_id(self, kb_id: str):
         return self.row if kb_id == "db" else None
 
-    async def update_stats(self, kb_id: str, stats: dict[str, int]):
+    async def refresh_stats(self, kb_id: str):
         assert kb_id == "db"
+        from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+        stats = await KnowledgeFileRepository().get_kb_file_stats(kb_id)
         self.update_calls.append({"stats": stats})
         self.row.additional_params = {**self.row.additional_params, "stats": stats}
         return self.row
@@ -178,7 +179,7 @@ async def test_create_database_persists_allowed_record_fields(tmp_path, monkeypa
         return False
 
     monkeypatch.setattr(manager, "database_name_exists", database_name_available)
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda _kb_type: kb)
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=kb))
     monkeypatch.setattr(
         "yuxi.knowledge.manager.KnowledgeBaseFactory.is_type_supported",
         classmethod(lambda cls, _kb_type: True),

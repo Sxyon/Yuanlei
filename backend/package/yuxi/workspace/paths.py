@@ -6,9 +6,11 @@ import hashlib
 import os
 import re
 import uuid
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 from yuxi.config import get_user_data_dir
+from yuxi.utils.datetime_utils import ensure_shanghai, shanghai_now
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import open_directory_fd
 
@@ -21,19 +23,9 @@ WORKSPACE_AGENT_CONTEXT_FILES = {
 }
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_MANAGED_WORKDIR_NAME_RE = re.compile(r"^(?P<timestamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_[0-9a-f]{8}(?:-[1-9]\d*)?$")
+_MANAGED_WORKDIR_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 WORKDIR_PROJECTS_DIR_NAME = "projects"
-
-_raw_virtual_prefix = os.getenv("SANDBOX_VIRTUAL_PATH_PREFIX")
-VIRTUAL_PATH_PREFIX = (
-    _raw_virtual_prefix.strip() if _raw_virtual_prefix else "/home/gem/user-data"
-) or "/home/gem/user-data"
-if not VIRTUAL_PATH_PREFIX.startswith("/"):
-    VIRTUAL_PATH_PREFIX = f"/{VIRTUAL_PATH_PREFIX}"
-
-
-def runtime_workdir_path(workdir_path: str) -> str:
-    """把持久化 Workdir 标识映射到 Sandbox runtime。"""
-    return f"{VIRTUAL_PATH_PREFIX.rstrip('/')}/{normalize_workdir_path(workdir_path)}"
 
 
 def validate_thread_id(thread_id: str) -> str:
@@ -56,25 +48,28 @@ def normalize_workdir_path(workdir_path: str) -> str:
     return pure.as_posix()
 
 
-def normalize_linked_workdir_path(workdir_path: str) -> str:
-    """规范化用户选择的 linked Workdir；Workspace 根由相对路径约束拒绝。"""
-    return normalize_workdir_path(workdir_path)
-
-
 def normalize_managed_workdir_path(workdir_path: str) -> str:
-    """规范化服务端管理的 ``projects/<uuid>`` Workdir 路径。"""
-    raw = str(workdir_path or "").strip()
-    pure = PurePosixPath(raw)
-    if not raw or pure.is_absolute() or "\\" in raw or "://" in raw:
-        raise ValueError("managed workdir_path must use projects/<uuid>")
-    if any(part in {"", ".", ".."} for part in raw.split("/")):
-        raise ValueError("managed workdir_path must use projects/<uuid>")
-    if len(pure.parts) != 2 or pure.parts[0] != WORKDIR_PROJECTS_DIR_NAME:
-        raise ValueError("managed workdir_path must use projects/<uuid>")
+    """规范化服务端管理的 Workdir 路径，并兼容既有 UUID 目录。"""
+    error_message = "managed workdir_path must use a supported projects/<managed-id>"
     try:
-        workdir_id = uuid.UUID(pure.parts[1])
-    except ValueError as exc:
-        raise ValueError("managed workdir_path must use projects/<uuid>") from exc
+        pure = PurePosixPath(normalize_workdir_path(workdir_path))
+    except ValueError:
+        raise ValueError(error_message) from None
+    if len(pure.parts) != 2 or pure.parts[0] != WORKDIR_PROJECTS_DIR_NAME:
+        raise ValueError(error_message)
+
+    workdir_name = pure.parts[1]
+    try:
+        workdir_id = uuid.UUID(workdir_name)
+    except ValueError:
+        match = _MANAGED_WORKDIR_NAME_RE.fullmatch(workdir_name)
+        if match is None:
+            raise ValueError(error_message) from None
+        try:
+            datetime.strptime(match.group("timestamp"), _MANAGED_WORKDIR_TIMESTAMP_FORMAT)
+        except ValueError:
+            raise ValueError(error_message) from None
+        return pure.as_posix()
     return f"{WORKDIR_PROJECTS_DIR_NAME}/{workdir_id}"
 
 
@@ -116,9 +111,46 @@ def user_workdir_host_dir(uid: str, workdir_path: str) -> Path:
     return target
 
 
-def allocate_default_user_workdir_path() -> str:
-    """分配默认 Workdir 相对路径，不在数据库事务提交前创建目录。"""
-    return f"{WORKDIR_PROJECTS_DIR_NAME}/{uuid.uuid4()}"
+def allocate_default_user_workdir_path(
+    uid: str,
+    project_id: str,
+    *,
+    allocated_at: datetime | None = None,
+) -> str:
+    """按上海时间与 Project ID 分配未占用的 managed Workdir 路径。"""
+    canonical_project_id = str(uuid.UUID(str(project_id)))
+    timestamp = ensure_shanghai(allocated_at or shanghai_now()).strftime(_MANAGED_WORKDIR_TIMESTAMP_FORMAT)
+    base_name = f"{timestamp}_{canonical_project_id[:8]}"
+    suffix = 0
+    while True:
+        name = base_name if suffix == 0 else f"{base_name}-{suffix}"
+        if not _user_workspace_entry_exists(uid, name):
+            return f"{WORKDIR_PROJECTS_DIR_NAME}/{name}"
+        suffix += 1
+
+
+def _user_workspace_entry_exists(uid: str, workdir_name: str) -> bool:
+    """以 no-follow 方式判断 managed Workdir 名称是否已被占用。"""
+    try:
+        workspace_fd = _open_user_workspace_fd(uid)
+    except FileNotFoundError:
+        return False
+
+    parent_fd = None
+    try:
+        try:
+            parent_fd = _open_workspace_child_fd(workspace_fd, (WORKDIR_PROJECTS_DIR_NAME,))
+        except FileNotFoundError:
+            return False
+        try:
+            os.stat(workdir_name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return False
+        return True
+    finally:
+        if parent_fd is not None:
+            os.close(parent_fd)
+        os.close(workspace_fd)
 
 
 def ensure_bound_user_workdir(uid: str, workdir_path: str) -> None:

@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base
-from yuxi.utils.datetime_utils import utc_now_naive
+from yuxi.utils.datetime_utils import utc_now
 
 Base = declarative_base()
 JSON_VALUE = JSON().with_variant(JSONB, "postgresql")
@@ -43,8 +43,8 @@ class KnowledgeBase(Base):
     mindmap_metadata = Column(JSON_VALUE)
     sample_questions = Column(JSON_VALUE)
     created_by = Column(String(64))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class KnowledgeFile(Base):
@@ -72,10 +72,12 @@ class KnowledgeFile(Base):
     processing_params = Column(JSON_VALUE)
     is_folder = Column(Boolean, default=False)
     error_message = Column(Text)
+    processing_task_id = Column(String(64), index=True)
+    processing_owner = Column(String(128))
     created_by = Column(String(64))
     updated_by = Column(String(64))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class KnowledgeChunk(Base):
@@ -110,8 +112,8 @@ class KnowledgeChunk(Base):
     ent_ids = Column(JSON_VALUE)
     tags = Column(JSON_VALUE)
     extraction_result = Column(JSON_VALUE)
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class KnowledgeGraphEntity(Base):
@@ -138,8 +140,8 @@ class KnowledgeGraphEntity(Base):
     vector_next_retry_at = Column(DateTime(timezone=True))
     vector_locked_until = Column(DateTime(timezone=True))
     vector_lock_token = Column(String(32))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class KnowledgeGraphEntityMention(Base):
@@ -158,7 +160,7 @@ class KnowledgeGraphEntityMention(Base):
     kb_id = Column(String(80), ForeignKey("knowledge_bases.kb_id", ondelete="CASCADE"), nullable=False)
     file_id = Column(String(64), ForeignKey("knowledge_files.file_id", ondelete="CASCADE"), nullable=False)
     chunk_id = Column(String(128), ForeignKey("knowledge_chunks.chunk_id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
 
 
 class KnowledgeGraphTriple(Base):
@@ -188,8 +190,8 @@ class KnowledgeGraphTriple(Base):
     vector_next_retry_at = Column(DateTime(timezone=True))
     vector_locked_until = Column(DateTime(timezone=True))
     vector_lock_token = Column(String(32))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class KnowledgeGraphTripleMention(Base):
@@ -210,7 +212,7 @@ class KnowledgeGraphTripleMention(Base):
     chunk_id = Column(String(128), ForeignKey("knowledge_chunks.chunk_id", ondelete="CASCADE"), nullable=False)
     text = Column(Text)
     extractor_type = Column(String(128))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
 
 
 class EvaluationDataset(Base):
@@ -229,8 +231,8 @@ class EvaluationDataset(Base):
     has_gold_answers = Column(Boolean, default=False)
     build_metadata = Column(JSON_VALUE)
     created_by = Column(String(64))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class EvaluationDatasetItem(Base):
@@ -256,7 +258,7 @@ class EvaluationDatasetItem(Base):
     query_text = Column(Text, nullable=False)
     gold_chunk_ids = Column(JSON_VALUE)
     gold_answer = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
 
 
 class EvaluationRun(Base):
@@ -280,7 +282,7 @@ class EvaluationRun(Base):
     overall_score = Column(Float)
     total_items = Column(Integer, default=0)
     completed_items = Column(Integer, default=0)
-    started_at = Column(DateTime(timezone=True), default=utc_now_naive, index=True)
+    started_at = Column(DateTime(timezone=True), default=utc_now, index=True)
     completed_at = Column(DateTime(timezone=True))
     created_by = Column(String(64))
 
@@ -311,4 +313,4 @@ class EvaluationRunItem(Base):
     generated_answer = Column(Text)
     retrieved_chunks = Column(JSON_VALUE)
     metrics = Column(JSON_VALUE)
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)

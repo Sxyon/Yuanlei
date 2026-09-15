@@ -160,7 +160,35 @@ async def dashboard_db():
         msg1 = Message(conversation=conv1, role="user", content="Hello", created_at=yesterday)
         msg2 = Message(conversation=conv1, role="assistant", content="Hi there!", created_at=yesterday)
         msg3 = Message(conversation=conv2, role="user", content="Write code", created_at=now)
-        msg4 = Message(conversation=conv2, role="assistant", content="Here is code", created_at=now)
+        msg4 = Message(
+            conversation=conv2,
+            role="assistant",
+            content="Here is code",
+            created_at=now,
+            extra_metadata={"usage_metadata": {"input_tokens": 5, "output_tokens": 3}},
+        )
+        hidden_model_audit = Message(
+            conversation=conv2,
+            role="assistant",
+            content="Intermediate model output",
+            message_type="model_audit",
+            operation_id="model-audit-1",
+            execution_status="completed",
+            created_at=now,
+            extra_metadata={"usage_metadata": {"input_tokens": 100, "output_tokens": 100}},
+        )
+        hidden_tool_audit = Message(
+            conversation=conv2,
+            role="tool",
+            content="Intermediate tool output",
+            message_type="tool_audit",
+            operation_id="tool-audit-1",
+            started_at=now,
+            sequence=2,
+            execution_status="completed",
+            created_at=now,
+            extra_metadata={"usage_metadata": {"input_tokens": 100, "output_tokens": 100}},
+        )
         removed_agent_message = Message(
             conversation=missing_agent_conversation,
             role="assistant",
@@ -177,6 +205,18 @@ async def dashboard_db():
         )
 
         feedback1 = MessageFeedback(message=msg2, uid="uid-alice", rating="like", created_at=yesterday)
+        hidden_model_feedback = MessageFeedback(
+            message=hidden_model_audit,
+            uid="uid-bob",
+            rating="dislike",
+            created_at=now,
+        )
+        hidden_tool_feedback = MessageFeedback(
+            message=hidden_tool_audit,
+            uid="uid-bob",
+            rating="like",
+            created_at=now,
+        )
         removed_agent_feedback = MessageFeedback(
             message=removed_agent_message,
             uid="uid-alice",
@@ -207,10 +247,14 @@ async def dashboard_db():
                 msg2,
                 msg3,
                 msg4,
+                hidden_model_audit,
+                hidden_tool_audit,
                 removed_agent_message,
                 tool1,
                 removed_agent_tool,
                 feedback1,
+                hidden_model_feedback,
+                hidden_tool_feedback,
                 removed_agent_feedback,
             ]
         )
@@ -256,6 +300,14 @@ async def test_agent_analytics_omits_removed_top_performers_contract(dashboard_d
     assert analytics["agent_names"] == {
         "agent-helper": "Helper Agent",
         "agent-coder": "Coder Agent",
+    }
+    coder_satisfaction = next(
+        item for item in analytics["agent_satisfaction_rates"] if item["agent_id"] == "agent-coder"
+    )
+    assert coder_satisfaction == {
+        "agent_id": "agent-coder",
+        "satisfaction_rate": 100,
+        "total_feedbacks": 0,
     }
 
 
@@ -409,3 +461,59 @@ async def test_dashboard_service_conversation_detail(dashboard_db):
     assistant_msg = next(m for m in detail["messages"] if m["role"] == "assistant")
     assert "tool_calls" in assistant_msg
     assert assistant_msg["tool_calls"][0]["tool_name"] == "bash"
+
+
+async def test_conversation_tokens_use_runs_and_expose_missing_usage(dashboard_db):
+    """审计累加同会话 Run，忽略旧汇总并区分真实零和未知。"""
+    from sqlalchemy import select
+    from yuxi.storage.postgres.models_business import AgentRun
+
+    conversation = (
+        await dashboard_db.execute(select(Conversation).where(Conversation.thread_id == "thread-102"))
+    ).scalar_one()
+    for index, usage in enumerate(
+        [
+            {"total": {"total_tokens": 120}, "complete": True, "usage_reported_call_count": 1},
+            {"total": {"total_tokens": 80}, "complete": True, "usage_reported_call_count": 1},
+        ]
+    ):
+        dashboard_db.add(
+            AgentRun(
+                id=f"usage-run-{index}",
+                conversation_id=conversation.id,
+                conversation_thread_id=conversation.thread_id,
+                runtime_scope_id=conversation.thread_id,
+                agent_slug=conversation.agent_id,
+                uid=conversation.uid,
+                status="completed",
+                request_id=f"usage-request-{index}",
+                token_usage=usage,
+            )
+        )
+    await dashboard_db.commit()
+    service = DashboardService(dashboard_db)
+    detail = await service.get_conversation_detail(conversation.thread_id)
+    item = (await service.list_conversations(search="thread-102"))["items"][0]
+    assert detail["total_tokens"] == item["total_tokens"] == 200
+    assert item["token_usage_complete"] is True
+
+    run = await dashboard_db.get(AgentRun, "usage-run-1")
+    run.token_usage = {"available": False}
+    await dashboard_db.commit()
+    item = (await service.list_conversations(search="thread-102"))["items"][0]
+    assert item["total_tokens"] == 120
+    assert item["token_usage_complete"] is False
+
+    run = await dashboard_db.get(AgentRun, "usage-run-0")
+    run.token_usage = {"total": {"total_tokens": 0}, "complete": False, "usage_reported_call_count": 0}
+    await dashboard_db.commit()
+    item = (await service.list_conversations(search="thread-102"))["items"][0]
+    assert item["total_tokens"] is None
+    assert item["token_usage_complete"] is False
+
+    run.token_usage = {"total": {"total_tokens": 0}, "complete": True, "usage_reported_call_count": 1}
+    await dashboard_db.delete(await dashboard_db.get(AgentRun, "usage-run-1"))
+    await dashboard_db.commit()
+    item = (await service.list_conversations(search="thread-102"))["items"][0]
+    assert item["total_tokens"] == 0
+    assert item["token_usage_complete"] is True

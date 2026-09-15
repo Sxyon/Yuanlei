@@ -1,0 +1,10 @@
+# 从仓库根目录与 docker-compose.yml 合用，仅用于隔离槽位实验。
+services:
+  api:
+    environment:
+      MATRIX_FINE_TIMING: ${MATRIX_FINE_TIMING:-0}
+    command: uvicorn test.performance.probe:create_app --factory --host 0.0.0.0 --port 5050
+  worker:
+    environment:
+      MATRIX_FINE_TIMING: ${MATRIX_FINE_TIMING:-0}
+    command: python -m test.performance.probe

@@ -397,18 +397,6 @@ async def test_upload_workspace_files_rejects_more_than_limit(tmp_path: Path, mo
     assert f"一次最多上传 {svc.MAX_WORKSPACE_UPLOAD_FILES} 个文件" in exc_info.value.detail
 
 
-def _make_thread_files(tmp_path: Path, thread_id: str) -> Path:
-    """构造一个历史对话的 uploads/outputs 目录并写入示例文件。"""
-    user_data = tmp_path / "threads" / thread_id / "user-data"
-    uploads = user_data / "uploads"
-    outputs = user_data / "outputs"
-    uploads.mkdir(parents=True)
-    outputs.mkdir(parents=True)
-    (uploads / "note.md").write_text("# 历史上传", encoding="utf-8")
-    (outputs / "result.txt").write_text("历史产物", encoding="utf-8")
-    return user_data
-
-
 @pytest.mark.asyncio
 async def test_search_workspace_files_matches_filenames(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path / "threads"))

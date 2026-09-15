@@ -6,6 +6,7 @@ on:
       - 'web/**'
       - '.github/workflows/web.yml'
   push:
+    tags: ['v[0-9]*']
     branches: [main]
     paths:
       - 'web/**'

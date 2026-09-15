@@ -93,9 +93,6 @@ class TestAddFileRecordSizeFallback:
             async def get_file_info(self, kb_id, file_id):
                 return {}
 
-            async def update_content(self, kb_id, file_ids, params=None):
-                return []
-
             async def get_query_params_config(self, kb_id, **kwargs):
                 return {"type": "test", "options": []}
 

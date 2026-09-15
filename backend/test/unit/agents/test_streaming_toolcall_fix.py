@@ -3,7 +3,7 @@
 背景：v3 流式累积对 tool_call 字段是“后值覆盖”，部分 OpenAI 兼容提供商
 （siliconflow、阿里云百炼等）在续片里把 name/id 下发为空字符串 ""，会覆盖首片的
 真实值（丢 name / 丢 id），导致工具结果无法按 tool_call_id 关联。
-`_normalize_tool_call_chunks` 把空串归一化为 None（对齐 OpenAI 官方）来规避。
+`normalize_tool_call_chunks` 把空串归一化为 None（对齐 OpenAI 官方）来规避。
 
 本测试用 fake 流式模型确定性复现该缺陷（无需网络/API key），并验证修复有效。
 """
@@ -16,8 +16,7 @@ from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.errors import GraphRecursionError
-
-from yuxi.agents.models import _normalize_tool_call_chunks
+from yuxi.models.chat import normalize_tool_call_chunks
 
 
 @tool
@@ -29,8 +28,8 @@ def get_weather(city: str) -> str:
 class _FakeSiliconFlowModel(BaseChatModel):
     """模拟 SiliconFlow 流式：首片带 name+id，续片 name=''（空串）。
 
-    `apply_fix=True` 时在续片产出后调用 `_normalize_tool_call_chunks`，
-    复刻 `_ToolCallChunkFixChatOpenAI` 的归一化行为。
+    `apply_fix=True` 时在续片产出后调用 `normalize_tool_call_chunks`，
+    复刻 `ChatCompletionsAdapter` 的归一化行为。
     """
 
     apply_fix: bool = False
@@ -54,7 +53,7 @@ class _FakeSiliconFlowModel(BaseChatModel):
         for delta in deltas:
             chunk = ChatGenerationChunk(message=AIMessageChunk(content="", tool_call_chunks=[delta]))
             if self.apply_fix:
-                _normalize_tool_call_chunks(chunk.message)
+                normalize_tool_call_chunks(chunk.message)
             yield chunk
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):  # noqa: ARG002
@@ -87,7 +86,7 @@ def test_normalize_replaces_empty_string_with_none():
             tool_call_chunk(name="foo", args="{}", id="abc", index=1),
         ],
     )
-    _normalize_tool_call_chunks(msg)
+    normalize_tool_call_chunks(msg)
     assert msg.tool_call_chunks[0]["name"] is None
     assert msg.tool_call_chunks[0]["id"] is None
     # 非空值保持不变

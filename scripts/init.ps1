@@ -284,7 +284,7 @@ $images = @(
     "node:24-alpine",
     "milvusdb/milvus:v2.5.6",
     "neo4j:5.26.29",
-    "minio/minio:RELEASE.2023-03-20T20-16-18Z",
+    "quay.io/minio/minio:RELEASE.2023-03-20T20-16-18Z",
     "ghcr.io/astral-sh/uv:0.12.6",
     "nginx:alpine",
     "quay.io/coreos/etcd:v3.5.5",
@@ -313,7 +313,7 @@ foreach ($image in $images) {
     }
 }
 
-$sandboxImage = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+$sandboxImage = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0"
 if (-not (Test-SkipExistingImage $sandboxImage)) {
     Write-Host "🔄 Pulling ${sandboxImage}..." -ForegroundColor Yellow
     docker pull $sandboxImage

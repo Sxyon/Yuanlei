@@ -51,14 +51,6 @@ docker compose logs --tail=100 api
 
 `api` 和 `web` 服务默认支持热重载。容器名由 Compose project 生成；使用 `docker compose logs api web` 查看当前槽位日志。修改本地代码后通常不需要手动重启。
 
-只改聊天、工作区或 Skills 而不需要知识库时，可以使用：
-
-```bash
-make up-lite
-```
-
-LITE 模式不会注册知识库、图谱和评估能力。需要完整链路时先 `make down`，再使用完整 Compose 启动。
-
 ## 3. 实现原则
 
 - 用满足验收标准的最小实现，保持主路径线性可读。
@@ -175,6 +167,17 @@ PR 正文按创建方式选择模板：
 - 人工或其他非 Agent 方式创建的 PR 可使用[简化模板](https://github.com/xerrors/Yuxi/blob/main/.github/PULL_REQUEST_TEMPLATE/non-agent.md)。使用 GitHub compare 页面时增加 `template=non-agent.md` 查询参数，使用 GitHub CLI 时传入 `--template .github/PULL_REQUEST_TEMPLATE/non-agent.md`。
 
 模板复杂度不同，不改变非平凡或高风险变更的工程证据要求。来自 Fork 的 PR 默认无法读取主仓库 Secrets；不要通过修改工作流、打印环境变量或扩大权限绕过这一限制。如果验证必须依赖受保护凭证，应在 PR 中说明并由维护者执行对应检查。
+
+### 候选版本与正式发布
+
+维护者在发布前定稿版本号、changelog 和升级说明。功能更新以最近的正式 tag 为基线，例如 0.7.3 使用 `v0.7.2..HEAD`；候选版本之间的修复归并到对应功能，不单独替代完整发布说明。
+
+1. 在已审查的提交上创建候选 tag，例如 `v0.7.3-rc.1`，显式推送该 tag。需要对外试用时创建 GitHub Release 并标记 Pre-release。
+2. 在 Actions 核对该 tag 的工程契约、后端单测、Ruff、Web、运行链路、依赖审计和文档构建结果；tag 检查覆盖完整范围。真实 provider 与生产备份恢复演练按[测试规范](./testing-guidelines.md)和[升级指南](../advanced/deployment.md)补充，记录未验证范围。
+3. 修复产生新提交时创建下一个候选 tag；已推送的候选 tag 保留原指向。
+4. 最终候选通过后，在同一提交新增正式 tag，并发布正式 Release。Release 正文保留相对上一正式版本的完整功能更新及升级注意事项。应用 tag 触发检查，文档站只在 main 分支推送时部署。
+
+CLI 使用 `packages/yuxi-cli/pyproject.toml` 中的独立版本。需要发布 CLI 时先提交包版本和锁文件更新，再对明确的提交或 tag 手动运行 [Publish yuxi-cli](https://github.com/xerrors/Yuxi/actions/workflows/publish-yuxi-cli.yml)；应用 Release 不触发 PyPI 上传。CLI 版本未变时无需重复发布，上传失败须检查版本与 PyPI 状态。
 
 ## 7. 文档维护
 

@@ -4,7 +4,6 @@ import time
 from abc import ABC, abstractmethod
 
 import httpx
-import numpy as np
 import requests
 
 from yuxi.models.providers.cache import model_cache
@@ -14,10 +13,6 @@ EMBEDDING_RATE_LIMIT_MAX_RETRIES = 10
 EMBEDDING_TRANSIENT_MAX_RETRIES = 2
 EMBEDDING_RETRY_MAX_DELAY_SECONDS = 10.0
 EMBEDDING_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
 
 
 class BaseEmbeddingModel(ABC):
@@ -275,17 +270,3 @@ def select_embedding_model(model_id: str):
         dimension=info.dimension,
         batch_size=info.batch_size,
     )
-
-
-async def test_embedding_model_status_by_spec(spec: str) -> dict:
-    try:
-        model = select_embedding_model(spec)
-        success, message = await model.test_connection()
-        return {
-            "spec": spec,
-            "status": "available" if success else "unavailable",
-            "message": "连接正常" if success else message,
-        }
-    except Exception as e:
-        logger.warning(f"测试 Embedding 模型状态失败 {spec}: {e}")
-        return {"spec": spec, "status": "error", "message": str(e)}

@@ -15,23 +15,25 @@ share the same runtime behavior once they reach the worker.
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import aclosing
 from typing import Any, Literal
 
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.types import Command
 from yuxi.agents.backends.paths import runtime_workdir_path
-from yuxi.agents.backends.sandbox import ProvisionerSandboxBackend
 from yuxi.agents.base import _json_safe
 from yuxi.agents.buildin import agent_manager
+from yuxi.agents.callbacks.model_request_timing import FirstModelRequestRecorder
 from yuxi.agents.context import build_agent_input_context, normalize_agent_context_config
-from yuxi.agents.skills.service import get_user_skills_root_dir
 from yuxi.agents.state import AgentStatePayload
-from yuxi.config.options import system_options
+from yuxi.models.utils import parse_assistant_message_body
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
+from yuxi.repositories.model_message_audit_repository import ModelMessageAuditRepository
 from yuxi.repositories.subagent_thread_repository import SubagentThreadRepository
+from yuxi.repositories.tool_message_audit_repository import ToolMessageAuditRepository
 from yuxi.services.attachment_service import serialize_attachment
 from yuxi.services.input_message_service import AgentRunInputMessage
 from yuxi.services.langfuse_service import (
@@ -40,13 +42,15 @@ from yuxi.services.langfuse_service import (
     flush_langfuse,
     get_trace_info,
 )
+from yuxi.services.model_message_audit_service import ModelMessageAuditCollector
 from yuxi.services.project_service import create_implicit_project
-from yuxi.services.run_queue_service import publish_cancel_signal
+from yuxi.services.run_queue_service import publish_cancel_signals
 from yuxi.services.subagent_run_service import serialize_subagent_run_state
+from yuxi.services.tool_message_audit_service import ToolMessageAuditCollector
 from yuxi.services.workdir_service import resolve_conversation_workdir_path
 from yuxi.storage.postgres.manager import pg_manager
-from yuxi.storage.postgres.models_business import Agent, User
-from yuxi.utils.guard import content_guard
+from yuxi.storage.postgres.models_business import MODEL_AUDIT_MESSAGE_TYPE, Agent, User
+from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.logging_config import logger
 from yuxi.utils.question_utils import (
     normalize_questions as _normalize_interrupt_questions,
@@ -84,17 +88,6 @@ def _build_agent_context(agent, input_context: dict):
     context = agent.context_schema()
     context.update(input_context)
     return context
-
-
-async def _get_langgraph_messages(agent_instance, config_dict, *, context):
-    graph = await agent_instance.get_graph(context=context)
-    state = await graph.aget_state(config_dict)
-
-    if not state or not state.values:
-        logger.warning("No state found in LangGraph")
-        return None
-
-    return state.values.get("messages", [])
 
 
 def _build_langfuse_run_context(
@@ -145,6 +138,64 @@ def _build_langfuse_run_context(
         extra_metadata=extra_metadata,
         extra_tags=extra_tags,
     )
+
+
+def _build_model_message_audit_collector(meta: dict, thread_id: str) -> ModelMessageAuditCollector | None:
+    """仅为具备完整 AgentRun 因果归属的 worker 流创建 Model 审计器。"""
+    run_id = str(meta.get("run_id") or "").strip()
+    request_id = str(meta.get("request_id") or "").strip()
+    worker_id = str(meta.get("worker_id") or "").strip()
+    if not run_id or not request_id or not worker_id:
+        return None
+    return ModelMessageAuditCollector(
+        run_id=run_id,
+        request_id=request_id,
+        thread_id=thread_id,
+        worker_id=worker_id,
+    )
+
+
+def _build_tool_message_audit_collector(
+    model_audit: ModelMessageAuditCollector | None,
+) -> ToolMessageAuditCollector | None:
+    """复用已校验的 AgentRun 因果归属创建 ToolMessage 审计器。"""
+    if model_audit is None:
+        return None
+    return ToolMessageAuditCollector(
+        run_id=model_audit.run_id,
+        request_id=model_audit.request_id,
+        thread_id=model_audit.thread_id,
+        worker_id=model_audit.worker_id,
+    )
+
+
+def _is_root_tool_audit_event(event: dict[str, Any], thread_id: str) -> bool:
+    """只接受根 StreamMux 或已明确路由回当前线程的 Tool lifecycle。"""
+    namespace = event.get("namespace") or []
+    event_thread_id = event.get("thread_id")
+    return event_thread_id == thread_id or (not namespace and not event_thread_id)
+
+
+async def _persist_agent_run_langfuse_trace(*, db, meta: dict, run_context: LangfuseRunContext) -> None:
+    """在模型执行前用独立短事务固化 Run 的 Langfuse trace。"""
+    run_id = meta.get("run_id")
+    worker_id = meta.get("worker_id")
+    trace_id = run_context.trace_id
+    if not run_id or not worker_id or not trace_id:
+        return
+
+    try:
+        run = await AgentRunRepository(db).set_langfuse_trace_id(
+            str(run_id),
+            str(trace_id),
+            worker_id=str(worker_id),
+        )
+        if run is None:
+            raise ValueError(f"AgentRun 不存在: {run_id}")
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
 
 
 def _normalize_agent_artifact_path(path: object, workdir_path: str | None) -> object:
@@ -248,12 +299,6 @@ def _validate_subagent_attachment_root(*, root_conversation, conversation, uid: 
         raise ValueError("子智能体根 Conversation 的 Project Workdir 不可用")
 
 
-def _runtime_agent_config(agent_config: dict | None, execution_snapshot: dict | None) -> dict:
-    """优先使用 manifest 同次解析的配置，再由调用方追加工作区上下文。"""
-    snapshot_context = execution_snapshot.get("normalized_context") if isinstance(execution_snapshot, dict) else None
-    return snapshot_context if isinstance(snapshot_context, dict) else dict(agent_config or {})
-
-
 def _stream_message_key(metadata: dict | None, namespace: list[str], thread_id: str | None) -> tuple[str, str]:
     if not isinstance(metadata, dict):
         return thread_id or "", "/".join(namespace)
@@ -280,18 +325,10 @@ def _message_chunk_yuxi_events(
 ) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     route = {"thread_id": thread_id, "namespace": namespace}
-    content = msg_dict.get("content")
-    additional_kwargs = msg_dict.get("additional_kwargs") if isinstance(msg_dict.get("additional_kwargs"), dict) else {}
-    reasoning_content = msg_dict.get("reasoning_content")
-    additional_reasoning_content = additional_kwargs.get("reasoning_content")
+    body = parse_assistant_message_body(msg_dict.get("content", ""))
 
     message_event: dict[str, Any] = {"type": "message_delta", "message_id": message_id, **route}
-    if isinstance(content, str) and content:
-        message_event["content"] = content
-    if isinstance(reasoning_content, str) and reasoning_content:
-        message_event["reasoning_content"] = reasoning_content
-    if isinstance(additional_reasoning_content, str) and additional_reasoning_content:
-        message_event["additional_reasoning_content"] = additional_reasoning_content
+    message_event.update({key: value for key, value in body.items() if value})
     if len(message_event) > 4:
         events.append(message_event)
 
@@ -338,6 +375,9 @@ def _protocol_event_yuxi_event(
         text = delta.get("text")
         if delta.get("type") == "text-delta" and isinstance(text, str) and text:
             return {"type": "message_delta", "message_id": message_id, "content": text, **route}
+        reasoning = delta.get("reasoning")
+        if delta.get("type") == "reasoning-delta" and isinstance(reasoning, str) and reasoning:
+            return {"type": "message_delta", "message_id": message_id, "reasoning_content": reasoning, **route}
         return None
 
     if event_name == "content-block-finish":
@@ -405,45 +445,20 @@ def _message_payload_yuxi_events(
     )
 
 
-async def _stream_agent_events(agent, messages, *, input_context=None, **kwargs):
-    async for mode, payload in agent.stream_messages_with_state(
-        messages,
-        input_context=input_context,
-        **kwargs,
-    ):
-        yield mode, payload
+async def _persist_model_request_timing(
+    recorder: FirstModelRequestRecorder | None,
+    meta: dict,
+) -> None:
+    """在 Run 终态事件发布前持久化首次模型请求时间。"""
+    if recorder is not None:
+        await recorder.persist(
+            run_id=str(meta.get("run_id") or ""),
+            worker_id=str(meta.get("worker_id") or ""),
+        )
 
 
-async def _ensure_persistent_sandbox(*, runtime_scope_id: str, uid: str, workdir_path: str) -> None:
-    """物化 Sandbox 的用户级挂载根并确认持久 runtime 可用。"""
-    # Workdir 已在 ARQ 发布前物化；这里只补齐首次构图前缺失的 Skill 投影根。
-    await asyncio.to_thread(get_user_skills_root_dir, uid)
-    backend = ProvisionerSandboxBackend(
-        thread_id=runtime_scope_id,
-        uid=uid,
-        workdir_path=workdir_path,
-    )
-    await asyncio.to_thread(backend.ensure_available)
-
-
-async def _get_existing_message_ids(conv_repo: ConversationRepository, thread_id: str) -> set[str]:
-    existing_messages = await conv_repo.get_messages_by_thread_id(thread_id)
-    return {
-        msg.extra_metadata["id"]
-        for msg in existing_messages
-        if msg.extra_metadata and "id" in msg.extra_metadata and isinstance(msg.extra_metadata["id"], str)
-    }
-
-
-async def _save_ai_message(
-    conv_repo: ConversationRepository,
-    thread_id: str,
-    msg_dict: dict,
-    trace_info: dict[str, Any] | None = None,
-    run_id: str | None = None,
-    request_id: str | None = None,
-    commit: bool = True,
-):
+def _ai_message_content_and_tool_calls(msg_dict: dict) -> tuple[str, list[dict]]:
+    """提取 AIMessage 可展示正文和兼容 ToolCall 投影。"""
     content = msg_dict.get("content", "")
     tool_calls_data = msg_dict.get("tool_calls") or []
     if isinstance(content, list):
@@ -458,6 +473,39 @@ async def _save_ai_message(
         )
     elif not isinstance(content, str):
         content = str(content)
+    return content, list(tool_calls_data)
+
+
+async def _project_ai_tool_calls(
+    conv_repo: ConversationRepository,
+    *,
+    message_id: int,
+    tool_calls_data: list[dict],
+    commit: bool,
+) -> None:
+    """从 AIMessage 单向投影阶段二仍需兼容的 ToolCall。"""
+    for tool_call in tool_calls_data:
+        await conv_repo.add_tool_call(
+            message_id=message_id,
+            tool_name=tool_call.get("name") or "unknown",
+            tool_input=tool_call.get("args", {}),
+            status="pending",
+            langgraph_tool_call_id=tool_call.get("id"),
+            commit=commit,
+        )
+
+
+async def _save_ai_message(
+    conv_repo: ConversationRepository,
+    thread_id: str,
+    msg_dict: dict,
+    trace_info: dict[str, Any] | None = None,
+    run_id: str | None = None,
+    request_id: str | None = None,
+    commit: bool = True,
+    project_tool_calls: bool = True,
+):
+    content, tool_calls_data = _ai_message_content_and_tool_calls(msg_dict)
     extra_metadata = dict(msg_dict)
     if trace_info:
         extra_metadata.update(trace_info)
@@ -473,16 +521,13 @@ async def _save_ai_message(
         commit=commit,
     )
 
-    if ai_msg and tool_calls_data:
-        for tc in tool_calls_data:
-            await conv_repo.add_tool_call(
-                message_id=ai_msg.id,
-                tool_name=tc.get("name") or "unknown",
-                tool_input=tc.get("args", {}),
-                status="pending",
-                langgraph_tool_call_id=tc.get("id"),
-                commit=commit,
-            )
+    if ai_msg and tool_calls_data and project_tool_calls:
+        await _project_ai_tool_calls(
+            conv_repo,
+            message_id=ai_msg.id,
+            tool_calls_data=tool_calls_data,
+            commit=commit,
+        )
 
     return ai_msg
 
@@ -505,20 +550,6 @@ async def _save_tool_message(conv_repo: ConversationRepository, msg_dict: dict, 
         status="success",
         commit=commit,
     )
-
-
-async def _publish_execution_tree_cancel_signals(cancelled: list[tuple[str, str]]) -> None:
-    """尽力通知已由 PostgreSQL 收敛的后代 Run 停止执行。"""
-
-    if not cancelled:
-        return
-    results = await asyncio.gather(
-        *(publish_cancel_signal(run_id) for run_id, _thread_id in cancelled),
-        return_exceptions=True,
-    )
-    for (run_id, _thread_id), result in zip(cancelled, results, strict=True):
-        if isinstance(result, BaseException):
-            logger.warning("Failed to publish execution-tree cancel signal: run=%s", run_id, exc_info=result)
 
 
 async def save_partial_message(
@@ -588,7 +619,7 @@ async def save_partial_message(
                     raise ValueError("AgentRun 部分输出已写入但 interrupted 终态未能在同一事务提交")
                 cancelled_descendants = await run_repo.cancel_active_execution_tree_descendants(terminal_run)
             await conv_repo.db.commit()
-            await _publish_execution_tree_cancel_signals(cancelled_descendants)
+            await publish_cancel_signals([run_id for run_id, _thread_id in cancelled_descendants])
         elif run_id and interrupt_run:
             raise ValueError("AgentRun 中断输出消息未能持久化")
         return message
@@ -602,12 +633,94 @@ async def save_partial_message(
         return None
 
 
+async def _reconcile_model_audit_message(
+    conv_repo: ConversationRepository,
+    *,
+    run_id: str,
+    operation_id: str,
+    msg_dict: dict,
+    trace_info: dict[str, Any] | None,
+) -> Any | None:
+    """用终态 State 补全同一稳定来源键的 Model 审计消息。"""
+    message = await ModelMessageAuditRepository(conv_repo.db).get(
+        run_id=run_id,
+        operation_id=operation_id,
+    )
+    if message is None:
+        return None
+
+    content, tool_calls_data = _ai_message_content_and_tool_calls(msg_dict)
+    metadata = {**dict(message.extra_metadata or {}), **dict(msg_dict)}
+    if trace_info:
+        metadata.update(trace_info)
+    metadata["state_reconciled"] = True
+    message.content = content
+    message.extra_metadata = metadata
+    if message.execution_status == "running":
+        message.execution_status = "completed"
+        message.finished_at = utc_now_naive()
+        metadata["finished_by_reconcile"] = True
+    await conv_repo.db.flush()
+    if tool_calls_data:
+        await _project_ai_tool_calls(
+            conv_repo,
+            message_id=message.id,
+            tool_calls_data=tool_calls_data,
+            commit=False,
+        )
+    return message
+
+
+async def _reconcile_tool_error_from_state(
+    conv_repo: ConversationRepository,
+    *,
+    run_id: str,
+    request_id: str | None,
+    thread_id: str,
+    worker_id: str | None,
+    tool_call_id: str,
+    msg_dict: dict[str, Any],
+) -> None:
+    """用终态 State 补全等待 Run 裁决的 Tool error。"""
+    if not request_id or not worker_id:
+        raise ValueError("ToolMessage 对账需要 worker、thread 和 request 因果归属")
+    content = _tool_message_content(msg_dict.get("content"))
+    await ToolMessageAuditRepository(conv_repo.db).fail(
+        run_id=run_id,
+        request_id=request_id,
+        thread_id=thread_id,
+        worker_id=worker_id,
+        tool_call_id=tool_call_id,
+        output=_json_safe(msg_dict),
+        content=content,
+        error_message=content or "Tool 执行失败",
+        finished_at=utc_now_naive(),
+        duration_ms=None,
+        finished_sequence=None,
+    )
+
+
+def _tool_message_content(content: Any) -> str:
+    """将 ToolMessage content 转为兼容 ToolCall 的稳定文本。"""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    return json.dumps(content, ensure_ascii=False, default=str)
+
+
+def _should_reconcile_tool_state(audit: Any, tool_message: dict[str, Any]) -> bool:
+    """只用终态 State 补全仍等待 Run 裁决的 Tool error。"""
+    if audit.execution_status != "running":
+        return False
+    metadata = audit.extra_metadata if isinstance(audit.extra_metadata, dict) else {}
+    return metadata.get("awaiting_run_terminal") is True and tool_message.get("status") == "error"
+
+
 async def save_messages_from_langgraph_state(
-    agent_instance,
+    state,
     thread_id: str,
     conv_repo: ConversationRepository,
-    config_dict: dict,
-    context,
     trace_info: dict[str, Any] | None = None,
     run_id: str | None = None,
     request_id: str | None = None,
@@ -638,8 +751,19 @@ async def save_messages_from_langgraph_state(
             if locked_run is None:
                 raise ValueError(f"AgentRun 不存在: {run_id}")
 
-        messages = await _get_langgraph_messages(agent_instance, config_dict, context=context)
-        existing_ids = await _get_existing_message_ids(conv_repo, thread_id)
+        messages = state.values.get("messages", [])
+        existing_ids = await conv_repo.get_message_source_ids_by_thread_id(thread_id)
+        current_model_audits = await ModelMessageAuditRepository(conv_repo.db).list_for_run(run_id) if run_id else []
+        current_audit_operation_ids = {message.operation_id for message in current_model_audits if message.operation_id}
+        current_tool_audits = await ToolMessageAuditRepository(conv_repo.db).list_for_run(run_id) if run_id else []
+        current_tool_audits_by_operation = {
+            message.operation_id: message for message in current_tool_audits if message.operation_id
+        }
+        current_tool_operation_ids = set(current_tool_audits_by_operation)
+        reconciled_audits: dict[str, Any] = {}
+        state_model_messages: dict[str, dict[str, Any]] = {}
+        state_tool_messages: dict[str, dict[str, Any]] = {}
+        last_state_ai_id: str | None = None
         last_ai_message = None
         for msg in messages or []:
             if hasattr(msg, "model_dump"):
@@ -660,10 +784,17 @@ async def save_messages_from_langgraph_state(
                     msg_type = "tool"
 
             msg_id = getattr(msg, "id", None) or msg_dict.get("id")
-            if msg_type == "human" or msg_id in existing_ids:
+            if msg_type == "human":
                 continue
 
             if msg_type == "ai":
+                last_state_ai_id = str(msg_id) if msg_id else None
+                if run_id and msg_id and str(msg_id) in current_audit_operation_ids:
+                    # Checkpoint 包含线程完整历史；同一来源键只对账最后一次 AIMessage。
+                    state_model_messages[str(msg_id)] = msg_dict
+                    continue
+                if current_model_audits or msg_id in existing_ids:
+                    continue
                 last_ai_message = await _save_ai_message(
                     conv_repo,
                     thread_id,
@@ -672,12 +803,55 @@ async def save_messages_from_langgraph_state(
                     run_id=run_id,
                     request_id=request_id,
                     commit=run_id is None,
+                    project_tool_calls=run_id is None,
                 )
             elif msg_type == "tool":
-                await _save_tool_message(conv_repo, msg_dict, commit=run_id is None)
+                tool_call_id = str(msg_dict.get("tool_call_id") or "")
+                if run_id and tool_call_id in current_tool_operation_ids:
+                    # Checkpoint 包含线程完整历史；同一来源键只对账最后一次 ToolMessage。
+                    state_tool_messages[tool_call_id] = msg_dict
+                elif not run_id and msg_id not in existing_ids:
+                    await _save_tool_message(conv_repo, msg_dict, commit=True)
 
         if run_id:
+            for operation_id, msg_dict in state_model_messages.items():
+                reconciled = await _reconcile_model_audit_message(
+                    conv_repo,
+                    run_id=run_id,
+                    operation_id=operation_id,
+                    msg_dict=msg_dict,
+                    trace_info=trace_info,
+                )
+                if reconciled is not None:
+                    reconciled_audits[operation_id] = reconciled
+            last_ai_message = reconciled_audits.get(last_state_ai_id or "") or last_ai_message
+            for tool_call_id, msg_dict in state_tool_messages.items():
+                audit = current_tool_audits_by_operation[tool_call_id]
+                if interrupt_run or not _should_reconcile_tool_state(audit, msg_dict):
+                    continue
+                await _reconcile_tool_error_from_state(
+                    conv_repo,
+                    run_id=run_id,
+                    request_id=request_id,
+                    thread_id=thread_id,
+                    worker_id=worker_id,
+                    tool_call_id=tool_call_id,
+                    msg_dict=msg_dict,
+                )
+            if current_model_audits and (complete_run or interrupt_run):
+                terminal_ai_message = reconciled_audits.get(last_state_ai_id or "")
+                if complete_run and terminal_ai_message is None:
+                    raise ValueError("最终 State AIMessage 无法与当前 Run 的 Model lifecycle 事实关联")
+                last_ai_message = terminal_ai_message
             if last_ai_message is not None:
+                has_tool_calls = bool((last_ai_message.extra_metadata or {}).get("tool_calls"))
+                should_publish = (
+                    last_ai_message.message_type != MODEL_AUDIT_MESSAGE_TYPE
+                    or complete_run
+                    or (interrupt_run and not has_tool_calls)
+                )
+                if should_publish:
+                    await conv_repo.publish_assistant_output(last_ai_message)
                 await run_repo.set_output_message(
                     run_id,
                     last_ai_message.id,
@@ -697,7 +871,7 @@ async def save_messages_from_langgraph_state(
                     raise ValueError(f"AgentRun 输出已写入但 {terminal_status} 终态未能在同一事务提交")
                 cancelled_descendants = await run_repo.cancel_active_execution_tree_descendants(terminal_run)
             await conv_repo.db.commit()
-            await _publish_execution_tree_cancel_signals(cancelled_descendants)
+            await publish_cancel_signals([run_id for run_id, _thread_id in cancelled_descendants])
             return terminal_status is not None
         return False
     except asyncio.CancelledError:
@@ -813,30 +987,6 @@ def _interrupt_terminal_details(chunk: bytes) -> tuple[str, str]:
     return status, str(payload.get("message") or "需要用户回答问题")
 
 
-def _ensure_full_msg(full_msg: AIMessage | None, accumulated_content: list[str]) -> AIMessage | None:
-    """如果 full_msg 为空且有累积内容，构建 AIMessage"""
-    if not full_msg and accumulated_content:
-        return AIMessage(content="".join(accumulated_content))
-    return full_msg
-
-
-def _extract_ai_message(messages: list[Any] | None) -> AIMessage | None:
-    """从消息列表中提取最后一条 AIMessage。"""
-    if not isinstance(messages, list):
-        return None
-
-    for msg in reversed(messages):
-        if isinstance(msg, AIMessage):
-            return msg
-
-        msg_dict = msg.model_dump() if hasattr(msg, "model_dump") else {}
-        if msg_dict.get("type") == "ai":
-            content = msg_dict.get("content", "")
-            return msg if hasattr(msg, "content") else AIMessage(content=content)
-
-    return None
-
-
 async def _resolve_agent_runtime(
     *,
     db,
@@ -844,6 +994,7 @@ async def _resolve_agent_runtime(
     requested_agent_slug: str | None,
     thread_id: str | None,
     agent_kind: Literal["main", "subagent"] = "main",
+    execution_snapshot: dict | None = None,
 ) -> tuple[Agent, Any, dict, Any | None]:
     """解析智能体运行时，并返回已校验的线程快照。"""
     agent_repo = AgentRepository(db)
@@ -873,27 +1024,28 @@ async def _resolve_agent_runtime(
     if not backend:
         raise ValueError(f"智能体后端 {agent_item.backend_id} 不存在")
 
-    agent_config = await normalize_agent_context_config(
-        (agent_item.config_json or {}).get("context", {}),
-        db=db,
-        user=user,
-        context_schema=backend.context_schema,
-    )
+    snapshot_context = execution_snapshot.get("normalized_context") if isinstance(execution_snapshot, dict) else None
+    if isinstance(snapshot_context, dict):
+        # manifest 已固化本次执行配置；Graph 准备和 executor 仍执行各自的实时授权检查。
+        agent_config = snapshot_context
+    else:
+        agent_config = await normalize_agent_context_config(
+            (agent_item.config_json or {}).get("context", {}),
+            db=db,
+            user=user,
+            context_schema=backend.context_schema,
+        )
     return agent_item, backend, agent_config, conversation
 
 
 async def check_and_handle_interrupts(
-    agent,
-    langgraph_config: dict,
+    state,
     make_chunk,
     meta: dict,
     thread_id: str,
-    context,
 ) -> AsyncIterator[bytes]:
+    """从本轮已读取的最终 checkpoint 生成中断事件。"""
     try:
-        graph = await agent.get_graph(context=context)
-        state = await graph.aget_state(langgraph_config)
-
         if not state or not state.values:
             return
 
@@ -945,6 +1097,8 @@ async def stream_agent_chat(
     db,
     save_user_message: bool = True,
     execution_snapshot: dict | None = None,
+    on_prepared: Callable[[], Awaitable[None]] | None = None,
+    model_request_recorder: FirstModelRequestRecorder | None = None,
 ) -> AsyncIterator[bytes]:
     start_time = asyncio.get_event_loop().time()
 
@@ -972,18 +1126,6 @@ async def stream_agent_chat(
     image_content = input_message.image_content
     human_message = input_message.require_langchain_message()
     message_type = input_message.message_type
-    system_config = await system_options.get(db)
-    content_guard_enabled = bool(system_config["enable_content_guard"])
-    request_content_guard = content_guard.configured(
-        content_guard_enabled and bool(system_config["enable_content_guard_llm"]),
-        str(system_config["content_guard_llm_model"]),
-    )
-
-    if content_guard_enabled and await request_content_guard.check(query):
-        yield make_chunk(
-            status="error", error_type="content_guard_blocked", error_message="输入内容包含敏感词", meta=meta
-        )
-        return
 
     try:
         agent_item, agent, agent_config, conversation = await _resolve_agent_runtime(
@@ -992,6 +1134,7 @@ async def stream_agent_chat(
             requested_agent_slug=agent_slug,
             thread_id=thread_id,
             agent_kind="subagent" if meta.get("run_type") == "subagent" else "main",
+            execution_snapshot=execution_snapshot,
         )
     except ValueError as e:
         yield make_chunk(status="error", error_type="invalid_agent", error_message=str(e), meta=meta)
@@ -1008,7 +1151,6 @@ async def stream_agent_chat(
         }
     )
 
-    full_msg = None
     accumulated_content: list[str] = []
     trace_info: dict[str, Any] = {}
     last_agent_state_signature = ""
@@ -1024,7 +1166,7 @@ async def stream_agent_chat(
             db=db,
         )
         input_context = await build_agent_input_context(
-            _runtime_agent_config(agent_config, execution_snapshot),
+            agent_config,
             thread_id=thread_id,
             uid=uid,
             run_id=meta.get("run_id"),
@@ -1043,9 +1185,6 @@ async def stream_agent_chat(
         meta["workdir_relative_path"] = workdir_path
         meta["workdir_path"] = input_context["workdir_path"]
         _apply_subagent_runtime_context(input_context, meta)
-        context = _build_agent_context(agent, input_context)
-        if isinstance(execution_snapshot, dict):
-            setattr(context, "_skill_runtime_snapshot", execution_snapshot.get("skill_runtime_snapshot"))
         langfuse_run = _build_langfuse_run_context(
             current_user=current_user,
             thread_id=thread_id,
@@ -1056,6 +1195,7 @@ async def stream_agent_chat(
             message_type=message_type,
             meta=meta,
         )
+        await _persist_agent_run_langfuse_trace(db=db, meta=meta, run_context=langfuse_run)
 
         attachment_conversation = conversation
         if meta.get("run_type") == "subagent":
@@ -1110,163 +1250,122 @@ async def stream_agent_chat(
 
         # 智能体流式执行期间不访问业务数据库，先结束预处理事务并归还连接池。
         await db.commit()
-        await _ensure_persistent_sandbox(
-            runtime_scope_id=runtime_scope_id,
-            uid=uid,
-            workdir_path=workdir_path,
-        )
 
-        # 先构建 langgraph_config
-        langgraph_config = {"configurable": {"thread_id": thread_id, "uid": uid}}
-
+        final_state = None
         protocol_message_ids: dict[tuple[str, str], str] = {}
-        async for mode, payload in _stream_agent_events(
-            agent,
+        model_audit = _build_model_message_audit_collector(meta, thread_id)
+        tool_audit = _build_tool_message_audit_collector(model_audit)
+        callbacks = list(langfuse_run.callbacks)
+        if model_request_recorder is not None:
+            callbacks.append(model_request_recorder)
+        stream_source = agent.stream_messages_with_state(
             messages,
             input_context=input_context,
-            callbacks=langfuse_run.callbacks,
+            callbacks=callbacks,
             metadata=langfuse_run.metadata,
             tags=langfuse_run.tags,
-        ):
-            if mode == "values":
-                agent_state = extract_agent_state(
-                    payload if isinstance(payload, dict) else {},
-                    workdir_path=meta.get("workdir_path"),
-                )
-                signature = _agent_state_signature(agent_state)
-                if signature and signature != last_agent_state_signature:
-                    last_agent_state_signature = signature
-                    yield make_chunk(status="agent_state", agent_state=agent_state, meta=meta)
-                continue
+            on_prepared=on_prepared,
+        )
+        async with aclosing(stream_source):
+            async for mode, payload in stream_source:
+                if mode == "checkpoint":
+                    final_state = payload
+                    continue
+                if mode == "values":
+                    agent_state = extract_agent_state(
+                        payload if isinstance(payload, dict) else {},
+                        workdir_path=meta.get("workdir_path"),
+                    )
+                    signature = _agent_state_signature(agent_state)
+                    if signature and signature != last_agent_state_signature:
+                        last_agent_state_signature = signature
+                        yield make_chunk(status="agent_state", agent_state=agent_state, meta=meta)
+                    continue
 
-            if mode == "custom":
-                compression = _context_compression_payload(payload)
-                if compression is not None:
-                    yield make_chunk(status="context_compression", compression=compression, meta=meta)
-                continue
+                if mode == "custom":
+                    compression = _context_compression_payload(payload)
+                    if compression is not None:
+                        yield make_chunk(status="context_compression", compression=compression, meta=meta)
+                    continue
 
-            if mode == "stream_event":
-                yield make_chunk(
-                    status="stream_event",
-                    event=payload,
-                    namespace=payload.get("namespace") if isinstance(payload, dict) else [],
-                    meta=meta,
-                    thread_id=payload.get("thread_id") if isinstance(payload, dict) else None,
-                )
-                continue
+                if mode == "stream_event":
+                    event_payload = payload if isinstance(payload, dict) else {}
+                    event_namespace = event_payload.get("namespace") or []
+                    event_thread_id = event_payload.get("thread_id")
+                    if (
+                        tool_audit is not None
+                        and event_payload.get("method") == "tools"
+                        and _is_root_tool_audit_event(event_payload, thread_id)
+                    ):
+                        await tool_audit.consume(event_payload)
+                    yield make_chunk(
+                        status="stream_event",
+                        event=event_payload,
+                        namespace=event_namespace,
+                        meta=meta,
+                        thread_id=event_thread_id,
+                    )
+                    continue
 
-            msg, metadata = payload
-            namespace = _metadata_namespace(metadata)
-            chunk_thread_id = _metadata_thread_id(metadata, thread_id if not namespace else None)
-            if namespace and not chunk_thread_id:
-                continue
+                msg, metadata = payload
+                namespace = _metadata_namespace(metadata)
+                chunk_thread_id = _metadata_thread_id(metadata, thread_id if not namespace else None)
+                if namespace and not chunk_thread_id:
+                    continue
 
-            is_subagent_chunk = bool(chunk_thread_id and chunk_thread_id != thread_id)
-            stream_events = _message_payload_yuxi_events(
-                msg,
-                metadata=metadata,
-                namespace=namespace,
-                thread_id=chunk_thread_id,
-                protocol_message_ids=protocol_message_ids,
-            )
-
-            for stream_event in stream_events:
-                content = _stream_event_response(stream_event)
-                if not is_subagent_chunk and content:
-                    trace_info = get_trace_info(langfuse_run)
-                    accumulated_content.append(content)
-                    content_for_check = "".join(accumulated_content[-10:])
-                    if content_guard_enabled and await request_content_guard.check_with_keywords(content_for_check):
-                        full_msg = AIMessage(content="".join(accumulated_content))
-                        await save_partial_message(
-                            conv_repo,
-                            thread_id,
-                            full_msg,
-                            "content_guard_blocked",
-                            trace_info=trace_info,
-                            run_id=meta.get("run_id"),
-                            request_id=meta.get("request_id"),
-                            worker_id=meta.get("worker_id"),
-                            interrupt_run=True,
-                        )
-                        meta["time_cost"] = asyncio.get_event_loop().time() - start_time
-                        yield make_chunk(
-                            status="interrupted",
-                            message="检测到敏感内容，已中断输出",
-                            meta=meta,
-                            terminal_committed=True,
-                        )
-                        return
-
-                yield make_chunk(
-                    content=content,
-                    stream_event=stream_event,
+                is_subagent_chunk = bool(chunk_thread_id and chunk_thread_id != thread_id)
+                if model_audit is not None and not is_subagent_chunk:
+                    await model_audit.consume(msg, metadata)
+                stream_events = _message_payload_yuxi_events(
+                    msg,
                     metadata=metadata,
-                    status="loading",
+                    namespace=namespace,
                     thread_id=chunk_thread_id,
+                    protocol_message_ids=protocol_message_ids,
                 )
 
-        full_msg = _ensure_full_msg(full_msg, accumulated_content)
-        trace_info = get_trace_info(langfuse_run)
+                for stream_event in stream_events:
+                    content = _stream_event_response(stream_event)
+                    if not is_subagent_chunk and content:
+                        trace_info = get_trace_info(langfuse_run)
+                        accumulated_content.append(content)
 
-        if (
-            content_guard_enabled
-            and hasattr(full_msg, "content")
-            and await request_content_guard.check(full_msg.content)
-        ):
-            await save_partial_message(
-                conv_repo,
-                thread_id,
-                full_msg,
-                "content_guard_blocked",
-                trace_info=trace_info,
-                run_id=meta.get("run_id"),
-                request_id=meta.get("request_id"),
-                worker_id=meta.get("worker_id"),
-                interrupt_run=True,
-            )
-            meta["time_cost"] = asyncio.get_event_loop().time() - start_time
-            yield make_chunk(
-                status="interrupted",
-                message="检测到敏感内容，已中断输出",
-                meta=meta,
-                terminal_committed=True,
-            )
-            return
+                    yield make_chunk(
+                        content=content,
+                        stream_event=stream_event,
+                        metadata=metadata,
+                        status="loading",
+                        thread_id=chunk_thread_id,
+                    )
+
+        if final_state is None:
+            raise ValueError("Agent 执行流缺少最终 checkpoint")
+        trace_info = get_trace_info(langfuse_run)
 
         interrupted = False
         interrupt_error_type = None
         interrupt_error_message = None
-        async for chunk in check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id, context):
+        async for chunk in check_and_handle_interrupts(final_state, make_chunk, meta, thread_id):
             interrupted = True
             interrupt_error_type, interrupt_error_message = _interrupt_terminal_details(chunk)
             yield chunk
 
         meta["time_cost"] = asyncio.get_event_loop().time() - start_time
-        try:
-            graph = await agent.get_graph(context=context)
-            state = await graph.aget_state(langgraph_config)
-            agent_state = (
-                extract_agent_state(getattr(state, "values", {}), workdir_path=meta.get("workdir_path"))
-                if state
-                else {}
-            )
-        except Exception:
-            agent_state = {}
+        agent_state = extract_agent_state(final_state.values, workdir_path=meta.get("workdir_path"))
 
         final_signature = _agent_state_signature(agent_state)
         if final_signature and final_signature != last_agent_state_signature:
             last_agent_state_signature = final_signature
             yield make_chunk(status="agent_state", agent_state=agent_state, meta=meta)
 
+        # 先记录模型请求时间，再由同一 lease owner 原子落库终态。
+        await _persist_model_request_timing(model_request_recorder, meta)
         # 先存储数据库，再返回 finished，避免前端查询时数据未落库
         try:
             terminal_committed = await save_messages_from_langgraph_state(
-                agent_instance=agent,
+                state=final_state,
                 thread_id=thread_id,
                 conv_repo=conv_repo,
-                config_dict=langgraph_config,
-                context=context,
                 trace_info=trace_info,
                 run_id=meta.get("run_id"),
                 request_id=meta.get("request_id"),
@@ -1294,6 +1393,7 @@ async def stream_agent_chat(
 
     except (asyncio.CancelledError, ConnectionError) as e:
         logger.warning(f"Client disconnected, cancelling stream: {e}")
+        await _persist_model_request_timing(model_request_recorder, meta)
         yield make_chunk(status="interrupted", message="对话已中断", meta=meta)
 
     except Exception as e:
@@ -1302,7 +1402,7 @@ async def stream_agent_chat(
         error_msg = f"Error streaming messages: {e}"
         error_type = "unexpected_error"
 
-        full_msg = _ensure_full_msg(full_msg, accumulated_content)
+        full_msg = AIMessage(content="".join(accumulated_content)) if accumulated_content else None
 
         async with pg_manager.get_async_session_context() as new_db:
             new_conv_repo = ConversationRepository(new_db)
@@ -1318,9 +1418,11 @@ async def stream_agent_chat(
                 worker_id=meta.get("worker_id"),
             )
 
+        await _persist_model_request_timing(model_request_recorder, meta)
         yield make_chunk(status="error", error_type=error_type, error_message=error_msg, meta=meta)
     finally:
-        flush_langfuse()
+        # 同步 exporter 会等待网络与队列，不能阻塞其他 Run 的事件循环。
+        await asyncio.to_thread(flush_langfuse)
 
 
 async def stream_agent_resume(
@@ -1331,6 +1433,8 @@ async def stream_agent_resume(
     current_user,
     db,
     execution_snapshot: dict | None = None,
+    on_prepared: Callable[[], Awaitable[None]] | None = None,
+    model_request_recorder: FirstModelRequestRecorder | None = None,
 ) -> AsyncIterator[bytes]:
     start_time = asyncio.get_event_loop().time()
 
@@ -1353,6 +1457,7 @@ async def stream_agent_resume(
             user=current_user,
             requested_agent_slug=None,
             thread_id=thread_id,
+            execution_snapshot=execution_snapshot,
         )
     except ValueError as e:
         yield make_resume_chunk(status="error", error_type="invalid_agent", error_message=str(e), meta=meta)
@@ -1373,13 +1478,8 @@ async def stream_agent_resume(
     meta["runtime_scope_id"] = runtime_scope_id
     meta["workdir_relative_path"] = workdir_path
     meta["workdir_path"] = runtime_workdir_path(workdir_path)
-    await _ensure_persistent_sandbox(
-        runtime_scope_id=runtime_scope_id,
-        uid=uid,
-        workdir_path=workdir_path,
-    )
     input_context = await build_agent_input_context(
-        _runtime_agent_config(agent_config, execution_snapshot),
+        agent_config,
         thread_id=thread_id,
         uid=uid,
         run_id=meta.get("run_id"),
@@ -1392,9 +1492,6 @@ async def stream_agent_resume(
     input_context["workdir_relative_path"] = workdir_path
     input_context["workdir_path"] = meta["workdir_path"]
     input_context["git_repositories"] = list(meta.get("git_repositories") or [])
-    context = _build_agent_context(agent, input_context)
-    if isinstance(execution_snapshot, dict):
-        setattr(context, "_skill_runtime_snapshot", execution_snapshot.get("skill_runtime_snapshot"))
     langfuse_run = _build_langfuse_run_context(
         current_user=current_user,
         thread_id=thread_id,
@@ -1405,116 +1502,128 @@ async def stream_agent_resume(
         message_type="resume",
         meta=meta,
     )
+    await _persist_agent_run_langfuse_trace(db=db, meta=meta, run_context=langfuse_run)
     trace_info: dict[str, Any] = {}
     last_agent_state_signature = ""
 
+    callbacks = list(langfuse_run.callbacks)
+    if model_request_recorder is not None:
+        callbacks.append(model_request_recorder)
+    final_state = None
     stream_source = agent.stream_resume_with_state(
         resume_command,
         input_context=input_context,
-        callbacks=langfuse_run.callbacks,
+        callbacks=callbacks,
         metadata=langfuse_run.metadata,
         tags=langfuse_run.tags,
+        on_prepared=on_prepared,
     )
 
     protocol_message_ids: dict[tuple[str, str], str] = {}
+    model_audit = _build_model_message_audit_collector(meta, thread_id)
+    tool_audit = _build_tool_message_audit_collector(model_audit)
 
     try:
-        async for mode, payload in stream_source:
-            if mode == "values":
-                agent_state = extract_agent_state(
-                    payload if isinstance(payload, dict) else {},
-                    workdir_path=meta.get("workdir_path"),
-                )
-                signature = _agent_state_signature(agent_state)
-                if signature and signature != last_agent_state_signature:
-                    last_agent_state_signature = signature
-                    yield make_resume_chunk(status="agent_state", agent_state=agent_state, meta=meta)
-                continue
+        async with aclosing(stream_source):
+            async for mode, payload in stream_source:
+                if mode == "checkpoint":
+                    final_state = payload
+                    continue
+                if mode == "values":
+                    agent_state = extract_agent_state(
+                        payload if isinstance(payload, dict) else {},
+                        workdir_path=meta.get("workdir_path"),
+                    )
+                    signature = _agent_state_signature(agent_state)
+                    if signature and signature != last_agent_state_signature:
+                        last_agent_state_signature = signature
+                        yield make_resume_chunk(status="agent_state", agent_state=agent_state, meta=meta)
+                    continue
 
-            if mode == "stream_event":
-                event_payload = payload if isinstance(payload, dict) else {}
-                yield make_resume_chunk(
-                    status="stream_event",
-                    event=event_payload,
-                    namespace=event_payload.get("namespace") or [],
-                    meta=meta,
-                    thread_id=event_payload.get("thread_id"),
-                )
-                continue
+                if mode == "stream_event":
+                    event_payload = payload if isinstance(payload, dict) else {}
+                    event_namespace = event_payload.get("namespace") or []
+                    event_thread_id = event_payload.get("thread_id")
+                    if (
+                        tool_audit is not None
+                        and event_payload.get("method") == "tools"
+                        and _is_root_tool_audit_event(event_payload, thread_id)
+                    ):
+                        await tool_audit.consume(event_payload)
+                    yield make_resume_chunk(
+                        status="stream_event",
+                        event=event_payload,
+                        namespace=event_namespace,
+                        meta=meta,
+                        thread_id=event_thread_id,
+                    )
+                    continue
 
-            if mode == "custom":
-                compression = _context_compression_payload(payload)
-                if compression is not None:
-                    yield make_resume_chunk(status="context_compression", compression=compression, meta=meta)
-                continue
+                if mode == "custom":
+                    compression = _context_compression_payload(payload)
+                    if compression is not None:
+                        yield make_resume_chunk(status="context_compression", compression=compression, meta=meta)
+                    continue
 
-            if mode != "messages":
-                continue
+                if mode != "messages":
+                    continue
 
-            msg, metadata = payload
-            metadata = dict(metadata or {})
-            namespace = _metadata_namespace(metadata)
-            chunk_thread_id = _metadata_thread_id(metadata, thread_id if not namespace else None)
-            if namespace and not chunk_thread_id:
-                continue
+                msg, metadata = payload
+                metadata = dict(metadata or {})
+                namespace = _metadata_namespace(metadata)
+                chunk_thread_id = _metadata_thread_id(metadata, thread_id if not namespace else None)
+                if namespace and not chunk_thread_id:
+                    continue
 
-            if chunk_thread_id == thread_id:
-                trace_info = get_trace_info(langfuse_run)
+                if chunk_thread_id == thread_id:
+                    trace_info = get_trace_info(langfuse_run)
+                    if model_audit is not None:
+                        await model_audit.consume(msg, metadata)
 
-            stream_events = _message_payload_yuxi_events(
-                msg,
-                metadata=metadata,
-                namespace=namespace,
-                thread_id=chunk_thread_id,
-                protocol_message_ids=protocol_message_ids,
-            )
-
-            for stream_event in stream_events:
-                content = _stream_event_response(stream_event)
-                yield make_resume_chunk(
-                    content=content,
-                    stream_event=stream_event,
+                stream_events = _message_payload_yuxi_events(
+                    msg,
                     metadata=metadata,
-                    status="loading",
+                    namespace=namespace,
                     thread_id=chunk_thread_id,
+                    protocol_message_ids=protocol_message_ids,
                 )
 
-        langgraph_config = {"configurable": {"thread_id": thread_id, "uid": uid}}
+                for stream_event in stream_events:
+                    content = _stream_event_response(stream_event)
+                    yield make_resume_chunk(
+                        content=content,
+                        stream_event=stream_event,
+                        metadata=metadata,
+                        status="loading",
+                        thread_id=chunk_thread_id,
+                    )
+
+        if final_state is None:
+            raise ValueError("Agent 执行流缺少最终 checkpoint")
         interrupted = False
         interrupt_error_type = None
         interrupt_error_message = None
-        async for chunk in check_and_handle_interrupts(
-            agent, langgraph_config, make_resume_chunk, meta, thread_id, context
-        ):
+        async for chunk in check_and_handle_interrupts(final_state, make_resume_chunk, meta, thread_id):
             interrupted = True
             interrupt_error_type, interrupt_error_message = _interrupt_terminal_details(chunk)
             yield chunk
 
         meta["time_cost"] = asyncio.get_event_loop().time() - start_time
 
-        try:
-            graph = await agent.get_graph(context=context)
-            state = await graph.aget_state(langgraph_config)
-            agent_state = (
-                extract_agent_state(getattr(state, "values", {}), workdir_path=meta.get("workdir_path"))
-                if state
-                else {}
-            )
-        except Exception:
-            agent_state = {}
+        agent_state = extract_agent_state(final_state.values, workdir_path=meta.get("workdir_path"))
 
         final_signature = _agent_state_signature(agent_state)
         if final_signature and final_signature != last_agent_state_signature:
             yield make_resume_chunk(status="agent_state", agent_state=agent_state, meta=meta)
 
+        # 先记录模型请求时间，再由同一 lease owner 原子落库终态。
+        await _persist_model_request_timing(model_request_recorder, meta)
         # 先存储数据库，再返回 finished，避免前端查询时数据未落库
         try:
             terminal_committed = await save_messages_from_langgraph_state(
-                agent_instance=agent,
+                state=final_state,
                 thread_id=thread_id,
                 conv_repo=conv_repo,
-                config_dict=langgraph_config,
-                context=context,
                 trace_info=trace_info,
                 run_id=meta.get("run_id"),
                 request_id=meta.get("request_id"),
@@ -1542,6 +1651,7 @@ async def stream_agent_resume(
 
     except (asyncio.CancelledError, ConnectionError) as e:
         logger.warning(f"Client disconnected during resume: {e}")
+        await _persist_model_request_timing(model_request_recorder, meta)
         yield make_resume_chunk(status="interrupted", message="对话恢复已中断", meta=meta)
 
     except Exception as e:
@@ -1560,9 +1670,10 @@ async def stream_agent_resume(
                 worker_id=meta.get("worker_id"),
             )
 
+        await _persist_model_request_timing(model_request_recorder, meta)
         yield make_resume_chunk(message=f"Error during resume: {e}", status="error")
     finally:
-        flush_langfuse()
+        await asyncio.to_thread(flush_langfuse)
 
 
 def _serialize_state_messages(values: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1639,17 +1750,18 @@ async def get_agent_state_view(
             uid=current_uid,
             db=db,
         )
+        runtime_workdir = runtime_workdir_path(workdir_path)
         runtime_scope_id = str(getattr(latest_run, "runtime_scope_id", None) or thread_id)
         input_context["runtime_scope_id"] = runtime_scope_id
         input_context["workdir_relative_path"] = workdir_path
-        input_context["workdir_path"] = runtime_workdir_path(workdir_path)
+        input_context["workdir_path"] = runtime_workdir
         context = _build_agent_context(agent, input_context)
         state = await _read_checkpoint_state(agent, uid=current_uid, thread_id=thread_id, context=context)
         values = getattr(state, "values", {}) if state else {}
         response = {
             "agent_state": extract_agent_state(
                 values,
-                workdir_path=runtime_workdir_path(workdir_path),
+                workdir_path=runtime_workdir,
             )
         }
         interrupt_info = _extract_interrupt_info(state) if state else None

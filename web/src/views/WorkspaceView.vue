@@ -49,7 +49,6 @@
           :current-path="currentPath"
           :databases="databases"
           :loading-databases="loadingDatabases"
-          :knowledge-enabled="knowledgeEnabled"
           :current-uid="userStore.uid"
           :disabled="activeSourceKey !== 'personal' || isReadonlyWorkspacePath"
           :uploading="uploadingFile"
@@ -213,7 +212,6 @@
 <script setup>
 import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { storeToRefs } from 'pinia'
 import { message, Modal } from 'ant-design-vue'
 import { ChevronLeft, ChevronRight, CircleHelp, LibraryBig, Search } from '@lucide/vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
@@ -223,7 +221,6 @@ import WorkspacePreviewPane from '@/components/workspace/WorkspacePreviewPane.vu
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar.vue'
 import { databaseApi } from '@/apis/knowledge_api'
 import { useUserStore } from '@/stores/user'
-import { useRuntimeCapabilitiesStore } from '@/stores/runtimeCapabilities'
 import {
   createWorkspaceDirectory,
   deleteWorkspacePath,
@@ -239,11 +236,10 @@ import {
 } from '@/apis/workspace_api'
 import GlobalSearchModal from '@/components/GlobalSearchModal.vue'
 import { normalizePreviewResponse } from '@/utils/file_preview'
+import { parseDownloadFilename } from '@/utils/file_utils'
 
 const userStore = useUserStore()
 const route = useRoute()
-const runtimeCapabilitiesStore = useRuntimeCapabilitiesStore()
-const { knowledgeEnabled } = storeToRefs(runtimeCapabilitiesStore)
 
 const activeSourceKey = ref('personal')
 const currentPath = ref('/')
@@ -571,10 +567,6 @@ const loadKnowledgeEntries = async (
 }
 
 const loadDatabases = async () => {
-  if (!knowledgeEnabled.value) {
-    databases.value = []
-    return
-  }
   loadingDatabases.value = true
   try {
     const response = await databaseApi.getAccessibleDatabases()
@@ -861,26 +853,6 @@ const deleteEntries = async (targetEntries) => {
   }
 }
 
-const parseDownloadFilename = (contentDisposition) => {
-  if (!contentDisposition) return ''
-
-  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-  if (utf8Match && utf8Match[1]) {
-    try {
-      return decodeURIComponent(utf8Match[1])
-    } catch (error) {
-      console.warn('解析 UTF-8 文件名失败:', error)
-    }
-  }
-
-  const asciiMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
-  if (asciiMatch && asciiMatch[1]) {
-    return asciiMatch[1]
-  }
-
-  return ''
-}
-
 const downloadEntry = async (entry) => {
   if (!entry || entry.is_dir) return
 
@@ -943,10 +915,7 @@ let workspaceResizeObserver = null
 let workspaceMounted = false
 
 onMounted(async () => {
-  await runtimeCapabilitiesStore.ensureLoaded()
-  const initialRequests = [loadWorkspaceEntries('/')]
-  if (knowledgeEnabled.value) initialRequests.push(loadDatabases())
-  await Promise.all(initialRequests)
+  await Promise.all([loadWorkspaceEntries('/'), loadDatabases()])
 
   if (workspaceMainRef.value && typeof ResizeObserver !== 'undefined') {
     workspaceMainWidth.value = workspaceMainRef.value.clientWidth || 0

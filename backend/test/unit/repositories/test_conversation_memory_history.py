@@ -10,7 +10,7 @@ from yuxi.repositories.conversation_repository import (
     MEMORY_HISTORY_READ_RESPONSE_MAX_BYTES,
     ConversationRepository,
 )
-from yuxi.storage.postgres.models_business import Base, Conversation, Message, SubagentThread, ToolCall
+from yuxi.storage.postgres.models_business import AgentRun, Base, Conversation, Message, SubagentThread, ToolCall
 
 pytestmark = pytest.mark.unit
 
@@ -167,3 +167,88 @@ async def test_memory_read_enforces_utf8_and_final_response_budget(session):
     assert result["truncated"] is True
     assert all(len(item["content"].encode("utf-8")) <= 8 * 1024 for item in result["messages"])
     assert len(b"".join(item["content"].encode("utf-8") for item in result["messages"])) <= 32 * 1024
+
+
+async def test_memory_tools_exclude_unproven_or_active_model_audits(session):
+    """include_tools 也只能读取终态 State 已证明的 Model 兼容行。"""
+    conversation = await _conversation(session, thread_id="audits")
+    session.add_all(
+        [
+            AgentRun(
+                id="run-active",
+                conversation_thread_id="audits",
+                runtime_scope_id="audits",
+                agent_slug="main",
+                uid="user-1",
+                status="running",
+                request_id="request-active",
+                conversation_id=conversation.id,
+                input_payload={},
+            ),
+            AgentRun(
+                id="run-unproven",
+                conversation_thread_id="audits",
+                runtime_scope_id="audits",
+                agent_slug="main",
+                uid="user-1",
+                status="completed",
+                request_id="request-unproven",
+                conversation_id=conversation.id,
+                input_payload={},
+            ),
+            AgentRun(
+                id="run-proven",
+                conversation_thread_id="audits",
+                runtime_scope_id="audits",
+                agent_slug="main",
+                uid="user-1",
+                status="interrupted",
+                request_id="request-proven",
+                conversation_id=conversation.id,
+                input_payload={},
+            ),
+        ]
+    )
+    await session.flush()
+    messages = [
+        Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=label,
+            message_type="model_audit",
+            extra_metadata={"state_reconciled": proven},
+            run_id=run_id,
+            request_id=request_id,
+            operation_id=f"model-{label}",
+            execution_status="completed",
+        )
+        for label, run_id, request_id, proven in [
+            ("active", "run-active", "request-active", True),
+            ("unproven", "run-unproven", "request-unproven", False),
+            ("proven", "run-proven", "request-proven", True),
+        ]
+    ]
+    session.add_all(messages)
+    await session.flush()
+    session.add_all(
+        [
+            ToolCall(
+                message_id=message.id,
+                langgraph_tool_call_id=f"call-{message.content}",
+                tool_name="search",
+                tool_output=f"output-{message.content}",
+                status="success",
+            )
+            for message in messages
+        ]
+    )
+    await session.commit()
+
+    result = await ConversationRepository(session).read_memory_messages(
+        uid="user-1",
+        thread_id="audits",
+        include_tools=True,
+    )
+
+    assert [message["content"] for message in result["messages"]] == ["proven"]
+    assert [tool_call["tool_call_id"] for tool_call in result["tool_calls"]] == ["call-proven"]

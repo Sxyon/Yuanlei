@@ -35,12 +35,6 @@ class DocumentParserException(DocumentProcessorException):
     pass
 
 
-class ServiceHealthCheckException(DocumentProcessorException):
-    """服务健康检查异常"""
-
-    pass
-
-
 class BaseDocumentProcessor(ABC):
     """文档处理器基类"""
 

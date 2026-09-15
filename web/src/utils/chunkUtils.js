@@ -123,49 +123,6 @@ export function mergeChunks(chunks) {
 }
 
 /**
- * 将文本分割成段落
- * @param {string} content - 文本内容
- * @returns {Array} - 段落数组
- */
-export function splitIntoParagraphs(content) {
-  if (!content) return []
-
-  // 按换行符分割，保留空段落
-  return content.split(/\n\n+/).filter((para) => para.trim() !== '')
-}
-
-/**
- * 为每个段落找到对应的chunk
- * @param {Array} paragraphs - 段落数组
- * @param {Array} mappedChunks - 映射后的chunks
- * @returns {Array} - 包含chunk信息的段落
- */
-export function mapParagraphsToChunks(paragraphs, mappedChunks) {
-  if (!paragraphs || !mappedChunks) return []
-
-  let currentOffset = 0
-  return paragraphs.map((paragraph) => {
-    const paragraphLength = paragraph.length + 2 // +2 for the \n\n
-
-    // 找到包含此位置的chunk
-    const chunk =
-      mappedChunks.find(
-        (chunk) => currentOffset >= chunk.startOffset && currentOffset < chunk.endOffset
-      ) || mappedChunks[0]
-
-    const result = {
-      content: paragraph,
-      chunk,
-      startOffset: currentOffset,
-      endOffset: currentOffset + paragraphLength
-    }
-
-    currentOffset += paragraphLength
-    return result
-  })
-}
-
-/**
  * 获取chunk的预览文本
  * @param {string} content - chunk内容
  * @param {number} maxLength - 最大长度

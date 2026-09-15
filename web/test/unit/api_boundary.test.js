@@ -285,6 +285,72 @@ test('知识库 API 单一构造并编码文件上传端点', async () => {
   })
 })
 
+test('共享查询参数边界保留 false/0 并省略 undefined/null/空字符串', async () => {
+  await withServer(async (server) => {
+    const { buildQuery } = await server.ssrLoadModule('/src/apis/base.js')
+
+    assert.equal(
+      buildQuery({
+        false_value: false,
+        zero_value: 0,
+        empty_value: '',
+        null_value: null,
+        undefined_value: undefined,
+        text: 'a b/c'
+      }),
+      'false_value=false&zero_value=0&text=a+b%2Fc'
+    )
+  })
+})
+
+test('四个 API 模块复用查询参数边界并保持 endpoint 问号语义', async () => {
+  await withServer(async (server) => {
+    storageValues.set('user_token', 'test-token')
+    const requests = []
+    globalThis.fetch = async (url) => {
+      requests.push(String(url))
+      return new Response(JSON.stringify({ items: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+
+    setActivePinia(createPinia())
+    const { useUserStore } = await server.ssrLoadModule('/src/stores/user.js')
+    useUserStore().userRole = 'admin'
+    const { projectApi } = await server.ssrLoadModule('/src/apis/project_api.js')
+    const { searchViewerFiles } = await server.ssrLoadModule('/src/apis/viewer_filesystem.js')
+    const { getWorkspaceKnowledgeTree } = await server.ssrLoadModule('/src/apis/workspace_api.js')
+    const { documentApi } = await server.ssrLoadModule('/src/apis/knowledge_api.js')
+
+    await projectApi.getHistoryCandidates({ query: '', limit: 0, offset: 0 })
+    await searchViewerFiles('thread-1', '')
+    await getWorkspaceKnowledgeTree('kb-1', {
+      page: 0,
+      pageSize: false,
+      recursive: false,
+      filesOnly: false
+    })
+    await documentApi.listDocuments('kb-1', {
+      page: 0,
+      page_size: false,
+      empty: '',
+      ignored: null
+    })
+    await documentApi.listDocuments('kb-1')
+    await documentApi.documentExists('kb-1')
+
+    assert.deepEqual(requests, [
+      '/api/projects/history-candidates?limit=0&offset=0',
+      '/api/viewer/filesystem/search?thread_id=thread-1',
+      '/api/workspace/knowledge/tree?kb_id=kb-1&page=0&page_size=false&recursive=false&files_only=false',
+      '/api/knowledge/databases/kb-1/documents?page=0&page_size=false',
+      '/api/knowledge/databases/kb-1/documents',
+      '/api/knowledge/databases/kb-1/documents/exists?'
+    ])
+  })
+})
+
 test('Project 与 Workspace API 按 xhome 契约构造请求', async () => {
   await withServer(async (server) => {
     storageValues.set('user_token', 'test-token')

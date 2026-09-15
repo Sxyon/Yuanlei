@@ -81,18 +81,4 @@ export const formatChatTime = (value, nowValue = undefined) => {
   return parsed.format('YYYY-MM-DD')
 }
 
-export const sortByDatetimeDesc = (items, accessor) => {
-  const copy = [...items]
-  copy.sort((a, b) => {
-    const first = coerceDayjs(accessor(a))
-    const second = coerceDayjs(accessor(b))
-
-    if (!first && !second) return 0
-    if (!first) return 1
-    if (!second) return -1
-    return second.valueOf() - first.valueOf()
-  })
-  return copy
-}
-
 export default dayjs

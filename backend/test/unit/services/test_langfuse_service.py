@@ -131,20 +131,20 @@ def test_build_run_context_merges_evaluation_metadata_and_tags(monkeypatch):
     ]
 
 
-def test_get_trace_info_prefers_handler_last_trace_id(run_context_with_last_trace):
+def test_get_trace_info_keeps_precreated_trace_id_when_handler_differs(run_context_with_last_trace):
     trace_info = svc.get_trace_info(run_context_with_last_trace)
 
     assert trace_info == {
-        "langfuse_trace_id": "trace-runtime",
+        "langfuse_trace_id": "trace-req-1",
         "langfuse_user_id": "user-1",
         "langfuse_session_id": "thread-1",
     }
 
 
-async def test_get_trace_url_async_returns_trace_url(run_context_with_last_trace):
-    trace_url = await svc.get_trace_url_async(run_context_with_last_trace)
+async def test_get_trace_url_by_id_async_uses_precreated_trace_id(run_context_with_last_trace):
+    trace_url = await svc.get_trace_url_by_id_async("trace-req-1")
 
-    assert trace_url == "https://langfuse.local/trace/trace-runtime"
+    assert trace_url == "https://langfuse.local/trace/trace-req-1"
 
 
 async def test_get_trace_url_by_id_async_rejects_non_http_url(run_context_with_last_trace):

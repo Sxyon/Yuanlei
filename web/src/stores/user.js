@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/apis/auth_api'
 import { useAgentStore } from './agent'
+import { useProjectsStore } from './projects'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -22,6 +23,7 @@ export const useUserStore = defineStore('user', () => {
 
   // 动作
   function applySession(data) {
+    useProjectsStore().reset()
     token.value = data.access_token
     userId.value = data.user_id
     username.value = data.username
@@ -60,6 +62,7 @@ export const useUserStore = defineStore('user', () => {
     // 清除 agentStore 状态，确保重新登录时能正确加载数据
     const agentStore = useAgentStore()
     agentStore.reset()
+    useProjectsStore().reset()
 
     // 只清除 token
     localStorage.removeItem('user_token')

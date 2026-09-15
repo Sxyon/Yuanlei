@@ -41,7 +41,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, defineExpose, watch } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from '@/utils/dashboardCharts'
 import { dashboardApi } from '@/apis/dashboard_api'
 import { getColorByIndex, truncateLegend } from '@/utils/chartColors'
 import { useThemeStore } from '@/stores/theme'

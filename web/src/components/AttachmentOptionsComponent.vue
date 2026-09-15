@@ -1,6 +1,6 @@
 <template>
   <div
-    class="config-dropdown-panel attachment-options-panel"
+    class="attachment-options-panel"
     role="menu"
     :aria-label="activeResourceType ? `${activeResourceLabel}选择` : '添加内容'"
     @click.stop
@@ -191,7 +191,7 @@ const processImageUpload = async (file) => {
 
 <style lang="less" scoped>
 .attachment-options-panel {
-  width: 240px;
+  width: 100%;
 }
 
 .attachment-options-chevron {

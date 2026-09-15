@@ -24,6 +24,16 @@ def sanitize_processing_params(params: dict | None) -> dict | None:
     return {key: value for key, value in params.items() if key not in _DROPPED_PROCESSING_PARAM_KEYS}
 
 
+def params_for_uploaded_document(item: str, params: dict) -> dict:
+    """将批量上传参数收敛为单个文档的处理参数。"""
+    source_paths = params.get("source_paths")
+    item_params = dict(params)
+    item_params.pop("source_paths", None)
+    if isinstance(source_paths, dict) and source_paths.get(item):
+        item_params["source_path"] = source_paths[item]
+    return item_params
+
+
 def resolve_processing_params(
     kb_additional_params: dict | None,
     file_processing_params: dict | None,

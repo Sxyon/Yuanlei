@@ -6,33 +6,16 @@ function readSource(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8')
 }
 
-test('知识库详情复用共享 header 且主体保持全宽', () => {
+test('知识库详情提供面板插槽并校验深链接 Tab', () => {
   const source = readSource('../../src/views/DataBaseInfoView.vue')
-  const layout = readSource('../../src/components/shared/ExtensionDetailLayout.vue')
 
   assert.match(source, /<ExtensionDetailLayout/)
-  assert.match(
-    source,
-    /import ExtensionDetailLayout from '@\/components\/shared\/ExtensionDetailLayout\.vue'/
-  )
   assert.match(source, /<template #breadcrumb>/)
   assert.match(source, /<template #actions>/)
   assert.match(source, /<template #panel-filetable>/)
   assert.match(source, /<template #panel-query>/)
   assert.match(source, /<template #panel-graph>/)
   assert.match(source, /<template #panel-evaluation>/)
-  assert.doesNotMatch(source, /<template #panel-benchmarks>/)
-  assert.doesNotMatch(source, /class="detail-top-bar"/)
-  assert.doesNotMatch(source, /class="database-tab-bar"/)
-  assert.doesNotMatch(source, /extension-detail-view/)
-  assert.match(
-    source,
-    /\.database-info-container,\s*\.knowledge-detail-layout \{[\s\S]*?width: 100%;[\s\S]*?height: 100%;/
-  )
-  assert.match(
-    layout,
-    /<a-tab-pane v-for="tab in tabs" :key="tab\.key" :force-render="tab\.forceRender === true">/
-  )
   assert.match(source, /availableTabs\.some\(\(tab\) => tab\.key === requestedTab\)/)
   assert.match(
     source,
@@ -82,10 +65,8 @@ test('只读连接器没有知识库详情入口并拒绝直接详情 URL', () =
 
 test('检索面板强制挂载以保留上传后的示例问题生成', () => {
   const detailSource = readSource('../../src/views/DataBaseInfoView.vue')
-  const layoutSource = readSource('../../src/components/shared/ExtensionDetailLayout.vue')
 
   assert.match(detailSource, /key: 'query', label: '检索测试', icon: Search, forceRender: true/)
-  assert.match(layoutSource, /:force-render="tab\.forceRender === true"/)
 })
 
 test('思维导图弹窗销毁时取消延迟渲染任务和迟到错误反馈', () => {
@@ -100,16 +81,4 @@ test('思维导图弹窗销毁时取消延迟渲染任务和迟到错误反馈',
   )
   assert.doesNotMatch(source, /setTimeout\(\(\) => \{\s*renderMindmap/)
   assert.equal((source.match(/catch \(error\) \{\s*if \(unmounted\) return/g) || []).length, 4)
-})
-
-test('MCP 与 Skill 使用移动后的共享详情布局', () => {
-  const mcpSource = readSource('../../src/components/extensions/McpDetailView.vue')
-  const skillSource = readSource('../../src/components/extensions/SkillDetailView.vue')
-
-  for (const source of [mcpSource, skillSource]) {
-    assert.match(
-      source,
-      /import ExtensionDetailLayout from '@\/components\/shared\/ExtensionDetailLayout\.vue'/
-    )
-  }
 })

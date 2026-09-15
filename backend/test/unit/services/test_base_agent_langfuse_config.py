@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import aclosing
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +20,25 @@ class _FakeGraph:
     async def ainvoke(self, payload, *, context, config):
         self.last_invoke_config = config
         return {"messages": []}
+
+
+class _LifecycleGraph:
+    def __init__(self, lifecycle):
+        self.lifecycle = lifecycle
+
+    async def aget_state(self, config):
+        """最终状态只在流耗尽后读取。"""
+        self.lifecycle.append("checkpoint")
+        return {"messages": []}
+
+    async def astream_events(self, *_args, **_kwargs):
+        self.lifecycle.append("stream-created")
+
+        async def events():
+            self.lifecycle.append("first-event")
+            yield {"method": "values", "params": {"namespace": [], "data": {}}}
+
+        return aclosing(events())
 
 
 class _TestAgent(BaseAgent):
@@ -82,3 +102,28 @@ async def test_base_agent_uses_configured_max_execution_steps():
 
     graph = await agent.get_graph()
     assert graph.last_invoke_config["recursion_limit"] == 42
+
+
+@pytest.mark.asyncio
+async def test_base_agent_records_prepared_after_stream_creation_before_first_event():
+    lifecycle = []
+
+    class LifecycleAgent(_TestAgent):
+        async def get_graph(self, **kwargs):
+            lifecycle.append("graph-ready")
+            return _LifecycleGraph(lifecycle)
+
+    async def on_prepared():
+        lifecycle.append("prepared")
+
+    agent = LifecycleAgent()
+    events = []
+    async for event in agent.stream_messages_with_state(
+        ["hello"],
+        input_context={"uid": "user-1", "thread_id": "thread-1"},
+        on_prepared=on_prepared,
+    ):
+        events.append(event)
+
+    assert events == [("values", {}), ("checkpoint", {"messages": []})]
+    assert lifecycle == ["graph-ready", "stream-created", "prepared", "first-event", "checkpoint"]

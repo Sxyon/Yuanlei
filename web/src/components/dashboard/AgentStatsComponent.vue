@@ -43,7 +43,7 @@
 
 <script setup>
 import { ref, onMounted, watch, nextTick, computed } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from '@/utils/dashboardCharts'
 import { getColorByIndex } from '@/utils/chartColors'
 import { useThemeStore } from '@/stores/theme'
 import { formatNumber } from '@/utils/dashboard'

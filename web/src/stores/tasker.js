@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { taskerApi } from '@/apis/tasker'
 import { useUserStore } from '@/stores/user'
@@ -40,6 +40,11 @@ export const useTaskerStore = defineStore('tasker', () => {
   const isDrawerOpen = ref(false)
   const summary = ref(createDefaultSummary())
   let pollingTimer = null
+  let sessionGeneration = 0
+  let listRequestId = 0
+  let taskRevision = 0
+  let pollingFailures = 0
+  const detailRequests = new Map()
 
   const sortedTasks = computed(() => {
     return [...tasks.value].sort((a, b) => {
@@ -76,6 +81,7 @@ export const useTaskerStore = defineStore('tasker', () => {
 
   function upsertTask(rawTask) {
     if (!rawTask || !rawTask.id) return
+    taskRevision += 1
     const task = toTask(rawTask)
     const index = tasks.value.findIndex((item) => item.id === task.id)
     if (index >= 0) {
@@ -87,53 +93,68 @@ export const useTaskerStore = defineStore('tasker', () => {
 
   async function loadTasks(params = {}) {
     if (!userStore.isAdmin) {
-      tasks.value = []
-      summary.value = createDefaultSummary()
-      lastError.value = null
-      syncPolling()
+      reset()
       return
     }
 
+    const requestId = ++listRequestId
+    const revision = taskRevision
+    stopPolling()
     loading.value = true
     lastError.value = null
     try {
       const response = await taskerApi.fetchTasks(params)
+      if (requestId !== listRequestId || revision !== taskRevision) return
       const taskList = response?.tasks || []
       summary.value = {
         ...createDefaultSummary(),
         ...(response?.summary || {})
       }
       tasks.value = taskList.map(toTask)
+      pollingFailures = 0
     } catch (error) {
+      if (requestId !== listRequestId || revision !== taskRevision) return
       console.error('加载任务列表失败', error)
       lastError.value = error
-      summary.value = createDefaultSummary()
+      pollingFailures += 1
     } finally {
-      loading.value = false
-      syncPolling()
+      if (requestId === listRequestId) {
+        loading.value = false
+        syncPolling()
+      }
     }
   }
 
   async function refreshTask(taskId) {
     if (!taskId) return
+    const request = Symbol(taskId)
+    const listId = listRequestId
+    detailRequests.set(taskId, request)
     try {
       const response = await taskerApi.fetchTaskDetail(taskId)
+      if (detailRequests.get(taskId) !== request || listId !== listRequestId) return
       if (response?.task) {
         upsertTask(response.task)
       }
     } catch (error) {
+      if (detailRequests.get(taskId) !== request || listId !== listRequestId) return
       console.error(`刷新任务 ${taskId} 详情失败`, error)
       lastError.value = error
+    } finally {
+      if (detailRequests.get(taskId) === request) detailRequests.delete(taskId)
     }
   }
 
   async function cancelTask(taskId) {
     if (!taskId) return
+    const generation = sessionGeneration
     try {
       await taskerApi.cancelTask(taskId)
+      if (generation !== sessionGeneration) return
       message.success('取消请求已提交')
       await refreshTask(taskId)
     } catch (error) {
+      if (generation !== sessionGeneration) return
       console.error(`取消任务 ${taskId} 失败`, error)
       message.error(error?.message || '取消任务失败')
     }
@@ -141,8 +162,12 @@ export const useTaskerStore = defineStore('tasker', () => {
 
   async function deleteTask(taskId) {
     if (!taskId) return
+    const generation = sessionGeneration
     try {
       await taskerApi.deleteTask(taskId)
+      if (generation !== sessionGeneration) return
+      taskRevision += 1
+      detailRequests.delete(taskId)
       message.success('删除任务成功')
       // 从本地列表中移除
       const index = tasks.value.findIndex((item) => item.id === taskId)
@@ -150,6 +175,7 @@ export const useTaskerStore = defineStore('tasker', () => {
         tasks.value.splice(index, 1)
       }
     } catch (error) {
+      if (generation !== sessionGeneration) return
       console.error(`删除任务 ${taskId} 失败`, error)
       message.error(error?.message || '删除任务失败')
     }
@@ -172,6 +198,15 @@ export const useTaskerStore = defineStore('tasker', () => {
     syncPolling()
   }
 
+  /** 在提交开始时绑定会话，拒绝切换账号后晚到的入队回执。 */
+  function createTaskRegistration() {
+    const generation = sessionGeneration
+    return (task) => {
+      if (generation !== sessionGeneration || !userStore.isAdmin) return
+      registerQueuedTask(task)
+    }
+  }
+
   function openDrawer() {
     isDrawerOpen.value = true
     syncPolling()
@@ -182,16 +217,22 @@ export const useTaskerStore = defineStore('tasker', () => {
     syncPolling()
   }
 
-  function startPolling(interval = 5000) {
-    if (pollingTimer) return
-    pollingTimer = setInterval(() => {
-      loadTasks()
+  function startPolling() {
+    if (pollingTimer || loading.value) return
+    const interval = Math.min(5000 * 2 ** Math.min(pollingFailures, 3), 30000)
+    pollingTimer = setTimeout(() => {
+      pollingTimer = null
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        syncPolling()
+        return
+      }
+      void loadTasks()
     }, interval)
   }
 
   function stopPolling() {
     if (pollingTimer) {
-      clearInterval(pollingTimer)
+      clearTimeout(pollingTimer)
       pollingTimer = null
     }
   }
@@ -207,12 +248,21 @@ export const useTaskerStore = defineStore('tasker', () => {
   }
 
   function reset() {
+    sessionGeneration += 1
+    listRequestId += 1
+    detailRequests.clear()
+    pollingFailures = 0
+    loading.value = false
     stopPolling()
     tasks.value = []
     lastError.value = null
     isDrawerOpen.value = false
     summary.value = createDefaultSummary()
   }
+
+  // 同步失效：退出或切换账号后，旧请求即使完成也不能写回新会话。
+  watch([() => userStore.token, () => userStore.userRole], reset, { flush: 'sync' })
+  onScopeDispose(reset)
 
   return {
     isDrawerOpen,
@@ -228,7 +278,7 @@ export const useTaskerStore = defineStore('tasker', () => {
     refreshTask,
     cancelTask,
     deleteTask,
-    registerQueuedTask,
+    createTaskRegistration,
     reset,
     openDrawer,
     closeDrawer

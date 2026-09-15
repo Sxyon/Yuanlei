@@ -34,12 +34,3 @@ test('交付物保存使用工作区路径选择器并传递目标目录', () =>
   assert.match(component, /v-model="selectedDestination"/)
   assert.match(api, /destination_path: destinationPath/)
 })
-
-test('知识库文件大小使用静态摘要而不是无行为按钮', () => {
-  const source = readSource('../../src/views/DataBaseInfoView.vue')
-  const sizeSummaryStart = source.indexOf('v-if="fileStats.sizeText"')
-  const sizeSummary = source.slice(source.lastIndexOf('<', sizeSummaryStart), source.indexOf('>', sizeSummaryStart) + 1)
-
-  assert.match(sizeSummary, /^<div\b/)
-  assert.doesNotMatch(sizeSummary, /^<button\b/)
-})

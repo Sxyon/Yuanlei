@@ -128,6 +128,11 @@ async def _assert_run_persisted(
                 ar.conversation_id,
                 ar.input_message_id,
                 ar.output_message_id,
+                ar.created_at,
+                ar.started_at,
+                ar.prepared_at,
+                ar.first_output_at,
+                ar.finished_at,
                 input_msg.role AS input_role,
                 input_msg.request_id AS input_request_id,
                 output_msg.role AS output_role,
@@ -156,6 +161,8 @@ async def _assert_run_persisted(
         assert row["conversation_id"] is not None
         assert row["input_message_id"] is not None
         assert row["output_message_id"] is not None
+        assert row["created_at"] <= row["started_at"] <= row["prepared_at"]
+        assert row["prepared_at"] <= row["first_output_at"] <= row["finished_at"]
         assert row["input_role"] == "user"
         assert row["input_request_id"] == request_id
         assert row["output_role"] == "assistant"
@@ -203,12 +210,24 @@ async def test_async_agent_run_stream_result_and_persistence(
         assert result_payload.get("thread_id") == thread_id
         assert result_payload.get("request_id") == request_id
         assert EXPECTED_OUTPUT in str(result_payload.get("output") or ""), result_payload
+        assert result_payload["timing"]["preparation_latency_ms"] is not None
+        assert result_payload["timing"]["first_output_latency_ms"] is not None
+        assert result_payload["timing"]["model_first_output_latency_ms"] is not None
 
         history_response = await e2e_client.get(f"/api/chat/thread/{thread_id}/history", headers=e2e_headers)
         assert history_response.status_code == 200, history_response.text
-        history_text = json.dumps(history_response.json(), ensure_ascii=False)
+        history_payload = history_response.json()
+        history_text = json.dumps(history_payload, ensure_ascii=False)
         assert request_id in history_text, history_text
         assert EXPECTED_OUTPUT in history_text, history_text
+        assistant_message = next(
+            message
+            for message in history_payload["history"]
+            if message.get("run_id") == run_id and message.get("type") == "ai"
+        )
+        assert "run_timing" not in assistant_message
+        history_run = next(run for run in history_response.json()["runs"] if run["run_id"] == run_id)
+        assert history_run["timing"]["first_output_latency_ms"] is not None
 
         await _assert_run_persisted(
             run_id=run_id,

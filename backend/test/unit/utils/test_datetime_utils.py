@@ -1,6 +1,6 @@
 import datetime as dt
 
-from yuxi.utils.datetime_utils import UTC, format_utc_datetime
+from yuxi.utils.datetime_utils import UTC, duration_ms, format_utc_datetime
 
 
 def test_format_utc_datetime_treats_naive_database_value_as_utc():
@@ -14,3 +14,12 @@ def test_format_utc_datetime_converts_aware_value_to_utc():
 
     assert format_utc_datetime(value) == "2026-08-14T16:23:00Z"
     assert format_utc_datetime(value.astimezone(UTC)) == "2026-08-14T16:23:00Z"
+
+
+def test_duration_ms_returns_non_negative_duration_or_none():
+    start = dt.datetime(2026, 9, 4, 8, 0, 0)
+
+    assert duration_ms(start, start + dt.timedelta(milliseconds=1234)) == 1234
+    assert duration_ms(start, start - dt.timedelta(milliseconds=1)) is None
+    assert duration_ms(None, start) is None
+    assert duration_ms(start, None) is None

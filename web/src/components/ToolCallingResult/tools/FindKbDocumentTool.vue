@@ -27,6 +27,7 @@ import { computed } from 'vue'
 import BaseToolCall from '../BaseToolCall.vue'
 import KbDocumentPreview from './KbDocumentPreview.vue'
 import { useDatabaseStore } from '@/stores/database'
+import { parseToolCallArgs } from '../toolRegistry'
 
 const props = defineProps({
   toolCall: {
@@ -37,16 +38,7 @@ const props = defineProps({
 
 const databaseStore = useDatabaseStore()
 
-const args = computed(() => {
-  const value = props.toolCall.args || props.toolCall.function?.arguments
-  if (!value) return {}
-  if (typeof value === 'object') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return {}
-  }
-})
+const args = computed(() => parseToolCallArgs(props.toolCall))
 
 const resourceName = computed(() => databaseStore.getDatabaseNameById(args.value.kb_id))
 const fileId = computed(() => args.value.file_id || '')

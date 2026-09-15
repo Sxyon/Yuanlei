@@ -106,6 +106,24 @@ test('状态面板保留 cancelled 待办的已取消语义', () => {
   assert.match(source, /&\.is-cancelled\s*{[^}]*border-style:\s*dashed;/s)
 })
 
+test('暂停队列仍有请求时禁用上下文压缩', () => {
+  const source = readFileSync(
+    new URL('../../src/components/AgentChatComponent.vue', import.meta.url),
+    'utf8'
+  )
+  const action = source.slice(
+    source.indexOf('class="context-compression-action"'),
+    source.indexOf('</section>', source.indexOf('class="context-compression-action"'))
+  )
+  const handler = source.slice(
+    source.indexOf('const handleContextCompression'),
+    source.indexOf('// 发送或中断')
+  )
+
+  assert.match(action, /:disabled="[^"]*hasQueuedRequests/s)
+  assert.match(handler, /hasQueuedRequests\.value/)
+})
+
 test('文件树仅在页面可见的运行期文件视图中轮询', () => {
   const base = {
     panelOpen: true,

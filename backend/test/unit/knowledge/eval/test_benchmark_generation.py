@@ -20,10 +20,6 @@ from yuxi.knowledge.eval.benchmark_generation import (
 )
 
 
-class FakeKnowledgeBase:
-    pass
-
-
 class FakeLlm:
     def __init__(self, gold_chunk_id="anchor_chunk"):
         self.gold_chunk_id = gold_chunk_id
@@ -414,13 +410,20 @@ async def test_iter_generated_benchmark_items_drains_reorder_buffer_on_exception
     monkeypatch.setattr(benchmark_generation, "select_model", lambda model_spec: TrackingLlm())
     monkeypatch.setattr(benchmark_generation, "kb_manager", NoQueryKnowledgeBase())
     call_count = 0
+    first_call_started = asyncio.Event()
+    release_first_call = asyncio.Event()
 
     async def fake_generate(**kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            await asyncio.sleep(0.1)
+            first_call_started.set()
+            await release_first_call.wait()
             raise RuntimeError("worker error")
+        if call_count == 2:
+            assert first_call_started.is_set()
+        if call_count == 4:
+            release_first_call.set()
         return {
             "query": f"q{call_count}",
             "gold_answer": "a",
@@ -442,7 +445,11 @@ async def test_iter_generated_benchmark_items_drains_reorder_buffer_on_exception
 
     # 无论哪个 worker 领到 attempt 0（延迟后抛异常），其他 worker 产出的 item
     # 都会因 next_attempt 游标未前进而卡在 reorder 缓冲中，经 drain 路径 yield
-    assert len(items) >= 1
+    assert items == [
+        {"query": "q2", "gold_answer": "a", "gold_chunk_ids": ["anchor_chunk"]},
+        {"query": "q3", "gold_answer": "a", "gold_chunk_ids": ["anchor_chunk"]},
+        {"query": "q4", "gold_answer": "a", "gold_chunk_ids": ["anchor_chunk"]},
+    ]
 
 
 @pytest.mark.asyncio

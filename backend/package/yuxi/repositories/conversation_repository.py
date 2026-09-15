@@ -5,13 +5,18 @@
 import json
 import uuid as uuid_lib
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload, load_only, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from yuxi.storage.postgres.models_business import (
+    AGENT_RUN_TERMINAL_STATUSES,
+    AUDIT_MESSAGE_TYPES,
+    MODEL_AUDIT_MESSAGE_TYPE,
+    TOOL_AUDIT_MESSAGE_TYPE,
     UNVIEWED_RUN_MARKER,
+    AgentRun,
     Conversation,
     ConversationStats,
     Message,
@@ -27,7 +32,12 @@ MESSAGE_SEARCH_SNIPPET_RADIUS = 72
 MESSAGE_SEARCH_SNIPPET_MAX_LENGTH = 180
 MESSAGE_SEARCH_SNIPPETS_PER_THREAD = 2
 MESSAGE_SEARCH_ROLES = ("user", "assistant")
-MESSAGE_SEARCH_EXCLUDED_TYPES = ("tool_call", "tool_result")
+MESSAGE_SEARCH_EXCLUDED_TYPES = (
+    "tool_call",
+    "tool_result",
+    MODEL_AUDIT_MESSAGE_TYPE,
+    TOOL_AUDIT_MESSAGE_TYPE,
+)
 INVOCATION_CONVERSATION_SOURCES = ("agent_call", "agent_evaluation")
 
 # ==== 历史对话检索参数 ====
@@ -46,6 +56,16 @@ MEMORY_HISTORY_READ_RESPONSE_MAX_BYTES = 64 * 1024  # 历史读取完整 JSON �
 
 def _json_size(value: object) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8"))
+
+
+def _state_proven_model_tool_call_condition():
+    """只允许终态 State 已证明的 Model 兼容行进入普通读模型。"""
+    return and_(
+        Message.message_type == MODEL_AUDIT_MESSAGE_TYPE,
+        Message.tool_calls.any(),
+        Message.extra_metadata["state_reconciled"].as_boolean().is_(True),
+        Message.run_id.in_(select(AgentRun.id).where(AgentRun.status.in_(AGENT_RUN_TERMINAL_STATUSES))),
+    )
 
 
 class ConversationRepository:
@@ -344,6 +364,19 @@ class ConversationRepository:
         logger.debug(f"Added tool call {tool_name} to message {message_id}")
         return tool_call
 
+    async def publish_assistant_output(self, message: Message) -> None:
+        """把最终 AIMessage 发布到普通历史并刷新 Conversation 读模型。"""
+        if message.role != "assistant":
+            raise ValueError("只有 assistant Message 可以发布为最终输出")
+        if message.message_type == MODEL_AUDIT_MESSAGE_TYPE:
+            message.message_type = "text"
+        conversation = await self.get_conversation_by_id(message.conversation_id)
+        if conversation is None:
+            raise ValueError("最终输出缺少 Conversation")
+        conversation.updated_at = utc_now_naive()
+        await self._update_message_count(message.conversation_id)
+        await self.db.flush()
+
     async def get_messages(self, conversation_id: int, limit: int | None = None, offset: int = 0) -> list[Message]:
         query = (
             select(Message)
@@ -351,7 +384,14 @@ class ConversationRepository:
                 selectinload(Message.tool_calls),
                 selectinload(Message.feedbacks),
             )
-            .where(Message.conversation_id == conversation_id)
+            .where(
+                Message.conversation_id == conversation_id,
+                or_(
+                    Message.message_type.is_(None),
+                    Message.message_type.notin_(AUDIT_MESSAGE_TYPES),
+                    _state_proven_model_tool_call_condition(),
+                ),
+            )
             .order_by(Message.created_at.asc())
         )
 
@@ -360,6 +400,73 @@ class ConversationRepository:
 
         result = await self.db.execute(query)
         return list(result.scalars().unique().all())
+
+    async def get_message_source_ids_by_thread_id(self, thread_id: str) -> set[str]:
+        """读取全部持久 Message 来源 ID，包括普通历史隐藏的审计行。"""
+        conversation = await self.get_conversation_by_thread_id(thread_id)
+        if conversation is None:
+            return set()
+        result = await self.db.execute(select(Message.extra_metadata).where(Message.conversation_id == conversation.id))
+        return {
+            str(metadata["id"])
+            for metadata in result.scalars().all()
+            if isinstance(metadata, dict) and isinstance(metadata.get("id"), str)
+        }
+
+    async def list_message_audits(self, conversation_id: int, *, limit: int) -> tuple[list[Message], bool]:
+        """返回有界审计时间线；operation_id 同时覆盖已发布的最终 Model。"""
+        result = await self.db.execute(
+            select(Message)
+            .join(AgentRun, AgentRun.id == Message.run_id)
+            .options(selectinload(Message.tool_calls))
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.operation_id.is_not(None),
+                Message.role.in_(("assistant", "tool")),
+            )
+            .order_by(AgentRun.created_at.desc(), AgentRun.id.desc(), Message.sequence.desc(), Message.id.desc())
+            .limit(limit + 1)
+        )
+        messages = list(result.scalars().unique().all())
+        truncated = len(messages) > limit
+        return list(reversed(messages[:limit])), truncated
+
+    async def list_agent_runs_for_history(self, conversation_id: int) -> list[AgentRun]:
+        """按历史顺序读取当前会话全部轻量 Run，包含没有消息的运行。"""
+        result = await self.db.execute(
+            select(AgentRun)
+            .where(AgentRun.conversation_id == conversation_id)
+            .options(
+                load_only(
+                    AgentRun.id,
+                    AgentRun.request_id,
+                    AgentRun.run_type,
+                    AgentRun.created_by_run_id,
+                    AgentRun.status,
+                    AgentRun.created_at,
+                    AgentRun.started_at,
+                    AgentRun.prepared_at,
+                    AgentRun.first_model_request_at,
+                    AgentRun.first_output_at,
+                    AgentRun.finished_at,
+                    raiseload=True,
+                )
+            )
+            .order_by(AgentRun.created_at.asc(), AgentRun.id.asc())
+        )
+        return list(result.scalars().all())
+
+    async def list_agent_runs_for_trace(self, conversation_id: int, *, limit: int) -> tuple[list[AgentRun], bool]:
+        """按创建顺序返回有界 AgentRun 调试事实。"""
+        result = await self.db.execute(
+            select(AgentRun)
+            .where(AgentRun.conversation_id == conversation_id)
+            .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+            .limit(limit + 1)
+        )
+        runs = list(result.scalars().all())
+        truncated = len(runs) > limit
+        return list(reversed(runs[:limit])), truncated
 
     async def get_messages_by_thread_id(
         self, thread_id: str, limit: int | None = None, offset: int = 0
@@ -577,10 +684,16 @@ class ConversationRepository:
         if conversation is None:
             raise ValueError("历史线程不存在或不可见")
 
+        message_type_condition = or_(
+            Message.message_type.is_(None),
+            Message.message_type.notin_(MESSAGE_SEARCH_EXCLUDED_TYPES),
+        )
+        if include_tools:
+            message_type_condition = or_(message_type_condition, _state_proven_model_tool_call_condition())
         message_conditions = [
             Message.conversation_id == conversation.id,
             Message.role.in_(MESSAGE_SEARCH_ROLES),
-            or_(Message.message_type.is_(None), Message.message_type.notin_(MESSAGE_SEARCH_EXCLUDED_TYPES)),
+            message_type_condition,
         ]
         if message_id is None:
             query = (
@@ -856,7 +969,12 @@ class ConversationRepository:
 
         stats = await self.get_stats(conversation_id)
         if stats:
-            result = await self.db.execute(select(func.count()).where(Message.conversation_id == conversation_id))
+            result = await self.db.execute(
+                select(func.count()).where(
+                    Message.conversation_id == conversation_id,
+                    or_(Message.message_type.is_(None), Message.message_type.notin_(AUDIT_MESSAGE_TYPES)),
+                )
+            )
             message_count = result.scalar()
             stats.message_count = message_count
             await self.db.flush()

@@ -164,13 +164,19 @@ async def test_merge_query_params_options_preserves_concurrent_partial_updates(m
 
 
 @pytest.mark.asyncio
-async def test_update_stats_preserves_concurrent_additional_params(monkeypatch):
+async def test_refresh_stats_preserves_concurrent_additional_params(monkeypatch):
     row = SimpleNamespace(kb_id="kb_1", additional_params={"graph_build_config": {"locked": True}})
     session = _FakeSession(row)
     _patch_session(monkeypatch, session)
     _patch_cache_lock(monkeypatch, [])
 
-    result = await KnowledgeBaseRepository().update_stats("kb_1", {"file_count": 3})
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "yuxi.repositories.knowledge_file_repository.KnowledgeFileRepository.query_kb_file_stats",
+        AsyncMock(return_value={"file_count": 3}),
+    )
+    result = await KnowledgeBaseRepository().refresh_stats("kb_1")
 
     assert result is row
     assert row.additional_params == {

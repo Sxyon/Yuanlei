@@ -28,7 +28,7 @@ Project 持久化拥有名称与生命周期，Conversation 持久化拥有线�
 - Project 与 Conversation 的软删除使用同一事务提交；Project 行锁串行化重命名、删除与显式 Project 下的 Conversation 创建。
 - 删除不会取消已经投递的 AgentRun；删除前已取得执行 Owner 的 Run 仍可能产生外部副作用和审计记录，但 deleted Conversation 不会重新出现在普通历史。
 - 线程分页只组织已经加载的 Conversation；项目视图通过既有“加载更多”继续补齐，不声称首屏包含全部历史。
-- business schema v2 增加 Project 生命周期列；storage-migrator 明确支持已发布 v1 顺序收敛，其他未知版本继续拒绝启动。
+- Project 生命周期结构通过 0.7.2 发布版到当前版本的完整业务升级创建；当前版本与升级边界由[版本化 Schema 迁移 Owner](./2026-08-24-versioned-schema-migration-owner.md)定义。
 
 ## 验证
 
@@ -39,6 +39,6 @@ Project 持久化拥有名称与生命周期，Conversation 持久化拥有线�
 | Project 删除不修改 Workdir 字节 | Project service 与 `yuxi.workspace` | integration 删除后回读哨兵目录 | linked Workdir 保持存在 | Passed |
 | 项目分组位于最近分组上方且两者同时展示，最近只包含其他对话 | Conversation 导航组件与 Project/Thread API | 前端 unit；Playwright DOM 顺序、分类结果、折叠动画与最终截图 | Project 加载中或失败、空 Project、implicit Conversation、deleted Project、长名称、置顶项跨页、键盘操作菜单 | Passed |
 | Project 删除与 Conversation 创建线性化 | Project 行锁与 Conversation 创建事务 | service guard unit；隔离 PostgreSQL 并发事务回读 | 创建持锁时删除等待，最终 Project 与新 Conversation 同为 deleted | Passed |
-| Schema 从 business v1 收敛到 v2 | storage-migrator 与 PostgreSQL schema version | 完整后端 unit 1565 passed；隔离数据库迁移与真实 API 启动 | 未知未来版本 fail-closed；迁移失败不提前记录版本 | Passed |
+| Schema 从 0.7.2 收敛到当前版本 | storage-migrator 与 PostgreSQL schema version | storage migration unit；隔离数据库迁移与真实 API 启动 | 发布版结构补齐缺失 DDL；未知版本 fail-closed；迁移失败不提前记录版本 | Passed |
 
 最终页面验证使用真实 Vue 页面、Docker PostgreSQL 与真实 FastAPI；分组并列展示、FolderOpen/FolderClosed 状态和折叠动画在浅色、深色 1440×900 视口完成回读。截图作为 PR 外部素材保存，不进入仓库。

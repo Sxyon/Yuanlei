@@ -4,7 +4,7 @@
     :appearance="appearance"
     :default-expanded="defaultExpanded"
     :status="baseStatus"
-    :force-show-result="Boolean(parsedResult)"
+    :force-show-result="hasParsedResult"
     hide-params
   >
     <template #header>
@@ -68,7 +68,13 @@
 import { computed } from 'vue'
 import BaseToolCall from '../BaseToolCall.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
-import { getToolCallId, parseToolCallArgs, parseToolCallResult } from '../toolRegistry'
+import {
+  getToolCallId,
+  parseToolCallArgs,
+  parseToolCallResult,
+  getSubagentRunStatus,
+  getToolCallDisplayStatus
+} from '../toolRegistry'
 
 const props = defineProps({
   toolCall: {
@@ -106,6 +112,7 @@ const STATUS_LABELS = {
   cancel_requested: '取消中',
   completed: '已完成',
   existing: '已存在',
+  error: '失败',
   failed: '失败',
   interrupted: '已中断',
   ok: '成功',
@@ -115,12 +122,14 @@ const STATUS_LABELS = {
   success: '成功'
 }
 
-const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted'])
-const failedStatuses = new Set(['failed', 'cancelled', 'interrupted'])
+const failedStatuses = new Set(['error', 'failed', 'cancelled', 'interrupted'])
 
 const toolId = computed(() => getToolCallId(props.toolCall))
 const args = computed(() => parseToolCallArgs(props.toolCall))
 const parsedResult = computed(() => parseToolCallResult(props.toolCall))
+const hasParsedResult = computed(
+  () => parsedResult.value !== null && parsedResult.value !== undefined
+)
 const subagentRun = computed(() => props.toolCall.subagent_run || null)
 
 const headerTitle = computed(() => {
@@ -136,15 +145,7 @@ const headerTitle = computed(() => {
   return name ? `${label}: ${name}` : label
 })
 
-const effectiveStatus = computed(() => {
-  return (
-    parsedResult.value?.run_status ||
-    parsedResult.value?.active_run_status ||
-    parsedResult.value?.status ||
-    subagentRun.value?.status ||
-    ''
-  )
-})
+const effectiveStatus = computed(() => getSubagentRunStatus(props.toolCall))
 
 const statusLabel = computed(() => {
   const status = String(effectiveStatus.value || '').trim()
@@ -162,13 +163,7 @@ const runStatusClass = computed(() => ({
   'is-failed': failedStatuses.has(effectiveStatus.value)
 }))
 
-const baseStatus = computed(() => {
-  if (props.toolCall.status === 'error' || failedStatuses.has(effectiveStatus.value)) return 'error'
-  if (props.toolCall.tool_call_result || terminalStatuses.has(effectiveStatus.value))
-    return 'completed'
-  if (parsedResult.value?.status) return 'completed'
-  return ''
-})
+const baseStatus = computed(() => getToolCallDisplayStatus(props.toolCall))
 
 const shortText = (value, limit = 60) => {
   const text = String(value || '')
@@ -188,7 +183,8 @@ const headerDetail = computed(() => {
 })
 
 const metaItems = computed(() => {
-  const result = parsedResult.value || {}
+  const result =
+    parsedResult.value && typeof parsedResult.value === 'object' ? parsedResult.value : {}
   const items = [
     ['run_id', result.run_id || args.value.run_id || result.active_run_id],
     ['thread_id', result.thread_id || args.value.thread_id || subagentRun.value?.child_thread_id],
@@ -237,7 +233,7 @@ const resultText = computed(() => {
 
 const fallbackResult = computed(() => {
   if (
-    !parsedResult.value ||
+    !hasParsedResult.value ||
     resultText.value ||
     events.value.length ||
     progressMessages.value.length

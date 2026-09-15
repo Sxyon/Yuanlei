@@ -70,7 +70,15 @@ export const agentApi = {
    * @param {string} threadId - 会话ID
    * @returns {Promise} - 历史消息
    */
+  // 线程阅读快照：{ thread, runs, history }，消息通过 run_id 关联运行。
   getAgentHistory: (threadId) => apiGet(`/api/chat/thread/${threadId}/history`),
+
+  /**
+   * 获取会话内持久化的 Model/Tool 生命周期审计
+   * @param {string} threadId - 会话ID
+   * @returns {Promise<{audits: Array, truncated: boolean}>}
+   */
+  getThreadMessageAudits: (threadId) => apiGet(`/api/chat/thread/${threadId}/audits`),
 
   /**
    * 获取指定会话的 AgentState
@@ -80,6 +88,12 @@ export const agentApi = {
    */
   getAgentState: (threadId, { includeMessages = false } = {}) =>
     apiGet(`/api/chat/thread/${threadId}/state${includeMessages ? '?include_messages=true' : ''}`),
+
+  /**
+   * 提交线程级主动上下文压缩
+   */
+  compressThreadContext: (threadId) =>
+    apiPost(`/api/chat/thread/${threadId}/compress`, {}),
 
   /**
    * Submit feedback for a message

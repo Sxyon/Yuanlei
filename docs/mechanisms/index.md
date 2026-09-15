@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | [Agent 运行时上下文](./agent-runtime.md) | 配置、权限、文件和 checkpoint 怎样组成一次运行？ | [配置和开发智能体](../agents/agents-config.md) |
 | [沙盒与文件系统](./sandbox.md) | runtime identity、挂载、路径权限和回收怎样协作？ | [沙盒配置与运维](../agents/sandbox-architecture.md) |
-| [上下文压缩](./context-compression.md) | L1/L2 何时触发，摘要和历史文件由谁保存？ | [中间件](../agents/middleware.md)、[智能体配置](../agents/agents-config.md) |
+| [上下文压缩](./context-compression.md) | 单一阈值怎样控制工具结果压缩、摘要和主动压缩？ | [中间件](../agents/middleware.md)、[智能体配置](../agents/agents-config.md) |
 | [知识库](./knowledge-base.md) | 文件状态、存储、权限和 Agent 检索怎样连接？ | [知识库教程](../intro/knowledge-base.md)、[文档处理](../advanced/document-processing.md) |
 
 只有当主题有稳定的 Owner、真实 consumer 和可验证链路时，才新增机制页。未来设计放入 roadmap 或 proposed decision，不画进当前运行图。

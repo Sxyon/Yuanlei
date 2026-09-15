@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 
 import pytest
 import yuxi.services.run_queue_service as run_queue_service
@@ -11,6 +10,37 @@ class _FakeStreamRedis:
     def __init__(self):
         self.streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
         self.expire_calls: list[tuple[str, int]] = []
+        self.pipeline_executions = 0
+
+    def pipeline(self, *, transaction):
+        """模拟单次发出的有序 Redis 命令批次。"""
+        assert transaction is False
+        owner = self
+
+        class Pipeline:
+            """只执行队列事件需要的两条命令。"""
+
+            def __init__(self):
+                self.commands = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                pass
+
+            def xadd(self, *args, **kwargs):
+                self.commands.append((owner.xadd, args, kwargs))
+
+            def expire(self, *args, **kwargs):
+                self.commands.append((owner.expire, args, kwargs))
+
+            async def execute(self):
+                """顺序应用命令并返回实际事件标识。"""
+                owner.pipeline_executions += 1
+                return [await func(*args, **kwargs) for func, args, kwargs in self.commands]
+
+        return Pipeline()
 
     async def xadd(self, key: str, fields: dict[str, str], **kwargs):
         del kwargs
@@ -56,6 +86,8 @@ async def test_run_stream_event_roundtrip(monkeypatch: pytest.MonkeyPatch):
     )
 
     assert seq1 < seq2
+    assert fake_redis.pipeline_executions == 2
+    assert fake_redis.expire_calls == [("run:events:run-1", run_queue_service.RUN_EVENTS_STREAM_TTL_SECONDS)] * 2
 
     events = await run_queue_service.list_run_stream_events(run_id, after_seq="0-0", limit=100)
     assert [item["event_type"] for item in events] == ["loading", "finished"]
@@ -76,11 +108,70 @@ async def test_run_stream_event_roundtrip(monkeypatch: pytest.MonkeyPatch):
     assert [item["event_type"] for item in recent_events] == ["finished", "loading"]
 
 
+@pytest.mark.asyncio
+async def test_run_stream_event_decoder_keeps_legacy_payload_shape(monkeypatch: pytest.MonkeyPatch):
+    fake_redis = _FakeStreamRedis()
+    key = run_queue_service._event_stream_key("run-legacy")
+    fake_redis.streams[key] = [
+        ("1700000000000-0", {"event_type": "custom", "payload": "not-json", "ts": "1700000000000"}),
+    ]
+
+    async def fake_get_async_redis_client():
+        return fake_redis
+
+    monkeypatch.setattr(run_queue_service, "get_async_redis_client", fake_get_async_redis_client)
+
+    forward = await run_queue_service.list_run_stream_events("run-legacy")
+    reverse = await run_queue_service.list_recent_run_stream_events("run-legacy")
+
+    assert forward == reverse
+    assert forward == [
+        {
+            "seq": "1700000000000-0",
+            "event_type": "custom",
+            "payload": {
+                "schema_version": 1,
+                "run_id": "run-legacy",
+                "thread_id": None,
+                "event": "custom",
+                "payload": {},
+                "created_at": None,
+            },
+            "ts": 1700000000000,
+        }
+    ]
+
+
 def test_normalize_after_seq_stream_id_only():
     assert run_queue_service.normalize_after_seq(None) == "0-0"
     assert run_queue_service.normalize_after_seq("1700000000000-3") == "1700000000000-3"
     assert run_queue_service.normalize_after_seq("12") == "0-0"
     assert run_queue_service.normalize_after_seq("bad-value") == "0-0"
+
+
+@pytest.mark.asyncio
+async def test_cancel_signal_only_writes_expiring_key(monkeypatch: pytest.MonkeyPatch):
+    """快速取消提示不要求 Redis 客户端支持 Pub/Sub。"""
+    writes: list[tuple[str, str, int]] = []
+
+    class KeyOnlyRedis:
+        async def set(self, key: str, value: str, *, ex: int):
+            writes.append((key, value, ex))
+
+    async def key_only_client():
+        return KeyOnlyRedis()
+
+    monkeypatch.setattr(run_queue_service, "get_redis_client", key_only_client)
+
+    await run_queue_service.publish_cancel_signal("run-1")
+
+    assert writes == [
+        (
+            "run:cancel:run-1",
+            "1",
+            run_queue_service.RUN_CANCEL_KEY_TTL_SECONDS,
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -92,9 +183,21 @@ async def test_cancel_live_signal_client_failure_is_best_effort(monkeypatch: pyt
 
     monkeypatch.setattr(run_queue_service, "get_redis_client", unavailable_client)
 
-    await run_queue_service.publish_cancel_signal("run-1")
-    assert await run_queue_service.has_cancel_signal("run-1") is False
+    await run_queue_service.publish_cancel_signals(["run-1", "run-2"])
     await run_queue_service.clear_cancel_signal("run-1")
+
+
+@pytest.mark.asyncio
+async def test_cancel_signal_batch_propagates_caller_cancellation(monkeypatch: pytest.MonkeyPatch):
+    """调用方取消必须终止批量发布，不能被 best-effort 策略吞掉。"""
+
+    async def cancelled_publish(_run_id: str):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(run_queue_service, "publish_cancel_signal", cancelled_publish)
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_queue_service.publish_cancel_signals(["run-1"])
 
 
 @pytest.mark.asyncio
@@ -116,122 +219,49 @@ async def test_cancel_wait_connection_failure_respects_poll_interval(monkeypatch
     monkeypatch.setattr(run_queue_service.logger, "warning", warnings.append)
 
     with pytest.raises(asyncio.CancelledError):
-        await run_queue_service.wait_for_cancel_signal("run-1", poll_timeout_seconds=1.0)
+        await run_queue_service.wait_for_cancel_signal("run-1", poll_interval_seconds=1.0)
 
     assert len(sleep_delays) == 5
     assert all(delay > 0.9 for delay in sleep_delays)
-    assert len(warnings) == 2
-
-
-@pytest.mark.asyncio
-async def test_cancel_wait_get_message_failure_logs_once_across_retries(monkeypatch: pytest.MonkeyPatch):
-    """PubSub 读取持续失败时不会按每个重连周期重复刷 warning。"""
-    sleep_delays: list[float] = []
-    warnings: list[str] = []
-
-    class FailingPubSub:
-        async def subscribe(self, _channel: str):
-            return None
-
-        async def get_message(self, **_kwargs):
-            raise ConnectionError("pubsub read failed")
-
-        async def unsubscribe(self, _channel: str):
-            return None
-
-        async def close(self):
-            return None
-
-    class FakeRedis:
-        def pubsub(self):
-            return FailingPubSub()
-
-        async def get(self, _key: str):
-            return None
-
-    async def fake_client():
-        return FakeRedis()
-
-    async def record_sleep(delay: float):
-        sleep_delays.append(delay)
-        if len(sleep_delays) == 4:
-            raise asyncio.CancelledError
-
-    monkeypatch.setattr(run_queue_service, "get_redis_client", fake_client)
-    monkeypatch.setattr(run_queue_service.asyncio, "sleep", record_sleep)
-    monkeypatch.setattr(run_queue_service.logger, "warning", warnings.append)
-
-    with pytest.raises(asyncio.CancelledError):
-        await run_queue_service.wait_for_cancel_signal("run-1", poll_timeout_seconds=1.0)
-
-    assert len(sleep_delays) == 4
     assert len(warnings) == 1
 
 
 @pytest.mark.asyncio
-async def test_redis_pubsub_closes_when_subscribe_fails(monkeypatch: pytest.MonkeyPatch):
-    """订阅失败也必须关闭已创建的 PubSub 连接。"""
-    calls: list[str] = []
+async def test_cancel_wait_polls_key_at_configured_interval(monkeypatch: pytest.MonkeyPatch):
+    """取消 watcher 在两次 Redis key 读取之间等待完整轮询间隔。"""
+    sleep_delays: list[float] = []
+    reads = 0
 
-    class FailingSubscribePubSub:
-        async def subscribe(self, _channel: str):
-            raise ConnectionError("subscribe failed")
+    async def read_signal(_run_id: str):
+        nonlocal reads
+        reads += 1
+        return reads == 2
 
-        async def close(self):
-            calls.append("close")
+    async def record_sleep(delay: float):
+        sleep_delays.append(delay)
 
-    class FakeRedis:
-        def pubsub(self):
-            return FailingSubscribePubSub()
+    monkeypatch.setattr(run_queue_service, "_read_cancel_signal", read_signal)
+    monkeypatch.setattr(run_queue_service.asyncio, "sleep", record_sleep)
 
-    async def fake_client():
-        return FakeRedis()
+    assert await run_queue_service.wait_for_cancel_signal("run-1", poll_interval_seconds=0.2)
 
-    monkeypatch.setattr(run_queue_service, "get_redis_client", fake_client)
-
-    with pytest.raises(ConnectionError, match="subscribe failed"):
-        async with run_queue_service.redis_pubsub("run:cancel:ch"):
-            raise AssertionError("subscribe should fail before yielding")
-
-    assert calls == ["close"]
+    assert reads == 2
+    assert sleep_delays == pytest.approx([0.2], abs=0.001)
 
 
 @pytest.mark.asyncio
-async def test_redis_pubsub_cleanup_does_not_swallow_task_cancellation(monkeypatch: pytest.MonkeyPatch):
-    """取消等待任务时，清理异常不能替换或吞掉 CancelledError。"""
+async def test_cancel_wait_propagates_task_cancellation(monkeypatch: pytest.MonkeyPatch):
+    """停止 RunContext 时，Redis key watcher 立即传播任务取消。"""
     started = asyncio.Event()
-    cleanup_calls: list[str] = []
     blocked = asyncio.Event()
 
-    class CleanupFailurePubSub:
-        async def subscribe(self, _channel: str):
-            return None
+    async def blocked_read(_run_id: str):
+        started.set()
+        await blocked.wait()
+        return False
 
-        async def get_message(self, **_kwargs):
-            started.set()
-            await blocked.wait()
-            return None
-
-        async def unsubscribe(self, _channel: str):
-            cleanup_calls.append("unsubscribe")
-            raise RuntimeError("unsubscribe failed")
-
-        async def close(self):
-            cleanup_calls.append("close")
-            raise RuntimeError("close failed")
-
-    class FakeRedis:
-        def pubsub(self):
-            return CleanupFailurePubSub()
-
-        async def get(self, _key: str):
-            return None
-
-    async def fake_client():
-        return FakeRedis()
-
-    monkeypatch.setattr(run_queue_service, "get_redis_client", fake_client)
-    task = asyncio.create_task(run_queue_service.wait_for_cancel_signal("run-1", poll_timeout_seconds=0.01))
+    monkeypatch.setattr(run_queue_service, "_read_cancel_signal", blocked_read)
+    task = asyncio.create_task(run_queue_service.wait_for_cancel_signal("run-1", poll_interval_seconds=0.01))
     try:
         await asyncio.wait_for(started.wait(), timeout=1)
         task.cancel()
@@ -241,32 +271,3 @@ async def test_redis_pubsub_cleanup_does_not_swallow_task_cancellation(monkeypat
         if not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-
-    assert cleanup_calls == ["unsubscribe", "close"]
-
-
-@pytest.mark.asyncio
-async def test_cancel_wait_returns_immediately_for_pubsub_signal(monkeypatch: pytest.MonkeyPatch):
-    """命中实时取消消息时不等待轮询间隔。"""
-    sleep_delays: list[float] = []
-
-    class FakePubSub:
-        async def get_message(self, **_kwargs):
-            return {"data": "run-1"}
-
-    async def no_existing_signal(_run_id: str):
-        return False
-
-    @asynccontextmanager
-    async def fake_pubsub(_channel: str):
-        yield FakePubSub()
-
-    async def record_sleep(delay: float):
-        sleep_delays.append(delay)
-
-    monkeypatch.setattr(run_queue_service, "has_cancel_signal", no_existing_signal)
-    monkeypatch.setattr(run_queue_service, "redis_pubsub", fake_pubsub)
-    monkeypatch.setattr(run_queue_service.asyncio, "sleep", record_sleep)
-
-    assert await run_queue_service.wait_for_cancel_signal("run-1", poll_timeout_seconds=1.0) is True
-    assert sleep_delays == []

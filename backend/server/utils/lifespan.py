@@ -3,8 +3,6 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from yuxi.config.runtime import lite_mode_enabled
-from yuxi.services.task_service import tasker
 from yuxi.agents.mcp.service import ensure_builtin_mcp_servers_in_db
 from yuxi.models.providers.service import ensure_builtin_model_providers_in_db
 from yuxi.services.run_queue_service import close_queue_clients, get_redis_client
@@ -56,7 +54,6 @@ async def _startup(app: FastAPI) -> None:
 
     app.state.startup_complete = False
     app.state.startup_components = {}
-    lite_mode = lite_mode_enabled()
 
     await _initialize_startup_component(
         app,
@@ -67,7 +64,7 @@ async def _startup(app: FastAPI) -> None:
 
     # Schema 只由 Compose 中的 storage-migrator 修改；运行进程仅校验兼容版本。
     pg_manager.initialize()
-    await pg_manager.require_current_schema(include_knowledge=not lite_mode)
+    await pg_manager.require_current_schema()
 
     from yuxi.config.options import (
         ensure_options_in_db,
@@ -154,22 +151,14 @@ async def _startup(app: FastAPI) -> None:
     )
 
     # 初始化知识库管理器
-    if lite_mode:
-        logger.info("LITE_MODE enabled, skipping knowledge base initialization")
-        app.state.startup_components["knowledge_base"] = {
-            "status": "skipped",
-            "required": False,
-            "code": "lite_mode",
-        }
-    else:
-        from yuxi.knowledge.runtime import knowledge_base
+    from yuxi.knowledge.runtime import knowledge_base
 
-        await _initialize_startup_component(
-            app,
-            name="knowledge_base",
-            required=True,
-            operation=knowledge_base.initialize,
-        )
+    await _initialize_startup_component(
+        app,
+        name="knowledge_base",
+        required=True,
+        operation=knowledge_base.initialize,
+    )
 
     # 预热 Redis（run 队列）
     try:
@@ -185,7 +174,6 @@ async def _startup(app: FastAPI) -> None:
         operation=init_sandbox_provider,
     )
 
-    await tasker.start()
     app.state.startup_complete = True
     logger.info(f"""
 
@@ -213,7 +201,7 @@ async def _shutdown_component(name: str, operation: Callable[[], object]) -> Non
 
 
 def _close_neo4j_connection() -> object:
-    """仅在完整运行模式关闭图数据库，避免 LITE 导入图谱依赖。"""
+    """关闭共享图数据库连接。"""
 
     from yuxi.storage.neo4j import close_shared_neo4j_connection
 
@@ -226,15 +214,12 @@ async def lifespan(app: FastAPI):
 
     app.state.startup_complete = False
     app.state.startup_components = {}
-    lite_mode = lite_mode_enabled()
     try:
         await _startup(app)
         yield
     finally:
         app.state.startup_complete = False
-        await _shutdown_component("tasker", tasker.shutdown)
         await _shutdown_component("sandbox_provider", shutdown_sandbox_provider)
         await _shutdown_component("queue_clients", close_queue_clients)
-        if not lite_mode:
-            await _shutdown_component("neo4j", _close_neo4j_connection)
+        await _shutdown_component("neo4j", _close_neo4j_connection)
         await _shutdown_component("postgres", pg_manager.close)

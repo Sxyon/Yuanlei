@@ -1,6 +1,6 @@
 {
   "name": "yuxi-web",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,8 +19,6 @@
     "@antv/g6": "^5.1.1",
     "@lucide/vue": "^1.34.0",
     "@opencode-ai/models": "0.0.55",
-    "@sigma/edge-curve": "^3.1.0",
-    "@sigma/node-border": "^3.0.0",
     "@vscode/markdown-it-katex": "^1.1.2",
     "@vueuse/core": "^14.4.0",
     "ant-design-vue": "^4.2.6",
@@ -28,8 +26,6 @@
     "dayjs": "^1.11.23",
     "dompurify": "^3.4.14",
     "echarts": "^6.1.0",
-    "graphology": "^0.26.0",
-    "graphology-generators": "^0.11.2",
     "highlight.js": "^11.12.0",
     "js-yaml": "^5.4.0",
     "katex": "^0.18.4",
@@ -42,7 +38,6 @@
     "pinia": "^4.0.3",
     "pinia-plugin-persistedstate": "^4.7.1",
     "shiki": "^4.4.3",
-    "sigma": "^3.0.3",
     "vue": "^3.5.41",
     "vue-router": "^5.2.0"
   },

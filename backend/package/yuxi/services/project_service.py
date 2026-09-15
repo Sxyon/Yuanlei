@@ -12,7 +12,7 @@ from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
 from yuxi.services.run_queue_service import enqueue_project_git_operation
 from yuxi.storage.postgres.models_business import Project
 from yuxi.utils.datetime_utils import utc_now_naive
-from yuxi.workspace.paths import normalize_linked_workdir_path
+from yuxi.workspace.paths import allocate_default_user_workdir_path, normalize_workdir_path
 from yuxi.workspace.workdir import Workdir
 
 MAX_PROJECT_NAME_LENGTH = 255
@@ -65,12 +65,12 @@ async def create_project_record(
     if directory_mode == "managed":
         if workdir_path is not None:
             raise HTTPException(status_code=422, detail="managed Project 不接受 workdir_path")
-        normalized_path = f"projects/{project_id}"
+        normalized_path = allocate_default_user_workdir_path(str(uid), project_id)
     else:
         if workdir_path is None:
             raise HTTPException(status_code=422, detail="linked Project 必须指定 workdir_path")
         try:
-            normalized_path = normalize_linked_workdir_path(workdir_path)
+            normalized_path = normalize_workdir_path(workdir_path)
             await _lock_project_workdir_changes(db=db, uid=str(uid))
             Workdir.open_existing(str(uid), normalized_path)
         except FileNotFoundError as exc:
@@ -115,7 +115,7 @@ async def create_project_view(
     existing = await repository.get_by_idempotency_key(normalized_request_id, str(uid))
     normalized_name = _normalize_project_name(name, required=True)
     try:
-        normalized_path = normalize_linked_workdir_path(workdir_path)
+        normalized_path = normalize_workdir_path(workdir_path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if existing is not None:

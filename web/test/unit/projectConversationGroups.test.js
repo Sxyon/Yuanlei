@@ -2,7 +2,20 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { buildProjectConversationGroups } from '../../src/utils/projectConversationGroups.js'
+import {
+  buildProjectConversationGroups,
+  deriveProjectThreadStatus
+} from '../../src/utils/projectConversationGroups.js'
+
+test('项目状态优先展示运行中，其次展示未读完成', () => {
+  assert.equal(deriveProjectThreadStatus([{ thread_status: 'ready' }]), 'ready')
+  assert.equal(
+    deriveProjectThreadStatus([{ thread_status: 'ready' }, { thread_status: 'loading' }]),
+    'loading'
+  )
+  assert.equal(deriveProjectThreadStatus([{ thread_status: 'done' }]), 'done')
+  assert.equal(deriveProjectThreadStatus([]), 'done')
+})
 
 test('项目视图按项目顺序分组并把 implicit 对话放在最后', () => {
   const projects = [
@@ -89,24 +102,34 @@ test('侧边栏同时展示项目和最近分组，最近只展示其他对话',
     source,
     /<section\s+v-if="projectsLoading \|\| projectsError \|\| projectGroups\.length"\s+class="history-group project-history-group"/
   )
-  assert.doesNotMatch(source, />暂无项目</)
   assert.ok(recentSectionStart >= 0)
   assert.match(recentSection, /v-if="projectsLoading"[^>]*>正在加载对话/)
   assert.match(recentSection, /v-else-if="projectsError"[^>]*>项目加载失败，暂时无法分类对话/)
   assert.match(recentSection, /v-for="chat in otherConversations"/)
-  assert.match(source, /<FolderOpen v-if="isProjectExpanded\(group\.project\.id\)"/)
-  assert.match(source, /<FolderClosed v-else/)
-  assert.equal(source.match(/<CollapseTransition>/g)?.length, 3)
-  assert.doesNotMatch(source, /v-show=/)
-  assert.match(source, /\.project-history-group\s*{\s*margin-bottom: 16px;/)
-  assert.match(source, /\.collapse-icon\s*{[\s\S]*?opacity: 0;/)
+})
+
+test('项目默认折叠且提供完整名称提示', () => {
+  const source = readFileSync(
+    new URL('../../src/components/ConversationNavSection.vue', import.meta.url),
+    'utf8'
+  )
+
+  assert.match(source, /const expandedProjects = ref\(new Set\(\)\)/)
   assert.match(
     source,
-    /&:hover,[\s\S]*?&:focus-visible\s*{[\s\S]*?\.collapse-icon\s*{\s*opacity: 1;/
+    /const isProjectExpanded = \(projectId\) => expandedProjects\.value\.has\(projectId\)/
   )
-  assert.doesNotMatch(
+  assert.match(source, /class="project-name" :title="group\.project\.name"/)
+})
+
+test('项目运行状态仅在折叠时展示', () => {
+  const source = readFileSync(
+    new URL('../../src/components/ConversationNavSection.vue', import.meta.url),
+    'utf8'
+  )
+  assert.match(
     source,
-    /view-switch|viewMode|project-chevron|project-count|<span>其他对话<\/span>/
+    /group\.threadStatus === 'loading' &&\s*!isProjectExpanded\(group\.project\.id\)/
   )
 })
 
@@ -135,4 +158,47 @@ test('对话选择与操作菜单使用并列按钮语义', () => {
   assert.match(source, /type="button"/)
   assert.doesNotMatch(source, /role="button"/)
   assert.doesNotMatch(source, /@keydown\.(?:enter|space)/)
+})
+
+test('对话状态拥有常驻遮罩且项目提供带项目上下文的新建入口', () => {
+  const itemSource = readFileSync(
+    new URL('../../src/components/ConversationNavItem.vue', import.meta.url),
+    'utf8'
+  )
+  const navigationSource = readFileSync(
+    new URL('../../src/components/ConversationNavSection.vue', import.meta.url),
+    'utf8'
+  )
+  const layoutSource = readFileSync(
+    new URL('../../src/layouts/AppLayout.vue', import.meta.url),
+    'utf8'
+  )
+  const agentViewSource = readFileSync(new URL('../../src/views/AgentView.vue', import.meta.url), 'utf8')
+  const chatSource = readFileSync(
+    new URL('../../src/components/AgentChatComponent.vue', import.meta.url),
+    'utf8'
+  )
+
+  assert.match(itemSource, /class="status-mask"/)
+  assert.match(itemSource, /v-if="chat\.thread_status === 'loading' \|\| chat\.thread_status === 'ready'"/)
+  assert.match(navigationSource, /class="project-status project-status-loading"/)
+  assert.match(navigationSource, /class="project-status project-status-ready"/)
+  assert.match(navigationSource, /@click\.stop="\$emit\('create-project-chat', group\.project\.id\)"/)
+  assert.match(layoutSource, /query: \{ project_id: projectId \}/)
+  const createProjectChatHandler = layoutSource.slice(
+    layoutSource.indexOf('const handleCreateProjectChat'),
+    layoutSource.indexOf('const searchWorkspace')
+  )
+  assert.match(createProjectChatHandler, /const handleCreateProjectChat = async/)
+  assert.ok(
+    createProjectChatHandler.indexOf('await router.push') <
+      createProjectChatHandler.indexOf('setCurrentThreadId(null)')
+  )
+  assert.match(agentViewSource, /:initial-project-id="routeDraftProjectId"/)
+  assert.match(chatSource, /if \(!threadId\) selectedProjectId\.value = initialProjectId \|\| AUTO_PROJECT_ID/)
+  assert.match(
+    chatSource,
+    /ensureActiveThread\.reset\(\)\s*selectedProjectId\.value = props\.initialProjectId \|\| AUTO_PROJECT_ID/
+  )
+  assert.doesNotMatch(chatSource, /ensureActiveThread\.reset\(\)\s*selectedProjectId\.value = AUTO_PROJECT_ID/)
 })

@@ -43,11 +43,11 @@ QA 分块解析器存在四个影响索引质量的缺陷：
 
 ## 验证
 
-- `backend/test/unit/test_qa_chunk_length_limit.py` 覆盖短 chunk 透传、空白过滤、段落/行/硬切三级降级、行切分保留代码缩进、问题含 tab 或异语言答案标记时完整保留、无答案前缀 tab chunk 硬切、问题超限硬切、非标准格式硬切、`max_chars<=0` 语义，以及 `chunk_markdown` 端到端「任意 chunk ≤ 4000 字符且保留问题」的验收主张。断言边界硬编码 4000，不引用实现常量 `_QA_CHUNK_MAX_CHARS`，避免自我引用 oracle。
+- `backend/test/unit/test_qa_parser.py` 覆盖短 chunk 透传、空白过滤、段落/行/硬切三级降级、行切分保留代码缩进、问题含 tab 或异语言答案标记时完整保留、无答案前缀 tab chunk 硬切、问题超限硬切、非标准格式硬切、`max_chars<=0` 语义，以及 `chunk_markdown` 端到端「任意 chunk ≤ 4000 字符且保留问题」的验收主张。断言边界硬编码 4000，不引用实现常量 `_QA_CHUNK_MAX_CHARS`，避免自我引用 oracle。
 - 负向验证：在同一进程内 monkeypatch 移除限长步骤后，端到端测试输入产出单条 9011 字符 chunk，`test_all_chunks_within_embedding_limit` 在正确原因上失败；将默认常量调大到 8000 时产出 8000 字符 chunk，端到端断言同样失败；恢复 guard 后通过。
-- `test_input_actually_triggers_split` 常驻断言测试输入本身超限，防止输入缩水导致端到端断言退化为恒真。
-- `backend/test/unit/test_qa_prefix_parsing.py` 覆盖 tilde/backtick 围栏边界、带 info string 围栏、混合围栏不提前关闭、未闭合围栏吞并剩余、标题提取路径围栏、端到端 `chunk_markdown` 只产一对、首问题前/分节后的孤儿答案被忽略、活跃问题下多 A: 行仍完整归入，以及前缀和标题路径均保留 `#include` 代码行。
+- `test_all_chunks_within_embedding_limit` 同时断言结果发生切分，防止测试输入缩水导致端到端上限断言退化为恒真。
+- 同一 `backend/test/unit/test_qa_parser.py` 还覆盖 tilde/backtick 围栏边界、带 info string 围栏、混合围栏不提前关闭、未闭合围栏吞并剩余、标题提取路径围栏、端到端 `chunk_markdown` 只产一对、首问题前/分节后的孤儿答案被忽略、活跃问题下多 A: 行仍完整归入，以及前缀和标题路径均保留 `#include` 代码行。
 - 围栏负向验证：monkeypatch 回退为只识别反引号的旧状态机后，评论场景输入产出 2 对虚构问答，`test_tilde_fence_content_stays_in_answer` 在正确原因上失败；回退行级 strip 后缩进代码行丢失，`test_line_split_preserves_code_indentation` 在正确原因上失败；回退首个 tab 分隔后含 tab 问题被截断为 tab 前部分，`test_question_containing_tab_kept_whole` 在正确原因上失败；回退孤儿答案守卫后前言被拼入真实答案，`test_orphan_answer_before_first_question_discarded` 在正确原因上失败。
 - dispatcher 回归：用修复后的 qa.py 复跑 `test_qa_chunking_from_markdown_headings` 的标题风格 FAQ 场景，产出与预期一致；`test_ragflow_like_chunking.py` 依赖完整包环境，待容器内补跑。
 - embed 日志修复（只记 index/len）：AST 语法解析与 `git diff --check` 通过。
-- 待 PR 环境补跑：`docker compose exec api uv run --group test pytest test/unit/test_qa_chunk_length_limit.py test/unit/test_qa_prefix_parsing.py test/unit/plugins/test_ragflow_like_chunking.py`。
+- 待 PR 环境补跑：`docker compose exec api uv run --group test pytest test/unit/test_qa_parser.py test/unit/plugins/test_ragflow_like_chunking.py`。

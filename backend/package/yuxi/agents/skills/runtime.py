@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.backends.paths import VIRTUAL_PERSONAL_SKILLS_PATH, VIRTUAL_SKILLS_PATH
 from yuxi.agents.skills.service import list_accessible_skills, normalize_string_list
 from yuxi.agents.toolkits import get_all_tool_instances
-from yuxi.config.runtime import lite_mode_enabled
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import open_regular_file_fd
@@ -27,15 +26,6 @@ class RuntimeSkill(TypedDict):
     tools: list[str]
     mcps: list[str]
     skills: list[str]
-
-
-_LITE_DISABLED_SKILL_SLUGS = frozenset({"knowledge-base"})
-
-
-def is_skill_allowed_in_runtime_mode(slug: str) -> bool:
-    """判断 Skill 是否属于当前部署模式允许的运行时能力。"""
-
-    return not (lite_mode_enabled() and slug in _LITE_DISABLED_SKILL_SLUGS)
 
 
 def build_runtime_skills(skills: list) -> dict[str, RuntimeSkill]:
@@ -101,11 +91,7 @@ async def resolve_runtime_skills_for_context(
     user: User,
 ) -> dict:
     """从已授权 Skill 派生当前 Agent Run 的运行时 scope 与预加载快照。"""
-    skill_items = [
-        item
-        for item in await list_accessible_skills(db, user)
-        if item.slug and is_skill_allowed_in_runtime_mode(item.slug)
-    ]
+    skill_items = [item for item in await list_accessible_skills(db, user) if item.slug]
     runtime_skills = build_runtime_skills(skill_items)
     available = set(runtime_skills)
     selected = normalize_string_list(getattr(context, "skills", None))

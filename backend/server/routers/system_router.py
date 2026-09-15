@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi import get_version
 from yuxi.config.options import invalidate_option_cache, system_options, update_option_value
-from yuxi.config.runtime import knowledge_capability_enabled
 from yuxi.services.readiness_service import get_readiness
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils.logging_config import LOG_FILE, logger
@@ -45,13 +44,12 @@ async def readiness_check(request: Request):
 @system.get("/discovery")
 async def discovery():
     """系统能力发现接口（公开接口）"""
-    knowledge_enabled = knowledge_capability_enabled()
     return {
         "name": "Yuxi",
         "version": get_version(),
         "api_prefix": "/api",
         "capabilities": {
-            "features": {"knowledge": knowledge_enabled},
+            "features": {"knowledge": True},
             "cli": {
                 "min_cli_version": "0.1.0",
                 "browser_login": True,
@@ -59,12 +57,12 @@ async def discovery():
                 "remote_config": True,
                 "agent_list": True,
                 "agent_show": True,
-                "kb_upload": knowledge_enabled,
-                "kb_list": knowledge_enabled,
-                "kb_files": knowledge_enabled,
-                "kb_query": knowledge_enabled,
-                "kb_open": knowledge_enabled,
-                "kb_find": knowledge_enabled,
+                "kb_upload": True,
+                "kb_list": True,
+                "kb_files": True,
+                "kb_query": True,
+                "kb_open": True,
+                "kb_find": True,
             },
         },
         "endpoints": {

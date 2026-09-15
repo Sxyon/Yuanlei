@@ -57,9 +57,6 @@
                       size="small"
                       @change="toggleEnabled(record)"
                     />
-                    <span class="status-text" :class="{ enabled: record.is_enabled }">
-                      {{ record.is_enabled ? '已启用' : '已禁用' }}
-                    </span>
                   </div>
                 </template>
                 <template v-if="column.key === 'lastUsed'">
@@ -223,7 +220,10 @@ const showCreateModal = () => {
   createForm.name = ''
   createForm.expires_at = null
   createRequestId.value =
-    sessionStorage.getItem(CREATE_REQUEST_STORAGE_KEY) || globalThis.crypto.randomUUID()
+    sessionStorage.getItem(CREATE_REQUEST_STORAGE_KEY) ||
+    Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+      byte.toString(16).padStart(2, '0')
+    ).join('')
   sessionStorage.setItem(CREATE_REQUEST_STORAGE_KEY, createRequestId.value)
   createModalVisible.value = true
 }

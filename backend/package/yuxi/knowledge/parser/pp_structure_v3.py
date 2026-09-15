@@ -13,15 +13,18 @@ from typing import Any
 import requests
 
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
+from yuxi.knowledge.parser.capabilities import get_parser_capability
 from yuxi.utils import logger
+
+_CAPABILITY = get_parser_capability("pp_structure_v3_ocr")
 
 
 class PPStructureV3Parser(BaseDocumentProcessor):
     """PP-Structure-V3 文档解析器 - 使用 PP-Structure-V3 进行版面解析"""
 
-    service_name = "pp_structure_v3_ocr"
-    display_name = "PP-Structure-V3"
-    supported_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"]
+    service_name = _CAPABILITY.service_name
+    display_name = _CAPABILITY.display_name
+    supported_extensions = list(_CAPABILITY.supported_extensions)
 
     def __init__(self, server_url: str | None = None):
         self.server_url = server_url or os.getenv("PADDLEX_URI") or "http://localhost:8080"

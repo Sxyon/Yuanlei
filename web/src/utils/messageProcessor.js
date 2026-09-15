@@ -1,3 +1,17 @@
+/** 解析工具返回的 JSON 内容。 */
+const parseToolResultContent = (content) => {
+  if (Array.isArray(content)) return content
+  if (content && typeof content === 'object') return content
+  if (typeof content === 'string') {
+    try {
+      return JSON.parse(content)
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 /**
  * 消息处理工具类
  */
@@ -13,10 +27,9 @@ export class MessageProcessor {
     // 构建工具响应映射
     for (const item of msgs) {
       if (item.type === 'tool') {
-        // 使用多种可能的ID字段来匹配工具调用
-        const toolCallId = item.tool_call_id || item.id
+        const toolCallId = item.tool_call_id
         if (toolCallId) {
-          toolResponseMap.set(toolCallId, item)
+          toolResponseMap.set(JSON.stringify([item.run_id || '', toolCallId]), item)
         }
       }
     }
@@ -27,7 +40,7 @@ export class MessageProcessor {
         return {
           ...item,
           tool_calls: item.tool_calls.map((toolCall) => {
-            const toolResponse = toolResponseMap.get(toolCall.id)
+            const toolResponse = toolResponseMap.get(JSON.stringify([item.run_id || '', toolCall.id]))
             return {
               ...toolCall,
               tool_call_result: toolResponse || null
@@ -46,54 +59,45 @@ export class MessageProcessor {
    * @param {Array} serverHistory - 服务器历史记录
    * @returns {Array} 对话数组
    */
-  static convertServerHistoryToMessages(serverHistory) {
-    // Filter out standalone 'tool' messages since tool results are already in AI messages' tool_calls
-    // Backend new storage: tool results are embedded in AI messages' tool_calls array with tool_call_result field
-    const filteredHistory = serverHistory.filter(
-      (item) =>
-        item.type !== 'tool' &&
-        !(item.type === 'human' && item.extra_metadata?.source === 'ask_user_question_resume')
-    )
+  static convertServerHistoryToMessages(serverHistory, runs = []) {
+    const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted'])
+    const conversations = runs.map((run) => ({
+      run,
+      messages: [],
+      status: terminalStatuses.has(run.status) ? 'finished' : 'loading'
+    }))
+    const byRunId = new Map(conversations.map((conv) => [conv.run.run_id, conv]))
+    let legacyConv = null
 
-    // 按照对话分组
-    const conversations = []
-    let currentConv = null
-
-    for (const item of filteredHistory) {
-      if (item.type === 'human') {
-        // Start new conversation, finalize previous one
-        if (currentConv) {
-          // Find the last AI message and mark it as final
-          for (let i = currentConv.messages.length - 1; i >= 0; i--) {
-            if (currentConv.messages[i].type === 'ai') {
-              currentConv.messages[i].isLast = true
-              currentConv.status = 'finished'
-              break
-            }
-          }
-        }
-        currentConv = {
-          messages: [item],
-          status: 'loading'
-        }
-        conversations.push(currentConv)
-      } else if (item.type === 'ai' && currentConv) {
-        currentConv.messages.push(item)
+    for (const item of serverHistory) {
+      if (item.type === 'tool' ||
+          (item.type === 'human' && item.extra_metadata?.source === 'ask_user_question_resume')) {
+        continue
       }
+      const runId = item.run_id || item.extra_metadata?.run_id
+      let conv = runId ? byRunId.get(runId) : legacyConv
+      if (!conv || (!runId && item.type === 'human')) {
+        conv = { messages: [], status: 'loading' }
+        conversations.push(conv)
+        if (runId) byRunId.set(runId, conv)
+      }
+      conv.messages.push({ ...item })
+      // 没有 Run 关联的旧历史仍按用户轮次展示，不能挂到相邻 Run 上。
+      legacyConv = runId ? null : conv
     }
 
-    // Mark the last conversation as finished
-    if (currentConv && currentConv.messages.length > 0) {
-      // Find the last AI message and mark it as final
-      for (let i = currentConv.messages.length - 1; i >= 0; i--) {
-        if (currentConv.messages[i].type === 'ai') {
-          currentConv.messages[i].isLast = true
-          currentConv.status = 'finished'
-          break
-        }
+    conversations.sort((left, right) => {
+      const leftTime = left.run?.timing?.created_at || left.messages[0]?.created_at || ''
+      const rightTime = right.run?.timing?.created_at || right.messages[0]?.created_at || ''
+      return leftTime.localeCompare(rightTime)
+    })
+    for (const conv of conversations) {
+      const lastAi = conv.messages.findLast((message) => message.type === 'ai')
+      if (lastAi) {
+        lastAi.isLast = true
+        if (!conv.run) conv.status = 'finished'
       }
     }
-
     return conversations
   }
 
@@ -182,19 +186,6 @@ export class MessageProcessor {
       })
     }
 
-    const parseToolResultContent = (content) => {
-      if (Array.isArray(content)) return content
-      if (content && typeof content === 'object') return content
-      if (typeof content === 'string') {
-        try {
-          return JSON.parse(content)
-        } catch {
-          return null
-        }
-      }
-      return null
-    }
-
     for (const msg of conv.messages) {
       if (!msg || msg.type !== 'ai' || !Array.isArray(msg.tool_calls)) continue
 
@@ -238,19 +229,6 @@ export class MessageProcessor {
 
     const webSources = []
     const dedupSet = new Set()
-
-    const parseToolResultContent = (content) => {
-      if (Array.isArray(content)) return content
-      if (content && typeof content === 'object') return content
-      if (typeof content === 'string') {
-        try {
-          return JSON.parse(content)
-        } catch {
-          return null
-        }
-      }
-      return null
-    }
 
     for (const msg of conv.messages) {
       if (!msg || msg.type !== 'ai' || !Array.isArray(msg.tool_calls)) continue
@@ -333,20 +311,10 @@ export class MessageProcessor {
    * @returns {{content: string, reasoningContent: string}}
    */
   static parseAssistantMessageBody(message) {
-    let content = typeof message?.content === 'string' ? message.content.trim() : ''
-    let reasoningContent = message?.additional_kwargs?.reasoning_content || ''
-
-    if (!reasoningContent && content) {
-      const thinkRegex = /<think>(.*?)<\/think>|<think>(.*?)$/s
-      const thinkMatch = content.match(thinkRegex)
-
-      if (thinkMatch) {
-        reasoningContent = (thinkMatch[1] || thinkMatch[2] || '').trim()
-        content = content.replace(thinkMatch[0], '').trim()
-      }
+    return {
+      content: typeof message?.content === 'string' ? message.content.trim() : '',
+      reasoningContent: message?.reasoning_content || ''
     }
-
-    return { content, reasoningContent }
   }
 
   /**
@@ -359,6 +327,7 @@ export class MessageProcessor {
 
     // 深拷贝第一个chunk作为结果
     const result = JSON.parse(JSON.stringify(chunks[0]))
+    MessageProcessor._mergeToolCalls(result, chunks[0])
 
     // 处理用户消息的内容格式 - 确保显示纯文本
     if (result.type === 'human' || result.role === 'user') {
@@ -388,15 +357,6 @@ export class MessageProcessor {
           result.reasoning_content = ''
         }
         result.reasoning_content += chunk.reasoning_content
-      }
-
-      // 合并additional_kwargs中的reasoning_content
-      if (chunk.additional_kwargs?.reasoning_content) {
-        if (!result.additional_kwargs) result.additional_kwargs = {}
-        if (!result.additional_kwargs.reasoning_content) {
-          result.additional_kwargs.reasoning_content = ''
-        }
-        result.additional_kwargs.reasoning_content += chunk.additional_kwargs.reasoning_content
       }
 
       // 合并tool_calls (处理新的数据结构)
@@ -433,9 +393,8 @@ export class MessageProcessor {
           const existingToolCall = result.tool_calls[existingToolCallIndex]
 
           // 更新名称和ID（如果存在）
-          if (toolCallChunk.name && !existingToolCall.function?.name) {
-            if (!existingToolCall.function) existingToolCall.function = {}
-            existingToolCall.function.name = toolCallChunk.name
+          if (toolCallChunk.name) {
+            existingToolCall.name = toolCallChunk.name
           }
 
           if (toolCallChunk.id && !existingToolCall.id) {
@@ -443,20 +402,16 @@ export class MessageProcessor {
           }
 
           // 合并参数
-          if (toolCallChunk.args) {
-            if (!existingToolCall.function) existingToolCall.function = {}
-            if (!existingToolCall.function.arguments) existingToolCall.function.arguments = ''
-            existingToolCall.function.arguments += toolCallChunk.args
-          }
+          existingToolCall.args = toolCallChunk.complete
+            ? toolCallChunk.args || ''
+            : (existingToolCall.args || '') + (toolCallChunk.args || '')
         } else {
           // 添加新的tool call
           const newToolCall = {
             index: toolCallChunk.index,
             id: toolCallChunk.id,
-            function: {
-              name: toolCallChunk.name || null,
-              arguments: toolCallChunk.args || ''
-            }
+            name: toolCallChunk.name || null,
+            args: toolCallChunk.args || ''
           }
           result.tool_calls.push(newToolCall)
         }

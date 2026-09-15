@@ -705,11 +705,12 @@ const configureGraphBuild = async () => {
 }
 
 const startGraphBuild = async () => {
+  const registerTask = taskerStore.createTaskRegistration()
   try {
     const data = await graphBuildApi.startIndex(kbId.value)
     message.success(data.message || '图谱构建任务已提交')
     if (data.task_id) {
-      taskerStore.registerQueuedTask({
+      registerTask({
         task_id: data.task_id,
         name: `图谱构建 (${kbId.value})`,
         task_type: GRAPH_BUILD_TASK_TYPE,
@@ -725,11 +726,12 @@ const startGraphBuild = async () => {
 }
 
 const retryGraphVectors = async () => {
+  const registerTask = taskerStore.createTaskRegistration()
   try {
     const data = await graphBuildApi.reconcile(kbId.value, 'failed')
     message.success(data.message || '图谱向量索引修复任务已提交')
     if (data.task_id) {
-      taskerStore.registerQueuedTask({
+      registerTask({
         task_id: data.task_id,
         name: `图谱向量索引修复 (${kbId.value})`,
         task_type: GRAPH_BUILD_TASK_TYPE,

@@ -16,7 +16,7 @@
 
     <template #result="{ resultContent }">
       <div class="mysql-result">
-        <pre class="result-text">{{ formatResult(resultContent) }}</pre>
+        <pre class="result-text">{{ formatMysqlResult(resultContent) }}</pre>
       </div>
     </template>
   </BaseToolCall>
@@ -25,6 +25,7 @@
 <script setup>
 import { computed } from 'vue'
 import BaseToolCall from '../BaseToolCall.vue'
+import { formatMysqlResult } from './mysqlResultFormatter.js'
 
 const props = defineProps({
   toolCall: {
@@ -36,27 +37,6 @@ const props = defineProps({
 const sqlText = computed(() =>
   extractSql(props.toolCall.args || props.toolCall.function?.arguments)
 )
-
-const formatResult = (content) => {
-  if (!content) return ''
-
-  // 如果是字符串，尝试解析为 JSON 后再转为格式化字符串
-  if (typeof content === 'string') {
-    try {
-      const parsed = JSON.parse(content)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return content
-    }
-  }
-
-  // 如果是对象，直接格式化
-  if (typeof content === 'object') {
-    return JSON.stringify(content, null, 2)
-  }
-
-  return String(content)
-}
 
 const extractSql = (args) => {
   if (!args) return ''

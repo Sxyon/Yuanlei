@@ -1,7 +1,6 @@
 import pytest
 
 from yuxi.storage.neo4j import (
-    Neo4jConnectionManager,
     close_shared_neo4j_connection,
     safe_neo4j_label,
 )
@@ -17,15 +16,6 @@ def test_safe_neo4j_label_accepts_valid_labels(label):
 def test_safe_neo4j_label_rejects_invalid_labels(label):
     with pytest.raises(ValueError, match="非法 Neo4j 标签"):
         safe_neo4j_label(label)
-
-
-def test_neo4j_connection_manager_skips_connection_in_lite_mode(monkeypatch):
-    monkeypatch.setenv("LITE_MODE", "true")
-
-    manager = Neo4jConnectionManager()
-
-    assert manager.driver is None
-    assert manager.status == "closed"
 
 
 def test_close_shared_neo4j_connection_closes_existing_manager(monkeypatch):

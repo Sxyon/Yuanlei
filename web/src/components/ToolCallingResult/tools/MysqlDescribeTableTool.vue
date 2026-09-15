@@ -10,7 +10,7 @@
 
     <template #result="{ resultContent }">
       <div class="mysql-result">
-        <pre class="result-text">{{ formatResult(resultContent) }}</pre>
+        <pre class="result-text">{{ formatMysqlResult(resultContent) }}</pre>
       </div>
     </template>
   </BaseToolCall>
@@ -19,6 +19,7 @@
 <script setup>
 import { computed } from 'vue'
 import BaseToolCall from '../BaseToolCall.vue'
+import { formatMysqlResult } from './mysqlResultFormatter.js'
 
 const props = defineProps({
   toolCall: {
@@ -30,25 +31,6 @@ const props = defineProps({
 const tableName = computed(() =>
   extractTableName(props.toolCall.args || props.toolCall.function?.arguments)
 )
-
-const formatResult = (content) => {
-  if (!content) return ''
-
-  if (typeof content === 'string') {
-    try {
-      const parsed = JSON.parse(content)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return content
-    }
-  }
-
-  if (typeof content === 'object') {
-    return JSON.stringify(content, null, 2)
-  }
-
-  return String(content)
-}
 
 const extractTableName = (args) => {
   if (!args) return ''

@@ -7,23 +7,25 @@ MinerU Official 解析器
 import os
 import tempfile
 import time
-import zipfile
 from pathlib import Path
 from typing import Any
 
 import requests
 
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
+from yuxi.knowledge.parser.capabilities import get_parser_capability
 from yuxi.knowledge.parser.zip_utils import process_zip_file_sync
 from yuxi.utils import hashstr, logger
+
+_CAPABILITY = get_parser_capability("mineru_official")
 
 
 class MinerUOfficialParser(BaseDocumentProcessor):
     """MinerU 官方 API 解析器"""
 
-    service_name = "mineru_official"
-    display_name = "MinerU Official API"
-    supported_extensions = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".png", ".jpg", ".jpeg"]
+    service_name = _CAPABILITY.service_name
+    display_name = _CAPABILITY.display_name
+    supported_extensions = list(_CAPABILITY.supported_extensions)
 
     def __init__(self, api_key: str | None = None, api_base: str | None = None):
         """使用配置中心解析后的凭证和官方端点初始化解析器。"""
@@ -95,17 +97,7 @@ class MinerUOfficialParser(BaseDocumentProcessor):
             logger.info(f"任务完成，状态: {result['state']}")
 
             zip_url = result.get("full_zip_url")
-
-            try:
-                zip_path = self._download_zip(zip_url)
-            except Exception:
-                text = self._download_and_extract(zip_url)
-                processing_time = time.time() - start_time
-                logger.info(
-                    f"MinerU Official: {os.path.basename(file_path)} - {len(text)} 字符 ({processing_time:.2f}s)"
-                )
-                return text
-
+            zip_path = self._download_zip(zip_url)
             try:
                 from yuxi.storage.minio import get_minio_client
 
@@ -117,18 +109,7 @@ class MinerUOfficialParser(BaseDocumentProcessor):
                     image_bucket=image_bucket,
                     image_prefix=image_prefix,
                 )
-                text = processed["markdown_content"]
-            except Exception:
-                import zipfile
-
-                text = ""
-                logger.error(f"从 zip 文件中提取 full.md 失败: {zip_path}，使用第一个 md 文件")
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    md_files = [n for n in zf.namelist() if n.lower().endswith(".md")]
-                    if md_files:
-                        md_file = next((n for n in md_files if Path(n).name == "full.md"), md_files[0])
-                        with zf.open(md_file) as f:
-                            text = f.read().decode("utf-8")
+                text = processed
             finally:
                 try:
                     os.unlink(zip_path)
@@ -253,59 +234,6 @@ class MinerUOfficialParser(BaseDocumentProcessor):
 
         raise DocumentParserException("任务处理超时", self.get_service_name(), "timeout")
 
-    def _download_and_extract(self, zip_url: str) -> str:
-        """下载并解压结果文件"""
-        if not zip_url:
-            raise DocumentParserException("未获取到结果下载链接", self.get_service_name(), "no_download_url")
-
-        # 下载文件
-        response = requests.get(zip_url, timeout=60)
-        if response.status_code != 200:
-            raise DocumentParserException(
-                f"下载结果失败: HTTP {response.status_code}", self.get_service_name(), "download_failed"
-            )
-
-        # 解压到临时目录
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
-            tmp_file.write(response.content)
-            tmp_file.flush()
-
-            try:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
-                        zip_ref.extractall(tmp_dir)
-
-                    # 查找 markdown 文件
-                    md_files = list(Path(tmp_dir).glob("*.md"))
-                    if md_files:
-                        with open(md_files[0], encoding="utf-8") as f:
-                            return f.read()
-
-                    # 如果没有 markdown 文件，查找 json 文件
-                    json_files = list(Path(tmp_dir).glob("*.json"))
-                    if json_files:
-                        import json
-
-                        with open(json_files[0], encoding="utf-8") as f:
-                            data = json.load(f)
-                            # 尝试提取文本内容
-                            if isinstance(data, dict) and "content" in data:
-                                return str(data["content"])
-                            return str(data)
-
-                    # 如果都没有，返回第一个文本文件的内容
-                    text_files = list(Path(tmp_dir).glob("*"))
-                    if text_files:
-                        with open(text_files[0], encoding="utf-8") as f:
-                            return f.read()
-
-                    raise DocumentParserException(
-                        "无法从结果中提取文本内容", self.get_service_name(), "extract_content_failed"
-                    )
-
-            finally:
-                os.unlink(tmp_file.name)
-
     def _download_zip(self, zip_url: str) -> str:
         """下载结果ZIP到临时文件并返回路径"""
         if not zip_url:
@@ -315,8 +243,6 @@ class MinerUOfficialParser(BaseDocumentProcessor):
             raise DocumentParserException(
                 f"下载结果失败: HTTP {response.status_code}", self.get_service_name(), "download_failed"
             )
-        import tempfile
-
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
             tmp_file.write(response.content)
             tmp_file.flush()

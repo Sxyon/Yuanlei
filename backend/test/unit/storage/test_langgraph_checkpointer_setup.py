@@ -31,6 +31,44 @@ def test_langgraph_pool_checks_connections_before_checkout(monkeypatch):
     assert captured["check"] is Pool.check_connection
 
 
+def test_postgres_pool_capacity_uses_environment(monkeypatch):
+    """SQLAlchemy 与 LangGraph 连接池容量必须由部署配置拥有。"""
+    engine_options = {}
+    pool_options = {}
+
+    class Pool:
+        @staticmethod
+        async def check_connection(_connection):
+            return None
+
+        def __init__(self, **kwargs):
+            pool_options.update(kwargs)
+
+    monkeypatch.setenv("POSTGRES_URL", "postgresql+asyncpg://user:pass@postgres/yuxi")
+    monkeypatch.setenv("POSTGRES_POOL_SIZE", "120")
+    monkeypatch.setenv("POSTGRES_MAX_OVERFLOW", "30")
+    monkeypatch.setenv("POSTGRES_POOL_TIMEOUT_SECONDS", "60")
+    monkeypatch.setenv("LANGGRAPH_POSTGRES_POOL_SIZE", "60")
+    monkeypatch.setenv("LANGGRAPH_POSTGRES_POOL_TIMEOUT_SECONDS", "60")
+    monkeypatch.setattr(
+        manager_module,
+        "create_async_engine",
+        lambda *_args, **kwargs: engine_options.update(kwargs) or object(),
+    )
+    monkeypatch.setattr(manager_module, "AsyncConnectionPool", Pool)
+    monkeypatch.setattr(manager_module, "async_sessionmaker", lambda **_kwargs: object())
+
+    manager = object.__new__(PostgresManager)
+    manager.__init__()
+    manager.initialize()
+
+    assert engine_options["pool_size"] == 120
+    assert engine_options["max_overflow"] == 30
+    assert engine_options["pool_timeout"] == 60
+    assert pool_options["max_size"] == 60
+    assert pool_options["timeout"] == 60
+
+
 @pytest.mark.asyncio
 async def test_langgraph_setup_uses_cross_process_advisory_lock():
     """官方 checkpoint migration 必须被 PostgreSQL advisory lock 包围。"""

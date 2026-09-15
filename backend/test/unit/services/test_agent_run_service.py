@@ -25,6 +25,52 @@ def _sse_data(chunk: str) -> dict:
     raise AssertionError(f"SSE chunk has no data line: {chunk}")
 
 
+def _run_state(status: str = "running", *, cleanup_pending: bool = False):
+    return SimpleNamespace(
+        status=status,
+        conversation_thread_id="thread-1",
+        request_id="req-1",
+        runtime_cleanup_pending=cleanup_pending,
+    )
+
+
+def _run_stream_event(seq: str, event_type: str, payload: dict) -> dict:
+    return {
+        "seq": seq,
+        "event_type": event_type,
+        "payload": {
+            "schema_version": 1,
+            "run_id": "run-1",
+            "thread_id": "thread-1",
+            "event": event_type,
+            "payload": payload,
+            "created_at": "2026-09-04T00:00:00+00:00",
+        },
+        "ts": int(seq.partition("-")[0]),
+    }
+
+
+def test_run_sse_poll_interval_caps_short_and_long_idle_periods():
+    interval = agent_run_service.RUN_SSE_ACTIVE_POLL_SECONDS
+    short_idle_intervals = []
+    for _ in range(6):
+        interval = agent_run_service._next_run_sse_poll_interval(interval, idle_seconds=30)
+        short_idle_intervals.append(interval)
+
+    assert short_idle_intervals == [0.2, 0.4, 0.8, 1.0, 1.0, 1.0]
+    assert agent_run_service._next_run_sse_poll_interval(1.0, idle_seconds=120) == 2.0
+    assert agent_run_service._next_run_sse_poll_interval(2.0, idle_seconds=120) == 4.0
+    assert agent_run_service._next_run_sse_poll_interval(4.0, idle_seconds=120) == 4.0
+
+
+def test_run_sse_poll_jitter_stays_within_twenty_percent(monkeypatch: pytest.MonkeyPatch):
+    multipliers = iter([0.8, 1.2])
+    monkeypatch.setattr(agent_run_service, "uniform", lambda _low, _high: next(multipliers))
+
+    assert agent_run_service._jitter_run_sse_poll_interval(1.0) == 0.8
+    assert agent_run_service._jitter_run_sse_poll_interval(1.0) == 1.2
+
+
 def test_openai_content_parts_build_and_restore_multimodal_message():
     input_message = build_chat_input_message_from_openai_content(
         [
@@ -385,6 +431,64 @@ async def test_stream_agent_run_events_emits_error_on_db_error(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
+async def test_stream_agent_run_events_authorizes_before_reading_redis(monkeypatch: pytest.MonkeyPatch):
+    async def fake_load_run(run_id: str, uid: str):
+        del run_id, uid
+        return None
+
+    async def unexpected_list_events(*_args, **_kwargs):
+        pytest.fail("未授权连接不得读取 Redis Run 事件")
+
+    monkeypatch.setattr(agent_run_service, "_load_stream_run_for_user", fake_load_run)
+    monkeypatch.setattr(agent_run_service, "list_run_stream_events", unexpected_list_events)
+
+    chunks = [
+        chunk
+        async for chunk in agent_run_service.stream_agent_run_events(
+            run_id="run-1",
+            after_seq="0",
+            current_uid="other-user",
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0].startswith("event: error")
+    assert "运行任务不存在" in chunks[0]
+
+
+@pytest.mark.asyncio
+async def test_stream_agent_run_events_emits_error_when_status_refresh_fails(monkeypatch: pytest.MonkeyPatch):
+    async def fake_load_run(run_id: str, uid: str):
+        del run_id, uid
+        return _run_state()
+
+    async def broken_refresh(run_id: str):
+        del run_id
+        raise RuntimeError("db down")
+
+    async def fake_list_events(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(agent_run_service, "_load_stream_run_for_user", fake_load_run)
+    monkeypatch.setattr(agent_run_service, "_load_stream_run", broken_refresh)
+    monkeypatch.setattr(agent_run_service, "list_run_stream_events", fake_list_events)
+    monkeypatch.setattr(agent_run_service, "RUN_SSE_STATUS_POLL_SECONDS", 0.0)
+
+    chunks = [
+        chunk
+        async for chunk in agent_run_service.stream_agent_run_events(
+            run_id="run-1",
+            after_seq="0",
+            current_uid="user-1",
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0].startswith("event: error")
+    assert '"reason": "db_error"' in chunks[0]
+
+
+@pytest.mark.asyncio
 async def test_stream_agent_run_events_reads_redis_and_ends_on_end_event(monkeypatch: pytest.MonkeyPatch):
     @asynccontextmanager
     async def fake_session_ctx():
@@ -437,7 +541,6 @@ async def test_stream_agent_run_events_reads_redis_and_ends_on_end_event(monkeyp
     monkeypatch.setattr(agent_run_service.pg_manager, "get_async_session_context", fake_session_ctx)
     monkeypatch.setattr(agent_run_service, "AgentRunRepository", Repo)
     monkeypatch.setattr(agent_run_service, "list_run_stream_events", fake_list_events)
-    monkeypatch.setattr(agent_run_service, "SSE_POLL_INTERVAL_SECONDS", 0)
 
     chunks = []
     async for chunk in agent_run_service.stream_agent_run_events(
@@ -451,6 +554,176 @@ async def test_stream_agent_run_events_reads_redis_and_ends_on_end_event(monkeyp
     assert "id: 1700000000000-0" in chunks[0]
     assert chunks[-1].startswith("event: end")
     assert "id: 1700000000001-0" in chunks[-1]
+
+
+@pytest.mark.asyncio
+async def test_stream_agent_run_events_decouples_pg_checks_from_redis_polling(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """高频 Redis 空轮询不得同步放大 PostgreSQL 可见性查询。"""
+    pg_reads = 0
+
+    async def fake_load_run(run_id: str, uid: str):
+        nonlocal pg_reads
+        del run_id, uid
+        pg_reads += 1
+        return _run_state()
+
+    async def fake_refresh_run(run_id: str):
+        nonlocal pg_reads
+        del run_id
+        pg_reads += 1
+        return _run_state()
+
+    redis_reads = 0
+
+    async def fake_list_events(run_id: str, *, after_seq: str, limit: int):
+        nonlocal redis_reads
+        del run_id, after_seq, limit
+        redis_reads += 1
+        if redis_reads < 4:
+            return []
+        return [_run_stream_event("1700000000004-0", "end", {"status": "completed"})]
+
+    sleep_intervals = []
+
+    async def fake_sleep(seconds: float):
+        sleep_intervals.append(seconds)
+
+    monkeypatch.setattr(agent_run_service, "_load_stream_run_for_user", fake_load_run)
+    monkeypatch.setattr(agent_run_service, "_load_stream_run", fake_refresh_run)
+    monkeypatch.setattr(agent_run_service, "list_run_stream_events", fake_list_events)
+    monkeypatch.setattr(agent_run_service.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(agent_run_service, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(agent_run_service, "uniform", lambda _low, _high: 1.0)
+
+    chunks = []
+    async for chunk in agent_run_service.stream_agent_run_events(
+        run_id="run-1",
+        after_seq="0",
+        current_uid="user-1",
+    ):
+        chunks.append(chunk)
+
+    assert pg_reads == 1
+    assert redis_reads == 4
+    assert sleep_intervals == [0.1, 0.2, 0.4]
+    assert chunks[-1].startswith("event: end")
+
+
+@pytest.mark.asyncio
+async def test_stream_agent_run_events_resets_adaptive_poll_after_event(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """任一 Run 事件都必须把退避后的轮询恢复到低延迟档。"""
+
+    async def fake_load_run(run_id: str, uid: str):
+        del run_id, uid
+        return _run_state()
+
+    async def fake_refresh_run(run_id: str):
+        del run_id
+        return _run_state()
+
+    redis_results = iter(
+        [
+            [],
+            [],
+            [_run_stream_event("1700000000001-0", "messages", {"items": []})],
+            [],
+            [_run_stream_event("1700000000002-0", "end", {"status": "completed"})],
+        ]
+    )
+
+    async def fake_list_events(run_id: str, *, after_seq: str, limit: int):
+        del run_id, after_seq, limit
+        return next(redis_results)
+
+    sleep_intervals = []
+
+    async def fake_sleep(seconds: float):
+        sleep_intervals.append(seconds)
+
+    monkeypatch.setattr(agent_run_service, "_load_stream_run_for_user", fake_load_run)
+    monkeypatch.setattr(agent_run_service, "_load_stream_run", fake_refresh_run)
+    monkeypatch.setattr(agent_run_service, "list_run_stream_events", fake_list_events)
+    monkeypatch.setattr(agent_run_service.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(agent_run_service, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(agent_run_service, "uniform", lambda _low, _high: 1.0)
+
+    chunks = []
+    async for chunk in agent_run_service.stream_agent_run_events(
+        run_id="run-1",
+        after_seq="0",
+        current_uid="user-1",
+    ):
+        chunks.append(chunk)
+
+    assert sleep_intervals == [0.1, 0.2, 0.1, 0.1]
+    assert [chunk.splitlines()[0] for chunk in chunks] == ["event: messages", "event: end"]
+
+
+@pytest.mark.asyncio
+async def test_stream_agent_run_events_refreshes_pg_before_cleanup_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Redis 缺少 end 时，低频 PG 探测仍须等待 cleanup fence 后补发终态。"""
+    visibility_reads = 0
+    status_reads = 0
+
+    async def fake_load_run(run_id: str, uid: str):
+        nonlocal visibility_reads
+        del run_id, uid
+        visibility_reads += 1
+        return _run_state("completed", cleanup_pending=True)
+
+    async def fake_refresh_run(run_id: str):
+        nonlocal status_reads
+        del run_id
+        status_reads += 1
+        return _run_state("completed")
+
+    async def fake_list_events(run_id: str, *, after_seq: str, limit: int):
+        del run_id, after_seq, limit
+        return []
+
+    async def fake_last_stream_seq(run_id: str):
+        del run_id
+        return "0-0"
+
+    clock = 0.0
+    sleep_intervals = []
+
+    async def fake_sleep(seconds: float):
+        nonlocal clock
+        sleep_intervals.append(seconds)
+        clock += seconds
+
+    monkeypatch.setattr(agent_run_service, "_load_stream_run_for_user", fake_load_run)
+    monkeypatch.setattr(agent_run_service, "_load_stream_run", fake_refresh_run)
+    monkeypatch.setattr(agent_run_service, "list_run_stream_events", fake_list_events)
+    monkeypatch.setattr(agent_run_service, "get_last_run_stream_seq", fake_last_stream_seq)
+    monkeypatch.setattr(agent_run_service.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(agent_run_service, "monotonic", lambda: clock)
+    monkeypatch.setattr(agent_run_service, "uniform", lambda _low, _high: 1.2)
+    monkeypatch.setattr(agent_run_service, "RUN_SSE_LONG_IDLE_AFTER_SECONDS", 0.0)
+
+    chunks = []
+    async for chunk in agent_run_service.stream_agent_run_events(
+        run_id="run-1",
+        after_seq="0",
+        current_uid="user-1",
+        verbose=False,
+    ):
+        chunks.append(chunk)
+
+    assert visibility_reads == 1
+    assert status_reads == 1
+    assert clock == agent_run_service.RUN_SSE_STATUS_POLL_SECONDS
+    assert sleep_intervals[-1] < 3.2 * 1.2
+    assert len(chunks) == 1
+    assert chunks[0].startswith("event: end")
+    assert _sse_data(chunks[0])["payload"] == {"status": "completed"}
 
 
 @pytest.mark.asyncio
@@ -1265,7 +1538,48 @@ async def test_get_agent_run_result_uses_output_message_id(monkeypatch: pytest.M
     assert payload["output"] == "older"
     assert payload["final_message_id"] == 2
     assert payload["langfuse_trace_id"] == "trace-old"
+    assert payload["timing"]["first_output_latency_ms"] is None
     assert "debug" not in payload
+
+
+@pytest.mark.asyncio
+async def test_get_agent_run_result_prefers_run_trace_without_final_message(monkeypatch: pytest.MonkeyPatch):
+    run = SimpleNamespace(
+        id="run-1",
+        status="failed",
+        agent_slug="default-chatbot",
+        conversation_thread_id="thread-1",
+        conversation_id=10,
+        request_id="req-1",
+        output_message_id=None,
+        langfuse_trace_id="trace-run",
+        error_type="model_error",
+        error_message="failed before output",
+    )
+
+    class RunRepo:
+        def __init__(self, db):
+            del db
+
+        async def get_run_for_user(self, run_id: str, uid: str):
+            assert (run_id, uid) == ("run-1", "user-1")
+            return run
+
+    class RunOutputRepo:
+        def __init__(self, db):
+            del db
+
+        async def get_output_message(self, **_kwargs):
+            return None
+
+    monkeypatch.setattr(agent_run_service, "AgentRunRepository", RunRepo)
+    monkeypatch.setattr(agent_run_service, "AgentRunOutputRepository", RunOutputRepo)
+
+    payload = await agent_run_service.get_agent_run_result(run_id="run-1", current_uid="user-1", db=object())
+
+    assert payload["output"] == ""
+    assert payload["final_message_id"] is None
+    assert payload["langfuse_trace_id"] == "trace-run"
 
 
 @pytest.mark.asyncio
@@ -1488,7 +1802,7 @@ async def test_cancel_agent_run_view_cascades_children(monkeypatch: pytest.Monke
     parent_run = SimpleNamespace(id="parent-run", uid="user-1", to_dict=lambda: {"id": "parent-run"})
     child_runs = [SimpleNamespace(id="child-1"), SimpleNamespace(id="child-2")]
     requested: list[str] = []
-    signals: list[tuple[str, bool]] = []
+    signals: list[tuple[list[str], bool]] = []
 
     class Db:
         committed = False
@@ -1507,11 +1821,11 @@ async def test_cancel_agent_run_view_cascades_children(monkeypatch: pytest.Monke
             requested.extend(["parent-run", *(child.id for child in child_runs)])
             return parent_run, list(requested)
 
-    async def fake_publish_cancel_signal(run_id: str):
-        signals.append((run_id, db.committed))
+    async def fake_publish_cancel_signals(run_ids: list[str]):
+        signals.append((run_ids, db.committed))
 
     monkeypatch.setattr(agent_run_service, "AgentRunRepository", RunRepo)
-    monkeypatch.setattr(agent_run_service, "publish_cancel_signal", fake_publish_cancel_signal)
+    monkeypatch.setattr(agent_run_service, "publish_cancel_signals", fake_publish_cancel_signals)
     db = Db()
 
     result = await agent_run_service.cancel_agent_run_view(
@@ -1522,7 +1836,7 @@ async def test_cancel_agent_run_view_cascades_children(monkeypatch: pytest.Monke
 
     assert result["run"]["id"] == "parent-run"
     assert requested == ["parent-run", "child-1", "child-2"]
-    assert signals == [("parent-run", True), ("child-1", True), ("child-2", True)]
+    assert signals == [(["parent-run", "child-1", "child-2"], True)]
 
 
 @pytest.mark.asyncio

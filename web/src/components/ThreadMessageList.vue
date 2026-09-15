@@ -16,15 +16,20 @@
         <ToolCallsGroupComponent
           v-else
           :tool-calls="displayItem.toolCalls"
+          :entries="displayItem.entries"
           :is-active="isToolGroupActive(conv, itemIndex, displayItemsList[convIndex])"
         />
       </template>
+      <div v-if="!conv.messages.length && conv.run" class="thread-message-list-empty">
+        {{ formatEmptyRunStatus(conv.run.status) }}
+      </div>
     </template>
     <div v-if="conversations.length === 0" class="thread-message-list-empty">暂无消息</div>
   </div>
 </template>
 
 <script setup>
+import { formatEmptyRunStatus } from '@/utils/conversationProcessGrouping'
 import { computed } from 'vue'
 import AgentMessageComponent from '@/components/AgentMessageComponent.vue'
 import ToolCallsGroupComponent from '@/components/ToolCallsGroupComponent.vue'
@@ -32,6 +37,7 @@ import { MessageProcessor } from '@/utils/messageProcessor'
 import { getConversationDisplayItems } from '@/utils/messageGrouping'
 
 const props = defineProps({
+  runs: { type: Array, default: () => [] },
   messages: {
     type: Array,
     default: () => []
@@ -51,18 +57,19 @@ const props = defineProps({
 })
 
 const historyConversations = computed(() =>
-  MessageProcessor.convertServerHistoryToMessages(props.messages)
+  MessageProcessor.convertServerHistoryToMessages(props.messages, props.runs)
 )
 
 const conversations = computed(() => {
   if (!props.ongoingMessages.length) return historyConversations.value
-  return [
-    ...historyConversations.value,
-    {
-      messages: props.ongoingMessages,
-      status: 'streaming'
-    }
-  ]
+  const liveRunId = props.ongoingMessages.find((message) => message.run_id)?.run_id
+  const liveGroup = { messages: props.ongoingMessages, status: 'streaming' }
+  if (liveRunId && historyConversations.value.some((conv) => conv.run?.run_id === liveRunId)) {
+    return historyConversations.value.map((conv) =>
+      conv.run?.run_id === liveRunId ? { ...conv, ...liveGroup } : conv
+    )
+  }
+  return [...historyConversations.value, liveGroup]
 })
 
 const displayItemsList = computed(() =>

@@ -22,6 +22,7 @@ test('知识库文件修改守卫拒绝只读、锁定、筛选和虚拟目录�
       canDropOnFileBreadcrumb
     } = await server.ssrLoadModule('/src/utils/knowledgeFileMutations.js')
 
+    assert.equal(canMutateKnowledgeFiles({}), true)
     for (const blockedState of [
       { readonly: true },
       { locked: true },
@@ -34,6 +35,15 @@ test('知识库文件修改守卫拒绝只读、锁定、筛选和虚拟目录�
     const realFile = { file_id: 'file-1', is_virtual_folder: false }
     const realFolder = { file_id: 'folder-1', is_folder: true, is_virtual_folder: false }
     const virtualFolder = { file_id: 'virtual-1', is_folder: true, is_virtual_folder: true }
+    assert.equal(
+      canDragKnowledgeFile({ enabled: true, record: realFile, breadcrumbs: [], files: [realFolder] }),
+      true
+    )
+    assert.equal(canDropKnowledgeFileIntoFolder(realFile, realFolder), true)
+    assert.equal(
+      canDropOnFileBreadcrumb({ enabled: true, item: {}, index: 0, count: 2 }),
+      true
+    )
     assert.equal(
       canDragKnowledgeFile({ enabled: true, record: virtualFolder, breadcrumbs: [], files: [realFolder] }),
       false

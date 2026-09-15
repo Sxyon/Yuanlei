@@ -144,8 +144,8 @@ def test_production_compose_keeps_existing_deployment_image_identity() -> None:
 
 
 def test_host_test_runner_probes_current_compose_slot() -> None:
-    """测试运行器必须通过 Compose service 探测当前槽位。"""
+    """测试运行器必须通过 Compose service 探测当前槽位的 readiness。"""
     source = (_project_root() / "backend/test/run_tests.sh").read_text()
 
-    assert "docker compose exec -T api curl -fsS http://localhost:5050/api/system/health" in source
-    assert "if curl -s http://localhost:5050/api/system/health" not in source
+    assert "docker compose exec -T api curl -fsS http://localhost:5050/api/system/ready" in source
+    assert "docker compose exec -T api curl -fsS http://localhost:5050/api/system/health" not in source

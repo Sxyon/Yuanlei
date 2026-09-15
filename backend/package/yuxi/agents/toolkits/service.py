@@ -113,16 +113,29 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
         selected_tool_names.add(tool_name)
         selected_tool_sources[tool_name] = "local"
 
+    # 去重后的 MCP server 列表(保持配置顺序)
     selected_mcp_servers: set[str] = set()
+    server_names: list[str] = []
     for server_name in getattr(context, "mcps", None) or []:
         if not isinstance(server_name, str) or server_name in selected_mcp_servers:
             continue
         selected_mcp_servers.add(server_name)
+        server_names.append(server_name)
+
+    # 并发加载各 MCP server 的工具(单 server 33-300ms,串行 6 个累加 1-2s;
+    # 官方 deepagents-code 同款优化: asyncio.gather 并发,取 max 而非 sum)。
+    import asyncio
+
+    async def _load_one(name: str):
         try:
-            mcp_tools = await get_enabled_mcp_tools(server_name)
+            return name, await get_enabled_mcp_tools(name)
         except Exception as e:
-            logger.warning(f"Failed to load configured MCP tools '{server_name}': {e}")
-            continue
+            logger.warning(f"Failed to load configured MCP tools '{name}': {e}")
+            return name, None
+
+    loaded = await asyncio.gather(*(_load_one(n) for n in server_names))
+
+    for server_name, mcp_tools in loaded:
         if not mcp_tools:
             logger.warning(f"Configured MCP unavailable, skip: {server_name}")
             continue

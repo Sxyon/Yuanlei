@@ -15,6 +15,7 @@ pytestmark = pytest.mark.unit
 def _patch_sandbox_backend(monkeypatch: pytest.MonkeyPatch, files: dict[str, bytes]):
     class FakeBackend:
         def __init__(self, **kwargs):
+            assert kwargs["create_if_missing"] is True
             self.scope = kwargs
 
         def download_authorized_file_to_path(self, path, target_path, max_bytes):

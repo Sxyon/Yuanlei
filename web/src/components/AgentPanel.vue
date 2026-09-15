@@ -223,7 +223,14 @@
         v-show="activeSectionKey === 'message-debug'"
         class="message-debug-section"
       >
-        <MessageDebugPanel :messages="messages" />
+        <MessageDebugPanel
+          :messages="messages"
+          :runs="runs"
+          :thread-id="threadId"
+          :active="visible && activeSectionKey === 'message-debug'"
+          :active-run-id="activeRunId"
+          :run-active="runActive"
+        />
       </div>
     </div>
 
@@ -293,9 +300,11 @@ import {
   searchWorkspaceFiles
 } from '@/apis/workspace_api'
 import { normalizePreviewResponse } from '@/utils/file_preview'
+import { parseDownloadFilename } from '@/utils/file_utils'
 import { threadApi } from '@/apis/agent_api'
 
 const props = defineProps({
+  runs: { type: Array, default: () => [] },
   agentState: {
     type: Object,
     default: () => ({})
@@ -303,6 +312,18 @@ const props = defineProps({
   threadId: {
     type: String,
     default: null
+  },
+  activeRunId: {
+    type: String,
+    default: null
+  },
+  runActive: {
+    type: Boolean,
+    default: false
+  },
+  visible: {
+    type: Boolean,
+    default: false
   },
   panelRatio: {
     type: Number,
@@ -537,26 +558,6 @@ const isSameOrChildPath = (path, targetPath) => {
   return (
     normalizedPath === normalizedTargetPath || normalizedPath.startsWith(`${normalizedTargetPath}/`)
   )
-}
-
-const parseDownloadFilename = (contentDisposition) => {
-  if (!contentDisposition) return ''
-
-  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-  if (utf8Match && utf8Match[1]) {
-    try {
-      return decodeURIComponent(utf8Match[1])
-    } catch (error) {
-      console.warn('解析 UTF-8 文件名失败:', error)
-    }
-  }
-
-  const asciiMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
-  if (asciiMatch && asciiMatch[1]) {
-    return asciiMatch[1]
-  }
-
-  return ''
 }
 
 const getFileName = (fileItem) => {

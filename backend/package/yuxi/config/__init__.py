@@ -3,6 +3,18 @@ import tempfile
 from pathlib import Path
 
 
+def get_int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    """读取有下界的整数环境变量，配置非法时显式失败。"""
+    raw_value = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer, got {raw_value!r}") from exc
+    if value < minimum:
+        raise RuntimeError(f"{name} must be >= {minimum}, got {value}")
+    return value
+
+
 def get_legacy_storage_dir() -> Path:
     """读取仅供一次性迁移使用的历史广域存储目录。"""
     return Path(os.getenv("YUXI_LEGACY_STORAGE_DIR", "legacy-saves"))
@@ -45,6 +57,7 @@ def __getattr__(name: str):
 __all__ = [
     "UserConfig",
     "UserConfigSchema",
+    "get_int_env",
     "get_runtime_dir",
     "get_legacy_storage_dir",
     "get_skill_data_dir",

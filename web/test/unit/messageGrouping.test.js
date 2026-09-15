@@ -1,29 +1,53 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { collapseConversationProcess, formatProcessDuration } from '../../src/utils/conversationProcessGrouping.js'
+import { collapseConversationProcess, formatProcessDuration, isConversationSettled, formatEmptyRunStatus } from '../../src/utils/conversationProcessGrouping.js'
 
-test('已完成对话将中间消息和工具调用聚合到过程组', () => {
-    const items = collapseConversationProcess(
-      [
-        { key: 'h1', type: 'message', message: { type: 'human' } },
-        { key: 'a1', type: 'message', message: { type: 'ai' } },
-        { key: 'tools', type: 'tool-group', toolCalls: [{ id: 't1' }, { id: 't2' }] },
-        {
-          key: 'a3',
-          type: 'message',
-          message: {
-            type: 'ai',
-            run_started_at: '2026-08-20T00:00:00Z',
-            run_finished_at: '2026-08-20T00:01:05Z'
-          }
+test('已完成对话使用后端 Run 总耗时聚合过程组', () => {
+  const items = collapseConversationProcess(
+    [
+      { key: 'h1', type: 'message', message: { type: 'human' } },
+      { key: 'a1', type: 'message', message: { type: 'ai' } },
+      { key: 'tools', type: 'tool-group', toolCalls: [{ id: 't1' }, { id: 't2' }] },
+      {
+        key: 'a3',
+        type: 'message',
+        message: {
+          type: 'ai',
+          run_started_at: '2026-08-20T00:00:00Z',
+          run_finished_at: '2026-08-20T00:01:05Z',
+          run_id: 'run-final'
         }
-      ],
-      true
-    )
-    assert.deepEqual(items.map((item) => item.type), ['message', 'process-group', 'message'])
-    assert.equal(items[1].messageCount, 1)
-    assert.equal(items[1].toolCallCount, 2)
-    assert.equal(items[1].durationMs, 65000)
+      }
+    ],
+    true,
+    { total_latency_ms: 64000 }
+  )
+  assert.deepEqual(items.map((item) => item.type), ['message', 'process-group', 'message'])
+  assert.equal(items[1].messageCount, 1)
+  assert.equal(items[1].toolCallCount, 2)
+  assert.equal(items[1].durationMs, 64000)
+})
+
+test('只有旧 Run 时间戳时不推算过程耗时', () => {
+  const items = collapseConversationProcess(
+    [
+      { key: 'h1', type: 'message', message: { type: 'human' } },
+      { key: 'a1', type: 'message', message: { type: 'ai' } },
+      {
+        key: 'a2',
+        type: 'message',
+        message: {
+          type: 'ai',
+          run_started_at: '2026-08-20T00:00:00Z',
+          run_finished_at: '2026-08-20T00:01:05Z'
+        }
+      }
+    ],
+    true
+  )
+
+  assert.equal(items[1].durationMs, null)
+  assert.equal(formatProcessDuration(items[1].durationMs), '处理过程')
 })
 
 test('运行中或最终消息后仍有工具调用时不聚合过程', () => {
@@ -39,13 +63,25 @@ test('运行中或最终消息后仍有工具调用时不聚合过程', () => {
   )
 })
 
-test('formatProcessDuration: 保持分钟和秒数格式', () => {
-  assert.equal(formatProcessDuration(0), '处理过程')
+test('formatProcessDuration: 复用 Run 时延格式', () => {
+  assert.equal(formatProcessDuration(0), '耗时 0ms')
   assert.equal(formatProcessDuration(null), '处理过程')
   assert.equal(formatProcessDuration(undefined), '处理过程')
-  assert.equal(formatProcessDuration(5000), '耗时0分钟5秒')
-  assert.equal(formatProcessDuration(59000), '耗时0分钟59秒')
-  assert.equal(formatProcessDuration(60000), '耗时1分钟0秒')
-  assert.equal(formatProcessDuration(65000), '耗时1分钟5秒')
-  assert.equal(formatProcessDuration(125000), '耗时2分钟5秒')
+  assert.equal(formatProcessDuration(5000), '耗时 5.0s')
+  assert.equal(formatProcessDuration(59000), '耗时 59s')
+  assert.equal(formatProcessDuration(60000), '耗时 1m 0s')
+  assert.equal(formatProcessDuration(65000), '耗时 1m 5s')
+  assert.equal(formatProcessDuration(125000), '耗时 2m 5s')
+})
+
+
+test('零消息后续 Run 不隐藏上一条完成回答的操作栏，关联 resume 仍等待续写', () => {
+  const answer = { run: { run_id: 'run-a', status: 'completed' }, messages: [{ type: 'human' }, { type: 'ai' }] }
+  const empty = { run: { run_id: 'run-b', run_type: 'chat', status: 'failed' }, messages: [] }
+  assert.equal(isConversationSettled([answer, empty], answer), true)
+  const resume = { run: { run_id: 'resume', run_type: 'resume', created_by_run_id: 'run-a' }, messages: [] }
+  assert.equal(isConversationSettled([answer, resume], answer), false)
+  assert.equal(isConversationSettled([answer], answer, true), false)
+  assert.equal(formatEmptyRunStatus(empty.run.status), '本次运行失败')
+  assert.equal(formatEmptyRunStatus('cancelled'), '本次运行已取消')
 })

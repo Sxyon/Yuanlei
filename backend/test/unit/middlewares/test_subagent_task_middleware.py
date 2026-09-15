@@ -19,16 +19,6 @@ def make_child_thread_id(parent_thread_id: str, agent_slug: str, tool_call_id: s
     return subagent_child_thread_id(parent_thread_id, agent_slug, tool_call_id)
 
 
-class _ChildContext:
-    def __init__(self):
-        self.model = None
-
-    def update_from_dict(self, values: dict):
-        for key, value in values.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-
-
 class _SessionContext:
     async def __aenter__(self):
         return object()
@@ -80,6 +70,35 @@ def _async_tool_middleware(*, model: str | None = None) -> YuxiSubAgentMiddlewar
             )
         ],
     )
+
+
+async def test_fixed_tool_schemas_reused_without_sharing_parent_run(monkeypatch):
+    """重复构造不再推导固定参数，实际工具闭包仍使用各自父 Run。"""
+    import langchain_core.tools.structured as structured
+
+    first = _async_tool_middleware()
+    first.parent_context.run_id = "first-parent"
+    first_schemas = {tool.name: tool.tool_call_schema.model_json_schema() for tool in first.tools}
+
+    def reject_inference(*args, **kwargs):
+        raise AssertionError("固定的子智能体工具 Schema 不应逐 Run 重新推导")
+
+    monkeypatch.setattr(structured, "create_schema_from_function", reject_inference)
+    second = _async_tool_middleware()
+    second.parent_context.run_id = "second-parent"
+
+    async def return_parent(self, **kwargs):
+        return None, self.parent_context.run_id
+
+    monkeypatch.setattr(YuxiSubAgentMiddleware, "_start_subagent", return_parent)
+    for left, right in zip(first.tools, second.tools, strict=True):
+        assert left is not right
+        assert left.args_schema is right.args_schema
+        assert right.tool_call_schema.model_json_schema() == first_schemas[right.name]
+        assert "runtime" not in first_schemas[right.name]["properties"]
+
+    assert await first.tools[0].coroutine(description="test", subagent_slug="worker", runtime=None) == "first-parent"
+    assert await second.tools[0].coroutine(description="test", subagent_slug="worker", runtime=None) == "second-parent"
 
 
 def _subagent_run(

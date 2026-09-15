@@ -11,12 +11,13 @@ from sqlalchemy import text
 
 from yuxi.config import get_legacy_storage_dir
 from yuxi.config.options import ensure_options_in_db
-from yuxi.config.runtime import lite_mode_enabled
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.storage.postgres.manager import (
     BUSINESS_SCHEMA_VERSION,
     KNOWLEDGE_SCHEMA_VERSION,
+    PROJECT_GIT_SCHEMA_STATEMENTS,
     V071_WORKDIR_CUTOVER_STATEMENTS,
+    YUANLEI_SCHEMA_VERSION,
     pg_manager,
 )
 from yuxi.storage_migrations.v071_options import migrate_system_options
@@ -102,6 +103,15 @@ def _require_supported_version(
         raise RuntimeError(f"Unsupported {domain} schema version: {actual}; expected {expected}")
 
 
+async def _ensure_yuanlei_schema() -> None:
+    """收敛 Yuanlei 定制业务拥有的数据库结构。"""
+    # 不可独立的扩展内容：Project Git 外键依赖上游 business 域的 users/projects，
+    # 因此 yuanlei domain 必须在 business schema 收敛后执行。
+    async with pg_manager.async_engine.begin() as connection:
+        for statement in PROJECT_GIT_SCHEMA_STATEMENTS:
+            await connection.execute(text(statement))
+
+
 async def main() -> None:
     """独占迁移数据库 Schema，并在停机窗口切换历史文件 Owner。"""
     pg_manager.initialize()
@@ -126,10 +136,21 @@ async def main() -> None:
                 "business",
                 business_version,
                 BUSINESS_SCHEMA_VERSION,
-                upgrade_from=(1, 2),
+                upgrade_from=(2,),
             )
-            if not lite_mode_enabled():
-                _require_supported_version("knowledge", versions.get("knowledge"), KNOWLEDGE_SCHEMA_VERSION)
+            knowledge_version = versions.get("knowledge")
+            _require_supported_version(
+                "knowledge",
+                knowledge_version,
+                KNOWLEDGE_SCHEMA_VERSION,
+                upgrade_from=(1,),
+            )
+            yuanlei_version = versions.get("yuanlei")
+            _require_supported_version(
+                "yuanlei",
+                yuanlei_version,
+                YUANLEI_SCHEMA_VERSION,
+            )
 
             if business_version is None:
                 await pg_manager.create_business_tables()
@@ -141,15 +162,22 @@ async def main() -> None:
                     await rewrite_v071_workdir_paths(session)
                     await verify_workdir_bindings(session)
                     await session.commit()
-            if business_version is None or business_version < BUSINESS_SCHEMA_VERSION:
+            if business_version in {None, 2}:
                 await pg_manager.ensure_business_schema()
                 if business_version is None:
                     await pg_manager.setup_langgraph_checkpointer()
                 await pg_manager.record_schema_version("business", BUSINESS_SCHEMA_VERSION)
 
-            if not lite_mode_enabled() and versions.get("knowledge") is None:
+            if yuanlei_version is None:
+                await _ensure_yuanlei_schema()
+                await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
+
+            if knowledge_version is None:
                 await pg_manager.create_knowledge_tables()
                 await pg_manager.ensure_knowledge_schema()
+                await pg_manager.record_schema_version("knowledge", KNOWLEDGE_SCHEMA_VERSION)
+            elif knowledge_version == 1:
+                await pg_manager.upgrade_knowledge_schema_v1_to_v2()
                 await pg_manager.record_schema_version("knowledge", KNOWLEDGE_SCHEMA_VERSION)
 
             await _converge_database_state(fail_nonterminal_runs=requires_quiescence)

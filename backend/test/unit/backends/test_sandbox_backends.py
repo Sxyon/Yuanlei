@@ -101,6 +101,7 @@ def test_create_agent_composite_backend_uses_sandbox_filesystem(monkeypatch):
     backend = create_agent_composite_backend(_runtime().context)
 
     assert isinstance(backend.default, ProvisionerSandboxBackend)
+    assert backend.default._create_if_missing is True
     assert backend.routes == {}
     assert backend.artifacts_root == f"{WORKDIR_PATH}/outputs"
 
@@ -520,7 +521,12 @@ def test_provider_revalidates_runtime_generation_after_keepalive(monkeypatch) ->
 
     provider = _make_provider(FakeClient())
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda _uid: {})
-    provider.acquire("root-thread", uid="user-1", workdir_path="projects/11111111-1111-4111-8111-111111111111")
+    provider.get(
+        "root-thread",
+        uid="user-1",
+        workdir_path="projects/11111111-1111-4111-8111-111111111111",
+        create_if_missing=True,
+    )
     connection = next(iter(provider._connections.values()))
     provider._last_touch_at[connection.cache_key] = 0
 
@@ -553,7 +559,12 @@ def test_provider_recreates_cross_process_deleted_generation_before_touch_interv
 
     provider = _make_provider(FakeClient())
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda _uid: {})
-    provider.acquire("root-thread", uid="user-1", workdir_path="projects/11111111-1111-4111-8111-111111111111")
+    provider.get(
+        "root-thread",
+        uid="user-1",
+        workdir_path="projects/11111111-1111-4111-8111-111111111111",
+        create_if_missing=True,
+    )
 
     refreshed = provider.get(
         "root-thread",
@@ -590,7 +601,12 @@ def test_provider_rejects_project_workdir_drift_after_keepalive(monkeypatch) -> 
 
     provider = _make_provider(FakeClient())
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda _uid: {})
-    provider.acquire("root-thread", uid="user-1", workdir_path="projects/11111111-1111-4111-8111-111111111111")
+    provider.get(
+        "root-thread",
+        uid="user-1",
+        workdir_path="projects/11111111-1111-4111-8111-111111111111",
+        create_if_missing=True,
+    )
     connection = next(iter(provider._connections.values()))
     provider._last_touch_at[connection.cache_key] = 0
 
@@ -613,10 +629,20 @@ def test_provider_rejects_rebinding_cached_runtime_to_another_workdir(monkeypatc
 
     provider = _make_provider(FakeClient())
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda _uid: {})
-    provider.acquire("root-thread", uid="user-1", workdir_path="projects/11111111-1111-4111-8111-111111111111")
+    provider.get(
+        "root-thread",
+        uid="user-1",
+        workdir_path="projects/11111111-1111-4111-8111-111111111111",
+        create_if_missing=True,
+    )
 
     with pytest.raises(SandboxIdentityMismatchError, match="existing runtime scope"):
-        provider.acquire("root-thread", uid="user-1", workdir_path="projects/22222222-2222-4222-8222-222222222222")
+        provider.get(
+            "root-thread",
+            uid="user-1",
+            workdir_path="projects/22222222-2222-4222-8222-222222222222",
+            create_if_missing=True,
+        )
 
     assert created == ["projects/11111111-1111-4111-8111-111111111111"]
 
@@ -661,16 +687,18 @@ def test_provider_uses_distinct_sandbox_scope_for_different_uid(monkeypatch) -> 
     provider = _make_provider(FakeClient())
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda uid: {"A": uid})
 
-    sandbox_1 = provider.acquire(
+    sandbox_1 = provider.get(
         "child-thread",
         uid="user-1",
+        create_if_missing=True,
     )
-    sandbox_2 = provider.acquire(
+    sandbox_2 = provider.get(
         "child-thread",
         uid="user-2",
+        create_if_missing=True,
     )
 
-    assert sandbox_1 != sandbox_2
+    assert sandbox_1.sandbox_id != sandbox_2.sandbox_id
     assert created[0][2] == "user-1"
     assert created[1][2] == "user-2"
 
@@ -697,7 +725,7 @@ def test_provider_maps_external_uid_only_at_provisioner_filesystem_boundary(monk
     logical_uid = "oidc:12345678-1234-1234-1234-123456789abc"
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda uid: {"OWNER": uid})
 
-    provider.acquire("thread-1", uid=logical_uid)
+    provider.get("thread-1", uid=logical_uid, create_if_missing=True)
 
     assert calls == [(workspace_uid_dirname(logical_uid), {"OWNER": logical_uid})]
     assert calls[0][0].startswith("uid-")

@@ -14,11 +14,11 @@ UserWorkspace、Conversation Workdir、Workspace/Viewer API 路径与 Agent runt
 
 ## 决策
 
-顶层 `yuxi.workspace` 由 `paths.py` 拥有 uid、UserWorkspace 与持久化 `projects/<uuid>` 路径，由 `filesystem.py` 拥有宿主文件根和 fd-relative no-follow 原语，由 `workdir.py` 提供以一个持久化 Workdir 为根的文件视图，由 `preview.py` 提供 UserWorkspace 文件预览与 runtime 本地缓存。通用渲染原语与 Knowledge/MinIO Preview 的分工由[分离 Workspace 与 Knowledge Preview Owner](2026-08-21-preview-owner-separation.md)收敛。普通 `yuxi.services` 不取得 UserWorkspace 宿主 `Path`；storage migration 的宿主路径操作只存在于从 0.7.1 升级的显式流程中。
+顶层 `yuxi.workspace` 由 `paths.py` 拥有 uid、UserWorkspace 与持久化 managed Workdir 路径，由 `filesystem.py` 拥有宿主文件根和 fd-relative no-follow 原语，由 `workdir.py` 提供以一个持久化 Workdir 为根的文件视图，由 `preview.py` 提供 UserWorkspace 文件预览与 runtime 本地缓存。通用渲染原语与 Knowledge/MinIO Preview 的分工由[分离 Workspace 与 Knowledge Preview Owner](2026-08-21-preview-owner-separation.md)收敛。普通 `yuxi.services` 不取得 UserWorkspace 宿主 `Path`；storage migration 的宿主路径操作只存在于从 0.7.1 升级的显式流程中。
 
-文件系统只保留两个边界：Agent `Backend` 拥有 Sandbox 生命周期、`/home/gem/user-data/...`、`/home/gem/skills/...` 与运行时文件协议；`Workspace` 拥有持久化 UserWorkspace 和 `projects/<uuid>`。`Workspace` 不解析 runtime 路径或 Skill projection，runtime 路径只在 Backend 或桥接 Agent artifact 协议的 Service 中出现。
+文件系统只保留两个边界：Agent `Backend` 拥有 Sandbox 生命周期、`/home/gem/user-data/...`、`/home/gem/skills/...` 与运行时文件协议；`Workspace` 拥有持久化 UserWorkspace 和 Project Workdir。`Workspace` 不解析 runtime 路径或 Skill projection，runtime 路径只在 Backend 或桥接 Agent artifact 协议的 Service 中出现。
 
-`workdir_service` 保留 Conversation 查询和用户授权，并通过 `Workdir.open_existing()` 一次完成 canonical identity、存在性/no-follow 校验和持久化 capability 构造。浏览 API 的 scope-relative `/foo/bar` 直接由 Workdir 解析，不再先转换成 runtime absolute path。跨边界只保留三种契约：数据库保存 `projects/<uuid>`，Workspace/Viewer API 使用 scope-relative `/foo/bar`，Agent 与 artifact 使用 runtime absolute path。
+`workdir_service` 保留 Conversation 查询和用户授权，并通过 `Workdir.open_existing()` 一次完成 canonical identity、存在性/no-follow 校验和持久化 capability 构造。浏览 API 的 scope-relative `/foo/bar` 直接由 Workdir 解析，不再先转换成 runtime absolute path。跨边界只保留三种契约：数据库保存 Project `workdir_path`，Workspace/Viewer API 使用 scope-relative `/foo/bar`，Agent 与 artifact 使用 runtime absolute path。
 
 Conversation 的 `workdir_path` 在 0.7.1 cutover 后由数据库 `NOT NULL` 约束拥有完整性；运行时不再修复空绑定。新 Conversation 先分配 canonical 路径并提交数据库，再物化目录；SubAgent 只验证父子 Conversation 绑定一致，不维护第二套空值兼容状态。
 

@@ -9,7 +9,7 @@ from importlib import import_module
 from typing import Any
 
 from yuxi.knowledge.parser.base import BaseDocumentProcessor
-from yuxi.knowledge.parser.registry import PROCESSOR_TYPES
+from yuxi.knowledge.parser.capabilities import PARSER_CAPABILITIES, get_parser_capability
 from yuxi.utils import logger
 
 # 处理器实例缓存
@@ -18,8 +18,6 @@ _PROCESSOR_CACHE: dict[str, BaseDocumentProcessor] = {}
 
 class DocumentProcessorFactory:
     """文档处理器工厂"""
-
-    PROCESSOR_TYPES = PROCESSOR_TYPES
 
     @classmethod
     def _build_cache_key(cls, processor_type: str, kwargs: dict[str, Any]) -> str:
@@ -33,11 +31,11 @@ class DocumentProcessorFactory:
         digest = hashlib.sha256(kwargs_repr.encode()).hexdigest()[:16]
         return f"{processor_type}|{digest}"
 
-    @classmethod
-    def _load_processor_class(cls, processor_type: str) -> type[BaseDocumentProcessor]:
-        module_path, class_name = cls.PROCESSOR_TYPES[processor_type]
-        module = import_module(module_path)
-        processor_class = getattr(module, class_name)
+    @staticmethod
+    def _load_processor_class(processor_type: str) -> type[BaseDocumentProcessor]:
+        capability = get_parser_capability(processor_type)
+        module = import_module(capability.module_path)
+        processor_class = getattr(module, capability.class_name)
         return processor_class
 
     @classmethod
@@ -62,8 +60,8 @@ class DocumentProcessorFactory:
         Raises:
             ValueError: 不支持的处理器类型
         """
-        if processor_type not in cls.PROCESSOR_TYPES:
-            raise ValueError(f"不支持的处理器类型: {processor_type}. 支持的类型: {list(cls.PROCESSOR_TYPES.keys())}")
+        if processor_type not in PARSER_CAPABILITIES:
+            raise ValueError(f"不支持的处理器类型: {processor_type}. 支持的类型: {list(PARSER_CAPABILITIES)}")
 
         # 使用缓存避免重复创建
         cache_key = cls._build_cache_key(processor_type, kwargs)
@@ -120,11 +118,6 @@ class DocumentProcessorFactory:
                 "message": f"健康检查失败: {str(e)}",
                 "details": {"error": str(e)},
             }
-
-    @classmethod
-    def get_available_processors(cls) -> list[str]:
-        """返回所有可用的处理器类型"""
-        return list(cls.PROCESSOR_TYPES.keys())
 
     @classmethod
     def clear_cache(cls, processor_type: str | None = None):

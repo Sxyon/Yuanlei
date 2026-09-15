@@ -46,8 +46,6 @@ API/worker 不信任浏览器内存中的完整配置。请求可以提供受限
 - `ChatBotContext.subagents` 未配置或保存空列表时，使用当前用户可见的全部子智能体；显式列表才会收窄范围。
 - Agent 的知识库选择只能缩小用户已经拥有的读取权限。
 - Skill 选择控制 Prompt 和工具激活；共享 Skill 的文件投影按用户授权生成，个人 Skill 位于 UserWorkspace。
-- LITE 模式会关闭知识库、图谱和评估能力，知识库资源和 `knowledge-base` Skill 不会进入运行时。
-
 资源快照只解决运行时“能看见哪些资源”。产生文件、知识库、MCP 或外部系统副作用的工具还要在执行处校验具体目标和当前身份。
 
 ## 文件和 Memory
@@ -57,6 +55,12 @@ API/worker 不信任浏览器内存中的完整配置。请求可以提供受限
 `agents/MEMORY.md` 只有在用户配置 `enable_memory=true`，且该文件存在并包含非空内容时，才由主 Agent 的 Memory middleware 读取并提供受限的记忆工具。它是用户主动维护的参考资料，不是系统指令；子 Agent 不直接使用该 middleware。Memory 读取和更新有独立的用户、Run、worker 和文件大小校验。
 
 Viewer、附件和 artifact API 通过持久化 Workspace/Workdir 读取文件，不连接 Agent execution runtime。沙盒虚拟路径、Viewer scope、对象 URL 和宿主机路径在各自边界中转换，不能互相替代。
+
+## 用户定时 Agent
+
+用户定时 Agent 由 `scheduled_agent_jobs` 保存 Project、Agent、提示词、审批模式和计划，worker 在 PostgreSQL 行锁下为到期任务创建唯一 occurrence。每次 occurrence 创建绑定原 Project 的独立 Conversation，并复用统一 AgentRun Request/Run 链路；触发记录只保存配置快照和提交状态，排队与执行状态分别从 AgentRunRequest 和 AgentRun 读取。明确的领域错误终结 occurrence，未知瞬时错误在下一轮重查 Request；单条失败不阻断同批任务。Redis/ARQ 只负责唤醒。
+
+任务 API 只返回当前用户拥有且未删除的任务，并在创建、更新和触发时重新校验 Project 归属与 Agent 可见性。停用或任务软删除只阻止未来触发；账号软删除在同一事务删除任务及 occurrence。任务支持 Run now、5 段 cron 和 IANA 时区，数据库保存 UTC 下一次触发时间；错过多个周期只合并一次，已有非终态执行时记录 skipped。
 
 ## 恢复和失败
 
@@ -75,3 +79,14 @@ Viewer、附件和 artifact API 通过持久化 Workspace/Workdir 读取文件�
 - [Agent 主链路 E2E](https://github.com/xerrors/Yuxi/tree/main/backend/test/e2e)
 
 修改配置、权限、模型可见输入、文件作用域或恢复语义时，同时验证对应的 unit、integration 或 E2E，并回读最终 state、消息、文件或协议结果。
+
+
+## 线程阅读数据
+
+`GET /api/chat/thread/{thread_id}/history` 返回当前用户可见线程的 `thread`、`runs` 和 `history`。`thread` 复用线程列表的标题、Project、Workdir 和状态投影；`runs` 按创建时间与 ID 排序，包含该 Conversation 的全部轻量 Run，包括没有普通消息的失败、取消和运行中记录。当前 History 不分页，Runs 与其采用相同的完整线程范围；Model/Tool 详细审计仍由独立审计接口按需读取。
+
+`runs` 每项包含 `run_id`、`request_id`、`run_type`、`created_by_run_id`、`status` 和 `timing`。Run 输入、运行清单和内部执行数据不进入这个阅读投影。`history` 中的消息通过 `run_id` 关联 Run，不包含 `run_timing`、`run_started_at` 或 `run_finished_at`；没有 Run 关联的旧消息仍保留。前端分别存储消息与 Runs，按 Run ID 分组，回复耗时和调试 Run 详情读取同一 Run 时间投影。
+
+History 读取不改变已读标记。页面加载历史后以 `POST /api/chat/thread/{thread_id}/viewed` 显式标记已查看，并使用该操作返回的 Thread 更新侧栏。读取未知、已删除或其他用户的线程返回 404。多个查询遵循当前数据库事务隔离；响应不承诺跨 SQL 原子快照，运行中变化通过 SSE 与持久化重读收敛。
+
+接口契约由 `conversation_service` 装配、`ConversationRepository` 查询和前端 History consumers 共同拥有；真实 HTTP 测试回读 Run、消息和 PostgreSQL 已读标记，覆盖超过审计窗口的完整历史与用户隔离。取舍与兼容影响见 [前端优化](../develop-guides/decisions/implemented/2026-09-05-frontend-optimization.md)。

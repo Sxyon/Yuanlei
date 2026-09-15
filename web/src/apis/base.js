@@ -22,6 +22,19 @@ function safeRequestMetadata(url, requestOptions, response = null) {
 
 const SAFE_ERROR_RESPONSE_HEADERS = ['x-lock-remaining', 'retry-after', 'www-authenticate']
 
+/**
+ * 统一构建查询参数，保留 0 和 false，省略空值。
+ */
+export const buildQuery = (params) => {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value))
+    }
+  })
+  return query.toString()
+}
+
 function safeResponseHeaders(headers) {
   const safeHeaders = new Headers()
   for (const name of SAFE_ERROR_RESPONSE_HEADERS) {

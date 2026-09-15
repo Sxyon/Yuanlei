@@ -48,12 +48,3 @@ def is_valid_phone_number(phone: str) -> bool:
     if not phone:
         return False
     return bool(re.match(r"^1[3-9]\d{9}$", re.sub(r"[\s\-\(\)]", "", phone)))
-
-
-def normalize_phone_number(phone: str) -> str:
-    if not phone:
-        return ""
-    phone = re.sub(r"\D", "", phone)
-    if len(phone) == 11 and phone.startswith("1"):
-        return phone
-    return phone

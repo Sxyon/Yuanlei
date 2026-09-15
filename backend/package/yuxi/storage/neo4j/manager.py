@@ -6,7 +6,6 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from yuxi.config.runtime import knowledge_capability_enabled
 from yuxi.utils import logger
 
 from neo4j import GraphDatabase as GD
@@ -39,9 +38,6 @@ class Neo4jConnectionManager:
     def __init__(self):
         self.driver = None
         self.status = "closed"
-        if not knowledge_capability_enabled():
-            logger.info("LITE_MODE enabled, skipping Neo4j connection")
-            return
         self._connect()
 
     def _connect(self):

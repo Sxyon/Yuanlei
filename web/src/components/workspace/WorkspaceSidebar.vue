@@ -81,7 +81,7 @@
       </button>
     </section>
 
-    <section v-if="knowledgeEnabled && myDatabases.length" class="sidebar-section">
+    <section v-if="myDatabases.length" class="sidebar-section">
       <div class="section-title">我的知识库</div>
       <button
         v-for="database in myDatabases"
@@ -96,7 +96,7 @@
       </button>
     </section>
 
-    <section v-if="knowledgeEnabled && sharedDatabases.length" class="sidebar-section">
+    <section v-if="sharedDatabases.length" class="sidebar-section">
       <div class="section-title">共享知识库</div>
       <button
         v-for="database in sharedDatabases"
@@ -111,10 +111,10 @@
       </button>
     </section>
 
-    <section v-if="knowledgeEnabled && loadingDatabases" class="sidebar-section">
+    <section v-if="loadingDatabases" class="sidebar-section">
       <div class="sidebar-muted">正在加载知识库...</div>
     </section>
-    <section v-else-if="knowledgeEnabled && !databases.length" class="sidebar-section">
+    <section v-else-if="!databases.length" class="sidebar-section">
       <div class="sidebar-muted">暂无可访问知识库</div>
     </section>
   </aside>
@@ -145,7 +145,6 @@ const props = defineProps({
   currentPath: { type: String, default: '/' },
   databases: { type: Array, default: () => [] },
   loadingDatabases: { type: Boolean, default: false },
-  knowledgeEnabled: { type: Boolean, default: false },
   currentUid: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
   uploading: { type: Boolean, default: false }

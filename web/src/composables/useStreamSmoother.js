@@ -1,347 +1,206 @@
 const cloneChunk = (value) => {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(value)
-  }
+  if (typeof structuredClone === 'function') return structuredClone(value)
   return JSON.parse(JSON.stringify(value))
 }
-
 const hasText = (value) => typeof value === 'string' && value.length > 0
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
-const createEmptyToolCallChunk = (toolCallChunk) => ({
-  ...toolCallChunk,
-  args: ''
-})
+const START_BUFFER_MS = 180
+const RATE_SAMPLE_MS = 200
+const RATE_ADJUST_MS = 300
+const CATCH_UP_MS = 600
+const MIN_CHARS_PER_SECOND = 32
 
+/** 清空文本字段，保留同一消息的身份与元数据。 */
 const stripBufferedFields = (chunk) => {
   const stripped = cloneChunk(chunk)
   stripped.content = ''
   stripped.reasoning_content = ''
-
-  if (stripped.additional_kwargs?.reasoning_content !== undefined) {
-    stripped.additional_kwargs = {
-      ...stripped.additional_kwargs,
-      reasoning_content: ''
-    }
-  }
-
-  if (Array.isArray(stripped.tool_call_chunks)) {
-    stripped.tool_call_chunks = stripped.tool_call_chunks.map(createEmptyToolCallChunk)
-  }
-
   return stripped
 }
 
-const hasBufferedPayload = (chunk) =>
-  hasText(chunk?.content) ||
-  hasText(chunk?.reasoning_content) ||
-  hasText(chunk?.additional_kwargs?.reasoning_content) ||
-  (Array.isArray(chunk?.tool_call_chunks) &&
-    chunk.tool_call_chunks.some((item) => hasText(item?.args)))
-
 const appendLoadingChunk = (threadState, chunk) => {
   if (!threadState || !chunk?.id) return
-  if (!threadState.onGoingConv.msgChunks[chunk.id]) {
-    threadState.onGoingConv.msgChunks[chunk.id] = []
-  }
-  threadState.onGoingConv.msgChunks[chunk.id].push(chunk)
+  const chunks = threadState.onGoingConv.msgChunks
+  if (!chunks[chunk.id]) chunks[chunk.id] = []
+  chunks[chunk.id].push(chunk)
 }
 
 const raf =
   typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
     ? (callback) => window.requestAnimationFrame(callback)
-    : (callback) => setTimeout(() => callback(Date.now()), 16)
+    : (callback) => setTimeout(callback, 16)
 
 const caf =
   typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function'
     ? (id) => window.cancelAnimationFrame(id)
     : (id) => clearTimeout(id)
 
-const DEFAULT_OPTIONS = {
-  minChunkSize: 1,
-  maxChunkSize: 48,
-  // 突发或重新进入对话时历史补发超过此字符量，直接快速放行，避免漫长打字重放
-  fastForwardThreshold: 50,
-  fastForwardTailChars: 6
-}
+const getBufferedLength = (controller) =>
+  controller.contentBuffer.length + controller.reasoningBuffer.length
 
-const createController = (chunk) => ({
-  skeleton: stripBufferedFields(chunk),
-  contentBuffer: '',
-  reasoningBuffer: '',
-  additionalReasoningBuffer: '',
-  toolCallArgBuffers: new Map(),
-  scheduled: false,
-  frameId: null
-})
-
-const mergeSkeleton = (controller, chunk) => {
-  const stripped = stripBufferedFields(chunk)
-
-  Object.entries(stripped).forEach(([key, value]) => {
-    if (
-      key === 'content' ||
-      key === 'reasoning_content' ||
-      key === 'tool_call_chunks' ||
-      key === 'additional_kwargs'
-    ) {
-      return
-    }
-    controller.skeleton[key] = value
-  })
-
-  if (stripped.additional_kwargs) {
-    controller.skeleton.additional_kwargs = {
-      ...(controller.skeleton.additional_kwargs || {}),
-      ...stripped.additional_kwargs
-    }
-  }
-
-  if (Array.isArray(stripped.tool_call_chunks)) {
-    const existing = Array.isArray(controller.skeleton.tool_call_chunks)
-      ? [...controller.skeleton.tool_call_chunks]
-      : []
-
-    stripped.tool_call_chunks.forEach((toolCallChunk) => {
-      const index = toolCallChunk?.index
-      const existingIndex = existing.findIndex((item) => item?.index === index)
-      if (existingIndex >= 0) {
-        existing[existingIndex] = {
-          ...existing[existingIndex],
-          ...toolCallChunk
-        }
-      } else {
-        existing.push(toolCallChunk)
-      }
-    })
-
-    controller.skeleton.tool_call_chunks = existing
-  }
-}
-
-const getBufferedLength = (controller) => {
-  let total =
-    controller.contentBuffer.length +
-    controller.reasoningBuffer.length +
-    controller.additionalReasoningBuffer.length
-
-  controller.toolCallArgBuffers.forEach((entry) => {
-    total += entry.buffer.length
-  })
-
-  return total
-}
-
-const getSmoothBudget = (pending, options) => {
-  if (pending <= 0) return 0
-  if (pending <= 3) return 1
-  if (pending <= 12) return 2
-  if (pending <= 30) return Math.ceil(pending / 4)
-  return Math.min(options.maxChunkSize, Math.ceil(pending / 2))
-}
-
+/** 预算以 UTF-16 长度计量，实际切片停在完整字素边界。 */
 const takeFromBuffer = (value, count) => {
-  if (!value || count <= 0) {
-    return { emitted: '', rest: value || '' }
+  if (!value || count <= 0) return { emitted: '', rest: value }
+  if (count >= value.length) return { emitted: value, rest: '' }
+  let end = 0
+  for (const { segment, index } of segmenter.segment(value)) {
+    if (index + segment.length > count && end > 0) break
+    end = index + segment.length
+    if (end >= count) break
   }
-  return {
-    emitted: value.slice(0, count),
-    rest: value.slice(count)
-  }
+  return { emitted: value.slice(0, end), rest: value.slice(end) }
 }
 
-export function useStreamSmoother({ getThreadState, options = {} }) {
-  const resolvedOptions = {
-    ...DEFAULT_OPTIONS,
-    ...(options || {})
-  }
-
+/** 在轮询批次之间平稳播放正文；终态和工具语义由调用方及时推进。 */
+export function useStreamSmoother({ getThreadState }) {
   const controllersByThread = new Map()
 
-  const getThreadControllers = (threadId) => {
-    if (!controllersByThread.has(threadId)) {
-      controllersByThread.set(threadId, new Map())
+  /** 同步交付剩余文本，同时取消此消息唯一的帧任务。 */
+  const flushMessage = (threadId, messageId) => {
+    const controllers = controllersByThread.get(threadId)
+    const controller = controllers?.get(messageId)
+    if (!controller) return
+    if (controller.frameId !== null) caf(controller.frameId)
+    if (getBufferedLength(controller) > 0) {
+      const delta = stripBufferedFields(controller.skeleton)
+      delta.content = controller.contentBuffer
+      delta.reasoning_content = controller.reasoningBuffer
+      appendLoadingChunk(getThreadState(threadId), delta)
     }
-    return controllersByThread.get(threadId)
+    controllers.delete(messageId)
   }
 
-  const emitDelta = (threadId, messageId, forceFlush = false, customBudget = null) => {
+  /** 播放速度按时间平滑变化，避免包大小或刷新率直接决定出字速度。 */
+  const tick = (threadId, messageId) => {
+    const controllers = controllersByThread.get(threadId)
+    const controller = controllers?.get(messageId)
+    if (!controller) return
+    controller.frameId = null
     const threadState = getThreadState(threadId)
-    const threadControllers = controllersByThread.get(threadId)
-    const controller = threadControllers?.get(messageId)
-
-    if (!threadState || !controller) return
-
-    const pending = getBufferedLength(controller)
-    if (pending <= 0) {
-      controller.scheduled = false
-      controller.frameId = null
+    if (!threadState) {
+      controllers.delete(messageId)
       return
     }
 
-    const budget = forceFlush
-      ? pending
-      : Number.isFinite(customBudget) && customBudget > 0
-        ? Math.min(pending, Math.floor(customBudget))
-        : getSmoothBudget(pending, resolvedOptions)
+    const now = performance.now()
+    if (now > controller.lastFrameAt) {
+      // 页面恢复或长任务之后不把累计帧时间一次兑换为大量正文。
+      const elapsed = Math.min(now - controller.lastFrameAt, 64)
+      controller.lastFrameAt = now
+      const targetRate = Math.max(
+        MIN_CHARS_PER_SECOND,
+        controller.arrivalRate,
+        (getBufferedLength(controller) * 1000) / CATCH_UP_MS
+      )
+      if (controller.rate === 0) controller.rate = targetRate
+      controller.rate += (targetRate - controller.rate) * (1 - Math.exp(-elapsed / RATE_ADJUST_MS))
+      controller.credit += (controller.rate * elapsed) / 1000
 
-    let remaining = budget
-    const delta = stripBufferedFields(controller.skeleton)
-
-    const contentPart = takeFromBuffer(controller.contentBuffer, remaining)
-    delta.content = contentPart.emitted
-    controller.contentBuffer = contentPart.rest
-    remaining -= contentPart.emitted.length
-
-    const reasoningPart = takeFromBuffer(controller.reasoningBuffer, remaining)
-    delta.reasoning_content = reasoningPart.emitted
-    controller.reasoningBuffer = reasoningPart.rest
-    remaining -= reasoningPart.emitted.length
-
-    const additionalReasoningPart = takeFromBuffer(controller.additionalReasoningBuffer, remaining)
-    if (
-      additionalReasoningPart.emitted ||
-      delta.additional_kwargs?.reasoning_content !== undefined
-    ) {
-      delta.additional_kwargs = {
-        ...(delta.additional_kwargs || {}),
-        reasoning_content: additionalReasoningPart.emitted
+      const budget = Math.floor(controller.credit)
+      let remaining = budget
+      if (remaining > 0) {
+        const delta = stripBufferedFields(controller.skeleton)
+        for (const [bufferKey, field] of [
+          ['contentBuffer', 'content'],
+          ['reasoningBuffer', 'reasoning_content']
+        ]) {
+          const part = takeFromBuffer(controller[bufferKey], remaining)
+          controller[bufferKey] = part.rest
+          remaining -= part.emitted.length
+          delta[field] = part.emitted
+        }
+        controller.credit -= budget - remaining
+        appendLoadingChunk(threadState, delta)
       }
     }
-    controller.additionalReasoningBuffer = additionalReasoningPart.rest
-    remaining -= additionalReasoningPart.emitted.length
 
-    if (Array.isArray(delta.tool_call_chunks)) {
-      delta.tool_call_chunks = delta.tool_call_chunks
-        .map((toolCallChunk) => {
-          const entry = controller.toolCallArgBuffers.get(toolCallChunk.index)
-          if (!entry) return null
-          const argPart = takeFromBuffer(
-            entry.buffer,
-            remaining > 0 ? remaining : forceFlush ? pending : 0
-          )
-          entry.buffer = argPart.rest
-          remaining -= argPart.emitted.length
-          return {
-            ...toolCallChunk,
-            args: argPart.emitted
-          }
-        })
-        .filter(Boolean)
+    if (getBufferedLength(controller) > 0) {
+      controller.frameId = raf(() => tick(threadId, messageId))
+    } else {
+      controllers.delete(messageId)
     }
-
-    const hasOutput =
-      hasText(delta.content) ||
-      hasText(delta.reasoning_content) ||
-      hasText(delta.additional_kwargs?.reasoning_content) ||
-      (Array.isArray(delta.tool_call_chunks) &&
-        delta.tool_call_chunks.some((item) => hasText(item?.args)))
-
-    if (hasOutput) {
-      appendLoadingChunk(threadState, delta)
-    }
-
-    const remainingPending = getBufferedLength(controller)
-    if (remainingPending > 0 && !forceFlush) {
-      controller.scheduled = true
-      controller.frameId = raf(() => emitDelta(threadId, messageId))
-      return
-    }
-
-    controller.scheduled = false
-    controller.frameId = null
   }
 
-  const schedule = (threadId, messageId) => {
-    const controller = controllersByThread.get(threadId)?.get(messageId)
-    if (!controller || controller.scheduled) return
-    controller.scheduled = true
-    controller.frameId = raf(() => emitDelta(threadId, messageId))
-  }
-
+  /** 累积正文；工具参数及减少动态效果模式保持即时呈现。 */
   const pushChunk = (chunk, threadId) => {
     const threadState = getThreadState(threadId)
     if (!threadState || !chunk?.id) return
-
-    if (!hasBufferedPayload(chunk)) {
+    const content = chunk.content || ''
+    const reasoning = chunk.reasoning_content || ''
+    const hasPayload = hasText(content) || hasText(reasoning)
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (chunk.tool_call_chunks?.length || reduceMotion) {
+      flushMessage(threadId, chunk.id)
+      appendLoadingChunk(threadState, chunk)
+      return
+    }
+    if (!hasPayload) {
       appendLoadingChunk(threadState, chunk)
       return
     }
 
-    const threadControllers = getThreadControllers(threadId)
-    let controller = threadControllers.get(chunk.id)
-
+    if (!controllersByThread.has(threadId)) controllersByThread.set(threadId, new Map())
+    const controllers = controllersByThread.get(threadId)
+    let controller = controllers.get(chunk.id)
+    const now = performance.now()
     if (!controller) {
-      controller = createController(chunk)
-      threadControllers.set(chunk.id, controller)
+      controller = {
+        skeleton: stripBufferedFields(chunk),
+        contentBuffer: '',
+        reasoningBuffer: '',
+        frameId: null,
+        lastFrameAt: now + START_BUFFER_MS,
+        sampleAt: now,
+        sampleChars: 0,
+        arrivalRate: 0,
+        rate: 0,
+        credit: 0
+      }
+      controllers.set(chunk.id, controller)
       appendLoadingChunk(threadState, controller.skeleton)
     } else {
-      mergeSkeleton(controller, chunk)
-    }
-
-    controller.contentBuffer += chunk.content || ''
-    controller.reasoningBuffer += chunk.reasoning_content || ''
-    controller.additionalReasoningBuffer += chunk.additional_kwargs?.reasoning_content || ''
-
-    if (Array.isArray(chunk.tool_call_chunks)) {
-      chunk.tool_call_chunks.forEach((toolCallChunk) => {
-        const index = toolCallChunk?.index
-        if (index === undefined || index === null) return
-
-        const existing = controller.toolCallArgBuffers.get(index) || { buffer: '' }
-        existing.buffer += toolCallChunk.args || ''
-        controller.toolCallArgBuffers.set(index, existing)
-      })
-    }
-
-    const pending = getBufferedLength(controller)
-    if (pending > resolvedOptions.fastForwardThreshold) {
-      const fastForwardCount = pending - resolvedOptions.fastForwardTailChars
-      if (fastForwardCount > 0) {
-        emitDelta(threadId, chunk.id, false, fastForwardCount)
+      const stripped = stripBufferedFields(chunk)
+      controller.skeleton = {
+        ...controller.skeleton,
+        ...stripped
       }
     }
 
-    schedule(threadId, chunk.id)
+    controller.contentBuffer += content
+    controller.reasoningBuffer += reasoning
+    controller.sampleChars += content.length + reasoning.length
+    const sampleMs = now - controller.sampleAt
+    if (sampleMs >= RATE_SAMPLE_MS) {
+      const observedRate = (controller.sampleChars * 1000) / sampleMs
+      const weight = 1 - Math.exp(-sampleMs / RATE_ADJUST_MS)
+      controller.arrivalRate += (observedRate - controller.arrivalRate) * weight
+      controller.sampleChars = 0
+      controller.sampleAt = now
+    }
+    if (controller.frameId === null) controller.frameId = raf(() => tick(threadId, chunk.id))
   }
 
+  /** 结束、取消和审批前同步交付对应线程全部缓冲。 */
   const flushThread = (threadId) => {
-    const threadControllers = controllersByThread.get(threadId)
-    if (!threadControllers) return
-
-    threadControllers.forEach((controller, messageId) => {
-      if (controller.frameId !== null) {
-        caf(controller.frameId)
-      }
-      emitDelta(threadId, messageId, true)
-    })
+    const controllers = controllersByThread.get(threadId)
+    if (!controllers) return
+    for (const messageId of controllers.keys()) flushMessage(threadId, messageId)
+    controllersByThread.delete(threadId)
   }
 
+  /** 清除指定线程或全部线程的延迟任务，不再向旧消息写入。 */
   const resetThread = (threadId = null) => {
-    if (threadId) {
-      const threadControllers = controllersByThread.get(threadId)
-      if (!threadControllers) return
-      threadControllers.forEach((controller) => {
-        if (controller.frameId !== null) {
-          caf(controller.frameId)
-        }
-      })
-      controllersByThread.delete(threadId)
-      return
+    for (const [id, controllers] of controllersByThread) {
+      if (threadId && id !== threadId) continue
+      for (const controller of controllers.values()) {
+        if (controller.frameId !== null) caf(controller.frameId)
+      }
+      controllersByThread.delete(id)
     }
-
-    controllersByThread.forEach((threadControllers) => {
-      threadControllers.forEach((controller) => {
-        if (controller.frameId !== null) {
-          caf(controller.frameId)
-        }
-      })
-    })
-    controllersByThread.clear()
   }
 
-  return {
-    pushChunk,
-    flushThread,
-    resetThread
-  }
+  return { pushChunk, flushThread, resetThread }
 }

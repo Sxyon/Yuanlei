@@ -45,6 +45,37 @@ class SuperAdminOnlyContext(BaseContext):
     secret_setting: str = field(default="hidden", metadata={"name": "Secret", "auth": "superadmin"})
 
 
+@pytest.mark.parametrize("role", ["user", "admin", "superadmin", None])
+@pytest.mark.asyncio
+async def test_saved_restricted_settings_survive_runtime_but_writes_require_role(role):
+    """运行保留已保存参数，写入仍受角色限制且不接收未知字段。"""
+    saved = {
+        "tool_approval_mode": "always_trust",
+        "summary_threshold": 37,
+        "summary_keep_messages": 7,
+        "summary_prompt": "摘要 {messages}",
+        "summary_tool_result_token_limit": 123,
+        "max_execution_steps": 42,
+        "model_retry_times": 5,
+    }
+    context = {**saved, "secret_setting": "restricted", "unknown": 1}
+    readable = context_module.filter_declared_config({"context": context}, SuperAdminOnlyContext)["context"]
+    assert readable == {**saved, "secret_setting": "restricted"}
+    normalized = await normalize_agent_context_config(
+        {**context, "tools": [], "knowledges": [], "mcps": [], "skills": []},
+        db=object(),
+        user=types.SimpleNamespace(role=role),
+        context_schema=SuperAdminOnlyContext,
+    )
+    assert {key: normalized[key] for key in readable} == readable
+    assert "unknown" not in normalized
+    writable = filter_config_by_role({"context": context}, role, SuperAdminOnlyContext)["context"]
+    expected = saved if role in {"admin", "superadmin"} else {}
+    if role == "superadmin":
+        expected = {**expected, "secret_setting": "restricted"}
+    assert writable == expected
+
+
 def test_get_configurable_items_filters_admin_fields_for_user():
     items = BaseContext.get_configurable_items(user_role="user")
 
@@ -98,6 +129,7 @@ def test_filter_config_by_role_keeps_admin_context_values_for_admin():
                 "summary_keep_messages": 8,
                 "summary_prompt": "custom summary",
                 "summary_tool_result_token_limit": 500,
+                "summary_l2_trigger_ratio": 0.4,
                 "max_execution_steps": 50,
                 "secret_setting": "nope",
             }
@@ -129,51 +161,6 @@ async def test_resolve_agent_resource_options_empty_fields_loads_nothing(monkeyp
     )
 
     assert await context_module.resolve_agent_resource_options(set(), db=object(), user=object()) == {}
-
-
-@pytest.mark.asyncio
-async def test_lite_resource_options_exclude_persisted_knowledge_skill(monkeypatch):
-    """LITE 切换后旧库残留的内置知识 Skill 也不能进入 Agent 默认能力。"""
-
-    async def fake_list_skills(_db, _user):
-        return [
-            types.SimpleNamespace(slug="knowledge-base", name="Knowledge Base", description=""),
-            types.SimpleNamespace(slug="skill-a", name="Skill A", description=""),
-        ]
-
-    monkeypatch.setenv("LITE_MODE", "true")
-    monkeypatch.setitem(
-        sys.modules,
-        "yuxi.agents.skills.service",
-        types.SimpleNamespace(list_accessible_skills=fake_list_skills),
-    )
-
-    options = await context_module.resolve_agent_resource_options(
-        {"knowledges", "skills"},
-        db=object(),
-        user=object(),
-    )
-
-    assert options == {
-        "knowledges": [],
-        "skills": [{"key": "skill-a", "name": "Skill A", "description": ""}],
-    }
-
-    normalized = await normalize_agent_context_config(
-        {
-            "tools": [],
-            "knowledges": [],
-            "mcps": [],
-            "skills": None,
-            "preload_skills": ["knowledge-base"],
-        },
-        db=object(),
-        user=types.SimpleNamespace(role="user", uid="u1", department_id=None),
-        context_schema=BaseContext,
-    )
-
-    assert normalized["skills"] == ["skill-a"]
-    assert normalized["preload_skills"] == []
 
 
 @pytest.mark.asyncio
@@ -254,6 +241,7 @@ async def test_normalize_agent_context_config_expands_null_and_filters_explicit_
             "summary_keep_messages": 8,
             "summary_prompt": "custom summary",
             "summary_tool_result_token_limit": 500,
+            "summary_l2_trigger_ratio": 0.4,
             "max_execution_steps": 50,
         },
         db=object(),
@@ -267,11 +255,12 @@ async def test_normalize_agent_context_config_expands_null_and_filters_explicit_
     assert normalized["skills"] == []
     assert normalized["preload_skills"] == []
     assert normalized["subagents"] == ["research-agent"]
-    assert "summary_threshold" not in normalized
-    assert "summary_keep_messages" not in normalized
-    assert "summary_prompt" not in normalized
-    assert "summary_tool_result_token_limit" not in normalized
-    assert "max_execution_steps" not in normalized
+    assert normalized["summary_threshold"] == 10
+    assert normalized["summary_keep_messages"] == 8
+    assert normalized["summary_prompt"] == "custom summary"
+    assert normalized["summary_tool_result_token_limit"] == 500
+    assert "summary_l2_trigger_ratio" not in normalized
+    assert normalized["max_execution_steps"] == 50
 
     empty_subagents_normalized = await normalize_agent_context_config(
         {"tools": [], "knowledges": [], "mcps": [], "skills": [], "subagents": []},
@@ -387,7 +376,6 @@ async def test_prepare_agent_runtime_context_filters_resources_and_derives_runti
         sys.modules,
         "yuxi.agents.skills.runtime",
         types.SimpleNamespace(
-            is_skill_allowed_in_runtime_mode=lambda _slug: True,
             resolve_runtime_skills_for_context=fake_resolve_runtime_skills_for_context,
         ),
     )

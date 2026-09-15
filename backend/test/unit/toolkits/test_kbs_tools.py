@@ -763,7 +763,7 @@ async def test_download_kb_file_writes_original_to_outputs_and_returns_virtual_p
             "thread_id": "thread-1",
             "uid": "user-1",
             "workdir_path": "projects/11111111-1111-4111-8111-111111111111",
-            "create_if_missing": False,
+            "create_if_missing": True,
         }
     ]
     assert result == {

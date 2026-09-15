@@ -167,10 +167,8 @@ def get_trace_info(run_context: LangfuseRunContext | None) -> dict[str, Any]:
 
     metadata = run_context.metadata or {}
     trace_id = run_context.trace_id
-    if run_context.callbacks:
-        last_trace_id = getattr(run_context.callbacks[0], "last_trace_id", None)
-        if last_trace_id:
-            trace_id = last_trace_id
+    if not trace_id and run_context.callbacks:
+        trace_id = getattr(run_context.callbacks[0], "last_trace_id", None)
 
     if not trace_id:
         return {}
@@ -184,7 +182,7 @@ def get_trace_info(run_context: LangfuseRunContext | None) -> dict[str, Any]:
     # Do not fetch trace_url on the request critical path. Langfuse resolves the
     # project id via a remote API call, which can add noticeable latency when the
     # base URL is slow or unreachable. If a trace URL is still needed, fetch it
-    # later via get_trace_url_async() and patch message metadata asynchronously.
+    # later via get_trace_url_by_id_async() and patch message metadata asynchronously.
     return trace_info
 
 
@@ -266,26 +264,6 @@ async def get_trace_url_by_id_async(trace_id: str, *, timeout: float = 5.0) -> s
         logger.warning("Langfuse 返回了非配置源站的 trace URL，已拒绝")
         return None
     return trace_url
-
-
-async def get_trace_url_async(
-    run_context: LangfuseRunContext | None,
-    *,
-    timeout: float = 5.0,
-) -> str | None:
-    """解析当前运行上下文的 Langfuse 页面 URL。"""
-    if run_context is None:
-        return None
-
-    trace_id = run_context.trace_id
-    if run_context.callbacks:
-        last_trace_id = getattr(run_context.callbacks[0], "last_trace_id", None)
-        if last_trace_id:
-            trace_id = last_trace_id
-
-    if not trace_id:
-        return None
-    return await get_trace_url_by_id_async(trace_id, timeout=timeout)
 
 
 def flush_langfuse() -> None:

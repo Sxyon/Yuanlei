@@ -51,10 +51,7 @@ def migrate_runtime_storage_identity() -> None:
 
 
 def _runtime_storage_roots() -> list[Path]:
-    roots = [get_user_data_dir(), get_skill_data_dir(), get_skill_projection_dir()]
-    if nltk_data := os.getenv("NLTK_DATA"):
-        roots.append(Path(nltk_data))
-    return roots
+    return [get_user_data_dir(), get_skill_data_dir(), get_skill_projection_dir()]
 
 
 def _marker_completed(marker: Path) -> bool:

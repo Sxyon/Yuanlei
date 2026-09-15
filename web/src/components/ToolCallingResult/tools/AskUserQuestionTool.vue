@@ -70,6 +70,7 @@
 import { computed } from 'vue'
 import BaseToolCall from '../BaseToolCall.vue'
 import { normalizeQuestions } from '@/utils/questionUtils'
+import { parseToolCallArgs } from '../toolRegistry'
 
 const props = defineProps({
   toolCall: {
@@ -97,8 +98,7 @@ const parseJsonValue = (value, fallback = null) => {
 }
 
 const parsedArgs = computed(() => {
-  const args = props.toolCall.args ?? props.toolCall.function?.arguments
-  return parseJsonValue(args, {})
+  return parseToolCallArgs(props.toolCall)
 })
 
 const parsedResult = computed(() => {

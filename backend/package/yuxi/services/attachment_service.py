@@ -10,7 +10,11 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.backends.paths import runtime_path_for_workdir_scope, workdir_scope_from_runtime_path
 from yuxi.config.options import system_options
-from yuxi.knowledge.parser.factory import DocumentProcessorFactory
+from yuxi.knowledge.parser.capabilities import (
+    IMAGE_FILE_EXTENSIONS,
+    PDF_FILE_EXTENSIONS,
+    get_ocr_engines_for_extension,
+)
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.agent_run_request_repository import AgentRunRequestRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
@@ -23,19 +27,9 @@ ATTACHMENT_ALLOWED_EXTENSIONS: tuple[str, ...] = ()
 MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_ATTACHMENT_MARKDOWN_CHARS = 32_000  # TODO: 转 MARKDOWN的时候，不应该裁剪
 TMP_ATTACHMENT_PREFIX = "tmp/chat_attachments"
-TMP_ATTACHMENT_PARSE_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif")
-TMP_ATTACHMENT_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif")
+TMP_ATTACHMENT_PARSE_EXTENSIONS = (*PDF_FILE_EXTENSIONS, *IMAGE_FILE_EXTENSIONS)
+TMP_ATTACHMENT_IMAGE_EXTENSIONS = IMAGE_FILE_EXTENSIONS
 TMP_ATTACHMENT_TTL = timedelta(hours=24)
-TMP_ATTACHMENT_OCR_METHODS = tuple(DocumentProcessorFactory.get_available_processors())
-TMP_ATTACHMENT_PARSE_METHODS = ("disable", *TMP_ATTACHMENT_OCR_METHODS)
-
-
-async def parse_document(source: str, params: dict | None = None, db: AsyncSession | None = None) -> str:
-    """仅在附件确实需要解析时加载文档/OCR 重运行时。"""
-
-    from yuxi.services.ocr_service import parse_document as parse_runtime_document
-
-    return await parse_runtime_document(source, params=params, db=db)
 
 
 async def _require_user_conversation(conv_repo: ConversationRepository, thread_id: str, uid: str):
@@ -131,13 +125,12 @@ def _normalize_parse_method(file_name: str, parse_method: str | None, default_oc
     if suffix not in TMP_ATTACHMENT_PARSE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="当前仅支持 PDF 和图片附件解析")
 
+    allowed_methods = get_ocr_engines_for_extension(suffix)
     if suffix in TMP_ATTACHMENT_IMAGE_EXTENSIONS:
         method = parse_method or ("rapid_ocr" if default_ocr_engine == "disable" else default_ocr_engine)
     else:
         method = parse_method or "disable"
-    allowed_methods = (
-        TMP_ATTACHMENT_OCR_METHODS if suffix in TMP_ATTACHMENT_IMAGE_EXTENSIONS else TMP_ATTACHMENT_PARSE_METHODS
-    )
+        allowed_methods = ("disable", *allowed_methods)
 
     if method not in allowed_methods:
         allowed = ", ".join(allowed_methods)
@@ -307,10 +300,10 @@ async def upload_tmp_attachment_view(*, file: UploadFile, current_uid: str) -> d
     await _cleanup_expired_tmp_attachments(minio_client, bucket_name, str(current_uid))
 
     suffix = Path(file_name).suffix.lower()
-    if suffix == ".pdf":
-        parse_methods = list(TMP_ATTACHMENT_PARSE_METHODS)
-    elif suffix in TMP_ATTACHMENT_IMAGE_EXTENSIONS:
-        parse_methods = list(TMP_ATTACHMENT_OCR_METHODS)
+    if suffix in TMP_ATTACHMENT_PARSE_EXTENSIONS:
+        parse_methods = list(get_ocr_engines_for_extension(suffix))
+        if suffix in PDF_FILE_EXTENSIONS:
+            parse_methods.insert(0, "disable")
     else:
         parse_methods = []
 
@@ -342,6 +335,8 @@ async def parse_tmp_attachment_view(
     method = _normalize_parse_method(safe_name, parse_method, default_ocr_engine)
 
     try:
+        from yuxi.services.ocr_service import parse_document
+
         markdown = await parse_document(_minio_source(bucket_name, object_name), params={"ocr_engine": method})
         markdown, truncated = _truncate_markdown(markdown)
         parsed_object_name = _make_tmp_parsed_object(str(current_uid), tmp_file_id, safe_name)
@@ -378,9 +373,13 @@ async def confirm_tmp_thread_attachments_view(
 
     conv_repo = ConversationRepository(db)
     conversation = await _require_user_conversation(conv_repo, thread_id, str(current_uid))
-    from yuxi.services.workdir_service import resolve_authorized_workdir
+    from yuxi.services.workdir_service import resolve_authorized_conversation_workdir
 
-    binding = await resolve_authorized_workdir(thread_id=thread_id, uid=str(current_uid), db=db)
+    binding = await resolve_authorized_conversation_workdir(
+        conversation=conversation,
+        uid=str(current_uid),
+        db=db,
+    )
     workdir = binding.workdir
     minio_client = get_minio_client()
     bucket_name = minio_client.KB_BUCKETS["documents"]
@@ -483,9 +482,13 @@ async def delete_thread_attachment_view(
     """删除指定对话线程的附件。"""
     conv_repo = ConversationRepository(db)
     conversation = await _require_user_conversation(conv_repo, thread_id, str(current_uid))
-    from yuxi.services.workdir_service import resolve_authorized_workdir
+    from yuxi.services.workdir_service import resolve_authorized_conversation_workdir
 
-    binding = await resolve_authorized_workdir(thread_id=thread_id, uid=str(current_uid), db=db)
+    binding = await resolve_authorized_conversation_workdir(
+        conversation=conversation,
+        uid=str(current_uid),
+        db=db,
+    )
     workdir = binding.workdir
 
     existing_attachments = await conv_repo.lock_attachments(conversation.id)

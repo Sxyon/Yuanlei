@@ -21,7 +21,7 @@ docker compose ps
 docker compose logs --tail=100 api
 ```
 
-API 和 Web 默认支持热重载。需要轻量环境时可以使用 `make up-lite`；完整服务拓扑以 `docker-compose.yml` 为准。
+API 和 Web 默认支持热重载；完整服务拓扑以 `docker-compose.yml` 为准。
 
 ## 常用检查
 

@@ -4,41 +4,42 @@
 
 /* VitePress 主题色覆盖 */
 :root {
-  /* 覆盖 VitePress 的主题色，使用项目中定义的 main-color */
-  --vp-c-brand-1: var(--main-color);
-  --vp-c-brand-2: var(--main-bright);
-  --vp-c-brand-3: var(--main-700);
-  --vp-c-brand-4: var(--main-800);
-  --vp-c-brand-5: var(--main-900);
-  --vp-c-brand-6: var(--main-1000);
-
-  /* 浅色模式下的文本颜色 */
-  --vp-c-brand-light: var(--main-color);
-  --vp-c-brand-lighter: var(--main-bright);
-  --vp-c-brand-lightest: var(--main-400);
-
-  /* 深色模式下的文本颜色 */
-  --vp-c-brand-dark: var(--main-300);
-  --vp-c-brand-darker: var(--main-200);
-  --vp-c-brand-darkest: var(--main-100);
+  --vp-c-brand-1: #8a5900;
+  --vp-c-brand-2: #6f4700;
+  --vp-c-brand-3: #f3ba32;
+  --vp-c-brand-soft: rgb(243 186 50 / 16%);
+  --vp-c-brand-light: #f3ba32;
+  --vp-c-brand-lighter: #ffd66b;
+  --vp-c-brand-lightest: #fff1c2;
+  --vp-c-brand-dark: #b87900;
+  --vp-c-brand-darker: #8a5900;
+  --vp-c-brand-darkest: #5e3d00;
+  --vp-button-brand-text: #272c2a;
+  --vp-button-brand-bg: #f3ba32;
+  --vp-button-brand-hover-text: #272c2a;
+  --vp-button-brand-hover-bg: #e4aa1a;
+  --vp-button-brand-active-text: #272c2a;
+  --vp-button-brand-active-bg: #d59c0e;
+  --vp-c-tip-1: #8a5900;
+  --vp-c-tip-2: rgb(243 186 50 / 42%);
+  --vp-c-tip-3: rgb(243 186 50 / 16%);
+  --vp-c-tip-soft: rgb(243 186 50 / 12%);
 }
 
 /* 深色模式覆盖 */
 .dark {
-  --vp-c-brand-1: var(--main-color);
-  --vp-c-brand-2: var(--main-bright);
-  --vp-c-brand-3: var(--main-700);
-  --vp-c-brand-4: var(--main-800);
-  --vp-c-brand-5: var(--main-900);
-  --vp-c-brand-6: var(--main-1000);
+  --vp-c-brand-1: #f3ba32;
+  --vp-c-brand-2: #ffd66b;
+  --vp-c-brand-3: #f3ba32;
+  --vp-c-brand-soft: rgb(243 186 50 / 18%);
+  --vp-c-tip-1: #f3ba32;
+  --vp-c-tip-2: rgb(243 186 50 / 52%);
+  --vp-c-tip-3: rgb(243 186 50 / 20%);
+  --vp-c-tip-soft: rgb(243 186 50 / 14%);
+}
 
-  /* 浅色模式下的文本颜色 */
-  --vp-c-brand-light: var(--main-color);
-  --vp-c-brand-lighter: var(--main-bright);
-  --vp-c-brand-lightest: var(--main-400);
-
-  /* 深色模式下的文本颜色 */
-  --vp-c-brand-dark: var(--main-300);
-  --vp-c-brand-darker: var(--main-200);
-  --vp-c-brand-darkest: var(--main-100);
+/* 为导航标识预留稳定方形空间，避免首次绘制时发生尺寸推断。 */
+.VPNavBarTitle .logo {
+  width: var(--vp-nav-logo-height);
+  height: var(--vp-nav-logo-height);
 }

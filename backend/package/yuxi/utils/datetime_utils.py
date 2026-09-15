@@ -129,6 +129,13 @@ def format_utc_datetime(value: dt.datetime | None) -> str | None:
     return utc_isoformat(value)
 
 
+def duration_ms(start: dt.datetime | None, end: dt.datetime | None) -> int | None:
+    """把有效时间区间转换为非负毫秒。"""
+    if start is None or end is None or end < start:
+        return None
+    return round((end - start).total_seconds() * 1000)
+
+
 def utc_isoformat_from_timestamp(timestamp: float | int | None) -> str | None:
     """Format a Unix timestamp as an ISO 8601 UTC datetime string."""
     if timestamp is None:
@@ -150,5 +157,6 @@ __all__ = [
     "coerce_any_to_utc_datetime",
     "normalize_iterable_to_utc",
     "format_utc_datetime",
+    "duration_ms",
     "utc_isoformat_from_timestamp",
 ]

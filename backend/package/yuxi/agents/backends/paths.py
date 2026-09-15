@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import PurePosixPath
 
-from yuxi.workspace.paths import VIRTUAL_PATH_PREFIX, normalize_workdir_path
+from yuxi.workspace.paths import normalize_workdir_path
+
+_DEFAULT_VIRTUAL_PATH_PREFIX = "/home/gem/user-data"
+
+
+def _get_virtual_path_prefix() -> str:
+    """读取并规范化 Sandbox 的 user-data 虚拟根路径。"""
+    prefix = os.getenv("SANDBOX_VIRTUAL_PATH_PREFIX") or _DEFAULT_VIRTUAL_PATH_PREFIX
+    prefix = prefix.strip() or _DEFAULT_VIRTUAL_PATH_PREFIX
+    return prefix if prefix.startswith("/") else f"/{prefix}"
+
+
+VIRTUAL_PATH_PREFIX = _get_virtual_path_prefix()
 
 VIRTUAL_SKILLS_PATH = "/home/gem/skills"
 VIRTUAL_PERSONAL_SKILLS_PATH = f"{VIRTUAL_PATH_PREFIX.rstrip('/')}/agents/skills"

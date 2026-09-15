@@ -5,7 +5,9 @@ import {
   calculateContextRatio,
   formatContextToken,
   formatContextUsageTooltip,
-  getContextUsageTone
+  getContextUsageTone,
+  resolveContextPressureTokens,
+  shouldSuggestContextCompression
 } from '../../src/utils/contextUsage.js'
 
 test('formatContextToken: 正确格式化 K / M 及普通数值', () => {
@@ -79,4 +81,16 @@ test('getContextUsageTone: 根据占比返回正常/警告/危险色调', () => 
   assert.equal(getContextUsageTone(0.89), 'is-warning')
   assert.equal(getContextUsageTone(0.9), 'is-danger')
   assert.equal(getContextUsageTone(1.0), 'is-danger')
+})
+
+test('resolveContextPressureTokens: 优先使用回复完成后的下一轮估算', () => {
+  assert.equal(resolveContextPressureTokens({ next_llm_input_tokens: 170, llm_input_tokens: 120 }), 170)
+  assert.equal(resolveContextPressureTokens({ llm_input_tokens: 120 }), 120)
+  assert.equal(resolveContextPressureTokens({ next_llm_input_tokens: null }), null)
+  assert.equal(resolveContextPressureTokens(null), null)
+})
+
+test('shouldSuggestContextCompression: 只在达到 85% 派生提示线时建议压缩', () => {
+  assert.equal(shouldSuggestContextCompression(0.849), false)
+  assert.equal(shouldSuggestContextCompression(0.85), true)
 })

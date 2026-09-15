@@ -58,6 +58,7 @@ import { Download, LoaderCircle, Save } from '@lucide/vue'
 import { threadApi } from '@/apis/agent_api'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import WorkspacePathPicker from '@/components/WorkspacePathPicker.vue'
+import { parseDownloadFilename } from '@/utils/file_utils'
 
 const props = defineProps({
   artifacts: {
@@ -87,22 +88,6 @@ const saveDialogOpen = ref(false)
 const pendingSaveFile = ref(null)
 const selectedDestination = ref('/saved_artifacts')
 const pickerLoading = ref(false)
-
-const parseDownloadFilename = (contentDisposition) => {
-  if (!contentDisposition) return ''
-
-  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-  if (utf8Match && utf8Match[1]) {
-    try {
-      return decodeURIComponent(utf8Match[1])
-    } catch (error) {
-      console.warn('解析 UTF-8 文件名失败:', error)
-    }
-  }
-
-  const asciiMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
-  return asciiMatch?.[1] || ''
-}
 
 const getFileMetaLabel = (path) => {
   const filename =

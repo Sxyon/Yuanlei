@@ -66,7 +66,6 @@
       v-if="overviewActivated"
       v-show="activeTab === 'overview'"
       class="dashboard-grid"
-      :class="{ 'without-knowledge': !knowledgeEnabled }"
     >
       <!-- 调用统计模块 - 占据2x1网格 -->
       <CallStatsComponent :loading="loading" ref="callStatsRef" />
@@ -99,7 +98,7 @@
       </div>
 
       <!-- 知识库使用情况 - 占据1x1网格 -->
-      <div v-if="knowledgeEnabled" class="grid-item knowledge-stats">
+      <div class="grid-item knowledge-stats">
         <KnowledgeStatsComponent
           :knowledge-stats="allStatsData?.knowledge"
           :loading="loading"
@@ -124,7 +123,6 @@ import { storeToRefs } from 'pinia'
 import { message } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { dashboardApi } from '@/apis/dashboard_api'
-import { useRuntimeCapabilitiesStore } from '@/stores/runtimeCapabilities'
 import { useTaskerStore } from '@/stores/tasker'
 import { useThemeStore } from '@/stores/theme'
 import { useUserStore } from '@/stores/user'
@@ -154,11 +152,9 @@ const threadActivated = ref(activeTab.value === 'threads')
 
 // 组件引用
 const feedbackModal = ref(null)
-const runtimeCapabilitiesStore = useRuntimeCapabilitiesStore()
 const taskerStore = useTaskerStore()
 const themeStore = useThemeStore()
 const userStore = useUserStore()
-const { knowledgeEnabled } = storeToRefs(runtimeCapabilitiesStore)
 const { activeCount } = storeToRefs(taskerStore)
 const { openSettingsModal } = inject('settingsModal', {})
 const activeTaskCount = computed(() => activeCount.value || 0)
@@ -188,9 +184,7 @@ const loadAllStats = async () => {
   if (overviewLoaded.value) return
   loading.value = true
   try {
-    const response = await dashboardApi.getAllStats({
-      includeKnowledge: knowledgeEnabled.value
-    })
+    const response = await dashboardApi.getAllStats()
 
     basicStats.value = response.basic
     allStatsData.value = {
@@ -280,7 +274,6 @@ const cleanupCharts = () => {
 }
 
 onMounted(async () => {
-  await runtimeCapabilitiesStore.ensureLoaded()
   if (overviewActivated.value) await loadAllStats()
 })
 
@@ -403,10 +396,6 @@ onUnmounted(() => {
       min-height: 350px;
     }
   }
-
-  &.without-knowledge .grid-item.tool-stats {
-    grid-column: 2 / 4;
-  }
 }
 
 // 响应式设计
@@ -447,10 +436,6 @@ onUnmounted(() => {
         min-height: 300px;
       }
     }
-
-    &.without-knowledge .grid-item.tool-stats {
-      grid-column: 1 / 3;
-    }
   }
 }
 
@@ -480,10 +465,6 @@ onUnmounted(() => {
         grid-row: auto;
         min-height: 300px;
       }
-    }
-
-    &.without-knowledge .grid-item.tool-stats {
-      grid-column: 1 / 2;
     }
   }
 }

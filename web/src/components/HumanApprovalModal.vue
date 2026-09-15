@@ -883,6 +883,8 @@ const formattedToolArgs = computed(() => formatToolApprovalArgs(activeToolReques
 
 .other-input textarea {
   width: 100%;
+  background: var(--gray-0);
+  color: var(--color-text);
   border: 1px solid var(--gray-300);
   border-radius: 6px;
   padding: 8px 10px;
@@ -893,6 +895,11 @@ const formattedToolArgs = computed(() => formatToolApprovalArgs(activeToolReques
   resize: none;
   overflow-y: hidden;
   box-sizing: border-box;
+}
+
+.other-input textarea::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
 }
 
 .other-input textarea:focus {

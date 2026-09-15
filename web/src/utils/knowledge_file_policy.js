@@ -93,15 +93,6 @@ export const canDeleteFile = (record, locked = false) =>
 export const isProcessingFile = (record) =>
   Boolean(record && PROCESSING_STATUSES.has(record.status))
 
-export const matchesStatusFilter = (record, status) => {
-  if (!record || status === 'all') return true
-  return (
-    record.status === status ||
-    (status === 'indexed' && record.status === 'done') ||
-    (status === 'error_indexing' && record.status === 'failed')
-  )
-}
-
 export const getFileStatusSortWeight = (record) => STATUS_SORT_ORDER[record?.status] || 5
 
 export const canPreviewParsed = (record) => {

@@ -224,11 +224,4 @@ export class ScrollController {
   }
 }
 
-/**
- * 创建默认的滚动控制器实例
- */
-export const createScrollController = (containerSelector, options) => {
-  return new ScrollController(containerSelector, options)
-}
-
 export default ScrollController

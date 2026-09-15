@@ -51,49 +51,11 @@
         </div>
       </template>
 
-      <template v-if="userStore.isSuperAdmin">
-        <div class="section-title">内容审查配置</div>
-        <div class="section">
-          <div class="card">
-            <span class="label">{{ items?.enable_content_guard?.des }}</span>
-            <a-switch
-              :checked="configStore.config?.enable_content_guard"
-              @change="handleChange('enable_content_guard', $event)"
-            />
-          </div>
-          <div class="card" v-if="configStore.config?.enable_content_guard">
-            <span class="label">{{ items?.enable_content_guard_llm?.des }}</span>
-            <a-switch
-              :checked="configStore.config?.enable_content_guard_llm"
-              @change="handleChange('enable_content_guard_llm', $event)"
-            />
-          </div>
-          <div
-            class="card card-select"
-            v-if="
-              configStore.config?.enable_content_guard &&
-              configStore.config?.enable_content_guard_llm
-            "
-          >
-            <span class="label">{{ items?.content_guard_llm_model?.des }}</span>
-            <ModelSelectorComponent
-              @select-model="handleContentGuardModelSelect"
-              :model_spec="configStore.config?.content_guard_llm_model"
-              placeholder="请选择模型"
-            />
-          </div>
-        </div>
-      </template>
-
       <SkillSettingsSection :class="{ 'first-section': !userStore.isSuperAdmin }" />
     </template>
 
     <!-- 服务链接部分 -->
-    <div v-if="userStore.isAdmin" class="section-title">服务链接</div>
     <div v-if="userStore.isAdmin">
-      <p class="section-description">
-        快速访问系统相关的外部服务，需要将 localhost 替换为实际的 IP 地址。
-      </p>
       <div class="services-grid">
         <div class="service-link-card">
           <div class="service-info">
@@ -188,12 +150,6 @@ const handleFastModelSelect = (spec) => {
   }
 }
 
-const handleContentGuardModelSelect = (spec) => {
-  if (typeof spec === 'string' && spec) {
-    configStore.setConfigValue('content_guard_llm_model', spec)
-  }
-}
-
 const openLink = (url) => {
   window.open(url, '_blank')
 }
@@ -201,16 +157,6 @@ const openLink = (url) => {
 
 <style lang="less" scoped>
 .basic-settings-section {
-  .section {
-    background-color: var(--gray-0);
-    padding: 10px 16px;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    border: 1px solid var(--gray-150);
-  }
-
   .settings-panel {
     background-color: var(--gray-50);
     border: 1px solid var(--gray-200);
@@ -251,30 +197,6 @@ const openLink = (url) => {
 
     .full-width {
       width: 100%;
-    }
-  }
-
-  .card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .label {
-      margin-right: 20px;
-      font-weight: 500;
-      color: var(--gray-800);
-      flex-shrink: 0;
-      min-width: 140px;
-    }
-
-    &.card-select {
-      align-items: flex-start;
-      gap: 12px;
-
-      .label {
-        margin-right: 0;
-        margin-top: 6px;
-      }
     }
   }
 

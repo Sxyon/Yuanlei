@@ -19,6 +19,7 @@ import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { MAX_IMAGE_UPLOAD_SIZE_BYTES, MAX_IMAGE_UPLOAD_SIZE_MB } from '@/utils/upload_limits'
+import { normalizeAgent } from '@/utils/agentConfigUtils'
 
 const props = defineProps({
   backendOptions: { type: Array, default: () => [] }
@@ -39,7 +40,6 @@ const agentModalActiveTab = ref('basic')
 const agentIconUploading = ref(false)
 const saving = ref(false)
 const agentShareConfigFormRef = ref(null)
-const runtimeConfigFormRef = ref(null)
 const agentNameInputRef = ref(null)
 const agentShareConfig = ref({
   version: 2,
@@ -138,13 +138,6 @@ const captureProfileBaseline = () => {
 }
 
 const hasAnyUnsavedChanges = computed(() => agentStore.hasConfigChanges || hasProfileChanges.value)
-
-const normalizeAgent = (agent) => {
-  const agentId = agent?.agent_id || agent?.slug || agent?.id
-  return agentId
-    ? { ...agent, id: agentId, agent_id: agentId, slug: agent?.slug || agentId }
-    : agent
-}
 
 const agentModalMenuItems = computed(() => {
   const items = [{ key: 'basic', label: '基本信息', icon: Bot }]
@@ -366,18 +359,10 @@ const saveAgent = async () => {
   try {
     const payload = buildAgentPayload()
     if (editingAgentId.value) {
-      const validatedConfig = runtimeConfigFormRef.value?.validateAndFilterConfig?.()
-      if (
-        validatedConfig &&
-        JSON.stringify(validatedConfig) !== JSON.stringify(agentStore.agentConfig)
-      ) {
-        agentStore.updateAgentConfig(validatedConfig)
-      }
       if (agentStore.hasConfigChanges) {
-        payload.config_json = { context: agentStore.agentConfig }
+        payload.config_json = { context: agentStore.changedAgentConfig }
       }
       const updated = await agentStore.updateAgentProfile(editingAgentId.value, payload)
-      agentStore.originalAgentConfig = { ...agentStore.agentConfig }
       captureProfileBaseline()
       emit('saved', { mode: 'edit', agent: updated })
       message.success('智能体已保存')
@@ -558,11 +543,7 @@ defineExpose({
           v-show="isRuntimeAgentModalTab(agentModalActiveTab)"
           class="agent-modal-section runtime-section"
         >
-          <AgentRuntimeConfigForm
-            ref="runtimeConfigFormRef"
-            :segment="runtimeConfigSegment"
-            :show-segmented="false"
-          />
+          <AgentRuntimeConfigForm :segment="runtimeConfigSegment" :show-segmented="false" />
         </section>
       </div>
     </div>

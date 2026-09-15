@@ -66,8 +66,10 @@ class KnowledgeBaseRepository:
                 kb.query_params = query_params
             return kb
 
-    async def update_stats(self, kb_id: str, stats: dict[str, int]) -> KnowledgeBase | None:
-        """在行锁内更新统计投影，保留并发写入的其他附加参数。"""
+    async def refresh_stats(self, kb_id: str) -> KnowledgeBase | None:
+        """在行锁内从文件聚合刷新统计，保留其他附加参数。"""
+        from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
         async with kb_config_cache_lock(kb_id):
             async with pg_manager.get_async_session_context() as session:
                 statement = select(KnowledgeBase).where(KnowledgeBase.kb_id == kb_id).with_for_update()
@@ -76,6 +78,8 @@ class KnowledgeBaseRepository:
                 if kb is None:
                     return None
 
+                # 聚合必须在取得行锁后执行，避免较早的快照晚写覆盖新结果。
+                stats = await KnowledgeFileRepository().query_kb_file_stats(kb_id, session=session)
                 additional_params = dict(kb.additional_params or {})
                 additional_params["stats"] = stats
                 kb.additional_params = additional_params

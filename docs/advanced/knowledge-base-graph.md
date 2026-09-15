@@ -37,7 +37,7 @@
 
 ## 失败和修复
 
-图谱任务使用 API 进程内的 Tasker。服务重启会把未完成的任务标记为失败，不会仅凭任务 payload 自动恢复原 coroutine。任务失败或取消后：
+图谱任务把可序列化 payload 持久化到 PostgreSQL，再由 ARQ worker 领取。Task 行的 attempt owner 与 lease 拒绝重复执行和迟到写入；所有 Durable Task 在 owner 中断或 lease 过期后都会明确失败，不在未知 Neo4j 或 Milvus 副作用上自动重放。任务失败或取消后：
 
 1. 先保留任务错误和失败 chunk；
 2. 检查 PostgreSQL 的 chunk 与处理状态；
@@ -45,7 +45,7 @@
 4. 检查 Milvus 的图向量索引；
 5. 再决定重试、修复向量索引或重置图谱。
 
-任务中心的“成功”只表示编排完成，不能单独证明三类存储已经一致。
+Durable Task 的 `success` 只表示 worker 已完成编排，不能单独证明三类存储已经一致。
 
 ## API 入口
 

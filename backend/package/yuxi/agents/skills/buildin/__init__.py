@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from yuxi.config.runtime import knowledge_capability_enabled
-
 
 @dataclass(frozen=True)
 class BuiltinSkillSpec:
@@ -44,33 +42,26 @@ BUILTIN_SKILLS: list[BuiltinSkillSpec] = [
         tool_dependencies=("web_search",),
         skill_dependencies=("html-preview",),
     ),
-]
-
-if knowledge_capability_enabled():
-    BUILTIN_SKILLS.append(
-        BuiltinSkillSpec(
-            slug="knowledge-base",
-            source_dir=_SKILLS_ROOT / "knowledge-base",
-            description="使用 Yuxi 知识库进行检索、打开文档、文档内定位和查看思维导图。",
-            version="2026.06.24",
-            tool_dependencies=(
-                "list_kbs",
-                "query_kb",
-                "find_kb_document",
-                "open_kb_document",
-                "get_mindmap",
-                "search_file",
-                "download_kb_file",
-            ),
-        )
-    )
-
-BUILTIN_SKILLS.append(
+    BuiltinSkillSpec(
+        slug="knowledge-base",
+        source_dir=_SKILLS_ROOT / "knowledge-base",
+        description="使用 Yuxi 知识库进行检索、打开文档、文档内定位和查看思维导图。",
+        version="2026.06.24",
+        tool_dependencies=(
+            "list_kbs",
+            "query_kb",
+            "find_kb_document",
+            "open_kb_document",
+            "get_mindmap",
+            "search_file",
+            "download_kb_file",
+        ),
+    ),
     BuiltinSkillSpec(
         slug="mysql-reporter",
         source_dir=_SKILLS_ROOT / "mysql-reporter",
         description="基于 MySQL 数据库生成查询报表和可视化图表，适合分析业务指标、统计趋势，并用 Charts MCP 展示结果。",
         version="2026.06.05",
         mcp_dependencies=("mcp-server-chart",),
-    )
-)
+    ),
+]

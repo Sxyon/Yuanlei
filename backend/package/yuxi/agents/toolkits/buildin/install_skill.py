@@ -56,7 +56,7 @@ def _prepare_skill_from_sandbox(
         thread_id=thread_id,
         uid=uid,
         workdir_path=workdir_relative_path,
-        create_if_missing=False,
+        create_if_missing=True,
     )
     download_sandbox_directory(
         backend,

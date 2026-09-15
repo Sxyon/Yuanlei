@@ -1,8 +1,8 @@
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from langchain.agents import create_agent
-from langchain.agents.middleware import ModelRetryMiddleware, TodoListMiddleware
+from langchain.agents.middleware import TodoListMiddleware
 
-from yuxi.agents import BaseAgent, load_chat_model, resolve_chat_model_spec
+from yuxi.agents import BaseAgent
 from yuxi.agents.backends import (
     create_agent_composite_backend,
     create_agent_filesystem_middleware,
@@ -10,25 +10,22 @@ from yuxi.agents.backends import (
 )
 from yuxi.agents.backends.paths import runtime_workdir_path
 from yuxi.agents.context import (
-    DEFAULT_SUMMARY_KEEP_MESSAGES,
-    DEFAULT_SUMMARY_L2_TRIGGER_RATIO,
-    DEFAULT_SUMMARY_THRESHOLD_K,
-    DEFAULT_SUMMARY_TOOL_RESULT_TOKEN_LIMIT,
     DEFAULT_TOOL_RESULT_EVICTION_K_TOKENS,
-    DEFAULT_YUXI_SUMMARY_PROMPT,
     prepare_agent_runtime_context,
 )
 from yuxi.agents.middlewares import (
     ImageInputCompatibilityMiddleware,
+    NetworkRetryMiddleware,
     SteerMiddleware,
     TokenUsageMiddleware,
     create_memory_middleware,
-    create_summary_middleware,
+    create_summary_middleware_from_context,
 )
 from yuxi.agents.middlewares.skills import SkillsMiddleware
 from yuxi.agents.middlewares.subagent_task import create_subagent_task_middleware
 from yuxi.agents.tool_approval import create_tool_approval_middleware, normalize_tool_approval_mode
 from yuxi.agents.toolkits.service import resolve_configured_runtime_tools
+from yuxi.models.chat import load_chat_model, resolve_chat_model_spec
 
 from .context import ChatBotContext
 from .prompt import TODO_MID_PROMPT, build_prompt_with_context
@@ -37,29 +34,6 @@ from .state import ChatBotState
 
 async def _build_middlewares(context, backend):
     """构建中间件列表"""
-    # summary middleware
-    # 主 Agent 上下文优化：默认 100k tokens 触发压缩，压缩后保留最近 10 条消息
-    summary_trigger_tokens = getattr(context, "summary_threshold", DEFAULT_SUMMARY_THRESHOLD_K) * 1024
-    summary_keep_messages = getattr(context, "summary_keep_messages", DEFAULT_SUMMARY_KEEP_MESSAGES)
-    summary_prompt = getattr(context, "summary_prompt", None) or DEFAULT_YUXI_SUMMARY_PROMPT
-    summary_tool_result_token_limit = getattr(
-        context,
-        "summary_tool_result_token_limit",
-        DEFAULT_SUMMARY_TOOL_RESULT_TOKEN_LIMIT,
-    )
-    summary_l2_trigger_ratio = getattr(context, "summary_l2_trigger_ratio", DEFAULT_SUMMARY_L2_TRIGGER_RATIO)
-    model_spec = resolve_chat_model_spec(context.model)
-    summary_middleware = create_summary_middleware(
-        model=load_chat_model(fully_specified_name=model_spec),
-        backend=backend,
-        trigger=("tokens", summary_trigger_tokens),
-        keep=("messages", summary_keep_messages),
-        summary_prompt=summary_prompt,
-        trim_tokens_to_summarize=summary_trigger_tokens,
-        tool_result_offload_token_limit=summary_tool_result_token_limit,
-        l1_l2_trigger_ratio=summary_l2_trigger_ratio,
-    )
-
     middlewares = [
         SteerMiddleware(),
         create_agent_filesystem_middleware(
@@ -76,10 +50,15 @@ async def _build_middlewares(context, backend):
         middlewares.append(subagent_middleware)
     middlewares.extend(
         [
-            summary_middleware,
+            create_summary_middleware_from_context(context, backend=backend),
             TodoListMiddleware(system_prompt=TODO_MID_PROMPT),
             PatchToolCallsMiddleware(),
-            ModelRetryMiddleware(max_retries=getattr(context, "model_retry_times", 2)),
+            # 网络类错误(断网/连接抖动)按预算(默认600s)持续重试，非网络错误按 max_retries
+            # 次数重试——两者合并进 NetworkRetryMiddleware，避免拆成两个中间件后因装配顺序
+            # 或外层重试网络错误而放大预算。
+            NetworkRetryMiddleware(
+                max_retries=getattr(context, "model_retry_times", 2),
+            ),
             ImageInputCompatibilityMiddleware(),
             TokenUsageMiddleware(),
         ]
@@ -96,14 +75,13 @@ async def _build_middlewares(context, backend):
 class ChatbotAgent(BaseAgent):
     name = "智能助手"
     description = "基础的对话机器人，可以回答问题，可在配置中启用需要的工具。"
-    capabilities = ["file_upload", "files"]  # 支持文件上传功能
+    capabilities = ["file_upload", "files", "context_compression"]
     context_schema = ChatBotContext
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     async def get_graph(self, context=None, **kwargs):
-
         context = await prepare_agent_runtime_context(
             context or self.context_schema(),
             context_schema=self.context_schema,
@@ -113,18 +91,15 @@ class ChatbotAgent(BaseAgent):
         # DeepAgents 0.7 移除 backend factory：每次 graph 构造创建本 Run 独享的
         # CompositeBackend，filesystem 与 summary middleware 共用同一实例。
         backend = create_agent_composite_backend(context)
-
-        # 使用 create_agent 创建智能体
         model_spec = resolve_chat_model_spec(context.model)
         graph = create_agent(
-            model=load_chat_model(fully_specified_name=model_spec),
+            model=load_chat_model(fully_specified_name=model_spec, session_id=context.thread_id),
             tools=await resolve_configured_runtime_tools(context),
             system_prompt=build_prompt_with_context(context),
             middleware=await _build_middlewares(context, backend),
             state_schema=ChatBotState,
             checkpointer=await self._get_checkpointer(),
         )
-
         return graph
 
 

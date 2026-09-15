@@ -133,3 +133,19 @@ def test_worker_healthcheck_uses_arq_health_contract_in_development_and_producti
             "CMD-SHELL",
             "uv run --no-sync --no-dev arq --check server.worker_main.WorkerSettings",
         ]
+
+
+def test_worker_starts_owned_entrypoint_in_development_and_production():
+    """正式部署必须进入拥有本地任务过滤的 Worker 入口。"""
+    project_root = _project_root()
+    for filename in ("docker-compose.yml", "docker-compose.prod.yml"):
+        compose = yaml.safe_load((project_root / filename).read_text())
+        assert "python -m server.worker_main" in compose["services"]["worker"]["command"]
+
+
+def test_arq_dependency_changes_trigger_real_dispatch_regression():
+    """单独升级依赖也必须触发拥有 ARQ 适配语义的真实 Redis gate。"""
+    project_root = _project_root()
+    workflow = yaml.load((project_root / ".github/workflows/system-tests.yml").read_text(), Loader=yaml.BaseLoader)
+    for event in ("pull_request", "push"):
+        assert {"backend/uv.lock", "backend/pyproject.toml"}.issubset(workflow["on"][event]["paths"])

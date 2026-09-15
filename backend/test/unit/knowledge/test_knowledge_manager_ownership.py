@@ -1,4 +1,7 @@
+import asyncio
+import threading
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -6,6 +9,43 @@ from yuxi.knowledge.manager import KnowledgeBaseManager
 from yuxi.knowledge.read_models import KnowledgeBaseConfig
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_executor_construction_is_offloaded_from_event_loop(tmp_path, monkeypatch):
+    manager = KnowledgeBaseManager(str(tmp_path))
+    event_loop_thread = threading.get_ident()
+    construction_threads: list[int] = []
+    executor = object()
+
+    def create_executor(_kb_type: str, _work_dir: str):
+        construction_threads.append(threading.get_ident())
+        return executor
+
+    monkeypatch.setattr("yuxi.knowledge.manager.KnowledgeBaseFactory.create", create_executor)
+
+    assert await manager._get_or_create_kb_instance("fake") is executor
+    assert construction_threads and construction_threads[0] != event_loop_thread
+
+
+async def test_concurrent_executor_construction_is_deduplicated(tmp_path, monkeypatch):
+    manager = KnowledgeBaseManager(str(tmp_path))
+    construction_count = 0
+    executor = object()
+
+    def create_executor(_kb_type: str, _work_dir: str):
+        nonlocal construction_count
+        construction_count += 1
+        return executor
+
+    monkeypatch.setattr("yuxi.knowledge.manager.KnowledgeBaseFactory.create", create_executor)
+
+    results = await asyncio.gather(
+        manager._get_or_create_kb_instance("fake"),
+        manager._get_or_create_kb_instance("fake"),
+    )
+
+    assert results == [executor, executor]
+    assert construction_count == 1
 
 
 async def test_delete_database_cleans_resources_before_deleting_record(tmp_path, monkeypatch):
@@ -51,15 +91,17 @@ async def test_parse_file_refreshes_stats_and_keeps_original_error_after_executo
         return KnowledgeBaseConfig(kb_id="kb_1", kb_type="fake")
 
     if refresh_stats_fails:
+
         async def refresh_database_stats(_kb_id: str):
             raise RuntimeError("stats failed")
     else:
+
         async def refresh_database_stats(kb_id: str):
             refreshed.append(kb_id)
             return {}
 
     monkeypatch.setattr(manager, "get_kb_config", get_kb_config)
-    monkeypatch.setattr(manager, "_get_or_create_kb_instance", lambda _kb_type: FakeExecutor())
+    monkeypatch.setattr(manager, "_get_or_create_kb_instance", AsyncMock(return_value=FakeExecutor()))
     monkeypatch.setattr(manager, "_refresh_database_stats", refresh_database_stats)
 
     with pytest.raises(ValueError, match="parse failed"):

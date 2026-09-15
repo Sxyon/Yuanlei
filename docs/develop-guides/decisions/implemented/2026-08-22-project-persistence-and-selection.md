@@ -12,7 +12,7 @@ Owner：backend/package/yuxi/services/project_service.py
 
 新增轻量 `Project` 业务资源。Project 持久化 `id`、`uid`、`name`、`selection_status`、`workdir_path`、`directory_mode` 和幂等创建事实；一期一个 Project 必须且只能对应一个 Workdir，但多个 Project 可以共享同一个 Workdir。`implicit` Project 由默认新对话自动创建且不进入选择器，`selectable` Project 由用户独立创建或从历史 Conversation 添加后进入选择器。
 
-`managed` Project 由服务端分配并在数据库提交后物化 `projects/<project-id>`；`linked` Project 绑定当前 uid UserWorkspace 下用户选择的已有目录，不复制、移动、创建或接管目录内容。仅 Workspace 根、文件、symlink、路径穿越、宿主机/容器路径和其他用户目录被拒绝；`agents/`、`projects/` 及已被其他 Project 绑定的目录都允许选择。Project ID 是业务身份，Workdir 路径不是唯一键。
+`managed` Project 由服务端分配并在数据库提交后物化。新路径使用上海时间与 Project ID 前 8 位组成 `projects/YYYY-MM-DD_HH-MM-SS_<project-id-prefix>`；同名文件或目录已经存在时，服务端依次追加 `-1`、`-2`，既有 `projects/<uuid>` 保持有效。`linked` Project 绑定当前 uid UserWorkspace 下用户选择的已有目录，不复制、移动、创建或接管目录内容。仅 Workspace 根、文件、symlink、路径穿越、宿主机/容器路径和其他用户目录被拒绝；`agents/`、`projects/` 及已被其他 Project 绑定的目录都允许选择。Project ID 是业务身份，Workdir 路径不是唯一键。
 
 所有 Conversation 只绑定不可变 `project_id`，并通过非空列与 `(project_id, uid)` 复合外键拒绝缺失或跨用户绑定；Conversation 不保存 `workdir_path`。v0.7.1 发布 schema 尚无该路径列，因此一次性迁移直接为每个顶层 Conversation 创建 implicit managed Project，SubAgent Conversation 继承父 Conversation 的 Project，不保留当前开发分支曾引入的 path-only 中间态。统一 resolver 始终从 Project 读取 Workdir。AgentRun 不保存 `project_id`；Resume 使用原 Conversation，SubAgent Conversation 继承父 Conversation 的绑定。
 
@@ -34,7 +34,7 @@ Owner：backend/package/yuxi/services/project_service.py
 | 验收主张 | 失败面 | 语义 Owner | 直接证据 / 命令 | 负向案例 | 当前结果 |
 |---|---|---|---|---|---|
 | Project 独立存在且一期各自绑定一个 Workdir | 空 Project 无法读取，或 Project 同时形成多份路径事实 | Project model/repository/service | 真实 HTTP/PostgreSQL/POSIX 探针回读 managed、linked、幂等和互斥绑定 | Project 缺少路径；两个 Project 共享路径仍保持不同 ID | Passed |
-| managed 与 linked 创建保持各自目录语义 | 提交前遗留目录，或 linked 目录被复制/改写/静默创建 | ProjectService 与 `yuxi.workspace` | 完整 backend unit；真实探针回读原目录和 managed 路径 | linked 路径不存在、文件、symlink；重复路径绑定成功 | Passed |
+| managed 与 linked 创建保持各自目录语义 | 提交前遗留目录，managed 名称冲突后复用已有条目，或 linked 目录被复制/改写/静默创建 | ProjectService 与 `yuxi.workspace` | backend unit；真实 HTTP/PostgreSQL/POSIX 回读 managed 路径与目录 | managed 同名文件或目录依次追加编号；非法时间名拒绝；旧 UUID 路径继续有效；linked 路径不存在、文件、symlink 与重复路径绑定 | Passed |
 | 手动创建 Project 必须选择目录 | 显式创建仍可提交 managed 或空路径 | ProjectService 与 Project UI | Project service unit；前端禁用状态；Playwright 新建弹窗 | `managed`、空 workdir、空 path 与 mode 缺失均返回 422 | Passed |
 | Workspace 目录选择接受根目录外任意合法目录 | 合法保留目录被 API、worker 或 provisioner 误拒绝，或路径逃逸边界 | Workspace filesystem boundary、ProjectService 与 sandbox provisioner | Workspace/Project unit、provisioner unit、真实目录候选与创建探针 | `/`、文件、symlink、空路径组件、`..`、绝对路径和 URL 拒绝；`agents`、`projects` 和重复路径接受 | Passed |
 | projects tree 隐藏匿名目录 | implicit 或未归属目录出现在通用 tree，或前端按 UUID 猜测 | WorkspaceService 与 ProjectRepository | Workspace 可见性 unit；真实 tree API | selectable 目录、祖先和内部内容保留；选中 projects 根时完整可见；普通目录不额外查 Project | Passed |
@@ -49,6 +49,7 @@ Owner：backend/package/yuxi/services/project_service.py
 - Conversation 只有一种 Project 绑定形态；所有 Workdir consumer 必须使用统一 resolver，不能从 Conversation 或请求读取路径。
 - linked Project 只建立业务绑定，不拥有目录字节；目录被外部删除、改名或替换时明确失败，不静默创建或降级。
 - managed Project 在 PostgreSQL 提交后物化目录，稳定幂等 ID 允许响应未知或物化失败后恢复同一资源。
+- 新 managed Workdir 名称提供秒级创建时间和 Project ID 前缀；名称冲突时选择首个未占用编号，目录名不承担 Project 身份或授权职责。
 - Project 是工作目录和用户组织资源，不改变同 uid Sandbox 可读取整个 UserWorkspace 的现有边界。
 - Project Workdir 路径不再唯一；多个业务 Project 可以显式共享同一目录，运行和文件变化也因此共享。
 - `/projects` 下尚未归属 selectable Project 的匿名目录由后端统一 tree 隐藏；目录存在与可见性不能由前端目录名推断。

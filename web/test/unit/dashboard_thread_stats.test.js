@@ -88,6 +88,32 @@ test('dashboardApi.getThreadStats 正确拼接时间范围与智能体过滤参�
   })
 })
 
+test('dashboardApi.getAllStats 始终请求知识库统计', async () => {
+  await withServer(async (server) => {
+    storageValues.clear()
+    const requests = []
+    const responses = {
+      '/api/dashboard/stats': { total_conversations: 3 },
+      '/api/dashboard/stats/users': { total_users: 2 },
+      '/api/dashboard/stats/tools': { total_calls: 4 },
+      '/api/dashboard/stats/agents': { total_agents: 1 },
+      '/api/dashboard/stats/knowledge': { total_databases: 5 }
+    }
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      requests.push(url)
+      return jsonResponse(responses[url])
+    }
+
+    await prepareStores(server)
+    const { dashboardApi } = await server.ssrLoadModule('/src/apis/dashboard_api.js')
+    const result = await dashboardApi.getAllStats()
+
+    assert.deepEqual(requests, Object.keys(responses))
+    assert.deepEqual(result.knowledge, responses['/api/dashboard/stats/knowledge'])
+  })
+})
+
 test('会话分析保持紧凑摘要、彩色排行、无刷新 loading 与统一头像 fallback', () => {
   const source = readFileSync(
     new URL('../../src/components/dashboard/ThreadStatsComponent.vue', import.meta.url),
@@ -125,7 +151,7 @@ test('智能体分析不再渲染 TOP 5 排行且保留分布图', () => {
   assert.doesNotMatch(source, /<a-table/)
 })
 
-test('会话统计只允许最新筛选请求提交结果和结束 loading', () => {
+test('会话统计源码包含筛选请求代次和 loading 回写守卫', () => {
   const source = readFileSync(
     new URL('../../src/components/dashboard/ThreadStatsComponent.vue', import.meta.url),
     'utf8'

@@ -40,6 +40,7 @@ TOKEN_USAGE_CONTEXT_FIELDS = frozenset(
         "llm_tool_message_count",
         "llm_tool_message_tokens",
         "llm_input_tokens",
+        "next_llm_input_tokens",
         "system_tokens",
         "tools_tokens",
         "tool_count",
@@ -49,6 +50,7 @@ TOKEN_USAGE_CONTEXT_FIELDS = frozenset(
         "summary_active",
         "summary_message_tokens",
         "summary_trigger_tokens",
+        "summary_pressure_ratio",
         "counter",
         "estimate",
         "measured_at",
@@ -70,6 +72,7 @@ class TokenUsagePayload(TypedDict, total=False):
     llm_tool_message_count: int
     llm_tool_message_tokens: int
     llm_input_tokens: int
+    next_llm_input_tokens: int
     system_tokens: int
     tools_tokens: int
     tool_count: int
@@ -79,6 +82,7 @@ class TokenUsagePayload(TypedDict, total=False):
     summary_active: bool
     summary_message_tokens: int
     summary_trigger_tokens: int | None
+    summary_pressure_ratio: float | None
     current_run_id: str
     latest: dict[str, Any] | None
     run: dict[str, Any]
@@ -177,6 +181,10 @@ class TokenUsageMiddleware(AgentMiddleware[TokenUsageState]):
         system_tokens = self._count_tokens(system_messages)
         tools_tokens = self._count_tokens([], tools=tools) if tools else 0
         llm_input_tokens = self._count_tokens([*system_messages, *llm_messages], tools=tools)
+        next_llm_input_tokens = self._count_tokens(
+            [*system_messages, *llm_messages, *response_messages],
+            tools=tools,
+        )
 
         context_window = _model_context_window(request.model)
         context_usage_ratio = None
@@ -191,6 +199,9 @@ class TokenUsageMiddleware(AgentMiddleware[TokenUsageState]):
             message for message in llm_messages if not _is_tool_message(message) and not _is_summary_message(message)
         ]
         summary_trigger_tokens = _summary_trigger_tokens(getattr(request.runtime, "context", None))
+        summary_pressure_ratio = (
+            round(next_llm_input_tokens / summary_trigger_tokens, 4) if summary_trigger_tokens else None
+        )
         previous_snapshot = request.state.get("token_usage")
         previous_snapshot = previous_snapshot if isinstance(previous_snapshot, Mapping) else {}
         model_usage = _model_usage_from_response(response)
@@ -249,6 +260,7 @@ class TokenUsageMiddleware(AgentMiddleware[TokenUsageState]):
             "llm_tool_message_count": len(llm_tool_messages),
             "llm_tool_message_tokens": self._count_tokens(llm_tool_messages),
             "llm_input_tokens": llm_input_tokens,
+            "next_llm_input_tokens": next_llm_input_tokens,
             "system_tokens": system_tokens,
             "tools_tokens": tools_tokens,
             "tool_count": len(tools),
@@ -258,6 +270,7 @@ class TokenUsageMiddleware(AgentMiddleware[TokenUsageState]):
             "summary_active": summary_message is not None,
             "summary_message_tokens": self._count_tokens([summary_message]) if summary_message else 0,
             "summary_trigger_tokens": summary_trigger_tokens,
+            "summary_pressure_ratio": summary_pressure_ratio,
             "current_run_id": run_id,
             "latest": latest_usage,
             "run": run_usage,

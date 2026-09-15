@@ -37,6 +37,6 @@ Yuxi 采用 DSH 的“一事实一层级 Owner”、tutorial/reference 分类、
 | Agent 能判断文档层级、教程/参考类型、事实 Owner 与验证方式 | 独立 Reviewer 对照完整需求、DSH 规则和 Yuxi 源码审查；`python3 scripts/verify_engineering_contracts.py`；`python3 -m unittest scripts.test_verify_engineering_contracts` | 工程信任检查扫描 196 份文档并通过；59 个 verifier unit 通过，其中负向测试覆盖对举连接词变体、列表与引用容器的显式或隐式围栏边界，并允许历史状态迁移说明；独立 Reviewer 未发现 P0–P2 问题 |
 | 站点提供渐进导航，机制页和知识库高级参考可访问 | `cd docs && pnpm run build` | 通过；保留现有 `env` lexer、Rolldown 插件和 chunk size 警告 |
 | 沙盒配置与内部机制分离，路径、身份、变量映射和 secret 边界与实现一致 | 对照 sandbox backend、provider、Compose 与 Kubernetes 配置；运行相关 sandbox/provider/viewer unit | 101 个测试通过，2 个现有警告；因工作树缺少 provisioner token，未运行 Docker/Kubernetes 真实集成 |
-| Summary 机制与知识库教程、权限、Tasker 和工具链路符合当前实现 | 对照 middleware、graph、router、manager、repository、Web store 与上传组件；运行 Summary、Tasker、知识库权限和 LITE 边界相关 unit | 44 个测试通过，2 个现有警告；未运行真实模型 Summary 和 Milvus、MinIO、Neo4j、Dify、Notion 集成 |
+| Summary 机制与知识库教程、权限、Tasker 和工具链路符合当前实现 | 对照 middleware、graph、router、manager、repository、Web store 与上传组件；运行 Summary、Tasker 和知识库权限相关 unit | 相关测试通过；未运行真实模型 Summary 和 Milvus、MinIO、Neo4j、Dify、Notion 集成 |
 | Langfuse 配置、trace 映射和反馈同步说明符合当前实现 | 对照 `langfuse_service.py`、`feedback_service.py` 与对应 unit | 8 个测试通过，1 个现有 SQLAlchemy 警告 |
 | 补丁没有空白错误 | `git diff --check` | 通过 |

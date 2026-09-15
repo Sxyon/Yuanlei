@@ -9,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import (
     AGENT_RUN_TERMINAL_STATUSES,
+    AUDIT_MESSAGE_TYPES,
+    TOOL_AUDIT_MESSAGE_TYPE,
     AgentRun,
     AgentRunAttempt,
     Message,
     SubagentThread,
+    ToolCall,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -272,6 +275,35 @@ class AgentRunRepository:
             runtime_cleanup_pending=False,
         )
         self.db.add(run)
+        await self.db.flush()
+        return run
+
+    async def set_langfuse_trace_id(
+        self,
+        run_id: str,
+        trace_id: str,
+        *,
+        worker_id: str,
+        now: datetime | None = None,
+    ) -> AgentRun | None:
+        """由当前 attempt 在执行前幂等固化 Run 的 Langfuse trace。"""
+        normalized_trace_id = trace_id.strip()
+        if not normalized_trace_id:
+            raise ValueError("trace_id 不能为空")
+        if not worker_id.strip():
+            raise ValueError("worker_id 不能为空")
+
+        run = await self._lock_run(run_id)
+        if run is None:
+            return None
+
+        current_time = now or utc_now_naive()
+        self._require_lease_owner(run, worker_id=worker_id, now=current_time, action="固化 Langfuse trace")
+        if run.langfuse_trace_id and run.langfuse_trace_id != normalized_trace_id:
+            raise ValueError("AgentRun 已绑定不同的 Langfuse trace")
+
+        run.langfuse_trace_id = normalized_trace_id
+        run.updated_at = current_time
         await self.db.flush()
         return run
 
@@ -542,6 +574,7 @@ class AgentRunRepository:
             run.lease_expires_at = None
             run.runtime_cleanup_pending = run.run_type != "subagent"
             await self._project_input_delivery_status(run)
+            await self._close_running_audits(run.id, execution_status="abandoned", now=current_time)
             await self._close_open_attempts(
                 run.id,
                 outcome="lease_expired",
@@ -577,6 +610,7 @@ class AgentRunRepository:
             # quiescence proof 已证明旧 runtime 不存在，无需再创建异步清理任务。
             run.runtime_cleanup_pending = False
             await self._project_input_delivery_status(run)
+            await self._close_running_audits(run.id, execution_status="abandoned", now=current_time)
             await self._close_open_attempts(
                 run.id,
                 outcome="failed",
@@ -738,6 +772,18 @@ class AgentRunRepository:
         run.lease_expires_at = None
         run.runtime_cleanup_pending = run.run_type != "subagent"
         await self._project_input_delivery_status(run)
+        audit_status = {
+            "completed": "abandoned",
+            "failed": "failed",
+            "cancelled": "interrupted",
+            "interrupted": "interrupted",
+        }[status]
+        await self._close_running_audits(
+            run.id,
+            execution_status=audit_status,
+            now=current_time,
+            preserve_pending_tool_calls=status == "interrupted",
+        )
         await self._finish_open_attempt(
             run.id,
             worker_id=worker_id,
@@ -762,6 +808,48 @@ class AgentRunRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def _close_running_audits(
+        self,
+        run_id: str,
+        *,
+        execution_status: str,
+        now: datetime,
+        preserve_pending_tool_calls: bool = False,
+    ) -> None:
+        """在 Run owning transaction 内关闭尚无 terminal 事实的 Model/Tool 审计行。"""
+        running_tools = await self.db.execute(
+            select(Message.extra_metadata).where(
+                Message.run_id == run_id,
+                Message.message_type == TOOL_AUDIT_MESSAGE_TYPE,
+                Message.execution_status == "running",
+            )
+        )
+        tool_metadata = {
+            metadata["compatibility_tool_call_id"]: metadata
+            for metadata in running_tools.scalars().all()
+            if isinstance(metadata, dict) and isinstance(metadata.get("compatibility_tool_call_id"), int)
+        }
+        if tool_metadata and not preserve_pending_tool_calls:
+            tool_calls = await self.db.scalars(select(ToolCall).where(ToolCall.id.in_(tool_metadata)))
+            for tool_call in tool_calls:
+                metadata = tool_metadata[tool_call.id]
+                tool_call.status = "error"
+                tool_call.error_message = metadata.get("error_message") or (
+                    f"Tool 审计由 Run 终态收敛为 {execution_status}"
+                )
+        await self.db.execute(
+            update(Message)
+            .where(
+                Message.run_id == run_id,
+                Message.message_type.in_(AUDIT_MESSAGE_TYPES),
+                Message.execution_status == "running",
+            )
+            .values(
+                execution_status=execution_status,
+                finished_at=func.coalesce(Message.finished_at, now),
+            )
+        )
 
     async def _project_input_delivery_status(self, run: AgentRun) -> None:
         """在 owning transaction 内同步输入消息的终态投影。"""
@@ -804,6 +892,91 @@ class AgentRunRepository:
         run.manifest_fingerprint = fingerprint
         run.manifest_recorded_at = current_time
         run.updated_at = current_time
+        await self.db.flush()
+        return run, True
+
+    async def record_prepared(
+        self,
+        run_id: str,
+        *,
+        worker_id: str,
+        observed_at: datetime | None = None,
+        checked_at: datetime | None = None,
+    ) -> tuple[AgentRun | None, bool]:
+        """由当前 lease owner write-once 记录运行准备完成时间。"""
+        run = await self._lock_run(run_id)
+        if run is None:
+            return None, False
+        if run.prepared_at is not None:
+            return run, False
+
+        lease_check_time = checked_at or utc_now_naive()
+        self._require_lease_owner(run, worker_id=worker_id, now=lease_check_time, action="记录运行准备时间")
+        event_time = observed_at or lease_check_time
+        if run.started_at is None or event_time < run.started_at:
+            raise ValueError("AgentRun 准备时间不能早于开始时间")
+
+        run.prepared_at = event_time
+        run.updated_at = lease_check_time
+        await self.db.flush()
+        return run, True
+
+    async def record_first_model_request(
+        self,
+        run_id: str,
+        *,
+        worker_id: str,
+        observed_at: datetime | None = None,
+        checked_at: datetime | None = None,
+    ) -> tuple[AgentRun | None, bool]:
+        """由当前 lease owner write-once 记录首次进入模型请求边界的时间。"""
+        run = await self._lock_run(run_id)
+        if run is None:
+            return None, False
+        if run.first_model_request_at is not None:
+            return run, False
+
+        lease_check_time = checked_at or utc_now_naive()
+        # 取消请求不抹去已经发生的调用；仅此观测允许仍持有效 lease 的取消中 Run 补写。
+        if (
+            run.status not in LEASED_RUN_STATUSES
+            or run.worker_id != worker_id
+            or run.lease_expires_at is None
+            or run.lease_expires_at <= lease_check_time
+        ):
+            raise ValueError("只有当前有效 AgentRun lease owner 可以记录首次模型请求时间")
+        event_time = observed_at or lease_check_time
+        if run.created_at is not None and event_time < run.created_at:
+            raise ValueError("AgentRun 首次模型请求时间不能早于创建时间")
+
+        run.first_model_request_at = event_time
+        run.updated_at = lease_check_time
+        await self.db.flush()
+        return run, True
+
+    async def record_first_output(
+        self,
+        run_id: str,
+        *,
+        worker_id: str,
+        observed_at: datetime | None = None,
+        checked_at: datetime | None = None,
+    ) -> tuple[AgentRun | None, bool]:
+        """由当前 lease owner write-once 记录首个模型语义输出时间。"""
+        run = await self._lock_run(run_id)
+        if run is None:
+            return None, False
+        if run.first_output_at is not None:
+            return run, False
+
+        lease_check_time = checked_at or utc_now_naive()
+        self._require_lease_owner(run, worker_id=worker_id, now=lease_check_time, action="记录首次模型输出时间")
+        event_time = observed_at or lease_check_time
+        if run.prepared_at is None or event_time < run.prepared_at:
+            raise ValueError("AgentRun 首次输出时间不能早于准备完成时间")
+
+        run.first_output_at = event_time
+        run.updated_at = lease_check_time
         await self.db.flush()
         return run, True
 

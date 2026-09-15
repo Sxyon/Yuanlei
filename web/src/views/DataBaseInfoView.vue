@@ -219,11 +219,7 @@
 
       <template #panel-evaluation>
         <div v-if="isMilvus && activeTab === 'evaluation'" class="tab-panel evaluation-panel">
-          <KnowledgeEvaluationWorkspace
-            v-if="kbId"
-            :kb-id="kbId"
-            :can-manage="canManageDatabase"
-          />
+          <KnowledgeEvaluationWorkspace v-if="kbId" :kb-id="kbId" :can-manage="canManageDatabase" />
         </div>
       </template>
     </ExtensionDetailLayout>
@@ -454,10 +450,7 @@ import FileTable from '@/components/FileTable.vue'
 import FileDetailModal from '@/components/FileDetailModal.vue'
 import FileUploadModal from '@/components/FileUploadModal.vue'
 import FileSearchModal from '@/components/modals/FileSearchModal.vue'
-import KnowledgeGraphSection from '@/components/KnowledgeGraphSection.vue'
 import QuerySection from '@/components/QuerySection.vue'
-import MindMapSection from '@/components/MindMapSection.vue'
-import KnowledgeEvaluationWorkspace from '@/components/evaluation/KnowledgeEvaluationWorkspace.vue'
 import SearchConfigPanel from '@/components/SearchConfigPanel.vue'
 import AiTextarea from '@/components/AiTextarea.vue'
 import ShareConfigForm from '@/components/ShareConfigForm.vue'
@@ -467,6 +460,15 @@ import { authApi } from '@/apis/auth_api'
 import { useChunkPresetOptions } from '@/composables/useChunkPresetOptions'
 import { DEFAULT_CHUNK_PRESET_ID } from '@/utils/chunkUtils'
 import { kbUtils } from '@/utils/kb_utils'
+import { createAsyncPanel } from '@/utils/asyncPanel'
+
+const KnowledgeGraphSection = createAsyncPanel(
+  () => import('@/components/KnowledgeGraphSection.vue')
+)
+const MindMapSection = createAsyncPanel(() => import('@/components/MindMapSection.vue'))
+const KnowledgeEvaluationWorkspace = createAsyncPanel(
+  () => import('@/components/evaluation/KnowledgeEvaluationWorkspace.vue')
+)
 
 const route = useRoute()
 const router = useRouter()
@@ -1654,5 +1656,4 @@ onUnmounted(() => {
   border: 1px solid var(--gray-100);
   border-radius: 12px;
 }
-
 </style>

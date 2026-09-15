@@ -8,24 +8,26 @@ export default defineConfig({
   title: "Yuxi",
   description: "Yuxi 是一个可私有部署的多租户知识智能体平台，统一 RAG、知识图谱、LangGraph 多智能体、MCP/Skills、沙盒与权限管理。",
   base: '/Yuxi/',
+  srcExclude: ['vibe/**'],
   sitemap: {
     hostname: 'https://xerrors.github.io/Yuxi/'
   },
   head: [
     ['link', { rel: 'icon', href: '/Yuxi/favicon.svg' }],
-    ['meta', { name: 'theme-color', content: '#023944' }],
+    ['link', { rel: 'alternate icon', href: '/Yuxi/favicon.ico' }],
+    ['meta', { name: 'theme-color', content: '#F3BA32' }],
     ['meta', { name: 'keywords', content: 'Yuxi, AI Agent, RAG, knowledge graph, LangGraph, MCP, self-hosted, multi-agent, knowledge base' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:site_name', content: 'Yuxi' }],
-    ['meta', { property: 'og:title', content: 'Yuxi · 可私有部署的多租户知识智能体平台' }],
-    ['meta', { property: 'og:description', content: '将 RAG、知识图谱、多智能体执行、MCP/Skills、沙盒与权限管理放进同一个工作台。' }],
-    ['meta', { property: 'og:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/posts/2026/08/20260818-151118-mac-1787037059154-8c08f48c.png' }],
-    ['meta', { property: 'og:image:width', content: '1280' }],
-    ['meta', { property: 'og:image:height', content: '640' }],
+    ['meta', { property: 'og:title', content: 'Yuxi · 让知识真正参与每一次行动' }],
+    ['meta', { property: 'og:description', content: '可私有部署的多租户知识智能体平台，统一知识、工具、多智能体执行与团队治理。' }],
+    ['meta', { property: 'og:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:title', content: 'Yuxi · Self-hosted knowledge agent platform' }],
     ['meta', { name: 'twitter:description', content: 'RAG, knowledge graphs, multi-agent execution, MCP/Skills, sandboxed artifacts, and access control in one workspace.' }],
-    ['meta', { name: 'twitter:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/posts/2026/08/20260818-151118-mac-1787037059154-8c08f48c.png' }]
+    ['meta', { name: 'twitter:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }]
   ],
   ignoreDeadLinks: [
     /localhost/
@@ -89,6 +91,7 @@ export default defineConfig({
         items: [
           { text: '配置系统详解', link: '/advanced/configuration' },
           { text: 'Project Git 配置与分支', link: '/advanced/project-git-reference' },
+          { text: 'Agent 并发容量', link: '/advanced/agent-concurrency-capacity' },
           { text: 'Langfuse 集成', link: '/advanced/langfuse-integration' },
           { text: '文档解析', link: '/advanced/document-processing' },
           { text: '知识库管理与 API', link: '/advanced/knowledge-base-operations' },
@@ -96,7 +99,6 @@ export default defineConfig({
           { text: '知识导图与知识图谱', link: '/advanced/knowledge-base-graph' },
           { text: '品牌自定义', link: '/advanced/branding' },
           { text: '其他配置', link: '/advanced/misc' },
-          { text: '内容审查', link: '/advanced/content-safety' },
           { text: '网页搜索', link: '/advanced/web-search' },
           { text: '服务端口', link: '/advanced/ports' },
           { text: '生产部署', link: '/advanced/deployment' },
@@ -114,6 +116,7 @@ export default defineConfig({
           { text: '版本变更记录', link: '/develop-guides/changelog' },
           { text: '界面设计规范', link: '/develop-guides/design' },
           { text: '测试规范', link: '/develop-guides/testing-guidelines' },
+          { text: '并发优化与评测', link: '/develop-guides/decisions/implemented/2026-09-07-agent-concurrency-optimization' },
           { text: 'Yuxi Spec Loop', link: '/develop-guides/spec-loop' },
           { text: '工程信任系统', link: '/develop-guides/engineering-trust' },
           { text: '工程决策记录', link: '/develop-guides/decisions/README' },

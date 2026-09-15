@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import abstractmethod
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from typing import Any
 
 from langchain_core.messages import ToolMessage
@@ -110,7 +110,6 @@ class BaseAgent:
 
     def __init__(self, **kwargs):
         self.graph = None  # will be covered by get_graph
-        self.checkpointer = None
 
     @property
     def module_name(self) -> str:
@@ -211,66 +210,82 @@ class BaseAgent:
         if tags := kwargs.get("tags"):
             input_config["tags"] = list(tags)
 
-        run = await graph.astream_events(
+        async with await graph.astream_events(
             graph_input,
             context=context,
             config=input_config,
             version="v3",
             transformers=[CustomTransformer],
-        )
-        subagent_routes: dict[tuple[str, ...], dict[str, str]] = {}
-        route_task = asyncio.create_task(_collect_subagent_routes(run, context.thread_id, subagent_routes))
-        try:
-            async for event in run:
-                params = event.get("params") or {}
-                namespace = list(params.get("namespace") or [])
-                method = event.get("method")
-                data = params.get("data")
-                subagent_route = _subagent_route_for_namespace(subagent_routes, namespace)
+        ) as run:
+            if on_prepared := kwargs.get("on_prepared"):
+                await on_prepared()
+            subagent_routes: dict[tuple[str, ...], dict[str, str]] = {}
+            route_task = asyncio.create_task(_collect_subagent_routes(run, context.thread_id, subagent_routes))
+            try:
+                async for event in run:
+                    params = event.get("params") or {}
+                    namespace = list(params.get("namespace") or [])
+                    method = event.get("method")
+                    data = params.get("data")
+                    sequence = event.get("seq")
+                    timestamp = params.get("timestamp")
+                    subagent_route = _subagent_route_for_namespace(subagent_routes, namespace)
 
-                if method == "custom":
-                    yield "custom", data
-                    continue
-                if method == "messages":
-                    msg, metadata = data
-                    metadata = dict(metadata or {})
-                    actual_thread_id = (subagent_route or {}).get("thread_id") or _metadata_thread_id(metadata)
-                    metadata["namespace"] = namespace
-                    metadata["stream_event"] = {"method": method, "namespace": namespace}
-                    if subagent_route:
-                        metadata.update(subagent_route)
-                    if actual_thread_id:
-                        metadata["thread_id"] = actual_thread_id
-                    yield "messages", (msg, metadata)
-                elif method == "values" and not namespace:
-                    yield "values", data
-                elif method in {"tasks", "tools", "lifecycle"}:
-                    if method == "tools":
-                        data = _normalize_tool_event_data(data)
-                    event_payload = {
-                        "method": method,
-                        "namespace": namespace,
-                        "data": _json_safe(data),
-                    }
-                    actual_thread_id = (subagent_route or {}).get("thread_id") or _metadata_thread_id(params)
-                    if subagent_route:
-                        event_payload.update(subagent_route)
-                    if actual_thread_id:
-                        event_payload["thread_id"] = actual_thread_id
-                    yield "stream_event", event_payload
-        finally:
-            route_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await route_task
+                    if method == "custom":
+                        yield "custom", data
+                        continue
+                    if method == "messages":
+                        msg, metadata = data
+                        metadata = dict(metadata or {})
+                        actual_thread_id = (subagent_route or {}).get("thread_id") or _metadata_thread_id(metadata)
+                        metadata["namespace"] = namespace
+                        metadata["stream_event"] = {
+                            "method": method,
+                            "namespace": namespace,
+                            "seq": sequence,
+                            "timestamp": timestamp,
+                        }
+                        if subagent_route:
+                            metadata.update(subagent_route)
+                        if actual_thread_id:
+                            metadata["thread_id"] = actual_thread_id
+                        yield "messages", (msg, metadata)
+                    elif method == "values" and not namespace:
+                        yield "values", data
+                    elif method in {"tasks", "tools", "lifecycle"}:
+                        if method == "tools":
+                            data = _normalize_tool_event_data(data)
+                        event_payload = {
+                            "method": method,
+                            "namespace": namespace,
+                            "seq": sequence,
+                            "timestamp": timestamp,
+                            "data": _json_safe(data),
+                        }
+                        actual_thread_id = (subagent_route or {}).get("thread_id") or _metadata_thread_id(params)
+                        if subagent_route:
+                            event_payload.update(subagent_route)
+                        if actual_thread_id:
+                            event_payload["thread_id"] = actual_thread_id
+                        yield "stream_event", event_payload
+            finally:
+                route_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await route_task
+
+        # 流已耗尽、checkpoint 写入已完成；收尾消费者共享本次图的持久状态。
+        yield "checkpoint", await graph.aget_state(input_config)
 
     async def stream_messages_with_state(self, messages: list[str], input_context=None, **kwargs):
         graph_input = {"messages": messages}
-        async for event in self._stream_input_with_state(graph_input, input_context, **kwargs):
-            yield event
+        async with aclosing(self._stream_input_with_state(graph_input, input_context, **kwargs)) as stream:
+            async for event in stream:
+                yield event
 
     async def stream_resume_with_state(self, resume_input, input_context=None, **kwargs):
-        async for event in self._stream_input_with_state(resume_input, input_context, **kwargs):
-            yield event
+        async with aclosing(self._stream_input_with_state(resume_input, input_context, **kwargs)) as stream:
+            async for event in stream:
+                yield event
 
     async def invoke_messages(self, messages: list[str], input_context=None, **kwargs):
         context = self.context_schema()
@@ -347,12 +362,8 @@ class BaseAgent:
         pass
 
     async def _get_checkpointer(self):
-        if self.checkpointer is not None:
-            return self.checkpointer
-
-        self.checkpointer = pg_manager.get_langgraph_checkpointer()
-        logger.info(f"{self.name} 使用 postgres checkpointer")
-        return self.checkpointer
+        """每次构图独享 saver，避免全局 Agent 缓存把不同用户的 I/O 串行化。"""
+        return pg_manager.get_langgraph_checkpointer()
 
     def load_metadata(self) -> dict:
         """Load metadata from agent class attribute."""

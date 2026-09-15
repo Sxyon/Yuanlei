@@ -197,7 +197,42 @@ async def test_current_schema_skips_schema_ddl(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("previous_version", [1, 2])
+@pytest.mark.parametrize("unsupported_version", [1, 3, 4, 5, 6, storage_migration.BUSINESS_SCHEMA_VERSION + 1])
+async def test_main_rejects_unsupported_business_schema_before_ddl(monkeypatch, unsupported_version: int):
+    calls: list[str] = []
+
+    @asynccontextmanager
+    async def session_context():
+        yield _Session()
+
+    manager = SimpleNamespace(
+        initialize=lambda: calls.append("initialize"),
+        schema_migration_lock=lambda: _async_context(calls, "schema_lock"),
+        create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
+        get_schema_versions=lambda: _async_value(
+            {"business": unsupported_version, "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION}
+        ),
+        get_async_session_context=session_context,
+        close=lambda: _record(calls, "close"),
+    )
+    monkeypatch.setattr(storage_migration, "pg_manager", manager)
+    monkeypatch.setattr(
+        storage_migration,
+        "read_v071_workdir_plan",
+        lambda _db: _async_value(V071WorkdirMigrationPlan(False, (), ())),
+    )
+    monkeypatch.setattr(storage_migration, "_legacy_skill_roots_exist", lambda: False)
+    monkeypatch.setattr(storage_migration, "_legacy_system_config_exists", lambda: False)
+    monkeypatch.setattr(storage_migration, "runtime_storage_requires_quiescence", lambda: False)
+
+    with pytest.raises(RuntimeError, match=f"Unsupported business schema version: {unsupported_version}"):
+        await storage_migration.main()
+
+    assert calls == ["initialize", "schema_lock", "create_schema_version_table", "close"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("previous_version", [2, 7])
 async def test_supported_business_schema_is_converged_and_versioned_as_current(monkeypatch, previous_version):
     calls: list[str] = []
     sessions = [_Session(), _Session(), _Session()]
@@ -245,58 +280,6 @@ async def test_supported_business_schema_is_converged_and_versioned_as_current(m
     assert "business_schema" in calls
     assert f"version:business:{storage_migration.BUSINESS_SCHEMA_VERSION}" in calls
     assert {"create_business", "checkpoint", "knowledge_schema"}.isdisjoint(calls)
-
-
-@pytest.mark.asyncio
-async def test_lite_migration_does_not_create_knowledge_schema(monkeypatch):
-    calls: list[str] = []
-    sessions = [_Session(), _Session(), _Session()]
-
-    @asynccontextmanager
-    async def session_context():
-        yield sessions.pop(0)
-
-    manager = SimpleNamespace(
-        initialize=lambda: calls.append("initialize"),
-        schema_migration_lock=lambda: _async_context(calls, "schema_lock"),
-        create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
-        get_schema_versions=lambda: _async_value({}),
-        record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
-        create_business_tables=lambda: _record(calls, "create_business"),
-        create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
-        ensure_business_schema=lambda: _record(calls, "business_schema"),
-        ensure_knowledge_schema=lambda: _record(calls, "knowledge_schema"),
-        setup_langgraph_checkpointer=lambda: _record(calls, "checkpoint"),
-        get_async_session_context=session_context,
-        close=lambda: _record(calls, "close"),
-    )
-    monkeypatch.setenv("LITE_MODE", "true")
-    monkeypatch.setattr(storage_migration, "pg_manager", manager)
-    monkeypatch.setattr(
-        storage_migration,
-        "read_v071_workdir_plan",
-        lambda _db: _async_value(V071WorkdirMigrationPlan(False, (), ())),
-    )
-    monkeypatch.setattr(storage_migration, "_legacy_skill_roots_exist", lambda: False)
-    monkeypatch.setattr(storage_migration, "_legacy_system_config_exists", lambda: False)
-    monkeypatch.setattr(storage_migration, "runtime_storage_requires_quiescence", lambda: False)
-    monkeypatch.setattr(
-        storage_migration,
-        "_converge_database_state",
-        lambda *, fail_nonterminal_runs: _record(calls, f"converge:{fail_nonterminal_runs}"),
-    )
-    monkeypatch.setattr(storage_migration, "migrate_shared_skills", lambda _db: _record(calls, "skills"))
-    monkeypatch.setattr(storage_migration, "mark_v071_skills_migrated", lambda: calls.append("mark_skills"))
-    monkeypatch.setattr(storage_migration, "migrate_runtime_storage_identity", lambda: calls.append("runtime_identity"))
-
-    await storage_migration.main()
-
-    assert f"version:business:{storage_migration.BUSINESS_SCHEMA_VERSION}" in calls
-    assert {
-        "create_knowledge",
-        "knowledge_schema",
-        f"version:knowledge:{storage_migration.KNOWLEDGE_SCHEMA_VERSION}",
-    }.isdisjoint(calls)
 
 
 @pytest.mark.asyncio

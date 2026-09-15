@@ -11,6 +11,7 @@ import PageShoulder from '@/components/shared/PageShoulder.vue'
 import InfoCard from '@/components/shared/InfoCard.vue'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
 import ExtensionCardGrid from '@/components/extensions/ExtensionCardGrid.vue'
+import { normalizeAgent, normalizeAgentBackendOption } from '@/utils/agentConfigUtils'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { getShareConfigLabel } from '@/utils/shareConfig'
 
@@ -22,13 +23,6 @@ const searchQuery = ref('')
 const agentBackendOptions = ref([])
 const managedAgents = ref([])
 const agentEditModalRef = ref(null)
-
-const normalizeAgent = (agent) => {
-  const agentId = agent?.agent_id || agent?.slug || agent?.id
-  return agentId
-    ? { ...agent, id: agentId, agent_id: agentId, slug: agent?.slug || agentId }
-    : agent
-}
 
 const filteredAgents = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -80,10 +74,7 @@ const getAgentShareLabel = (agent) => getShareConfigLabel(agent?.share_config)
 const loadAgentBackends = async () => {
   try {
     const response = await agentApi.getAgentBackends()
-    agentBackendOptions.value = (response.backends || []).map((backend) => ({
-      label: backend.name || backend.backend_id,
-      value: backend.backend_id
-    }))
+    agentBackendOptions.value = (response.backends || []).map(normalizeAgentBackendOption)
   } catch (error) {
     message.error(error.message || '加载智能体后端失败')
   }

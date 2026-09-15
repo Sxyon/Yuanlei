@@ -22,7 +22,7 @@ Owner：backend/package/yuxi/knowledge/preview.py
 
 ## 后果
 
-移动函数改变测试 monkeypatch 位置和惰性 Knowledge import 链。实现同步迁移全部 consumer、测试与 LITE import 边界，不增加兼容 alias。Knowledge 路由继续在实际请求发生时惰性导入重运行时。Artifact runtime preview 使用派生缓存，授权、原始字节和临时文件清理仍由 `artifact_service` 拥有。
+移动函数改变测试 monkeypatch 位置和惰性 Knowledge import 链。实现同步迁移全部 consumer 与测试，不增加兼容 alias。Knowledge 路由继续在实际请求发生时惰性导入解析等重运行时。Artifact runtime preview 使用派生缓存，授权、原始字节和临时文件清理仍由 `artifact_service` 拥有。
 
 真实 Knowledge HTTP integration 与 Artifact Office 转换链路尚未运行，因此不能用 Router unit 或 Markdown preview 代替对应 wire contract 验证；该范围继续明确记录为 `Not run`。
 
@@ -39,4 +39,4 @@ Owner：backend/package/yuxi/knowledge/preview.py
 
 重新引入条件：只有 Workspace 与 Knowledge 形成相同的存储身份、缓存生命周期和授权入口时，才重新评估统一 Preview 用例；单纯响应字段相同不构成合并理由。Artifact 只有在授权仍由自身 Owner 执行、Preview 只接收有界字节时才继续复用 runtime adapter。
 
-当前证据：Preview、Artifact 与 package/LITE import unit、全量 backend unit、Artifact Markdown HTTP preview、工程 verifier、Ruff 与 `git diff --cached --check` 通过。真实 Knowledge HTTP integration 与 Artifact Office 转换链路尚未运行，对应 wire contract 保持 `Not run`。
+当前证据：Preview、Artifact 与 package import unit、全量 backend unit、Artifact Markdown HTTP preview、工程 verifier、Ruff 与 `git diff --cached --check` 通过。真实 Knowledge HTTP integration 与 Artifact Office 转换链路尚未运行，对应 wire contract 保持 `Not run`。

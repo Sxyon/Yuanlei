@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      LITE_MODE: 'true'
       JWT_SECRET_KEY: probe-jwt-secret-at-least-thirty-two-characters
       API_KEY_DERIVATION_SECRET: probe-api-key-derivation-secret-at-least-32-chars
       SANDBOX_PROVISIONER_TOKEN: probe-sandbox-token-at-least-thirty-two-characters

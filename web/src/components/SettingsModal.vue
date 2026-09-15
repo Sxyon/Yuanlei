@@ -181,31 +181,43 @@
       <!-- 内容区域 -->
       <div class="settings-content-wrapper">
         <div class="settings-content">
-          <div v-show="activeTab === 'account'" v-if="userStore.isLoggedIn">
+          <div
+            v-show="activeTab === 'account'"
+            v-if="userStore.isLoggedIn && loadedTabs.has('account')"
+          >
             <AccountSettingsComponent />
           </div>
 
-          <div v-if="activeTab === 'apiKeys' && userStore.isLoggedIn">
+          <div
+            v-show="activeTab === 'apiKeys'"
+            v-if="userStore.isLoggedIn && loadedTabs.has('apiKeys')"
+          >
             <ApiKeyManagementComponent />
           </div>
 
-          <div v-if="activeTab === 'agentEnv' && userStore.isLoggedIn">
+          <div
+            v-show="activeTab === 'agentEnv'"
+            v-if="userStore.isLoggedIn && loadedTabs.has('agentEnv')"
+          >
             <AgentEnvSettingsCard />
           </div>
 
-          <div v-show="activeTab === 'base'" v-if="userStore.isAdmin">
+          <div v-show="activeTab === 'base'" v-if="userStore.isAdmin && loadedTabs.has('base')">
             <BasicSettingsSection />
           </div>
 
-          <div v-show="activeTab === 'ocr'" v-if="userStore.isAdmin">
+          <div v-show="activeTab === 'ocr'" v-if="userStore.isAdmin && loadedTabs.has('ocr')">
             <OCRSettingsSection />
           </div>
 
-          <div v-show="activeTab === 'user'" v-if="userStore.isAdmin">
+          <div v-show="activeTab === 'user'" v-if="userStore.isAdmin && loadedTabs.has('user')">
             <UserManagementComponent />
           </div>
 
-          <div v-show="activeTab === 'department'" v-if="userStore.isSuperAdmin">
+          <div
+            v-show="activeTab === 'department'"
+            v-if="userStore.isSuperAdmin && loadedTabs.has('department')"
+          >
             <DepartmentManagementComponent />
           </div>
         </div>
@@ -229,13 +241,23 @@ import {
   Users,
   X
 } from '@lucide/vue'
-import AccountSettingsComponent from '@/components/AccountSettingsComponent.vue'
-import AgentEnvSettingsCard from '@/components/AgentEnvSettingsCard.vue'
-import BasicSettingsSection from '@/components/BasicSettingsSection.vue'
-import OCRSettingsSection from '@/components/OCRSettingsSection.vue'
-import ApiKeyManagementComponent from '@/components/ApiKeyManagementComponent.vue'
-import UserManagementComponent from '@/components/UserManagementComponent.vue'
-import DepartmentManagementComponent from '@/components/DepartmentManagementComponent.vue'
+import { createAsyncPanel } from '@/utils/asyncPanel'
+
+const AccountSettingsComponent = createAsyncPanel(
+  () => import('@/components/AccountSettingsComponent.vue')
+)
+const AgentEnvSettingsCard = createAsyncPanel(() => import('@/components/AgentEnvSettingsCard.vue'))
+const BasicSettingsSection = createAsyncPanel(() => import('@/components/BasicSettingsSection.vue'))
+const OCRSettingsSection = createAsyncPanel(() => import('@/components/OCRSettingsSection.vue'))
+const ApiKeyManagementComponent = createAsyncPanel(
+  () => import('@/components/ApiKeyManagementComponent.vue')
+)
+const UserManagementComponent = createAsyncPanel(
+  () => import('@/components/UserManagementComponent.vue')
+)
+const DepartmentManagementComponent = createAsyncPanel(
+  () => import('@/components/DepartmentManagementComponent.vue')
+)
 
 const props = defineProps({
   visible: {
@@ -252,6 +274,7 @@ const emit = defineEmits(['update:visible', 'close'])
 
 const userStore = useUserStore()
 const activeTab = ref('account')
+const loadedTabs = ref(new Set())
 const showStarCard = ref(true)
 
 const STAR_CARD_STORAGE_KEY = 'yuxi-settings-star-card-dismissed'
@@ -297,13 +320,25 @@ watch(
     if (newVal) {
       setActiveTab(props.initialTab)
     }
-  }
+  },
+  { immediate: true }
+)
+
+// 已访问页保持挂载，切换设置项不会丢失原有表单状态。
+watch(
+  [visible, activeTab],
+  ([open, tab]) => {
+    if (!open) loadedTabs.value.clear()
+    if (open && tab) loadedTabs.value.add(tab)
+  },
+  { immediate: true }
 )
 </script>
 
 <style lang="less">
 .settings-modal.ant-modal {
   .ant-modal-content {
+    border: 1px solid var(--gray-200);
     border-radius: 12px;
     display: flex;
     flex-direction: column;

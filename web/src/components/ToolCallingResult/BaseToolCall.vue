@@ -4,18 +4,28 @@
     :class="{ 'is-collapsed': !isExpanded, 'is-timeline': isTimeline }"
   >
     <!-- Header Slot -->
-    <div class="tool-header" @click="toggleExpand">
+    <div
+      class="tool-header"
+      role="button"
+      tabindex="0"
+      :aria-expanded="isExpanded"
+      @click="toggleExpand"
+      @keydown.enter.self="toggleExpand"
+      @keydown.space.self.prevent="toggleExpand"
+    >
       <!-- Fixed Status Icon -->
-      <span v-if="effectiveStatus === 'completed'">
-        <component v-if="toolIcon" :is="toolIcon" size="15" class="tool-loader tool-success" />
-        <CheckCircle v-else size="15" class="tool-loader tool-success" />
-      </span>
-      <span v-else-if="effectiveStatus === 'error'">
-        <XCircle size="15" class="tool-loader tool-error" />
-      </span>
-      <span v-else>
-        <Loader size="15" class="tool-loader rotate tool-loading" />
-      </span>
+      <slot name="icon" :status="effectiveStatus">
+        <span v-if="effectiveStatus === 'completed'">
+          <component v-if="toolIcon" :is="toolIcon" size="15" class="tool-loader tool-success" />
+          <CheckCircle v-else size="15" class="tool-loader tool-success" />
+        </span>
+        <span v-else-if="effectiveStatus === 'error'">
+          <XCircle size="15" class="tool-loader tool-error" />
+        </span>
+        <span v-else>
+          <Loader size="15" class="tool-loader rotate tool-loading" />
+        </span>
+      </slot>
 
       <!-- Content Area with Slots -->
       <div class="tool-header-content">
@@ -28,7 +38,7 @@
         <template v-else>
           <slot
             name="header-success"
-            v-if="toolCall.status === 'success' || toolCall.tool_call_result"
+            v-if="effectiveStatus === 'completed'"
             :tool-name="toolName"
             :result-content="resultContent"
           >
@@ -37,7 +47,7 @@
 
           <slot
             name="header-error"
-            v-else-if="toolCall.status === 'error'"
+            v-else-if="effectiveStatus === 'error'"
             :tool-name="toolName"
             :error-message="toolCall.error_message"
           >
@@ -72,8 +82,19 @@
         </div>
 
         <!-- Result Slot -->
-        <div class="tool-result" style="opacity: 0.8" v-if="hasResult || forceShowResult">
-          <slot name="result" :tool-call="toolCall" :result-content="resultContent">
+        <div
+          class="tool-result"
+          style="opacity: 0.8"
+          v-if="hasResult || forceShowResult || hasToolError"
+        >
+          <div v-if="hasToolError" class="tool-error-result">
+            <pre>{{
+              formatResultData(
+                hasResult ? parsedResultData : toolCall.error_message || '工具执行失败'
+              )
+            }}</pre>
+          </div>
+          <slot v-else name="result" :tool-call="toolCall" :result-content="resultContent">
             <div class="tool-result-content" :data-tool-call-id="toolCall.id">
               <!-- Default rendering -->
               <div class="tool-result-renderer">
@@ -97,12 +118,18 @@ import { Loader, ChevronsUpDown, ChevronsDownUp, XCircle, CheckCircle } from '@l
 import { useAgentStore } from '@/stores/agent'
 import { storeToRefs } from 'pinia'
 import CollapseTransition from '@/components/common/CollapseTransition.vue'
-import { getToolCallId, getToolIcon, getToolName, findToolInList } from './toolRegistry'
+import {
+  getToolCallId,
+  getToolIcon,
+  getToolName,
+  findToolInList,
+  getToolCallStatus
+} from './toolRegistry'
 
 const props = defineProps({
   toolCall: {
     type: Object,
-    required: true
+    default: () => ({})
   },
   defaultExpanded: {
     type: Boolean,
@@ -116,7 +143,7 @@ const props = defineProps({
     type: String,
     default: 'card'
   },
-  // 外部可覆盖状态以驱动图标：'running' | 'completed' | 'failed'（用于结果不随流式返回的工具，如 task）
+  // 特殊工具可覆盖运行态；调用或结果中的明确错误始终优先。
   status: {
     type: String,
     default: ''
@@ -138,12 +165,11 @@ const toggleExpand = () => {
   isExpanded.value = !isExpanded.value
 }
 
-// 图标状态：优先用外部传入的 status，否则按 tool_call_result/status 推断
+const toolStatus = computed(() => getToolCallStatus(props.toolCall))
+const hasToolError = computed(() => toolStatus.value === 'error')
 const effectiveStatus = computed(() => {
-  if (props.status) return props.status
-  if (props.toolCall.status === 'success' || props.toolCall.tool_call_result) return 'completed'
-  if (props.toolCall.status === 'error') return 'failed'
-  return 'running'
+  if (hasToolError.value || props.status === 'failed') return 'error'
+  return props.status || toolStatus.value
 })
 
 // Tool Name Logic
@@ -191,11 +217,11 @@ const hasParams = computed(() => {
 
 // Result Logic
 const resultContent = computed(() => {
-  return props.toolCall.tool_call_result?.content
+  return props.toolCall.tool_call_result?.content ?? props.toolCall.result
 })
 
 const hasResult = computed(() => {
-  return !!resultContent.value
+  return resultContent.value != null && resultContent.value !== ''
 })
 
 // Default Result Rendering Logic
@@ -217,14 +243,6 @@ const formatResultData = (data) => {
   }
   return String(data)
 }
-
-// Auto expand if loading
-// Note: In the original code, expansion was managed by parent.
-// Here we might want to default to expanded if it's loading?
-// Original: :class="{ 'is-collapsed': !expandedToolCalls.has(toolCall.id) }"
-// And expandedToolCalls defaults to empty set.
-// User didn't specify default behavior, but usually we want to see what's happening.
-// Let's keep it simple for now, defaulting to closed unless specified.
 </script>
 
 <style lang="less" scoped>
@@ -252,6 +270,11 @@ const formatResultData = (data) => {
     user-select: none;
     position: relative;
     transition: background-color 0.2s ease;
+
+    &:focus-visible {
+      outline: 2px solid var(--main-300);
+      outline-offset: 2px;
+    }
 
     &:hover {
       background-color: var(--gray-25);
@@ -411,6 +434,10 @@ const formatResultData = (data) => {
 
       .tool-loader {
         color: var(--gray-600);
+
+        &.tool-error {
+          color: var(--color-error-500);
+        }
       }
 
       .tool-expand-icon {
@@ -448,6 +475,16 @@ const formatResultData = (data) => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.tool-error-result pre {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--color-error-700);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Default Renderer Styles */

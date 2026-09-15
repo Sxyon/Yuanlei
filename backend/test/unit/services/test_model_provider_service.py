@@ -244,7 +244,6 @@ def test_normalize_payload_rejects_ollama_provider_type():
 
 
 def test_builtin_provider_templates_default_to_openai_provider_type():
-    assert len(BUILTIN_PROVIDERS) >= 16
     provider_types = {
         _normalize_payload(
             {

@@ -57,11 +57,9 @@ PostgreSQL 保存状态，前端通过 SSE 获取过程
 
 PostgreSQL 保存请求、运行、消息、知识库元数据和 LangGraph checkpoint；Redis 负责任务投递、短期事件、取消信号和缓存；MinIO 保存对象文件；Milvus 负责向量检索；Neo4j 保存可选知识图谱。
 
-## 部署模式
+## 部署与沙盒
 
-- **完整模式**：包含知识库、图谱和评估所需的依赖，适合完整体验。
-- **LITE 模式**：保留认证、智能体、聊天、Skills、MCP、模型和工作区，跳过知识库、图谱和评估的重运行时。相关入口不会注册，前端也会根据能力发现结果隐藏。
-- **沙盒承载**：应用通过 `sandbox-provisioner` 访问动态沙盒，底层可以使用 Docker 或 Kubernetes。`memory` 仅用于测试，不提供真实隔离。
+开发环境和单机部署使用 Docker Compose，默认启动知识库、图谱和评估所需的依赖。应用通过 `sandbox-provisioner` 访问动态沙盒，底层可以使用 Docker 或 Kubernetes。`memory` 仅用于测试，不提供真实隔离。
 
 开发环境和默认服务拓扑以仓库根目录的 [ARCHITECTURE.md](https://github.com/xerrors/Yuxi/blob/main/ARCHITECTURE.md) 与 [docker-compose.yml](https://github.com/xerrors/Yuxi/blob/main/docker-compose.yml) 为准。
 

@@ -1,13 +1,7 @@
 import { getPreviewFileExtension } from '@/utils/file_preview'
-import { formatRelative, parseToShanghai } from '@/utils/time'
+import { formatRelative } from '@/utils/time'
 
 export const formatRelativeTime = (value) => formatRelative(value)
-
-export const formatStandardTime = (value) => {
-  const parsed = parseToShanghai(value)
-  if (!parsed) return '-'
-  return parsed.format('YYYY年MM月DD日 HH:mm:ss')
-}
 
 export const getStatusText = (status) => {
   const statusMap = {
@@ -32,6 +26,31 @@ export const getDisplayFileName = (pathOrName, fallback = '文件') => {
   const value = String(pathOrName || '').trim()
   if (!value) return fallback
   return value.split('/').pop() || value || fallback
+}
+
+// 从 Content-Disposition 提取 UTF-8 文件名，并在解码失败时回退到普通 filename。
+export const parseDownloadFilename = (contentDisposition) => {
+  if (!contentDisposition) return ''
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1])
+    } catch (error) {
+      console.warn('解析 UTF-8 文件名失败:', error)
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/\bfilename\s*=\s*(?:(["'])(.*?)\1|([^;\n]*))/i)
+  const filename = filenameMatch?.[2] || filenameMatch?.[3]?.trim() || ''
+  if (!filename) return ''
+
+  try {
+    return decodeURIComponent(filename)
+  } catch (error) {
+    console.warn('解析文件名失败:', filename, error)
+    return filename
+  }
 }
 
 export const getFileExtensionLabel = (pathOrName) => {

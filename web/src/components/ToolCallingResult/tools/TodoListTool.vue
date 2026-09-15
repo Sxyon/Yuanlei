@@ -50,6 +50,7 @@ import {
   CloseCircleOutlined,
   QuestionCircleOutlined
 } from '@ant-design/icons-vue'
+import { parseToolCallArgs } from '../toolRegistry'
 
 const props = defineProps({
   toolCall: {
@@ -89,16 +90,7 @@ const query = computed(() => {
   }
 
   // 2. Fallback to args
-  const args = props.toolCall.args || props.toolCall.function?.arguments
-  if (!args) return ''
-  let parsedArgs = args
-  if (typeof args === 'string') {
-    try {
-      parsedArgs = JSON.parse(args)
-    } catch {
-      return ''
-    }
-  }
+  const parsedArgs = parseToolCallArgs(props.toolCall)
   if (typeof parsedArgs === 'object') {
     return parsedArgs.content || parsedArgs.action || parsedArgs.todo || ''
   }

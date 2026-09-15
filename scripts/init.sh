@@ -302,7 +302,7 @@ images=(
     "node:24-alpine"
     "milvusdb/milvus:v2.5.6"
     "neo4j:5.26.29"
-    "minio/minio:RELEASE.2023-03-20T20-16-18Z"
+    "quay.io/minio/minio:RELEASE.2023-03-20T20-16-18Z"
     "ghcr.io/astral-sh/uv:0.12.6"
     "nginx:alpine"
     "quay.io/coreos/etcd:v3.5.5"
@@ -325,7 +325,7 @@ for image in "${images[@]}"; do
     fi
 done
 
-sandbox_image="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+sandbox_image="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0"
 if ! skip_existing_image "$sandbox_image"; then
     echo "🔄 Pulling ${sandbox_image}..."
     docker pull "$sandbox_image"

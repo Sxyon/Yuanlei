@@ -43,5 +43,5 @@ API、storage migrator 与 execution Sandbox 以不同 POSIX 身份写入同一 
 
 - Linux bind mount 与既有部署可能保存 root 或其他 UID 拥有的文件；Compose 一次性迁移必须在 root storage migrator 中完成并在成功后才发布 marker，Kubernetes PVC 由当前 uid 的 root init 迁移。
 - 外部 Sandbox 镜像当前需要 root bootstrap；验证必须确认实际文件 API 和 shell 服务由 `gem:1000` 执行，不能把容器初始 root 身份误写成数据面身份。
-- 将 API 改为非 root 会暴露 `/app/runtime`、NLTK 数据和其他持久挂载的所有权假设；镜像与 Compose 必须显式准备这些路径。
+- 将 API 改为非 root 会暴露 `/app/runtime`、模型缓存和其他持久挂载的所有权假设；镜像与 Compose 必须显式准备这些路径。
 - 旧用户文件可能有执行位；迁移收紧 group/other 权限时必须保留 owner execute 语义。

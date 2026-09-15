@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import os
 import re
 import time
@@ -23,7 +22,7 @@ async def process_zip_file(
     zip_path: str,
     image_bucket: str = DEFAULT_IMAGE_BUCKET,
     image_prefix: str = DEFAULT_IMAGE_PREFIX,
-) -> dict:
+) -> str:
     """
     处理ZIP文件，提取markdown内容和图片
 
@@ -33,11 +32,7 @@ async def process_zip_file(
         image_prefix: 图片上传对象前缀
 
     Returns:
-        dict: {
-            "markdown_content": str,
-            "content_hash": str,
-            "images_info": list[dict]
-        }
+        str: 处理后的 Markdown 文本。
     """
     with zipfile.ZipFile(zip_path, "r") as zf:
         for name in zf.namelist():
@@ -68,27 +63,21 @@ async def process_zip_file(
             )
             markdown_content = replace_image_links(markdown_content, images_info)
 
-    content_hash = hashlib.sha256(markdown_content.encode("utf-8")).hexdigest()
-
-    return {
-        "markdown_content": markdown_content,
-        "content_hash": content_hash,
-        "images_info": images_info,
-    }
+    return markdown_content
 
 
 def process_zip_file_sync(
     zip_path: str,
     image_bucket: str = DEFAULT_IMAGE_BUCKET,
     image_prefix: str = DEFAULT_IMAGE_PREFIX,
-) -> dict:
+) -> str:
     """同步调用 ZIP 处理，供同步解析器使用。"""
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(process_zip_file(zip_path, image_bucket=image_bucket, image_prefix=image_prefix))
 
-    result: dict | None = None
+    result: str | None = None
     error: Exception | None = None
 
     def runner() -> None:

@@ -149,6 +149,6 @@ class DashboardService:
             "message_count": stats.message_count if stats else len(message_list),
             "created_at": conversation.created_at.isoformat() if conversation.created_at else "",
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else "",
-            "total_tokens": stats.total_tokens if stats else 0,
+            **await self.repo.get_conversation_token_usage(conversation.id),
             "messages": message_list,
         }

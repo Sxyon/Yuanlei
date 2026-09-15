@@ -60,14 +60,30 @@ Compose 中的 `sandbox-provisioner` 使用以下变量：
 | --- | --- | --- |
 | `PROVISIONER_BACKEND` | `docker`、`kubernetes` 或测试用 `memory` | `docker` |
 | `PROVISIONER_PUBLIC_URL` | 返回给 API/worker 的代理基地址 | `http://sandbox-provisioner:8002` |
-| `SANDBOX_IMAGE` | 动态沙盒镜像 | Compose 文件中的镜像 |
+| `SANDBOX_IMAGE` | 动态沙盒镜像 | AIO Sandbox `1.11.0` |
+| `SANDBOX_RUNTIME_PROFILE` | 动态沙盒启用的服务规格 | `core` |
 | `SANDBOX_CONTAINER_PORT` | 沙盒内部 HTTP 端口 | `8080` |
 | `SANDBOX_HEALTH_TIMEOUT_SECONDS` | 创建后的健康检查上限 | `300` |
+| `SANDBOX_PROVISIONER_DELETE_TIMEOUT_SECONDS` | API/worker 等待一次 Sandbox 删除响应的上限 | `120` |
+| `SANDBOX_DELETE_CONCURRENCY` | provisioner 同时执行的 Docker Sandbox 销毁数 | `32` |
+| `SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS` | Docker stop 发出 `SIGTERM` 后等待强制终止的秒数 | `2` |
 | `SANDBOX_IDLE_TIMEOUT_SECONDS` | 空闲实例回收时间 | `120` |
 | `SANDBOX_IDLE_CHECK_INTERVAL_SECONDS` | idle reaper 扫描间隔 | `10` |
 | `SANDBOX_EXEC_TIMEOUT_SECONDS` | 命令超时，也用于计算安全回收下限 | `180` |
 
 当空闲回收时间小于等于命令超时时，provisioner 会把它提高到“命令超时 + 30 秒”，避免回收正在执行的任务。直接运行 provisioner 且没有 Compose 默认值时，代码默认的 idle timeout 是 600 秒；以实际 `/health` 响应为准。
+
+Docker backend 对同一 Sandbox generation 的创建和删除保持串行，不同 Sandbox 的删除由 `SANDBOX_DELETE_CONCURRENCY` 有界并行。容器收到 `SIGTERM` 后最多等待 `SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS` 秒，仍未退出则由 Docker 强制终止。删除请求可能等待并行槽和容器停止，`SANDBOX_PROVISIONER_DELETE_TIMEOUT_SECONDS` 必须覆盖该等待时间；扩大并行数会增加 Docker daemon、CPU 和文件系统的瞬时压力。
+
+`SANDBOX_RUNTIME_PROFILE` 只接受以下值：
+
+| 规格 | 启用的能力 | 使用场景 |
+| --- | --- | --- |
+| `core` | Shell、Python、文件操作和 Shell 中的 Node 命令 | 默认 Agent 任务 |
+| `browser` | `core` 加浏览器、browser MCP 和 VNC | 需要网页自动化的 Agent |
+| `full` | `browser` 加 Jupyter、code-server 和 NodeJS REPL 服务 | 需要完整交互式开发环境的任务 |
+
+修改规格后重新创建 `sandbox-provisioner`；该设置只影响之后创建的动态沙盒。未知值会阻止 provisioner 启动。规格对应的镜像服务开关由部署拥有，Agent 请求和 `sandbox.env` 不能覆盖。
 
 ## Docker 后端
 
@@ -76,6 +92,8 @@ Docker 后端需要 provisioner 能访问 Docker daemon，并能看到 API/worke
 | Compose 变量 | provisioner 变量 | 作用 |
 | --- | --- | --- |
 | `SANDBOX_DOCKER_NETWORK_PREFIX` | `DOCKER_NETWORK_PREFIX` | 每个沙盒独立网络的名称前缀 |
+| `SANDBOX_DOCKER_ADDRESS_POOL` | `DOCKER_ADDRESS_POOL` | Sandbox 专用 IPv4 地址池，Compose 默认 `10.253.240.0/20` |
+| `SANDBOX_DOCKER_SUBNET_PREFIX` | `DOCKER_SUBNET_PREFIX` | 每个 Sandbox 网络的子网前缀，Compose 默认 `28` |
 | `SANDBOX_DOCKER_USER_DATA_HOST_PATH` | `DOCKER_USER_DATA_HOST_PATH` | UserWorkspace 在宿主机上的路径 |
 | `SANDBOX_DOCKER_SKILL_PROJECTIONS_HOST_PATH` | `DOCKER_SKILL_PROJECTIONS_HOST_PATH` | Skill 投影在宿主机上的路径 |
 | `SANDBOX_DOCKER_SANDBOX_PREFIX` | `DOCKER_SANDBOX_PREFIX` | 动态容器名称前缀 |
@@ -83,6 +101,8 @@ Docker 后端需要 provisioner 能访问 Docker daemon，并能看到 API/worke
 Compose 默认把 `/var/run/docker.sock`、UserWorkspace 和 Skill projection 挂载到 provisioner。只有 provisioner 持有 Docker socket；API 和 worker 不直接操作 Docker。
 
 每个动态沙盒只加入自己的 bridge 网络，网络中包含 provisioner 和该沙盒，不加入承载 PostgreSQL、Redis、MinIO、Milvus 或 Neo4j 的 `app-network`，也不向宿主机发布沙盒端口。provisioner 会在复用前检查容器的用户、Workdir、挂载和网络身份，发现不匹配时拒绝复用。
+
+provisioner 会扫描 Docker 已占用网段，从专用地址池中为新 Sandbox 选择不重叠的独立子网；并发分配冲突时重新选择，池耗尽时返回 503。`SANDBOX_DOCKER_SUBNET_PREFIX` 留空时 provisioner 使用 `/28`，最大只能设置为 `/29`，确保网络有足够地址容纳网关、provisioner 和 Sandbox。网络删除后子网可再次使用。部署者必须确认地址池不与宿主机路由、VPN 或其他 Docker 网络重叠，并在冲突时通过 `SANDBOX_DOCKER_ADDRESS_POOL` 覆盖 Compose 默认值。
 
 运行时挂载：
 
@@ -133,7 +153,7 @@ services:
 1. provisioner 只读挂载的 `docker/sandbox_provisioner/sandbox.env` 全局变量；
 2. 当前用户为 Agent 配置的变量。
 
-开发和生产 Compose 都把该文件挂载到 provisioner 的 `/app/sandbox.env`。仓库当前默认文件只有 `CHECK_YUXI_SANDBOX_ENV_EXISTS=True`；如果需要全局变量，应在部署侧维护该文件并重新创建 provisioner。用户变量覆盖同名全局变量。两类变量都会对沙盒内代码可见，应按“不可信代码可以读取和外传”处理。只注入任务所需的低权限变量，禁止注入 provisioner token、数据库凭据、对象存储管理凭据和云平台管理员密钥。
+开发和生产 Compose 都把该文件挂载到 provisioner 的 `/app/sandbox.env`。仓库当前默认文件只有 `CHECK_YUXI_SANDBOX_ENV_EXISTS=True`；如果需要全局变量，应在部署侧维护该文件并重新创建 provisioner。用户变量覆盖同名全局变量，运行规格的镜像服务开关最后应用且不能被前两者覆盖。全局与用户变量都会对沙盒内代码可见，应按“不可信代码可以读取和外传”处理。只注入任务所需的低权限变量，禁止注入 provisioner token、数据库凭据、对象存储管理凭据和云平台管理员密钥。
 
 远程 Skill 安装使用 `inherit_env=False` 的一次性 Sandbox，不继承全局或用户 Agent 环境，也不挂载持久用户目录。Kubernetes 沙盒默认关闭 ServiceAccount token 自动挂载。
 
@@ -152,7 +172,7 @@ curl --fail http://localhost:8002/health
 docker compose logs --tail=100 sandbox-provisioner
 ```
 
-健康响应应包含 `backend`、`idle_timeout_seconds` 和 `tracked_sandboxes`。然后用真实线程执行一次文件读写或命令，并分别核对：
+健康响应应包含 `backend`、`runtime_profile`、`idle_timeout_seconds` 和 `tracked_sandboxes`。然后用真实线程执行一次文件读写或命令，并分别核对：
 
 - Docker：动态容器、独立网络、UserWorkspace 读写挂载和 Skill 只读挂载；
 - Kubernetes：Pod、NodePort Service、PVC 子路径和 `NODE_HOST` 可达性；

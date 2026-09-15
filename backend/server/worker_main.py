@@ -1,6 +1,7 @@
 """ARQ worker entrypoint."""
 
 import asyncio
+import logging.config
 import os
 import sys
 
@@ -13,3 +14,16 @@ if sys.platform == "win32":
 from yuxi.services.run_worker import WorkerSettings
 
 __all__ = ["WorkerSettings"]
+
+
+def main() -> None:
+    """沿用 ARQ 默认日志与运行生命周期，装配 Yuxi 的领取适配。"""
+    from arq.logs import default_log_config
+    from yuxi.services.arq_worker import run_worker
+
+    logging.config.dictConfig(default_log_config(False))
+    run_worker(WorkerSettings)
+
+
+if __name__ == "__main__":
+    main()

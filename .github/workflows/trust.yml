@@ -3,6 +3,7 @@ name: Engineering Trust Contracts
 on:
   pull_request:
   push:
+    tags: ['v[0-9]*']
     branches: [main]
   workflow_dispatch:
 
@@ -27,3 +28,5 @@ jobs:
         run: python3 -m unittest scripts.test_dependency_update_policy
       - name: Verify release version synchronization
         run: python3 -m unittest scripts.test_bump_version
+      - name: Verify release workflow boundaries
+        run: python3 -m unittest scripts.test_release_workflows

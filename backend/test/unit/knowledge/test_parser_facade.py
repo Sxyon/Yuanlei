@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
+import shutil
 import time
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,15 +15,16 @@ import yuxi.knowledge.parser.factory as factory_module
 import yuxi.knowledge.parser.unified as parser_unified
 from docx import Document
 from PIL import Image
-from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
+from yuxi.knowledge.parser.base import DocumentParserException
+from yuxi.knowledge.parser.capabilities import PARSER_CAPABILITIES
 from yuxi.knowledge.parser.factory import DocumentProcessorFactory
 from yuxi.knowledge.parser.mineru import MinerUParser
 from yuxi.knowledge.parser.mineru_official import MinerUOfficialParser
 from yuxi.knowledge.parser.rapid_ocr import RapidOCRParser
-from yuxi.knowledge.parser.registry import PROCESSOR_TYPES, get_parser_metadata
 from yuxi.services.ocr_service import parse_document
+
+PARSER_FIXTURES = Path(__file__).parents[2] / "data"
 
 
 def test_factory_cache_key_does_not_contain_credential():
@@ -44,16 +48,14 @@ def test_clear_cache_can_target_single_engine(monkeypatch: pytest.MonkeyPatch):
     assert factory_module._PROCESSOR_CACHE == {"mineru_ocr|two": second}
 
 
-def test_parser_metadata_comes_from_parser_classes():
-    metadata = {engine_id: get_parser_metadata(engine_id) for engine_id in PROCESSOR_TYPES}
+def test_parser_capabilities_match_concrete_parser_classes():
+    capability = PARSER_CAPABILITIES["rapid_ocr"]
 
-    assert metadata["rapid_ocr"] == {
-        "service_name": "rapid_ocr",
-        "display_name": "RapidOCR (ONNX)",
-        "supported_extensions": RapidOCRParser.supported_extensions,
-    }
-    assert all(item["service_name"] == engine_id for engine_id, item in metadata.items())
-    assert all(item["display_name"] for item in metadata.values())
+    assert capability.service_name == RapidOCRParser.service_name
+    assert capability.display_name == RapidOCRParser.display_name
+    assert list(capability.supported_extensions) == RapidOCRParser.supported_extensions
+    assert all(item.service_name == engine_id for engine_id, item in PARSER_CAPABILITIES.items())
+    assert all(item.display_name for item in PARSER_CAPABILITIES.values())
 
 
 def test_mineru_parser_normalizes_trailing_slash():
@@ -74,12 +76,14 @@ def test_mineru_official_health_check_does_not_create_task(monkeypatch: pytest.M
     assert health["status"] == "configured"
 
 
-def test_mineru_official_parsing_does_not_reject_configured_health(
+def test_mineru_official_parsing_uses_shared_zip_processor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
     file_path = tmp_path / "mineru.pdf"
     file_path.write_bytes(b"pdf")
+    zip_path = tmp_path / "result.zip"
+    zip_path.write_bytes(b"zip")
     parser = MinerUOfficialParser(api_key="test-key")
 
     monkeypatch.setattr(parser, "_upload_file", lambda *args, **kwargs: "batch-id")
@@ -88,14 +92,55 @@ def test_mineru_official_parsing_does_not_reject_configured_health(
         "_poll_batch_result",
         lambda *args, **kwargs: {"state": "done", "full_zip_url": "https://example.test/result.zip"},
     )
+    monkeypatch.setattr(parser, "_download_zip", lambda *args, **kwargs: str(zip_path))
+    processed_paths: list[str] = []
 
-    def raise_download_error(*args, **kwargs):
-        raise RuntimeError("use markdown fallback")
+    def _process_zip_file(zip_file_path: str, **kwargs) -> str:
+        del kwargs
+        processed_paths.append(zip_file_path)
+        return "parsed markdown"
 
-    monkeypatch.setattr(parser, "_download_zip", raise_download_error)
-    monkeypatch.setattr(parser, "_download_and_extract", lambda *args, **kwargs: "parsed markdown")
+    monkeypatch.setattr(
+        "yuxi.knowledge.parser.mineru_official.process_zip_file_sync",
+        _process_zip_file,
+    )
 
     assert parser.process_file(str(file_path)) == "parsed markdown"
+    assert processed_paths == [str(zip_path)]
+    assert not zip_path.exists()
+
+
+def test_mineru_official_does_not_fallback_when_shared_zip_processing_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    file_path = tmp_path / "mineru.pdf"
+    file_path.write_bytes(b"pdf")
+    zip_path = tmp_path / "result.zip"
+    zip_path.write_bytes(b"zip")
+    parser = MinerUOfficialParser(api_key="test-key")
+
+    monkeypatch.setattr(parser, "_upload_file", lambda *args, **kwargs: "batch-id")
+    monkeypatch.setattr(
+        parser,
+        "_poll_batch_result",
+        lambda *args, **kwargs: {"state": "done", "full_zip_url": "https://example.test/result.zip"},
+    )
+    monkeypatch.setattr(parser, "_download_zip", lambda *args, **kwargs: str(zip_path))
+
+    def _raise_zip_processing_error(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("malformed result archive")
+
+    monkeypatch.setattr(
+        "yuxi.knowledge.parser.mineru_official.process_zip_file_sync",
+        _raise_zip_processing_error,
+    )
+
+    with pytest.raises(DocumentParserException, match="malformed result archive"):
+        parser.process_file(str(file_path))
+
+    assert not zip_path.exists()
 
 
 def test_rapid_ocr_health_check_does_not_load_model(monkeypatch: pytest.MonkeyPatch):
@@ -109,32 +154,69 @@ def test_rapid_ocr_health_check_does_not_load_model(monkeypatch: pytest.MonkeyPa
     assert health["status"] == "healthy"
 
 
-def _build_pdf(file_path: Path, text: str) -> None:
-    """用 pypdf 构造带文本的最小 PDF（pypdfium2 只读不能写，测试造 PDF 改用 pypdf）。"""
-    writer = PdfWriter()
-    page = writer.add_blank_page(width=595, height=842)
-    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-    stream = DecodedStreamObject()
-    stream.set_data(f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode())
-    page[NameObject("/Contents")] = writer._add_object(stream)
-    font = DictionaryObject(
-        {
-            NameObject("/Type"): NameObject("/Font"),
-            NameObject("/Subtype"): NameObject("/Type1"),
-            NameObject("/BaseFont"): NameObject("/Helvetica"),
-            NameObject("/Encoding"): NameObject("/WinAnsiEncoding"),
-        }
-    )
-    resources = DictionaryObject()
-    resources[NameObject("/Font")] = DictionaryObject({NameObject("/F1"): font})
-    page[NameObject("/Resources")] = writer._add_object(resources)
-    writer.write(str(file_path))
+def _build_pdf(file_path: Path, text: str | list[str]) -> None:
+    """用标准库构造带文本的最小 PDF，避免测试引入额外 PDF 依赖。"""
+    pages = [text] if isinstance(text, str) else text
+    kids = " ".join(f"{4 + index * 2} 0 R" for index in range(len(pages)))
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    ]
+    for index, page_text in enumerate(pages):
+        escaped = page_text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode("latin-1")
+        objects.extend(
+            [
+                (
+                    f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+                    f"/Resources << /Font << /F1 3 0 R >> >> /Contents {5 + index * 2} 0 R >>"
+                ).encode(),
+                b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+            ]
+        )
+    pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for object_number, object_body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{object_number} 0 obj\n".encode())
+        pdf.extend(object_body)
+        pdf.extend(b"\nendobj\n")
+
+    xref_offset = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode())
+    pdf.extend(f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode())
+    pdf.extend(f"startxref\n{xref_offset}\n%%EOF\n".encode())
+    file_path.write_bytes(pdf)
 
 
 def _build_docx(file_path: Path, text: str) -> None:
     document = Document()
     document.add_paragraph(text)
     document.save(str(file_path))
+
+
+def test_pdfreader_preserves_page_order_blank_pages_and_trimming(tmp_path: Path):
+    """文本提取保留空页分隔并去除逐页首尾空白。"""
+    from yuxi.knowledge.parser.unified import pdfreader
+
+    file_path = tmp_path / "pages.pdf"
+    _build_pdf(file_path, ["  First page  ", "", "Last page"])
+    assert pdfreader(file_path) == "First page\n\n\n\nLast page"
+
+
+def test_pdfreader_rejects_corrupt_pdf(tmp_path: Path):
+    """损坏 PDF 显式失败，不返回伪成功空文本。"""
+    from pypdf.errors import PdfReadError
+    from yuxi.knowledge.parser.unified import pdfreader
+
+    file_path = tmp_path / "broken.pdf"
+    file_path.write_bytes(b"%PDF-1.4\ninvalid")
+    with pytest.raises(PdfReadError):
+        pdfreader(file_path)
 
 
 def _build_png(file_path: Path) -> None:
@@ -154,6 +236,27 @@ async def test_parse_document_pdf_returns_markdown_text(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_unified_zip_parser_returns_markdown_string(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    archive = tmp_path / "parser_test.zip"
+    with zipfile.ZipFile(archive, "w") as zip_file:
+        zip_file.writestr("full.md", "# ZIP content")
+
+    async def _process_zip_file(*args, **kwargs) -> str:
+        del args, kwargs
+        return "# ZIP content"
+
+    monkeypatch.setattr(parser_unified, "_process_zip_file", _process_zip_file)
+
+    markdown = await parser_unified.parse_resolved_document(
+        str(archive),
+        params={"image_bucket": "images", "image_prefix": "kb/test"},
+    )
+
+    assert markdown == "# ZIP content"
+    assert isinstance(markdown, str)
+
+
+@pytest.mark.asyncio
 async def test_parse_document_docx_returns_markdown_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     file_path = tmp_path / "parser_test.docx"
     _build_docx(file_path, "Parser DOCX content")
@@ -167,6 +270,104 @@ async def test_parse_document_docx_returns_markdown_text(tmp_path: Path, monkeyp
     markdown = await parse_document(str(file_path))
 
     assert "Parser DOCX content" in markdown
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_fragments"),
+    [
+        ("测试文档.docx", ("20XX个人述职报告", "测试表格")),
+        ("测试演示.pptx", ("BUSINESS REPORT TEMPLATE", "工作内容回顾")),
+        ("测试表格.xlsx", ("个人所得税计算",)),
+        ("测试旧表格.xls", ("Docling Slim", "53")),
+    ],
+)
+def test_slim_office_backends_convert_real_fixtures(
+    filename: str,
+    expected_fragments: tuple[str, ...],
+) -> None:
+    if filename.endswith(".xls") and shutil.which("libreoffice") is None:
+        pytest.skip("旧版 Excel fixture 需要 LibreOffice 转换器")
+
+    document = parser_unified._convert_office_document(PARSER_FIXTURES / filename)
+
+    markdown = document.export_to_markdown()
+
+    assert markdown.strip()
+    assert all(fragment in markdown for fragment in expected_fragments)
+
+
+def test_slim_office_backend_unloads_after_conversion_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unloaded = False
+
+    class FailingBackend:
+        def convert(self):
+            raise RuntimeError("conversion failed")
+
+        def unload(self):
+            nonlocal unloaded
+            unloaded = True
+
+    input_document = SimpleNamespace(valid=True, _backend=FailingBackend())
+    monkeypatch.setattr(parser_unified, "InputDocument", lambda *_args: input_document)
+
+    with pytest.raises(RuntimeError, match="conversion failed"):
+        parser_unified._convert_office_document(tmp_path / "failure.docx")
+
+    assert unloaded
+
+
+def test_slim_docx_preserves_embedded_image_bytes_and_markdown_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploaded_images: list[bytes] = []
+
+    def _capture_upload(image_data, filename, bucket_name, object_prefix):
+        del filename, bucket_name, object_prefix
+        uploaded_images.append(image_data)
+        return "https://example.test/docx-image.png"
+
+    monkeypatch.setattr(parser_unified, "_upload_image_to_minio", _capture_upload)
+
+    markdown = parser_unified._convert_with_docling(PARSER_FIXTURES / "测试文档.docx")
+
+    assert len(uploaded_images) == 1
+    assert uploaded_images[0].startswith(b"\x89PNG\r\n\x1a\n")
+    assert re.search(
+        r"20XX个人述职报告[\s\S]+!\[image_\d+\.png\]\(https://example\.test/docx-image\.png\)"
+        r"[\s\S]+测试图片",
+        markdown,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pdf_never_enters_office_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    file_path = tmp_path / "parser_test.pdf"
+    _build_pdf(file_path, "Existing PDF path")
+    monkeypatch.setattr(
+        parser_unified,
+        "_convert_office_document",
+        lambda *_args, **_kwargs: pytest.fail("PDF 不得进入 Office backend"),
+    )
+
+    markdown = await parse_document(str(file_path), params={"ocr_engine": "disable"})
+
+    assert "Existing PDF path" in markdown
+
+
+def test_lock_excludes_full_docling_and_torch_runtime() -> None:
+    lock_text = (Path(__file__).parents[3] / "uv.lock").read_text(encoding="utf-8")
+    package_names = set(re.findall(r'^name = "([^"]+)"$', lock_text, flags=re.MULTILINE))
+
+    assert {
+        "docling",
+        "docling-ibm-models",
+        "docling-parse",
+        "torch",
+        "torchvision",
+    }.isdisjoint(package_names)
 
 
 def test_convert_csv_to_markdown_preserves_column_dtypes(
@@ -206,19 +407,13 @@ def test_convert_with_docling_reinserts_image_links_in_document_order(
         ],
         export_to_markdown=lambda: "before\n<!-- image -->\nremote\n<!-- image -->\nbetween\n<!-- image -->\nafter",
     )
-    fake_result = SimpleNamespace(status=SimpleNamespace(name="SUCCESS"), document=fake_doc)
     uploaded_images: list[bytes] = []
-
-    class FakeConverter:
-        def convert(self, path: Path):
-            assert path == file_path
-            return fake_result
 
     def _fake_upload_image_to_minio(image_data, filename, bucket_name, object_prefix):
         uploaded_images.append(image_data)
         return f"https://example.test/{len(uploaded_images)}.png"
 
-    monkeypatch.setattr(parser_unified, "_get_docling_converter", lambda: FakeConverter())
+    monkeypatch.setattr(parser_unified, "_convert_office_document", lambda _path: fake_doc)
     monkeypatch.setattr(parser_unified, "_upload_image_to_minio", _fake_upload_image_to_minio)
     image_timestamps = iter([1.0, 2.0])
     monkeypatch.setattr(parser_unified.time, "time", lambda: next(image_timestamps))
@@ -248,17 +443,11 @@ def test_convert_with_docling_keeps_image_placeholder_when_upload_fails(
         pictures=[SimpleNamespace(image=SimpleNamespace(uri=f"data:image/png;base64,{image}"))],
         export_to_markdown=lambda: "before\n<!-- image -->\nafter",
     )
-    fake_result = SimpleNamespace(status=SimpleNamespace(name="SUCCESS"), document=fake_doc)
-
-    class FakeConverter:
-        def convert(self, path: Path):
-            assert path == file_path
-            return fake_result
 
     def _raise_upload_error(*args, **kwargs):
         raise RuntimeError("upload failed")
 
-    monkeypatch.setattr(parser_unified, "_get_docling_converter", lambda: FakeConverter())
+    monkeypatch.setattr(parser_unified, "_convert_office_document", lambda _path: fake_doc)
     monkeypatch.setattr(parser_unified, "_upload_image_to_minio", _raise_upload_error)
     monkeypatch.setattr(parser_unified.time, "time", lambda: 1.0)
 

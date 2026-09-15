@@ -275,7 +275,13 @@ async def test_user_skill_projection_is_shared_across_sandboxes_but_isolated_by_
             "content": "authorized-unselected-skill",
             "encoding": "utf-8",
         }
-        assert other_selected.error and "does not exist" in other_selected.error.lower()
+        assert other_selected.file_data is None
+        assert other_selected.error
+        other_error = other_selected.error.lower()
+        selected_skill_path = "/home/gem/skills/selected/skill.md"
+        assert selected_skill_path in other_error
+        canonical_not_found = f"file '{selected_skill_path}' not found"
+        assert any(marker in other_error for marker in ("does not exist", canonical_not_found, "filenotfounderror"))
     finally:
         await sync_user_accessible_skills_async(uid, {})
         await sync_user_accessible_skills_async(other_uid, {})

@@ -26,34 +26,42 @@ async def reinit_pg_manager():
     yield
 
 
-async def test_resume_dataset_generation_enqueues_task(
-    test_client, admin_headers, knowledge_database
-):
-    repo = EvaluationRepository()
-    dataset_id = f"dataset_{uuid.uuid4().hex[:8]}"
-    await repo.create_dataset(
-        {
-            "dataset_id": dataset_id,
-            "kb_id": knowledge_database["kb_id"],
-            "name": "Pytest Resume Dataset",
-            "description": "for resume integration test",
-            "item_count": 0,
-            "has_gold_chunks": True,
-            "has_gold_answers": True,
-            "build_metadata": {
-                "source": "generated",
-                "status": "failed",
-                "params": {
-                    "count": 5,
-                    "neighbors_count": 1,
-                    "concurrency_count": 1,
-                    "llm_model_spec": "test:model",
-                    "generation_mode": "vector",
-                    "graph_expand_top_k": 1,
+async def _create_failed_dataset(*, kb_id: str, dataset_id: str, name: str) -> None:
+    """通过当前事务入口创建可恢复的失败数据集。"""
+    async with pg_manager.get_async_session_context() as session:
+        await EvaluationRepository.create_dataset_in_session(
+            session,
+            {
+                "dataset_id": dataset_id,
+                "kb_id": kb_id,
+                "name": name,
+                "description": "for resume integration test",
+                "item_count": 0,
+                "has_gold_chunks": True,
+                "has_gold_answers": True,
+                "build_metadata": {
+                    "source": "generated",
+                    "status": "failed",
+                    "params": {
+                        "count": 5,
+                        "neighbors_count": 1,
+                        "concurrency_count": 1,
+                        "llm_model_spec": "test:model",
+                        "generation_mode": "vector",
+                        "graph_expand_top_k": 1,
+                    },
                 },
+                "created_by": "admin",
             },
-            "created_by": "admin",
-        }
+        )
+
+
+async def test_resume_dataset_generation_enqueues_task(test_client, admin_headers, knowledge_database):
+    dataset_id = f"dataset_{uuid.uuid4().hex[:8]}"
+    await _create_failed_dataset(
+        kb_id=knowledge_database["kb_id"],
+        dataset_id=dataset_id,
+        name="Pytest Resume Dataset",
     )
 
     try:
@@ -79,31 +87,11 @@ async def test_resume_dataset_generation_enqueues_task(
 
 async def test_resume_dataset_generation_concurrent_calls_share_task(knowledge_database):
     """并发恢复调用共享同一任务（真实 DB + 真实 tasker，测试进程未启动 worker，任务保持 pending，时序确定）。"""
-    repo = EvaluationRepository()
     dataset_id = f"dataset_{uuid.uuid4().hex[:8]}"
-    await repo.create_dataset(
-        {
-            "dataset_id": dataset_id,
-            "kb_id": knowledge_database["kb_id"],
-            "name": "Pytest Resume Concurrent Dataset",
-            "description": "for concurrent resume integration test",
-            "item_count": 0,
-            "has_gold_chunks": True,
-            "has_gold_answers": True,
-            "build_metadata": {
-                "source": "generated",
-                "status": "failed",
-                "params": {
-                    "count": 5,
-                    "neighbors_count": 1,
-                    "concurrency_count": 1,
-                    "llm_model_spec": "test:model",
-                    "generation_mode": "vector",
-                    "graph_expand_top_k": 1,
-                },
-            },
-            "created_by": "admin",
-        }
+    await _create_failed_dataset(
+        kb_id=knowledge_database["kb_id"],
+        dataset_id=dataset_id,
+        name="Pytest Resume Concurrent Dataset",
     )
 
     try:

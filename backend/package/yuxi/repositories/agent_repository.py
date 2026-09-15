@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import re
 import uuid
 from collections.abc import Collection
@@ -8,6 +9,7 @@ from typing import Any, Literal
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yuxi.agents.context import AGENT_RUNTIME_RESOURCE_FIELDS
 from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_agent_permission
 from yuxi.storage.postgres.models_business import Agent, User
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -105,6 +107,7 @@ FACT_VERIFIER_SYSTEM_PROMPT = """你是「事实核查员」子智能体，专�
 - 不要编造来源或链接。"""
 
 ADMIN_ROLES = {"admin", "superadmin"}
+AGENT_RESOURCE_CONFIG_FIELDS = AGENT_RUNTIME_RESOURCE_FIELDS | {"preload_skills"}
 
 
 def is_builtin_agent(agent: Agent) -> bool:
@@ -399,6 +402,7 @@ class AgentRepository:
         icon: str | None = None,
         pics: list[str] | None = None,
         config_json: dict | None = None,
+        config_resource_access: dict[str, Collection[str]] | None = None,
         share_config: dict | None = None,
         is_default: bool = False,
         is_subagent: bool | None = None,
@@ -433,7 +437,11 @@ class AgentRepository:
             description=description,
             icon=icon,
             pics=pics or [],
-            config_json=config_json or {"context": {}},
+            config_json=merge_agent_config_json(
+                {"context": {}},
+                config_json or {},
+                resource_access=config_resource_access or {},
+            ),
             share_config=normalized_share_config,
             is_default=False,
             is_subagent=resolved_is_subagent,
@@ -458,6 +466,7 @@ class AgentRepository:
         icon: str | None = None,
         pics: list[str] | None = None,
         config_json: dict | None = None,
+        config_resource_access: dict[str, Collection[str]] | None = None,
         share_config: dict | None = None,
         is_subagent: bool | None = None,
         updated_by: str | None = None,
@@ -474,7 +483,15 @@ class AgentRepository:
         if pics is not None:
             agent.pics = pics
         if config_json is not None:
-            agent.config_json = config_json
+            result = await self.db.execute(select(Agent.config_json).where(Agent.id == agent.id).with_for_update())
+            row = result.one_or_none()
+            if row is None:
+                raise ValueError("智能体不存在")
+            agent.config_json = merge_agent_config_json(
+                row[0],
+                config_json,
+                resource_access=config_resource_access or {},
+            )
         if share_config is not None:
             if is_builtin_agent(agent):
                 agent.share_config = DEFAULT_SHARE_CONFIG.copy()
@@ -539,3 +556,71 @@ class AgentRepository:
             if include_configurable_items:
                 data["configurable_items"] = {}
         return data
+
+
+def merge_agent_config_json(
+    existing: dict | None,
+    patch: dict,
+    *,
+    resource_access: dict[str, Collection[str]],
+) -> dict:
+    """合并 Agent 配置补丁，并在资源字段上保留旧的不可见引用。"""
+    if not isinstance(patch, dict):
+        raise ValueError("智能体配置必须是对象")
+
+    current = copy.deepcopy(existing) if isinstance(existing, dict) else {}
+    patch_copy = copy.deepcopy(patch)
+    merged = {**current, **patch_copy}
+    if "context" not in patch:
+        return merged
+
+    patch_context = patch_copy["context"]
+    if not isinstance(patch_context, dict):
+        raise ValueError("智能体 context 配置必须是对象")
+
+    current_context = current.get("context")
+    if not isinstance(current_context, dict):
+        current_context = {}
+    merged_context = {**current_context, **patch_context}
+
+    for field_name in AGENT_RESOURCE_CONFIG_FIELDS & patch_context.keys():
+        requested = _normalize_resource_references(field_name, patch_context[field_name])
+        if not requested:
+            merged_context[field_name] = requested
+            continue
+
+        if field_name not in resource_access:
+            raise ValueError(f"智能体资源字段 {field_name} 未经过权限校验")
+        accessible = {str(item) for item in resource_access[field_name]}
+        previous = _normalize_resource_references(field_name, current_context.get(field_name)) or []
+        previous_set = set(previous)
+        unauthorized_new = [item for item in requested if item not in accessible and item not in previous_set]
+        if unauthorized_new:
+            raise ValueError(f"无权新增智能体资源 {field_name}: {', '.join(unauthorized_new)}")
+
+        requested_set = set(requested)
+        kept_existing = [item for item in previous if item not in accessible or item in requested_set]
+        new_visible = [item for item in requested if item in accessible and item not in previous_set]
+        merged_context[field_name] = [*kept_existing, *new_visible]
+
+    merged["context"] = merged_context
+    return merged
+
+
+def _normalize_resource_references(field_name: str, value: Any) -> list[str] | None:
+    """规范化一个资源引用字段，并拒绝非字符串列表。"""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError(f"智能体资源字段 {field_name} 必须是字符串列表或 null")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"智能体资源字段 {field_name} 必须是字符串列表或 null")
+        key = item.strip()
+        if key not in seen:
+            normalized.append(key)
+            seen.add(key)
+    return normalized

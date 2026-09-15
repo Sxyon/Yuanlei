@@ -32,6 +32,38 @@ const resolveChunkThreadId = ({ envelope, payload, chunk, fallbackThreadId }) =>
   )
 }
 
+export function dispatchRunEventChunks({
+  data,
+  runId,
+  fallbackThreadId,
+  streamRunId = null,
+  streamThreadId = null,
+  onChunk
+}) {
+  if (typeof onChunk !== 'function') return
+  const payload = data?.payload || {}
+  const chunks = Array.isArray(payload.items) ? payload.items : payload.chunk ? [payload.chunk] : []
+  chunks.forEach((chunk) => {
+    const routeThreadId = resolveChunkThreadId({
+      envelope: data,
+      payload,
+      chunk,
+      fallbackThreadId
+    })
+    onChunk(
+      {
+        ...chunk,
+        request_id: chunk.request_id || data?.request_id,
+        run_id: chunk.run_id || data?.run_id || runId,
+        thread_id: routeThreadId,
+        ...(streamRunId ? { stream_run_id: streamRunId } : {}),
+        ...(streamThreadId ? { stream_thread_id: streamThreadId } : {})
+      },
+      routeThreadId
+    )
+  })
+}
+
 export const processRunSseResponse = async (response, onEvent) => {
   if (!response || !response.body) return
   const reader = response.body.getReader()
@@ -185,22 +217,34 @@ export function useAgentRunStream({
     threadId,
     runId,
     touchedThreadIds,
-    { delay = 200, scroll = false, status = '' } = {}
+    { delay = 200, scroll = false, status = '', expectedActiveRunId = runId } = {}
   ) => {
     const ts = getThreadState(threadId)
-    if (!ts || ts.activeRunId !== runId) return
+    if (!ts) return false
+    const settlesIdleThread = runId === null
+    if (ts.activeRunId !== expectedActiveRunId) {
+      return false
+    }
     const isInterrupted =
       status === RUN_INTERRUPTED_STATUS && hasPendingInterruptInThreads(touchedThreadIds, runId)
     touchedThreadIds.forEach((id) => streamSmoother?.flushThread(id))
     ts.isStreaming = false
     ts.activeRunSteerable = false
+    if (settlesIdleThread) ts.runLastSeq = '0-0'
     if (isInterrupted) {
       ts.activeRunId = runId
       saveActiveRunSnapshot(threadId, runId, ts.runLastSeq)
     } else {
       ts.activeRunId = null
       clearActiveRunSnapshot(threadId)
-      touchedThreadIds.forEach((id) => clearPendingInterruptForRun(id, runId))
+      if (settlesIdleThread) {
+        touchedThreadIds.forEach((id) => {
+          const threadState = getThreadState(id)
+          if (threadState) threadState.pendingInterrupt = null
+        })
+      } else {
+        touchedThreadIds.forEach((id) => clearPendingInterruptForRun(id, runId))
+      }
     }
     ts.lastRetryableJobTry = null
     ts.replyLoadingVisible = false
@@ -218,6 +262,7 @@ export function useAgentRunStream({
         notifyTerminalDetected(threadId, runId, touchedThreadIds)
       }
     })
+    return true
   }
 
   const preserveInterruptedRun = async (threadId, run, snapshot = null) => {
@@ -272,10 +317,30 @@ export function useAgentRunStream({
     ts.isStreaming = true
     saveActiveRunSnapshot(threadId, runId, ts.runLastSeq)
     if (typeof onRunStarted === 'function') {
-      onRunStarted({ threadId, runId })
+      onRunStarted({ threadId, runId, requestId: options.requestId })
     }
     const touchedThreadIds = new Set([threadId])
     let sawTerminalEvent = false
+    // 无事件看门狗: SSE 连接悬挂(断线窗口错过 end 事件且连接未关闭)时,
+    // 主动查询 run 终态并收尾,避免 loading 永转
+    let lastEventAt = Date.now()
+    const idleWatchdog = setInterval(async () => {
+      if (sawTerminalEvent || ts.activeRunId !== runId) {
+        clearInterval(idleWatchdog)
+        return
+      }
+      if (Date.now() - lastEventAt < 45000) return
+      try {
+        const runRes = await agentApi.getAgentRun(runId)
+        const st = runRes?.run?.status
+        if (st && RUN_TERMINAL_STATUSES.has(st)) {
+          clearInterval(idleWatchdog)
+          finalizeRunStream(threadId, runId, touchedThreadIds, { status: st })
+        }
+      } catch {
+        // 查询失败忽略,下轮再看
+      }
+    }, 30000)
 
     try {
       const response = await agentApi.streamAgentRunEvents(runId, ts.runLastSeq, {
@@ -287,6 +352,7 @@ export function useAgentRunStream({
 
       await processRunSseResponse(response, (event, data, eventId) => {
         if (!data || ts.activeRunId !== runId) return
+        lastEventAt = Date.now()
 
         if (eventId) {
           const incomingSeq = normalizeRunSeq(eventId)
@@ -322,49 +388,24 @@ export function useAgentRunStream({
           return
         }
 
-        if (Array.isArray(payload.items)) {
-          payload.items.forEach((chunk) => {
-            const routeThreadId = resolveChunkThreadId({
-              envelope: data,
-              payload,
-              chunk,
-              fallbackThreadId: threadId
-            })
+        dispatchRunEventChunks({
+          data,
+          runId,
+          fallbackThreadId: threadId,
+          streamRunId: runId,
+          streamThreadId: threadId,
+          onChunk: (chunk, routeThreadId) => {
             touchedThreadIds.add(routeThreadId)
-            handleStreamChunk(
-              {
-                ...chunk,
-                request_id: chunk.request_id || data.request_id,
-                run_id: chunk.run_id || data.run_id || runId,
-                thread_id: routeThreadId
-              },
-              routeThreadId
-            )
-          })
-        } else if (payload.chunk) {
-          const routeThreadId = resolveChunkThreadId({
-            envelope: data,
-            payload,
-            chunk: payload.chunk,
-            fallbackThreadId: threadId
-          })
-          touchedThreadIds.add(routeThreadId)
-          handleStreamChunk(
-            {
-              ...payload.chunk,
-              request_id: payload.chunk.request_id || data.request_id,
-              run_id: payload.chunk.run_id || data.run_id || runId,
-              thread_id: routeThreadId
-            },
-            routeThreadId
-          )
-        }
+            handleStreamChunk(chunk, routeThreadId)
+          }
+        })
 
         if (event === 'end') {
           sawTerminalEvent = true
-          if (terminalStatus === RUN_INTERRUPTED_STATUS) {
-            finalizeRunStream(threadId, runId, touchedThreadIds, { status: terminalStatus })
-          } else if (RUN_TERMINAL_STATUSES.has(terminalStatus)) {
+          if (
+            terminalStatus === RUN_INTERRUPTED_STATUS ||
+            RUN_TERMINAL_STATUSES.has(terminalStatus)
+          ) {
             finalizeRunStream(threadId, runId, touchedThreadIds, { status: terminalStatus })
           } else {
             touchedThreadIds.forEach((id) => streamSmoother?.flushThread(id))
@@ -409,6 +450,7 @@ export function useAgentRunStream({
         scheduleRunReconnect(threadId, runId)
       }
     } finally {
+      clearInterval(idleWatchdog)
       if (ts.runStreamAbortController === runController) {
         ts.runStreamAbortController = null
       }
@@ -441,14 +483,10 @@ export function useAgentRunStream({
           }
         } else if (run && RUN_TERMINAL_STATUSES.has(run.status)) {
           stopRunStreamSubscription(threadId)
-          ts.activeRunId = null
-          ts.activeRunSteerable = false
-          ts.isStreaming = false
-          ts.replyLoadingVisible = false
-          ts.pendingRequestId = null
-          clearPendingInterruptForRun(threadId, run.id)
-          clearActiveRunSnapshot(threadId)
-          notifyTerminalDetected(threadId, run.id, new Set([threadId]))
+          finalizeRunStream(threadId, run.id, new Set([threadId]), {
+            status: run.status,
+            delay: 0
+          })
         }
       } catch (e) {
         console.warn('Failed to refresh active run while stream is open:', threadId, e)
@@ -491,6 +529,7 @@ export function useAgentRunStream({
       }
     }
 
+    const expectedActiveRunId = ts.activeRunId
     try {
       const active = await agentApi.getThreadActiveRun(threadId)
       const run = active?.run
@@ -514,15 +553,10 @@ export function useAgentRunStream({
       console.warn('Failed to load active run for thread:', threadId, e)
     }
 
-    ts.activeRunId = null
-    ts.activeRunSteerable = false
-    ts.runLastSeq = '0-0'
-    ts.isStreaming = false
-    ts.replyLoadingVisible = false
-    ts.pendingRequestId = null
-    ts.pendingInterrupt = null
-    clearActiveRunSnapshot(threadId)
-    notifyTerminalDetected(threadId, null, new Set([threadId]))
+    finalizeRunStream(threadId, null, new Set([threadId]), {
+      delay: 0,
+      expectedActiveRunId
+    })
   }
 
   return {

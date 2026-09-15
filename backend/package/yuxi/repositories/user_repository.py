@@ -6,11 +6,11 @@ from datetime import UTC
 from datetime import datetime as dt
 from typing import Annotated, Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.manager import pg_manager
-from yuxi.storage.postgres.models_business import APIKey, User
+from yuxi.storage.postgres.models_business import APIKey, ScheduledAgentJob, User
 
 
 def _utc_now() -> dt:
@@ -62,6 +62,12 @@ class UserRepository:
             api_key.is_enabled = False
             if api_key.revoked_at is None:
                 api_key.revoked_at = revoked_at
+
+    @staticmethod
+    async def _delete_scheduled_jobs(session: AsyncSession, uid: str) -> None:
+        """账号删除时移除任务定义，数据库级联清理调度历史。"""
+
+        await session.execute(delete(ScheduledAgentJob).where(ScheduledAgentJob.uid == str(uid)))
 
     async def get_by_id_with_db(self, db: AsyncSession, id: int) -> User | None:
         """使用指定的 db 根据 ID 获取用户"""
@@ -239,6 +245,7 @@ class UserRepository:
             if phone_number:
                 user.phone_number = None
             await self._revoke_api_keys(session, user.id, user.deleted_at)
+            await self._delete_scheduled_jobs(session, user.uid)
             await session.flush()
         return True
 
@@ -252,6 +259,7 @@ class UserRepository:
             user.password_hash = "DELETED"
             user.avatar = None
             await self._revoke_api_keys(session, user.id, user.deleted_at)
+            await self._delete_scheduled_jobs(session, user.uid)
             await session.flush()
 
     async def exists_by_uid(self, uid: str) -> bool:

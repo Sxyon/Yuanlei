@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from yuxi.services.agent_run_service import prepare_agent_run_creation_scope
 from yuxi.services.project_service import delete_project_view
 from yuxi.services.subagent_run_service import SubagentRunService
 from yuxi.storage.postgres.models_business import Conversation, Project, SubagentThread, User
+from yuxi.workspace.paths import user_workdir_host_dir
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -142,11 +144,14 @@ async def test_default_thread_creates_implicit_project_with_exclusive_binding(te
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["project_id"]
-    assert payload["workdir_path"].startswith("projects/")
+    assert re.fullmatch(
+        rf"projects/\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}_{re.escape(payload['project_id'][:8])}(?:-[1-9]\d*)?",
+        payload["workdir_path"],
+    )
 
     async with _database_connection() as db:
         row = await db.fetchrow(
-            "SELECT c.project_id, p.selection_status, p.directory_mode, p.workdir_path "
+            "SELECT c.uid, c.project_id, p.selection_status, p.directory_mode, p.workdir_path "
             "FROM conversations c JOIN projects p ON p.id = c.project_id AND p.uid = c.uid "
             "WHERE c.thread_id = $1",
             payload["id"],
@@ -155,6 +160,7 @@ async def test_default_thread_creates_implicit_project_with_exclusive_binding(te
     assert row["selection_status"] == "implicit"
     assert row["directory_mode"] == "managed"
     assert row["workdir_path"] == payload["workdir_path"]
+    assert user_workdir_host_dir(str(row["uid"]), str(row["workdir_path"])).is_dir()
 
 
 async def test_linked_project_and_thread_selection_keep_directory_bytes(

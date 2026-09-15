@@ -18,6 +18,7 @@ from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.agent_run_request_repository import AgentRunRequestRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
+from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.agent_request_queue_service import finalize_intake, intake_request
 from yuxi.services.input_message_service import AgentRunInputMessage
 from yuxi.services.project_service import create_implicit_project
@@ -50,6 +51,7 @@ class RunSubmissionCommand:
     queue_policy: str = "enqueue"
     create_conversation: bool = False
     conversation_title: str | None = None
+    conversation_project_id: str | None = None
     agent_kind: str = "main"
 
 
@@ -120,16 +122,26 @@ async def submit_run_command(
         raise HTTPException(status_code=404, detail=f"智能体后端 {agent_item.backend_id} 不存在")
 
     conversation_repo = ConversationRepository(db)
+    project = None
     conversation = await conversation_repo.get_conversation_by_thread_id(command.thread_id)
     if not conversation:
         if not command.create_conversation:
             raise HTTPException(status_code=404, detail="对话线程不存在")
         try:
             async with db.begin_nested():
-                project = await create_implicit_project(
-                    uid=str(current_user.uid),
-                    db=db,
-                )
+                project = None
+                if command.conversation_project_id:
+                    project = await ProjectRepository(db).lock_active_for_user(
+                        command.conversation_project_id,
+                        str(current_user.uid),
+                    )
+                    if project is None:
+                        raise HTTPException(status_code=404, detail="Project 不存在或不可访问")
+                else:
+                    project = await create_implicit_project(
+                        uid=str(current_user.uid),
+                        db=db,
+                    )
                 conversation = await conversation_repo.add_conversation(
                     uid=str(current_user.uid),
                     agent_id=agent_item.slug,
@@ -154,6 +166,13 @@ async def submit_run_command(
             continue
         request_metadata.setdefault(key, value)
 
+    binding_project = project if project is not None and str(project.id) == str(conversation.project_id) else None
+    workdir_binding = await resolve_conversation_workdir_binding(
+        conversation=conversation,
+        uid=str(current_user.uid),
+        db=db,
+        project=binding_project,
+    )
     intake = await intake_request(
         db=db,
         request_id=command.request_id,
@@ -171,18 +190,11 @@ async def submit_run_command(
         model_spec=command.model_spec,
         tool_approval_mode=command.tool_approval_mode,
         meta=request_metadata,
-    )
-    workdir_path, project = await resolve_conversation_workdir_binding(
-        conversation=conversation,
-        uid=str(current_user.uid),
-        db=db,
+        workdir_binding=workdir_binding,
     )
     await finalize_intake(
         db=db,
         intake=intake,
-        uid=str(current_user.uid),
-        workdir_path=workdir_path,
-        materialize_managed=project is not None and project.directory_mode == "managed",
     )
 
     return {

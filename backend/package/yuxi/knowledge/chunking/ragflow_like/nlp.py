@@ -105,9 +105,10 @@ def hard_split_by_token_limit(text: str, chunk_token_num: int, hard_limit_token_
 
 
 def random_choices(arr: list[str], k: int) -> list[str]:
+    """无放回抽样，短文档保留全部段落供语言与标题识别。"""
     if not arr:
         return []
-    return random.choices(arr, k=min(len(arr), k))
+    return random.sample(arr, k=min(len(arr), k))
 
 
 def is_english(texts: str | list[str]) -> bool:

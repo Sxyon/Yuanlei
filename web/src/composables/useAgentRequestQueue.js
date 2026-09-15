@@ -33,6 +33,12 @@ export function useAgentRequestQueue({
   const cancelRequest = async (threadId, requestId) => {
     const ts = getThreadState(threadId)
     if (!ts || !requestId) return false
+    if (
+      ts.queuedRequests?.some(
+        (request) => request.request_id === requestId && request.status === 'sending'
+      )
+    )
+      return false
     try {
       await agentApi.cancelRequest(requestId)
       stopRequestStream(threadId, requestId)
@@ -54,10 +60,32 @@ export function useAgentRequestQueue({
     if (!ts) return
     try {
       const resp = await agentApi.listThreadQueuedRequests(threadId, agentSlug)
-      ts.queuedRequests = resp?.requests || []
+      const requests = resp?.requests || []
+      const knownIds = new Set(requests.map((request) => request.request_id))
+      ts.queuedRequests = [
+        ...requests,
+        ...(ts.queuedRequests || []).filter(
+          (request) => request.status === 'sending' && !knownIds.has(request.request_id)
+        )
+      ]
       ts.queueSnapshot = resp?.queue || { ...IDLE_QUEUE_SNAPSHOT }
     } catch (e) {
       console.warn('Failed to sync queued requests:', e)
+    }
+  }
+
+  /** 同步线程队列后恢复仍在途的请求流。 */
+  const resumeQueuedRequests = async (threadId, agentSlug) => {
+    if (!threadId || !agentSlug) return
+
+    await syncQueuedRequests(threadId, agentSlug)
+    const latestTs = getThreadState(threadId)
+    if (!latestTs) return
+
+    for (const request of latestTs.queuedRequests || []) {
+      if (request?.request_id && request.status !== 'sending') {
+        void startRequestStream(threadId, request.request_id)
+      }
     }
   }
 
@@ -94,6 +122,20 @@ export function useAgentRequestQueue({
         } else if (event === 'run_created' && data) {
           entry.status = 'dispatched'
           if (data.run_id) {
+            const request = tsInner.queuedRequests?.find((item) => item.request_id === requestId)
+            const requestMessages =
+              tsInner.onGoingConv?.msgChunks?.[requestId] ||
+              (request
+                ? [
+                    {
+                      id: request.input_message_id || requestId,
+                      type: 'human',
+                      request_id: requestId,
+                      content: request.content,
+                      created_at: request.created_at
+                    }
+                  ]
+                : null)
             removeRequestFromQueue(tsInner, requestId)
             stopRequestStream(threadId, requestId)
 
@@ -102,8 +144,11 @@ export function useAgentRequestQueue({
             if (!tsInner.activeRunId) {
               resetOnGoingConv(threadId, { preserveRequestStreams: true })
             }
+            if (requestMessages && tsInner.onGoingConv?.msgChunks) {
+              tsInner.onGoingConv.msgChunks[requestId] = requestMessages
+            }
             tsInner.pendingRequestId = requestId
-            void startRunStream(threadId, data.run_id, '0-0')
+            void startRunStream(threadId, data.run_id, '0-0', { requestId })
           }
         } else if (event === 'cancelled' || event === 'rejected' || event === 'failed') {
           entry.status = event
@@ -173,6 +218,7 @@ export function useAgentRequestQueue({
     stopAllRequestStreams,
     cancelRequest,
     syncQueuedRequests,
+    resumeQueuedRequests,
     continueQueue,
     steerRequest
   }

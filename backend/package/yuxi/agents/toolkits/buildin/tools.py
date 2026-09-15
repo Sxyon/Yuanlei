@@ -239,7 +239,7 @@ def _normalize_presented_artifact_path(filepath: str, runtime: ToolRuntime) -> s
         thread_id=runtime_scope_id,
         uid=str(uid),
         workdir_path=workdir_relative_path,
-        create_if_missing=False,
+        create_if_missing=True,
     )
     if not backend.regular_file_exists(normalized_path):
         raise ValueError(f"文件不存在或不是普通文件: {normalized_input}")
@@ -327,7 +327,7 @@ async def ocr_parse_file(file_path: str, runtime: ToolRuntime, ocr_engine: str |
         thread_id=runtime_scope_id,
         uid=uid,
         workdir_path=workdir_relative_path,
-        create_if_missing=False,
+        create_if_missing=True,
     )
     from yuxi.services.ocr_service import resolve_ocr_engine_id
 

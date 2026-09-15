@@ -124,6 +124,7 @@ import { documentApi } from '@/apis/knowledge_api'
 import { getWorkspaceKnowledgeFileContent } from '@/apis/workspace_api'
 import { mergeChunks } from '@/utils/chunkUtils'
 import { getPreviewTypeByPath, normalizePreviewResponse } from '@/utils/file_preview'
+import { parseDownloadFilename } from '@/utils/file_utils'
 import {
   canPreviewChunks,
   canPreviewOriginal,
@@ -540,33 +541,8 @@ const handleDownloadOriginal = async () => {
   try {
     const response = await documentApi.downloadDocument(props.kbId, props.fileId)
 
-    // 获取文件名
     const contentDisposition = response.headers.get('content-disposition')
-    let filename = file.value.filename
-    if (contentDisposition) {
-      // 首先尝试匹配RFC 2231格式 filename*=UTF-8''...
-      const rfc2231Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)
-      if (rfc2231Match) {
-        try {
-          filename = decodeURIComponent(rfc2231Match[1])
-        } catch (error) {
-          console.warn('Failed to decode RFC2231 filename:', rfc2231Match[1], error)
-        }
-      } else {
-        // 回退到标准格式 filename="..."
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, '')
-          // 解码URL编码的文件名
-          try {
-            filename = decodeURIComponent(filename)
-          } catch (error) {
-            console.warn('Failed to decode filename:', filename, error)
-          }
-        }
-      }
-    }
-
+    const filename = parseDownloadFilename(contentDisposition) || file.value.filename
     // 创建blob并下载
     const blob = await response.blob()
     const url = window.URL.createObjectURL(blob)

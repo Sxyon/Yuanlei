@@ -2,14 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from yuxi.config.runtime import knowledge_capability_enabled
-
 
 async def resolve_visible_knowledge_bases_for_context(context) -> list[dict[str, Any]]:
-    if not knowledge_capability_enabled():
-        setattr(context, "_visible_knowledge_bases", [])
-        return []
-
     from yuxi.knowledge.runtime import knowledge_base
 
     uid = getattr(context, "uid", None)

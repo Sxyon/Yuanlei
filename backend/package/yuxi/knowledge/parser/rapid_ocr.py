@@ -15,15 +15,18 @@ from PIL import Image
 from rapidocr import EngineType, LangDet, LangRec, ModelType, OCRVersion, RapidOCR
 
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, OCRException
+from yuxi.knowledge.parser.capabilities import get_parser_capability
 from yuxi.utils import logger
+
+_CAPABILITY = get_parser_capability("rapid_ocr")
 
 
 class RapidOCRParser(BaseDocumentProcessor):
     """RapidOCR 解析器 - 使用 ONNX 模型进行文字识别"""
 
-    service_name = "rapid_ocr"
-    display_name = "RapidOCR (ONNX)"
-    supported_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"]
+    service_name = _CAPABILITY.service_name
+    display_name = _CAPABILITY.display_name
+    supported_extensions = list(_CAPABILITY.supported_extensions)
 
     def __init__(self, det_box_thresh: float = 0.3):
         self.ocr = None

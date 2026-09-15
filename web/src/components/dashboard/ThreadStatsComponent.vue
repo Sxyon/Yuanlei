@@ -185,7 +185,7 @@
             @change="handleSearch"
           >
             <a-select-option value="all">全部（不含已删除）</a-select-option>
-            <a-select-option value="active">进行中</a-select-option>
+            <a-select-option value="active">未归档</a-select-option>
             <a-select-option value="archived">已归档</a-select-option>
             <a-select-option value="deleted">已删除</a-select-option>
             <a-select-option value="subagent">子智能体会话</a-select-option>
@@ -326,7 +326,7 @@
             </template>
 
             <template v-if="column.key === 'status'">
-              <a-tag v-if="record.status === 'active'" color="green">进行中</a-tag>
+              <a-tag v-if="record.status === 'active'" color="default">未归档</a-tag>
               <a-tag v-else-if="record.status === 'archived'" color="default">已归档</a-tag>
               <a-tag v-else-if="record.status === 'deleted'" class="history-tag">已删除</a-tag>
               <a-tag v-else-if="record.status === 'subagent'" color="blue">子智能体</a-tag>
@@ -338,7 +338,11 @@
             </template>
 
             <template v-if="column.key === 'total_tokens'">
-              <span class="token-num">{{ (record.total_tokens || 0).toLocaleString() }}</span>
+              <span
+                class="token-num"
+                title="累计已记录的运行用量；≥ 表示部分运行或模型未返回用量"
+                >{{ formatTokenUsage(record) }}</span
+              >
             </template>
 
             <template v-if="column.key === 'updated_at'">
@@ -361,8 +365,9 @@
 </template>
 
 <script setup>
+import { formatTokenUsage } from '@/utils/dashboard'
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from '@/utils/dashboardCharts'
 import { Activity, Bot, Layers, Mail, MessageSquare, RefreshCw, Search } from '@lucide/vue'
 import { message } from 'ant-design-vue'
 import { dashboardApi } from '@/apis/dashboard_api'
@@ -422,7 +427,7 @@ const conversationColumns = [
   { title: '会话标题 & ID', key: 'title', width: '28%' },
   { title: '所属智能体', key: 'agent', width: 190 },
   { title: '用户', key: 'user', width: 180 },
-  { title: '状态', key: 'status', width: '90px', align: 'center' },
+  { title: '会话状态', key: 'status', width: '90px', align: 'center' },
   { title: '消息数', key: 'message_count', width: '90px', align: 'center' },
   { title: 'Token 消耗', key: 'total_tokens', width: '110px', align: 'right' },
   { title: '更新时间', key: 'updated_at', width: '160px' },

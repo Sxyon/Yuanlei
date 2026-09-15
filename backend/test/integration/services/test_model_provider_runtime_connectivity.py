@@ -103,7 +103,6 @@ async def test_provider_db_chat_model_connectivity(monkeypatch: pytest.MonkeyPat
         return info if current == model_spec else None
 
     monkeypatch.setattr("yuxi.models.chat.model_cache.get_model_info", get_model_info)
-    monkeypatch.setattr("yuxi.agents.models.model_cache.get_model_info", get_model_info)
 
     model = select_model(model_spec, model_params=spec["parameters"])
     response = await model.call([{"role": "user", "content": "Say 1"}], stream=False)

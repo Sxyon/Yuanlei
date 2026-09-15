@@ -14,6 +14,25 @@ REQUIRED_STORAGE_TARGETS = {
 }
 FORBIDDEN_API_WORKER_ENV_KEYS = frozenset({"YUXI_DOCKER_API_BASE"})
 EXPECTED_RUNTIME_DIRS = {"api": "/app/runtime/api", "worker": "/app/runtime/worker"}
+EXPECTED_REDIS_CONNECTION_CAPACITY = {
+    "api": "${API_REDIS_MAX_CONNECTIONS:-256}",
+    "worker": "${WORKER_REDIS_MAX_CONNECTIONS:-256}",
+}
+EXPECTED_AGENT_CAPACITY = {
+    "api": {
+        "POSTGRES_POOL_SIZE": "${API_POSTGRES_POOL_SIZE:-120}",
+        "POSTGRES_MAX_OVERFLOW": "${API_POSTGRES_MAX_OVERFLOW:-40}",
+        "LANGGRAPH_POSTGRES_POOL_SIZE": "${API_LANGGRAPH_POSTGRES_POOL_SIZE:-10}",
+        "LANGGRAPH_POSTGRES_POOL_TIMEOUT_SECONDS": "${API_LANGGRAPH_POSTGRES_POOL_TIMEOUT_SECONDS:-30}",
+    },
+    "worker": {
+        "ARQ_MAX_JOBS": "${ARQ_MAX_JOBS:-140}",
+        "POSTGRES_POOL_SIZE": "${WORKER_POSTGRES_POOL_SIZE:-120}",
+        "POSTGRES_MAX_OVERFLOW": "${WORKER_POSTGRES_MAX_OVERFLOW:-40}",
+        "LANGGRAPH_POSTGRES_POOL_SIZE": "${WORKER_LANGGRAPH_POSTGRES_POOL_SIZE:-120}",
+    },
+}
+EXPECTED_SANDBOX_STOP_TIMEOUT = "${SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS:-2}"
 FORBIDDEN_DIRECT_DOCKER_ACCESS_MARKERS = frozenset(
     {"--unix-socket", "/var/run/docker.sock", "YUXI_DOCKER_API_SOCKET", "docker.from_env(", "DockerClient("}
 )
@@ -131,6 +150,32 @@ def test_api_worker_and_provisioner_use_explicit_storage_domains(filename: str):
     assert {"/app/user-data", "/app/skill-projections"} <= provisioner_targets
     assert "/app/projects" not in provisioner_targets
     assert "/app/saves" not in provisioner_targets
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_api_and_worker_use_role_specific_redis_connection_capacity(filename: str) -> None:
+    """API 与 worker 独立核算 Redis 客户端连接池。"""
+    services = _load_compose(filename)["services"]
+
+    for service_name, expected in EXPECTED_REDIS_CONNECTION_CAPACITY.items():
+        assert services[service_name]["environment"]["REDIS_MAX_CONNECTIONS"] == expected
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_default_agent_capacity_supports_one_hundred_concurrent_runs(filename: str) -> None:
+    """单 worker 的默认执行槽与相关连接池必须作为一组维护。"""
+    services = _load_compose(filename)["services"]
+
+    for service_name, expected_environment in EXPECTED_AGENT_CAPACITY.items():
+        environment = services[service_name]["environment"]
+        for key, expected in expected_environment.items():
+            assert environment[key] == expected
+
+    provisioner_environment = services["sandbox-provisioner"]["environment"]
+    assert "SANDBOX_DELETE_CONCURRENCY=${SANDBOX_DELETE_CONCURRENCY:-32}" in provisioner_environment
+    assert "DOCKER_ADDRESS_POOL=${SANDBOX_DOCKER_ADDRESS_POOL:-10.253.240.0/20}" in provisioner_environment
+    assert "DOCKER_SUBNET_PREFIX=${SANDBOX_DOCKER_SUBNET_PREFIX:-28}" in provisioner_environment
+    assert services["postgres"]["command"][-1] == "max_connections=${POSTGRES_MAX_CONNECTIONS:-600}"
 
 
 @pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
@@ -341,6 +386,15 @@ def test_docker_provisioner_keeps_required_docker_socket(filename: str):
     volumes = compose["services"]["sandbox-provisioner"].get("volumes") or []
 
     assert "/var/run/docker.sock" in {_volume_target(volume) for volume in volumes}
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_docker_provisioner_exposes_bounded_container_stop_timeout(filename: str):
+    """Docker Sandbox 的优雅停止等待必须由 provisioner 部署配置拥有。"""
+    compose = _load_compose(filename)
+    environment = compose["services"]["sandbox-provisioner"].get("environment") or []
+
+    assert f"SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS={EXPECTED_SANDBOX_STOP_TIMEOUT}" in environment
 
 
 def test_integration_cleanup_does_not_bypass_sandbox_provisioner():

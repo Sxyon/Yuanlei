@@ -100,7 +100,7 @@ class _BackendScope:
                 thread_id=self.runtime_scope_id,
                 uid=self.uid,
                 workdir_path=self.workdir_relative_path,
-                create_if_missing=False,
+                create_if_missing=True,
             ),
             routes={},
             artifacts_root=f"{self.workdir_path.rstrip('/')}/outputs",
@@ -127,9 +127,11 @@ def create_agent_filesystem_middleware(
     tool_token_limit_before_evict: int | None = None,
     *,
     backend: CompositeBackend,
+    disabled_tools: frozenset[str] = frozenset(),
 ) -> FilesystemMiddleware:
+    """构造文件系统中间件，在 ToolNode 注册前排除禁用工具。"""
     return YuxiFilesystemMiddleware(
         backend=backend,
         tool_token_limit_before_evict=tool_token_limit_before_evict,
-        tools=list(_AGENT_FS_TOOLS),
+        tools=[name for name in _AGENT_FS_TOOLS if name not in disabled_tools],
     )

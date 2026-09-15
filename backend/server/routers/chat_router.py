@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import User
-from server.utils.auth_middleware import get_db, get_required_user
+from server.utils.auth_middleware import get_db, get_required_user, get_superadmin_user
 from yuxi.config.options import system_options
 from yuxi.agents.tool_approval import ToolApprovalMode
 from yuxi.models import select_model
@@ -23,6 +23,7 @@ from yuxi.services.conversation_service import (
     create_thread_view,
     delete_thread_view,
     get_thread_history_view,
+    get_thread_message_audits_view,
     list_threads_view,
     mark_thread_viewed_view,
     search_threads_view,
@@ -33,6 +34,7 @@ from yuxi.services.artifact_service import (
     save_thread_artifact_to_workspace_view,
 )
 from yuxi.services.feedback_service import get_message_feedback_view, submit_message_feedback_view
+from yuxi.services.context_compression_service import compress_thread_context as compress_context
 from yuxi.utils.logging_config import logger
 from yuxi.utils.image_processor import process_uploaded_image
 
@@ -83,7 +85,7 @@ async def call(
 async def get_thread_history(
     thread_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)
 ):
-    """获取对话历史消息（需要登录）- 包含用户反馈状态"""
+    """读取当前用户的线程信息、Run 与历史消息。"""
     try:
         return await get_thread_history_view(
             thread_id=thread_id,
@@ -91,9 +93,31 @@ async def get_thread_history(
             db=db,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取对话历史消息出错: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"获取对话历史消息出错: {str(e)}")
+
+
+@chat.get("/thread/{thread_id}/audits")
+async def get_thread_message_audits(
+    thread_id: str,
+    current_user: User = Depends(get_superadmin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取超级管理员自身线程内的 Model/Tool 生命周期审计。"""
+    try:
+        return await get_thread_message_audits_view(
+            thread_id=thread_id,
+            current_uid=str(current_user.uid),
+            db=db,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"获取 Message 审计出错: {exc}, {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="获取 Message 审计出错") from exc
 
 
 @chat.get("/thread/{thread_id}/state")
@@ -116,6 +140,20 @@ async def get_thread_state(
     except Exception as e:
         logger.error(f"获取对话状态出错: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"获取对话状态出错: {str(e)}")
+
+
+@chat.post("/thread/{thread_id}/compress")
+async def compress_thread_context(
+    thread_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """在线程空闲时主动压缩上下文。"""
+    return await compress_context(
+        thread_id=thread_id,
+        current_user=current_user,
+        db=db,
+    )
 
 
 # ==================== 线程管理 API ====================

@@ -1,6 +1,6 @@
 # 知识库机制
 
-本页说明文档怎样从上传走到可检索状态，以及 PostgreSQL、MinIO、Milvus、Neo4j、Tasker 和 Agent 工具各自负责什么。第一次操作知识库请看[创建并使用知识库](../intro/knowledge-base.md)，解析器配置见[文档处理与 OCR](../advanced/document-processing.md)。
+本页说明文档怎样从上传走到可检索状态，以及 PostgreSQL、MinIO、Milvus、Neo4j、Durable Task 和 Agent 工具各自负责什么。第一次操作知识库请看[创建并使用知识库](../intro/knowledge-base.md)，解析器配置见[文档处理与 OCR](../advanced/document-processing.md)。
 
 ## 能力边界
 
@@ -18,8 +18,9 @@ Yuxi 通过 `KnowledgeBaseManager` 读取知识库配置、解析权限并选择
 ```mermaid
 flowchart LR
     UI["Web / API"] --> Router["路由：认证和输入校验"]
-    Router --> Tasker["Tasker：后台编排"]
-    Tasker --> Manager["KnowledgeBaseManager"]
+    Router --> Task["PostgreSQL Task"]
+    Task --> Worker["ARQ worker"]
+    Worker --> Manager["KnowledgeBaseManager"]
     Manager --> MilvusKB["Milvus executor"]
     Manager --> Connector["Dify / Notion 只读 executor"]
     MilvusKB --> PG[("PostgreSQL")]
@@ -62,28 +63,27 @@ stateDiagram-v2
 - `indexed`：本次分块、向量写入和统计更新已完成；
 - `error_parsing`、`error_indexing`：对应阶段失败或取消，并保存错误信息。
 
-任务接口的响应和 Tasker 状态只表示编排结果。验收时重新读取文件状态，并按需核对 Markdown、chunk、向量和图谱数据。
+任务接口的响应和 Durable Task 状态只表示编排结果。验收时重新读取文件状态，并按需核对 Markdown、chunk、向量和图谱数据。
 
 ## 各存储负责什么
 
 | 存储 | 拥有的事实 | 不拥有的事实 |
 | --- | --- | --- |
-| PostgreSQL | 知识库配置、权限、文件元数据和状态、chunk 正文、图谱处理状态、Tasker 摘要 | 原文件字节、向量索引 |
+| PostgreSQL | 知识库配置、权限、文件元数据和状态、chunk 正文、图谱处理状态、Task 执行意图与 lease | 原文件字节、向量索引 |
 | MinIO | 上传原件、解析 Markdown、解析图片 | 文件当前状态、用户权限 |
 | Milvus | chunk 向量、BM25/混合检索字段、图实体和关系向量 | 权限、文件状态 |
 | Neo4j | 可选的实体、关系和 chunk 关联 | 原文件、权限和检索排序 |
-| Redis | 知识库最小运行配置缓存 | 配置最终值、文件状态 |
-| Tasker 内存队列 | 当前 API 进程内的 coroutine 和顺序 | 跨进程可恢复的执行权 |
+| Redis / ARQ | Task 投递与 worker 唤醒、知识库最小运行配置缓存 | Task 最终状态、配置最终值、文件状态 |
 
 Milvus 索引会把 chunk 写入 PostgreSQL 和 Milvus。它不是跨存储事务：任一侧失败时会尝试补偿并把文件置为 `error_indexing`，排查时需要同时查看两侧。
 
-## Tasker 和恢复
+## Durable Task 和恢复
 
-上传原文件是同步对象存储操作；批量添加、解析、索引和图谱构建可以交给进程内 Tasker。任务元数据、进度、结果和错误保存到 PostgreSQL，但真正执行的 coroutine 只存在当前 API 进程的 `asyncio.Queue`。
+上传原文件是同步对象存储操作；批量添加、解析、索引和图谱构建把 `task_type`、Handler 版本和可序列化 payload 保存到 PostgreSQL。提交后 API 只发布 `task_id`，ARQ worker 从 registry 加载领域 Handler。
 
-API 重启时，Tasker 会把非终态任务标记为 `failed`，不会仅凭持久化 payload 自动重建 coroutine。取消也是协作式的：先保存 `cancel_requested`，任务在检查点退出。任务失败不等于文件状态已经回滚，外部存储可能已经写入部分结果。
+worker 用唯一 attempt token claim Task 并续租 lease；重复投递和失权 worker 的迟到写入会被 PostgreSQL 拒绝。首次发布失败时，pending Task 保留，启动和周期 publisher 会补发。所有 Durable Task 在 owner 中断或 lease 过期后都会明确失败，不自动重放未知外部副作用。
 
-批量“待解析”和“待入库”入口按状态筛选文件，并对活跃任务去重。重试前保留故障现场，检查文件记录、MinIO、chunk、Milvus 和 Neo4j，再选择重新解析、重新索引或图谱修复。
+批量“待解析”和“待入库”入口按状态筛选文件，并通过数据库 dedupe key 拒绝活跃重复任务。取消运行中任务时先保存 `cancel_requested`，由 worker 在控制点收敛。重试前保留故障现场，检查文件记录、MinIO、chunk、Milvus 和 Neo4j，再选择重新解析、重新索引或图谱修复。
 
 ## Agent 如何看到知识库
 
@@ -98,7 +98,7 @@ get_mindmap、search_file、download_kb_file
 
 推荐顺序是：列出可见知识库 → 检索候选片段 → 用 `file_id` 打开或定位原文。`download_kb_file` 会把有权访问的原始二进制写入当前 Project 的 `outputs`，供后续工具处理。知识库不会映射为 `/home/gem/kbs` 沙盒目录。
 
-## 权限和 LITE
+## 权限
 
 知识库的最终授权由后端依赖、Manager 可见性查询和具体工具目标校验共同完成：
 
@@ -109,14 +109,12 @@ get_mindmap、search_file、download_kb_file
 
 Agent 的 `knowledges` 只能缩小用户已有权限。子智能体使用自己的配置，但仍沿用发起用户的身份。私有解析图片通过带知识库权限校验的 API 读取，MinIO 对象 URL 不是授权凭证。
 
-LITE 模式不注册知识库、图谱和评估重运行时，也不注册 `knowledge-base` Skill。此时知识库资源为空；服务故障也不能用“空检索结果”伪装成 LITE 行为。
-
 ## 失败和重试
 
 - 解析失败或取消：文件进入 `error_parsing`，查看错误并重新提交解析；批量待解析入口只扫描 `uploaded`。
 - 索引失败或取消：文件进入 `error_indexing`，检查分块、嵌入和存储后重新入库；批量待入库入口扫描 `parsed` 和 `error_indexing`。
 - 索引缺少 Markdown：文件回到 `uploaded`，必须重新解析，不会生成空索引。
-- Tasker 失败、超时或重启：只能说明后台动作未完成，不能推断外部存储没有部分写入。
+- Durable Task 失败、取消或 lease 过期：只能说明后台动作未完成，不能推断外部存储没有部分写入；知识任务不会在未知副作用上自动重放。
 - Redis 缓存异常：Manager 回源 PostgreSQL；不支持的知识库类型或 executor 初始化失败会明确阻止操作。
 
 ## 源码定位与验证
@@ -126,7 +124,8 @@ LITE 模式不注册知识库、图谱和评估重运行时，也不注册 `know
 - [知识库基类](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/knowledge/base.py)：文件状态和解析流程
 - [Milvus executor](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/knowledge/implementations/milvus.py)：分块、双写、检索和重索引
 - [只读连接器](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/knowledge/implementations/read_only_connectors.py)：Dify/Notion 能力边界
-- [Tasker](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/services/task_service.py)：任务持久化和重启结局
+- [Durable Task runtime](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/services/task_service.py)：任务持久化、claim、lease 和恢复结局
+- [Task Handler registry](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/services/task_registry.py)：领域 Handler 注册和惰性加载
 - [知识库工具](https://github.com/xerrors/Yuxi/blob/main/backend/package/yuxi/agents/toolkits/kbs/tools.py)：Agent 目标校验和工具实现
 - [知识库 unit tests](https://github.com/xerrors/Yuxi/tree/main/backend/test/unit/knowledge)
 - [权限与路由 tests](https://github.com/xerrors/Yuxi/tree/main/backend/test/unit/routers)

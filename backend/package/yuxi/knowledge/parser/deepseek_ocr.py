@@ -16,15 +16,18 @@ import pypdfium2 as pdfium
 import requests
 
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
+from yuxi.knowledge.parser.capabilities import get_parser_capability
 from yuxi.utils import logger
+
+_CAPABILITY = get_parser_capability("deepseek_ocr")
 
 
 class DeepSeekOCRParser(BaseDocumentProcessor):
     """DeepSeek OCR Parser using SiliconFlow API"""
 
-    service_name = "deepseek_ocr"
-    display_name = "DeepSeek OCR"
-    supported_extensions = [".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".webp"]
+    service_name = _CAPABILITY.service_name
+    display_name = _CAPABILITY.display_name
+    supported_extensions = list(_CAPABILITY.supported_extensions)
 
     # MIME type mapping for supported formats
     MIME_TYPE_MAP = {

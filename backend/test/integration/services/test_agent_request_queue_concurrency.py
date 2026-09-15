@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from yuxi.repositories.agent_run_request_repository import AgentRunRequestRepository
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.services import agent_request_queue_service
+from yuxi.services import context_compression_service
 from yuxi.services import run_worker
 from yuxi.services.input_message_service import build_chat_input_message
 from yuxi.storage.postgres.models_business import (
@@ -150,6 +151,107 @@ async def test_concurrent_reject_requests_never_enter_queue(monkeypatch: pytest.
                 .values(status="cancelled", finished_at=now, updated_at=now)
             )
             await db.commit()
+        await _cleanup_queue_test_thread(session_factory, engine, thread_id)
+
+
+async def test_context_compression_holds_thread_lock_until_checkpoint_update(monkeypatch: pytest.MonkeyPatch):
+    """主动压缩持有 Conversation 行锁时，普通 intake 不能并发派发。"""
+    thread_id = f"pytest-compression-lock-{uuid.uuid4()}"
+    uid = f"pytest-user-{uuid.uuid4()}"
+    request_id = f"queued-during-compression-{uuid.uuid4()}"
+    engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    compression_started = asyncio.Event()
+    release_compression = asyncio.Event()
+
+    class AgentRepo:
+        def __init__(self, _db):
+            pass
+
+        async def get_visible_by_slug(self, **_kwargs):
+            return MagicMock(backend_id="ChatbotAgent", config_json={"context": {}})
+
+    async def empty_config(*_args, **_kwargs):
+        return {}
+
+    async def model_spec(*_args, **_kwargs):
+        return "provider:model"
+
+    async def workdir(**_kwargs):
+        return "projects/test"
+
+    async def runtime(**_kwargs):
+        return None
+
+    async def build_context(agent_config, *, thread_id, uid):
+        return {**agent_config, "thread_id": thread_id, "uid": uid}
+
+    async def compress(**_kwargs):
+        compression_started.set()
+        await asyncio.wait_for(release_compression.wait(), timeout=5)
+        return {"status": "no_op", "before_tokens": 0, "after_tokens": 0}
+
+    monkeypatch.setattr(context_compression_service, "AgentRepository", AgentRepo)
+    monkeypatch.setattr(
+        context_compression_service.agent_manager,
+        "get_agent",
+        lambda _backend_id: MagicMock(capabilities=["context_compression"]),
+    )
+    monkeypatch.setattr(context_compression_service, "normalize_agent_context_config", empty_config)
+    monkeypatch.setattr(context_compression_service, "resolve_agent_run_model_spec", model_spec)
+    monkeypatch.setattr(context_compression_service, "ensure_conversation_workdir_available", workdir)
+    monkeypatch.setattr(context_compression_service, "_ensure_runtime_available", runtime)
+    monkeypatch.setattr(context_compression_service, "build_agent_input_context", build_context)
+    monkeypatch.setattr(context_compression_service, "_compress_agent_checkpoint", compress)
+    monkeypatch.setattr(
+        agent_request_queue_service,
+        "resolve_agent_run_config",
+        AsyncMock(return_value=("provider:model", "default")),
+    )
+
+    async with session_factory() as db:
+        db.add(await _queue_test_conversation(db, thread_id=thread_id, uid=uid))
+        await db.commit()
+
+    async def run_compression():
+        async with session_factory() as db:
+            return await context_compression_service.compress_thread_context(
+                thread_id=thread_id,
+                current_user=MagicMock(uid=uid, role="user"),
+                db=db,
+            )
+
+    async def submit_message():
+        async with session_factory() as db:
+            result = await agent_request_queue_service.intake_request(
+                db=db,
+                request_id=request_id,
+                uid=uid,
+                agent_slug="main",
+                thread_id=thread_id,
+                input_message=build_chat_input_message("hello"),
+                agent_item=MagicMock(),
+                agent_backend=MagicMock(),
+            )
+            await db.commit()
+            return result
+
+    try:
+        compression_task = asyncio.create_task(run_compression())
+        await asyncio.wait_for(compression_started.wait(), timeout=5)
+        intake_task = asyncio.create_task(submit_message())
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(intake_task), timeout=0.2)
+
+        release_compression.set()
+        compression_result, intake_result = await asyncio.wait_for(
+            asyncio.gather(compression_task, intake_task),
+            timeout=10,
+        )
+        assert compression_result["status"] == "no_op"
+        assert intake_result.status == "dispatched"
+    finally:
+        release_compression.set()
         await _cleanup_queue_test_thread(session_factory, engine, thread_id)
 
 
@@ -691,9 +793,7 @@ async def test_concurrent_request_id_reuse_across_threads_returns_scope_conflict
     )
 
     async with session_factory() as db:
-        conversations = [
-            await _queue_test_conversation(db, thread_id=thread_id, uid=uid) for thread_id in thread_ids
-        ]
+        conversations = [await _queue_test_conversation(db, thread_id=thread_id, uid=uid) for thread_id in thread_ids]
         db.add_all(conversations)
         await db.commit()
 
@@ -741,11 +841,7 @@ async def test_concurrent_request_id_reuse_across_threads_returns_scope_conflict
     finally:
         async with session_factory() as db:
             project_ids = list(
-                (
-                    await db.scalars(
-                        select(Conversation.project_id).where(Conversation.thread_id.in_(thread_ids))
-                    )
-                ).all()
+                (await db.scalars(select(Conversation.project_id).where(Conversation.thread_id.in_(thread_ids)))).all()
             )
             now = utc_now_naive()
             await db.execute(

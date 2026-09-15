@@ -23,6 +23,7 @@ from yuxi.services.agent_request_queue_service import (
     steer_queued_request,
     validate_queue_policy,
 )
+from yuxi.services.workdir_service import WorkdirBinding
 from yuxi.storage.postgres.models_business import AgentRunRequest, Base, Message
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -61,9 +62,14 @@ async def test_finalize_dispatch_materializes_workdir_after_commit_before_enqueu
         dispatch=DispatchResult(
             request_id="request-1",
             run_id="run-1",
-            uid="user-1",
-            workdir_path="projects/11111111-1111-4111-8111-111111111111",
-            materialize_managed=True,
+            workdir_binding=WorkdirBinding(
+                conversation_id=1,
+                thread_id="thread-1",
+                uid="user-1",
+                project_id="project-1",
+                workdir_path="projects/11111111-1111-4111-8111-111111111111",
+                directory_mode="managed",
+            ),
         ),
     )
 
@@ -97,9 +103,14 @@ async def test_finalize_dispatch_does_not_materialize_when_commit_fails(monkeypa
             dispatch=DispatchResult(
                 request_id="request-1",
                 run_id="run-1",
-                uid="user-1",
-                workdir_path="projects/project-1",
-                materialize_managed=True,
+                workdir_binding=WorkdirBinding(
+                    conversation_id=1,
+                    thread_id="thread-1",
+                    uid="user-1",
+                    project_id="project-1",
+                    workdir_path="projects/project-1",
+                    directory_mode="managed",
+                ),
             ),
         )
 
@@ -131,13 +142,55 @@ async def test_finalize_queued_intake_recovers_missing_managed_workdir(monkeypat
             message_id=1,
             thread_id="thread-1",
             queue_position=1,
+            workdir_binding=WorkdirBinding(
+                conversation_id=1,
+                thread_id="thread-1",
+                uid="user-1",
+                project_id="project-1",
+                workdir_path="projects/project-1",
+                directory_mode="managed",
+            ),
         ),
-        uid="user-1",
-        workdir_path="projects/project-1",
-        materialize_managed=True,
     )
 
     assert events == ["commit", "materialize"]
+
+
+@pytest.mark.asyncio
+async def test_finalize_rejected_intake_uses_its_workdir_binding(monkeypatch: pytest.MonkeyPatch):
+    """拒绝请求也沿用 intake 快照完成提交后的目录收敛。"""
+
+    events: list[str] = []
+
+    class Db:
+        async def commit(self):
+            events.append("commit")
+
+    monkeypatch.setattr(
+        "yuxi.services.agent_request_queue_service.ensure_bound_user_workdir",
+        lambda uid, path: events.append(f"materialize:{uid}:{path}"),
+    )
+
+    await finalize_intake(
+        db=Db(),
+        intake=IntakeResult(
+            request_id="request-1",
+            status="rejected",
+            queue_policy="reject",
+            message_id=1,
+            thread_id="thread-1",
+            workdir_binding=WorkdirBinding(
+                conversation_id=1,
+                thread_id="thread-1",
+                uid="user-1",
+                project_id="project-1",
+                workdir_path="projects/project-1",
+                directory_mode="managed",
+            ),
+        ),
+    )
+
+    assert events == ["commit", "materialize:user-1:projects/project-1"]
 
 
 @pytest.mark.asyncio
@@ -157,9 +210,7 @@ async def test_recover_pending_dispatches_isolates_failed_scope(monkeypatch: pyt
         async def execute(self, _statement):
             self.calls += 1
             return Result(
-                [("user-1", "main", "bad-thread"), ("user-1", "main", "good-thread")]
-                if self.calls == 1
-                else []
+                [("user-1", "main", "bad-thread"), ("user-1", "main", "good-thread")] if self.calls == 1 else []
             )
 
     @asynccontextmanager
@@ -189,7 +240,14 @@ async def test_pending_linked_run_is_enqueued_without_opening_missing_directory(
     """linked 目录失效由 worker 记为终态，不能卡在 pending 且未投递。"""
 
     events: list[str] = []
-    conversation = SimpleNamespace(id=1, uid="user-1", agent_id="main", status="active")
+    conversation = SimpleNamespace(
+        id=1,
+        uid="user-1",
+        agent_id="main",
+        status="active",
+        thread_id="thread-1",
+        project_id="project-1",
+    )
 
     @asynccontextmanager
     async def session_context():
@@ -211,7 +269,14 @@ async def test_pending_linked_run_is_enqueued_without_opening_missing_directory(
             return SimpleNamespace(id="run-linked", status="pending")
 
     async def resolve_binding(**_kwargs):
-        return "clients/missing", SimpleNamespace(directory_mode="linked")
+        return WorkdirBinding(
+            conversation_id=1,
+            thread_id="thread-1",
+            uid="user-1",
+            project_id="project-1",
+            workdir_path="clients/missing",
+            directory_mode="linked",
+        )
 
     async def enqueue(run_id):
         events.append(f"enqueue:{run_id}")
@@ -235,7 +300,7 @@ async def test_pending_linked_run_is_enqueued_without_opening_missing_directory(
 
 @pytest.mark.parametrize("policy", ["enqueue", "reject", "steer"])
 def test_validate_queue_policy_accepts_policy(policy):
-    validate_queue_policy(policy)
+    assert validate_queue_policy(policy) == policy
 
 
 @pytest.mark.parametrize("policy", list(NOT_IMPLEMENTED_QUEUE_POLICIES))
@@ -374,9 +439,7 @@ async def test_intake_request_binds_resolved_model_to_conversation(session, monk
 
 
 @pytest.mark.asyncio
-async def test_reject_dispatch_conflict_does_not_change_conversation_model(
-    session, monkeypatch: pytest.MonkeyPatch
-):
+async def test_reject_dispatch_conflict_does_not_change_conversation_model(session, monkeypatch: pytest.MonkeyPatch):
     from yuxi.services import agent_request_queue_service
     from yuxi.services.input_message_service import build_chat_input_message
     from yuxi.storage.postgres.models_business import Conversation
@@ -773,6 +836,14 @@ async def test_intake_idempotent_returns_existing(session):
 
     await _seed_thread(session)
     await _create_request(session, request_id="req-idem")
+    binding = WorkdirBinding(
+        conversation_id=10,
+        thread_id="t1",
+        uid="user-1",
+        project_id="project-user-1-t1",
+        workdir_path="projects/workdir-user-1-t1",
+        directory_mode="managed",
+    )
 
     result = await intake_request(
         db=session,
@@ -783,10 +854,12 @@ async def test_intake_idempotent_returns_existing(session):
         input_message=build_chat_input_message("hello"),
         agent_item=MagicMock(),
         agent_backend=MagicMock(),
+        workdir_binding=binding,
     )
     assert result.request_id == "req-idem"
     assert result.status == "queued"
     assert result.message_id == 100
+    assert result.workdir_binding == binding
 
     count = await session.scalar(
         select(sa_func.count(AgentRunRequest.id)).where(AgentRunRequest.request_id == "req-idem")
@@ -903,7 +976,14 @@ async def test_dispatch_sets_delivery_status_dispatched(session):
         agent_slug="main",
         thread_id="t1",
         conversation_id=10,
-        workdir_path="projects/workdir-user-1-t1",
+        workdir_binding=WorkdirBinding(
+            conversation_id=10,
+            thread_id="t1",
+            uid="user-1",
+            project_id="project-user-1-t1",
+            workdir_path="projects/workdir-user-1-t1",
+            directory_mode="managed",
+        ),
     )
     assert dispatched is not None
 
@@ -942,7 +1022,14 @@ async def test_dispatches_multiple_queued_requests_one_at_a_time(session):
         agent_slug="main",
         thread_id="t1",
         conversation_id=10,
-        workdir_path="projects/workdir-user-1-t1",
+        workdir_binding=WorkdirBinding(
+            conversation_id=10,
+            thread_id="t1",
+            uid="user-1",
+            project_id="project-user-1-t1",
+            workdir_path="projects/workdir-user-1-t1",
+            directory_mode="managed",
+        ),
     )
     await session.commit()
     assert dispatched_b is not None
@@ -985,7 +1072,14 @@ async def test_dispatches_multiple_queued_requests_one_at_a_time(session):
         agent_slug="main",
         thread_id="t1",
         conversation_id=10,
-        workdir_path="projects/workdir-user-1-t1",
+        workdir_binding=WorkdirBinding(
+            conversation_id=10,
+            thread_id="t1",
+            uid="user-1",
+            project_id="project-user-1-t1",
+            workdir_path="projects/workdir-user-1-t1",
+            directory_mode="managed",
+        ),
     )
     assert blocked_c is None
     persisted_b = await run_repository.get_run(run_b)
@@ -997,7 +1091,14 @@ async def test_dispatches_multiple_queued_requests_one_at_a_time(session):
         agent_slug="main",
         thread_id="t1",
         conversation_id=10,
-        workdir_path="projects/workdir-user-1-t1",
+        workdir_binding=WorkdirBinding(
+            conversation_id=10,
+            thread_id="t1",
+            uid="user-1",
+            project_id="project-user-1-t1",
+            workdir_path="projects/workdir-user-1-t1",
+            directory_mode="managed",
+        ),
     )
     await session.commit()
 
@@ -1231,9 +1332,9 @@ async def test_continue_dispatches_only_paused_fifo_head(session):
 
     repo = AgentRunRequestRepository(session)
     assert dispatched.request_id == "request-b"
-    assert dispatched.uid == "user-1"
-    assert dispatched.workdir_path == "projects/workdir-user-1-t1"
-    assert dispatched.materialize_managed is True
+    assert dispatched.workdir_binding.uid == "user-1"
+    assert dispatched.workdir_binding.workdir_path == "projects/workdir-user-1-t1"
+    assert dispatched.workdir_binding.materialize_managed is True
     assert (await repo.get_by_request_id("request-b")).status == "dispatched"
     assert await repo.get_queue_position("request-c") == 1
 

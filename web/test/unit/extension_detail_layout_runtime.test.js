@@ -146,6 +146,8 @@ test('共享详情框架转发 activeKey、响应动态 Tab 并保留 overlays �
     assert.equal(tabPanes.length, 2)
     assert.equal(Boolean(tabPanes[0].props.forceRender), false)
     assert.equal(tabPanes[1].props.forceRender, true)
+    assert.equal(findNodes(container, (node) => node.props.id === 'general-panel').length, 1)
+    assert.equal(findNodes(container, (node) => node.props.id === 'tools-panel').length, 1)
     assert.equal(findNodes(container, (node) => node.props.id === 'overlay').length, 1)
 
     const switchButton = findNodes(container, (node) => node.props.id === 'switch-tab')[0]
@@ -156,6 +158,8 @@ test('共享详情框架转发 activeKey、响应动态 Tab 并保留 overlays �
     tabs.value = tabs.value.slice(0, 1)
     await nextTick()
     assert.equal(findNodes(container, (node) => node.type === 'tab-pane').length, 1)
+    assert.equal(findNodes(container, (node) => node.props.id === 'general-panel').length, 1)
+    assert.equal(findNodes(container, (node) => node.props.id === 'tools-panel').length, 0)
     assert.equal(findNodes(container, (node) => node.props.id === 'overlay').length, 1)
 
     app.unmount()

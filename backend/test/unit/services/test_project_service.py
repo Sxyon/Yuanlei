@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
@@ -123,6 +124,21 @@ async def test_multiple_projects_can_share_one_existing_directory(monkeypatch, t
     assert first["workdir_path"] == second["workdir_path"] == "shared"
 
 
+async def test_implicit_project_uses_timestamped_managed_workdir(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("yuxi.workspace.paths.get_user_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        "yuxi.workspace.paths.shanghai_now",
+        lambda: datetime.fromisoformat("2026-09-02T14:35:08+08:00"),
+    )
+    monkeypatch.setattr(svc.uuid, "uuid4", lambda: UUID("a1b2c3d4-e5f6-4789-8123-456789abcdef"))
+
+    project = await svc.create_implicit_project(uid="user-1", db=_Db())
+
+    assert project.id == "a1b2c3d4-e5f6-4789-8123-456789abcdef"
+    assert project.workdir_path == "projects/2026-09-02_14-35-08_a1b2c3d4"
+    assert not (user_workspace_dir("user-1") / project.workdir_path).exists()
+
+
 @pytest.mark.parametrize(
     ("directory_mode", "workdir_path"),
     [("managed", None), ("managed", "clients/acme"), ("linked", None), ("linked", "")],
@@ -157,7 +173,7 @@ async def test_linked_project_rejects_root_or_outside_paths(monkeypatch, tmp_pat
             db=_Db(),
         )
 
-    assert exc.value.status_code in {400, 404}
+    assert exc.value.status_code == 400
 
 
 async def test_linked_project_rejects_file_and_symlink(monkeypatch, tmp_path: Path):

@@ -35,17 +35,14 @@ async def test_v071_base_toml_is_migrated_before_version_is_recorded(db_session,
     await options.ensure_options_in_db(db_session)
     config_file = tmp_path / "base.toml"
     config_file.write_text(
-        'default_model = "legacy:model"\nenable_content_guard = true\n',
+        'default_model = "legacy:model"\n',
         encoding="utf-8",
     )
 
     await v071_options.migrate_system_options(db_session, legacy_config_file=config_file)
     record = await options.get_option(db_session, options.system_options.key)
 
-    assert record.value == {
-        "default_model": "legacy:model",
-        "enable_content_guard": True,
-    }
+    assert record.value == {"default_model": "legacy:model"}
     assert record.params["migration_version"] == 1
 
 

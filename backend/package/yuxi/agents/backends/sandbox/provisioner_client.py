@@ -21,12 +21,14 @@ class ProvisionerClient:
         *,
         token: str,
         timeout_seconds: int = 20,
+        delete_timeout_seconds: int = 120,
     ):
         self._base_url = base_url.rstrip("/")
         self._timeout = httpx.Timeout(timeout_seconds)
         # create 是同步长操作，镜像拉取和 Sandbox 健康等待由 provisioner
         # 拥有；仅取消响应读取上限，连接、写入和连接池仍快速失败。
         self._create_timeout = httpx.Timeout(timeout_seconds, read=None)
+        self._delete_timeout = httpx.Timeout(delete_timeout_seconds)
         self._headers = {"Authorization": f"Bearer {token}"}
 
     def _request(self, method: str, path: str, *, timeout: httpx.Timeout | None = None, **kwargs) -> httpx.Response:
@@ -98,7 +100,12 @@ class ProvisionerClient:
 
     def delete(self, sandbox_id: str, *, expected_generation: str | None = None) -> None:
         params = {"expected_generation": expected_generation} if expected_generation else None
-        response = self._request("DELETE", f"/api/sandboxes/{sandbox_id}", params=params)
+        response = self._request(
+            "DELETE",
+            f"/api/sandboxes/{sandbox_id}",
+            timeout=self._delete_timeout,
+            params=params,
+        )
         if response.status_code in {200, 404}:
             return
         raise RuntimeError(f"failed to delete sandbox {sandbox_id}: {response.status_code} {response.text}")

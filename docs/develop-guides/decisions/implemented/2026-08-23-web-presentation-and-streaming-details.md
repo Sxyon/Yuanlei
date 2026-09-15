@@ -18,7 +18,7 @@ Owner：web/src/views/HomeView.vue
 
 ## 替代方案
 
-- 降低共享 SSE 轮询间隔换取更快显示：会同时放大排队请求与 Run 流的 PostgreSQL、Redis 查询负载，不采用。
+- 降低共享 SSE 轮询间隔换取更快显示：会同时放大排队请求与 Run 流的 PostgreSQL、Redis 查询负载，不采用；Run 流后续采用与 Request 解耦的[自适应轮询](2026-09-04-agent-concurrency-capacity.md#redis-sse-与取消)。
 - 所有流式字符立即渲染：实现简单，但突发 chunk 会造成明显跳动，历史补发与实时输出也无法区分。
 - 只按显示文件名聚合知识库结果：无法区分不同知识库或目录中的同名文件，会把完整文件入口绑定到错误身份。
 - 为本轮视觉更新引入新的组件库或动画依赖：现有 Vue、Less、Ant Design Vue 与浏览器动画帧已满足需求，不增加维护表面。

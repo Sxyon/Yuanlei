@@ -30,6 +30,7 @@
 import BaseToolCall from '../BaseToolCall.vue'
 import WebSearchResultList from '@/components/sources/WebSearchResultList.vue'
 import { computed } from 'vue'
+import { parseToolCallArgs } from '../toolRegistry'
 
 const props = defineProps({
   toolCall: {
@@ -57,15 +58,8 @@ const query = computed(() => {
   if (result?.query) return result.query
 
   // Fallback to args
-  const args = props.toolCall.args || props.toolCall.function?.arguments
-  if (!args) return ''
-  if (typeof args === 'object') return args.query || args.q || ''
-  try {
-    const parsed = JSON.parse(args)
-    return parsed.query || parsed.q || ''
-  } catch {
-    return ''
-  }
+  const args = parseToolCallArgs(props.toolCall)
+  return args?.query || args?.q || ''
 })
 </script>
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import uuid
 from datetime import timedelta
 
 import pytest
@@ -14,9 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from yuxi.repositories.agent_run_repository import AgentRunRepository
-from yuxi.storage.postgres.manager import AGENT_RUN_FACT_SCHEMA_STATEMENTS
+from yuxi.storage.postgres.manager import AGENT_RUN_FACT_SCHEMA_STATEMENTS, AGENT_RUN_TIMING_SCHEMA_STATEMENTS
 from yuxi.storage.postgres.models_business import AgentRun, AgentRunAttempt, Conversation, Message, Project, User
 from yuxi.utils.datetime_utils import utc_now_naive
+
+from agent_run_test_helpers import create_agent_run
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -26,7 +27,7 @@ async def fact_database():
     engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
     async with engine.begin() as connection:
         for _ in range(2):
-            for statement in AGENT_RUN_FACT_SCHEMA_STATEMENTS:
+            for statement in (*AGENT_RUN_FACT_SCHEMA_STATEMENTS, *AGENT_RUN_TIMING_SCHEMA_STATEMENTS):
                 await connection.execute(text(statement))
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
@@ -36,59 +37,14 @@ async def fact_database():
 
 
 async def _create_run(session_factory, *, status: str = "pending") -> tuple[str, str]:
-    run_id = str(uuid.uuid4())
-    request_id = f"fact-{uuid.uuid4()}"
-    thread_id = f"pytest-fact-{uuid.uuid4()}"
-    uid = f"pytest-user-{uuid.uuid4()}"
-    project_id = str(uuid.uuid4())
-    async with session_factory() as db:
-        db.add(User(username=uid, uid=uid, password_hash="test"))
-        await db.flush()
-        db.add(
-            Project(
-                id=project_id,
-                uid=uid,
-                selection_status="implicit",
-                workdir_path=f"projects/{project_id}",
-                directory_mode="managed",
-            )
-        )
-        await db.flush()
-        conversation = Conversation(
-            thread_id=thread_id,
-            uid=uid,
-            project_id=project_id,
-            agent_id="main",
-            status="active",
-        )
-        db.add(conversation)
-        await db.flush()
-        message = Message(
-            conversation_id=conversation.id,
-            role="user",
-            content="fact input",
-            request_id=request_id,
-            delivery_status="dispatched",
-        )
-        db.add(message)
-        await db.flush()
-        db.add(
-            AgentRun(
-                id=run_id,
-                conversation_thread_id=thread_id,
-                runtime_scope_id=thread_id,
-                agent_slug="main",
-                uid=uid,
-                request_id=request_id,
-                conversation_id=conversation.id,
-                input_message_id=message.id,
-                input_payload={"model_spec": "provider/model-a"},
-                status=status,
-                run_type="chat",
-            )
-        )
-        await db.commit()
-        return run_id, thread_id
+    run_id, thread_id, _ = await create_agent_run(
+        session_factory,
+        prefix="fact",
+        message_content="fact input",
+        input_payload={"model_spec": "provider/model-a"},
+        status=status,
+    )
+    return run_id, thread_id
 
 
 async def _cleanup_runs(session_factory, thread_ids: list[str]) -> None:
@@ -112,7 +68,8 @@ async def _cleanup_runs(session_factory, thread_ids: list[str]) -> None:
 
 async def _persisted_attempts(session_factory, run_id: str) -> list[AgentRunAttempt]:
     async with session_factory() as db:
-        return await AgentRunRepository(db).list_run_attempts(run_id)
+        attempts = list((await db.scalars(select(AgentRunAttempt).where(AgentRunAttempt.run_id == run_id))).all())
+        return sorted(attempts, key=lambda attempt: attempt.attempt_no)
 
 
 async def test_run_fact_schema_evolution_is_idempotent(fact_database):
@@ -124,7 +81,10 @@ async def test_run_fact_schema_evolution_is_idempotent(fact_database):
                     text(
                         "SELECT column_name FROM information_schema.columns "
                         "WHERE table_name = 'agent_runs' "
-                        "AND column_name IN ('manifest', 'manifest_fingerprint', 'manifest_recorded_at')"
+                        "AND column_name IN ("
+                        "'manifest', 'manifest_fingerprint', 'manifest_recorded_at', "
+                        "'prepared_at', 'first_output_at'"
+                        ")"
                     )
                 )
             ).scalars()
@@ -140,7 +100,13 @@ async def test_run_fact_schema_evolution_is_idempotent(fact_database):
             )
         )
 
-    assert columns == {"manifest", "manifest_fingerprint", "manifest_recorded_at"}
+    assert columns == {
+        "manifest",
+        "manifest_fingerprint",
+        "manifest_recorded_at",
+        "prepared_at",
+        "first_output_at",
+    }
     assert attempt_table_exists is True
     assert unique_index_exists is True
 
@@ -378,3 +344,76 @@ async def test_manifest_rejects_stale_owner_and_expired_lease(fact_database):
         assert await _persisted_attempts(session_factory, legacy_run_id) == []
     finally:
         await _cleanup_runs(session_factory, [thread_id, legacy_thread_id])
+
+
+async def test_run_timing_is_write_once_under_real_postgres_lease(fact_database):
+    """阶段时间由有效 owner 写入，重放和过期 owner 都不能改写。"""
+    _, session_factory = fact_database
+    now = utc_now_naive()
+    owner = "worker-timing:token-1"
+    run_id, thread_id = await _create_run(session_factory)
+
+    try:
+        async with session_factory() as db:
+            repository = AgentRunRepository(db)
+            await repository.mark_running(run_id, worker_id=owner, lease_seconds=60, now=now)
+            await db.commit()
+
+        async with session_factory() as db:
+            repository = AgentRunRepository(db)
+            _, prepared = await repository.record_prepared(
+                run_id,
+                worker_id=owner,
+                observed_at=now + timedelta(seconds=2),
+                checked_at=now + timedelta(seconds=2),
+            )
+            await db.commit()
+
+        async with session_factory() as db:
+            repository = AgentRunRepository(db)
+            with pytest.raises(ValueError, match="lease owner"):
+                await repository.record_first_output(
+                    run_id,
+                    worker_id="worker-stale:token-2",
+                    observed_at=now + timedelta(seconds=6),
+                    checked_at=now + timedelta(seconds=6),
+                )
+            await db.rollback()
+
+        async with session_factory() as db:
+            repository = AgentRunRepository(db)
+            _, first_output = await repository.record_first_output(
+                run_id,
+                worker_id=owner,
+                observed_at=now + timedelta(seconds=7),
+                checked_at=now + timedelta(seconds=7),
+            )
+            await db.commit()
+
+        async with session_factory() as db:
+            repository = AgentRunRepository(db)
+            _, prepared_again = await repository.record_prepared(
+                run_id,
+                worker_id="worker-stale:token-2",
+                observed_at=now + timedelta(seconds=8),
+                checked_at=now + timedelta(seconds=8),
+            )
+            _, first_output_again = await repository.record_first_output(
+                run_id,
+                worker_id="worker-stale:token-2",
+                observed_at=now + timedelta(seconds=8),
+                checked_at=now + timedelta(seconds=8),
+            )
+            await db.commit()
+
+        async with session_factory() as db:
+            persisted_run = await db.get(AgentRun, run_id)
+
+        assert prepared is True
+        assert first_output is True
+        assert prepared_again is False
+        assert first_output_again is False
+        assert persisted_run.prepared_at == now + timedelta(seconds=2)
+        assert persisted_run.first_output_at == now + timedelta(seconds=7)
+    finally:
+        await _cleanup_runs(session_factory, [thread_id])

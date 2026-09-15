@@ -61,7 +61,8 @@ function emitChange(item) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px var(--page-padding);
+  height: 48px;
+  padding: 0 var(--page-padding);
   background-color: var(--light-60);
   backdrop-filter: blur(10px);
   position: sticky;

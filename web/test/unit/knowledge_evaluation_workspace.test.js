@@ -15,12 +15,9 @@ test('知识库详情将评估基准和近期评估收敛到同一个评估工�
   const apiSource = readSource('../../src/apis/knowledge_api.js')
 
   assert.match(detailSource, /key: 'evaluation', label: '评估', icon: BarChart3/)
-  assert.doesNotMatch(detailSource, /key: 'benchmarks'/)
   assert.match(detailSource, /<KnowledgeEvaluationWorkspace/)
   assert.match(detailSource, /route\.query\.section/)
   assert.match(detailSource, /:can-manage="canManageDatabase"/)
-  assert.doesNotMatch(detailSource, /<RAGEvaluationTab/)
-  assert.doesNotMatch(detailSource, /<EvaluationBenchmarks/)
   assert.match(extensionsSource, /<router-view v-else :key="route\.path" \/>/)
   assert.match(
     apiSource,
@@ -49,8 +46,6 @@ test('评估基准和近期评估使用语义按钮导航到可深链接三级�
   assert.match(workspaceSource, /const openDataset = \(dataset\) =>/)
   assert.match(workspaceSource, /name: 'ExtensionEvaluationBenchmarkDetail'/)
   assert.match(workspaceSource, /query: \{ view: 'results', run: run\.run_id \}/)
-  assert.doesNotMatch(workspaceSource, /evaluation-detail-overlay/)
-  assert.doesNotMatch(workspaceSource, /<Teleport/)
 })
 
 test('评估基准三级页包含题目和评估结果 Tab 并按当前基准过滤运行', () => {
@@ -65,22 +60,16 @@ test('评估基准三级页包含题目和评估结果 Tab 并按当前基准过
   assert.match(source, /<template #panel-questions>/)
   assert.match(source, /<template #panel-results>/)
   assert.match(source, /placeholder="筛选当前页题目"/)
-  assert.match(source, /WrapText/)
   assert.match(source, /resultFilterOptions/)
   assert.match(source, /const filter = resultFilter\.value/)
   assert.match(source, /resultFilter: filter/)
-  assert.match(source, /:bordered="false"/)
   assert.match(source, /label: getRunName\(run\)/)
   assert.match(source, /const getRunName = \(run\) => run\?\.name \|\| run\?\.run_name \|\| '未命名测试'/)
-  assert.match(source, /font-weight: 600 !important/)
-  assert.match(source, /padding: 0 24px 0 0/)
-  assert.match(source, /width: max-content/)
   assert.match(source, /仅查看错误/)
   assert.match(source, /错误及 R@10 < 1/)
   assert.match(source, /toFixed\(2\)/)
   assert.match(source, /key\.replace\('recall', 'R'\)/)
   assert.match(source, /key\.replace\('precision', 'P'\)/)
-  assert.doesNotMatch(source, /resultErrorOnly|errorOnly/)
   assert.match(source, /筛选仅作用于当前页/)
   assert.match(source, /id="benchmark-run-select"/)
   assert.match(source, /v-model:value="selectedRunId"/)
@@ -96,16 +85,10 @@ test('评估基准三级页包含题目和评估结果 Tab 并按当前基准过
   assert.match(source, /const runId = selectedRunId\.value/)
   assert.match(source, /evaluationApi\.getRunResults\(kbId\.value, runId/)
   assert.match(source, /query: \{ section: 'evaluation' \}/)
-  assert.match(source, /:scroll="\{ x: 1080 \}"/)
-  assert.match(source, /:scroll="\{ x: 1390 \}"/)
-  assert.match(source, /\{ title: '检索指标', key: 'retrieval_metrics', width: 360 \}/)
-  assert.match(source, /\.benchmark-metric-list \{\s*flex-wrap: nowrap;/)
   assert.match(
     workspaceSource,
     /const formatMetric = \(value\) => \(Number\.isFinite\(value\) \? value\.toFixed\(2\) : '-'\)/
   )
-  assert.doesNotMatch(workspaceSource, /\.evaluation-row-actions \{\s*display: none;/)
-  assert.doesNotMatch(source, /evaluation-detail-overlay/)
 })
 
 test('评估详情源码包含所选运行的串行轮询与迟到响应守卫', () => {

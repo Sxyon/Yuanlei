@@ -11,6 +11,7 @@ import pytest
 from test.live_api_cleanup import make_test_conversation_metadata, make_test_conversation_title, make_test_resource_id
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.workspace.paths import user_workdir_host_dir
 from yuxi.storage.postgres.models_business import AgentRun, AgentRunRequest, Conversation, Message, Project
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -79,6 +80,62 @@ async def test_create_run_returns_request_info(test_client, admin_headers, queue
     assert data["status"] in ("dispatched", "queued")
     if data.get("run_id"):
         await _cancel_run_and_wait(test_client, admin_headers, data["run_id"])
+
+
+async def test_compress_thread_rejects_active_run(test_client, admin_headers):
+    """主动压缩通过真实 HTTP 和 PostgreSQL busy guard 拒绝同线程并发写入。"""
+    agent_slug = await _get_default_agent_slug(test_client, admin_headers)
+    thread_id = await _create_thread(test_client, admin_headers, agent_slug)
+    request_id = f"busy-compress-{uuid.uuid4()}"
+    engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as db:
+            conversation = await db.scalar(select(Conversation).where(Conversation.thread_id == thread_id))
+            assert conversation is not None
+            message = Message(
+                conversation_id=conversation.id,
+                role="user",
+                content="busy",
+                request_id=request_id,
+            )
+            db.add(message)
+            await db.flush()
+            run = await AgentRunRepository(db).create_run(
+                run_id=str(uuid.uuid4()),
+                conversation_thread_id=thread_id,
+                agent_slug=agent_slug,
+                uid=conversation.uid,
+                request_id=request_id,
+                input_payload={"model_spec": "test:model"},
+                conversation_id=conversation.id,
+                input_message_id=message.id,
+            )
+            await AgentRunRepository(db).mark_running(
+                run.id,
+                worker_id="pytest-compression-busy",
+                lease_seconds=60,
+            )
+            await db.commit()
+
+        response = await test_client.post(
+            f"/api/chat/thread/{thread_id}/compress",
+            json={},
+            headers=admin_headers,
+        )
+
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"]["code"] == "thread_busy"
+    finally:
+        async with session_factory() as db:
+            run = await db.scalar(select(AgentRun).where(AgentRun.request_id == request_id))
+            if run is not None:
+                run.status = "cancelled"
+                run.finished_at = utc_now_naive()
+                run.updated_at = utc_now_naive()
+                await db.commit()
+        await engine.dispose()
 
 
 async def test_async_agent_call_uses_request_intake(test_client, admin_headers):

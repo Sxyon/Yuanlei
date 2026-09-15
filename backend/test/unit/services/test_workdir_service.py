@@ -71,6 +71,7 @@ async def test_binding_uses_project_workdir(monkeypatch: pytest.MonkeyPatch):
             assert (project_id, uid) == ("project-1", "user-1")
             return SimpleNamespace(
                 id="project-1",
+                uid="user-1",
                 workdir_path="projects/11111111-1111-4111-8111-111111111111",
                 directory_mode="managed",
             )
@@ -137,6 +138,7 @@ async def test_binding_resolves_project_workdir_without_conversation_path(monkey
             assert (project_id, uid) == ("project-1", "user-1")
             return SimpleNamespace(
                 id="project-1",
+                uid="user-1",
                 workdir_path="client/demo",
                 directory_mode="linked",
             )
@@ -162,10 +164,17 @@ async def test_binding_resolves_project_workdir_without_conversation_path(monkey
 
 @pytest.mark.asyncio
 async def test_ensure_linked_workdir_opens_existing_without_materializing(monkeypatch: pytest.MonkeyPatch):
-    conversation = SimpleNamespace(project_id="project-1")
+    conversation = SimpleNamespace(id=1, thread_id="thread-1", project_id="project-1", uid="user-1")
 
     async def resolve_binding(**_kwargs):
-        return "client/demo", SimpleNamespace(directory_mode="linked")
+        return svc.WorkdirBinding(
+            conversation_id=1,
+            thread_id="thread-1",
+            uid="user-1",
+            project_id="project-1",
+            workdir_path="client/demo",
+            directory_mode="linked",
+        )
 
     opened = []
 

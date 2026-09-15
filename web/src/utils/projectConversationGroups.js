@@ -9,6 +9,16 @@ const sortSidebarConversations = (conversations) =>
     return conversationTimestamp(right) - conversationTimestamp(left)
   })
 
+export const deriveProjectThreadStatus = (conversations) => {
+  if (conversations.some((conversation) => conversation.thread_status === 'loading')) {
+    return 'loading'
+  }
+  if (conversations.some((conversation) => conversation.thread_status === 'ready')) {
+    return 'ready'
+  }
+  return 'done'
+}
+
 export const buildProjectConversationGroups = (projects, conversations) => {
   const sortedConversations = sortSidebarConversations(conversations)
   const activeProjects = projects.filter(
@@ -27,10 +37,14 @@ export const buildProjectConversationGroups = (projects, conversations) => {
   })
 
   return {
-    groups: activeProjects.map((project) => ({
-      project,
-      conversations: conversationsByProject.get(project.id)
-    })),
+    groups: activeProjects.map((project) => {
+      const projectConversations = conversationsByProject.get(project.id)
+      return {
+        project,
+        conversations: projectConversations,
+        threadStatus: deriveProjectThreadStatus(projectConversations)
+      }
+    }),
     otherConversations
   }
 }

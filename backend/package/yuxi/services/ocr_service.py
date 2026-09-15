@@ -14,8 +14,8 @@ from yuxi.config.options import (
     pp_structure_v3_ocr_host_opts,
     system_options,
 )
+from yuxi.knowledge.parser.capabilities import OCR_FILE_EXTENSIONS, PARSER_CAPABILITIES, get_parser_capability
 from yuxi.knowledge.parser.factory import DocumentProcessorFactory
-from yuxi.knowledge.parser.registry import PROCESSOR_TYPES, get_parser_metadata
 from yuxi.models.providers.service import get_model_provider_by_id, resolve_api_key
 
 
@@ -23,7 +23,15 @@ async def get_ocr_options(db: AsyncSession | None = None) -> dict[str, Any]:
     options = await system_options.get(db)
     return {
         "default_engine": options["default_ocr_engine"],
-        "engines": [{"engine_id": engine_id, **get_parser_metadata(engine_id)} for engine_id in PROCESSOR_TYPES],
+        "engines": [
+            {
+                "engine_id": engine_id,
+                "service_name": capability.service_name,
+                "display_name": capability.display_name,
+                "supported_extensions": list(capability.supported_extensions),
+            }
+            for engine_id, capability in PARSER_CAPABILITIES.items()
+        ],
     }
 
 
@@ -31,7 +39,7 @@ def resolve_ocr_engine_id(engine_id: str | None, default_engine: str) -> str:
     resolved = str(engine_id or default_engine).strip() or default_engine
     if resolved == "disable":
         return resolved
-    if resolved not in PROCESSOR_TYPES:
+    if resolved not in PARSER_CAPABILITIES:
         raise ValueError(f"不支持的 OCR 引擎: {resolved}")
     return resolved
 
@@ -97,15 +105,17 @@ async def parse_document(
         StorageError: MinIO 文件读取失败。
     """
 
-    from yuxi.knowledge.parser.unified import OCR_FILE_EXTENSIONS, parse_resolved_document
-
     resolved_params = params
     suffix = Path(source.split("?", 1)[0]).suffix.lower()
     if suffix in OCR_FILE_EXTENSIONS:
         resolved_params = await resolve_ocr_task_params(params, db)
+        engine_id = resolved_params["ocr_engine"]
+        if engine_id != "disable" and suffix not in get_parser_capability(engine_id).supported_extensions:
+            raise ValueError(f"OCR 引擎 {engine_id} 不支持文件类型 {suffix}")
 
-    parsed = await parse_resolved_document(source=source, params=resolved_params)
-    return parsed.markdown
+    from yuxi.knowledge.parser.unified import parse_resolved_document
+
+    return await parse_resolved_document(source=source, params=resolved_params)
 
 
 async def check_all_ocr_health(db: AsyncSession) -> dict[str, Any]:
@@ -113,7 +123,7 @@ async def check_all_ocr_health(db: AsyncSession) -> dict[str, Any]:
 
     configured = []
     results = {}
-    for engine_id in PROCESSOR_TYPES:
+    for engine_id in PARSER_CAPABILITIES:
         try:
             kwargs = await _build_processor_kwargs(db, engine_id)
             configured.append((engine_id, kwargs))

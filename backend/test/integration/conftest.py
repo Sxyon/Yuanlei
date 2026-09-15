@@ -25,7 +25,6 @@ from test.live_api_cleanup import (  # noqa: E402
     cleanup_pytest_knowledge_resources,
     cleanup_test_chat_resources,
 )
-from yuxi.config.runtime import lite_mode_enabled  # noqa: E402
 
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 load_dotenv(PROJECT_ROOT / "test/.env.test", override=False)
@@ -33,7 +32,6 @@ load_dotenv(PROJECT_ROOT / "test/.env.test", override=False)
 API_BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:5050").rstrip("/")
 ADMIN_LOGIN = os.getenv("TEST_USERNAME")
 ADMIN_PASSWORD = os.getenv("TEST_PASSWORD")
-LITE_MODE = lite_mode_enabled()
 
 _ADMIN_TOKEN_CACHE: str | None = None
 HTTP_TIMEOUT = httpx.Timeout(60.0, connect=5.0)
@@ -50,7 +48,7 @@ def ensure_live_api_schema():
         from yuxi.storage.postgres.manager import pg_manager
 
         pg_manager.initialize()
-        await pg_manager.require_current_schema(include_knowledge=not LITE_MODE)
+        await pg_manager.require_current_schema()
 
     anyio.run(verify_schema_version)
 
@@ -148,8 +146,7 @@ def cleanup_test_knowledge_resources():
                 raise RuntimeError("Test resource cleanup current user payload is missing uid")
 
             await cleanup_test_chat_resources(client, headers, owner_uid=cleanup_uid)
-            if not LITE_MODE:
-                await cleanup_pytest_knowledge_resources(client, headers)
+            await cleanup_pytest_knowledge_resources(client, headers)
 
     anyio.run(run_cleanup)
     yield

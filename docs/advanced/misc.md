@@ -2,7 +2,6 @@
 
 本组页面收录几个相互独立的参考主题。按任务选择页面：
 
-- [内容审查](./content-safety.md)：配置关键词和 LLM 审查。
 - [网页搜索](./web-search.md)：接入豆包或 Tavily 的 `web_search` 工具。
 - [服务端口](./ports.md)：查看开发 Compose 的宿主机端口和访问入口。
 

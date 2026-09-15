@@ -12,7 +12,6 @@ pytestmark = pytest.mark.unit
 
 def test_discovery_endpoint_is_public(monkeypatch):
     monkeypatch.setattr("server.routers.system_router.get_version", lambda: "0.7.1.dev0")
-    monkeypatch.delenv("LITE_MODE", raising=False)
 
     app = FastAPI()
     app.include_router(system, prefix="/api")
@@ -31,20 +30,6 @@ def test_discovery_endpoint_is_public(monkeypatch):
     assert payload["capabilities"]["cli"]["kb_upload"] is True
     assert payload["endpoints"]["cli_auth_sessions"] == "/api/auth/cli/sessions"
     assert payload["endpoints"]["readiness"] == "/api/system/ready"
-
-
-def test_lite_discovery_does_not_advertise_unregistered_knowledge_routes(monkeypatch):
-    monkeypatch.setenv("LITE_MODE", "true")
-    app = FastAPI()
-    app.include_router(system, prefix="/api")
-
-    response = TestClient(app).get("/api/system/discovery")
-
-    assert response.status_code == 200
-    capabilities = response.json()["capabilities"]
-    assert capabilities["features"]["knowledge"] is False
-    for name in ("kb_upload", "kb_list", "kb_files", "kb_query", "kb_open", "kb_find"):
-        assert capabilities["cli"][name] is False
 
 
 def test_readiness_endpoint_returns_structured_503(monkeypatch):

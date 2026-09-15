@@ -18,6 +18,7 @@ on:
       - 'scripts/migrate-storage.sh'
       - '.github/workflows/test.yml'
   push:
+    tags: ['v[0-9]*']
     branches:
       - main
     paths:

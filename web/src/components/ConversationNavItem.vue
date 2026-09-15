@@ -1,5 +1,12 @@
 <template>
-  <div class="conversation-item" :class="{ active: currentChatId === chat.id, nested }">
+  <div
+    class="conversation-item"
+    :class="{
+      active: currentChatId === chat.id,
+      nested,
+      'has-status': chat.thread_status === 'loading' || chat.thread_status === 'ready'
+    }"
+  >
     <button
       type="button"
       class="conversation-select"
@@ -10,6 +17,10 @@
     >
       <span class="conversation-title">{{ chat.title || '新的对话' }}</span>
       <span class="actions-mask"></span>
+      <span
+        v-if="chat.thread_status === 'loading' || chat.thread_status === 'ready'"
+        class="status-mask"
+      ></span>
       <span
         v-if="chat.thread_status === 'loading'"
         class="thread-status thread-status-loading"
@@ -202,7 +213,8 @@ const renameChat = () => {
     }
 
     .pinned-indicator,
-    .thread-status {
+    .thread-status,
+    .status-mask {
       display: none;
     }
   }
@@ -214,12 +226,27 @@ const renameChat = () => {
     .conversation-title {
       font-weight: 600;
     }
+
+    .status-mask {
+      background: linear-gradient(
+        to right,
+        transparent,
+        color-mix(in srgb, var(--gray-100) 6%, var(--gray-100)) 28px
+      );
+    }
   }
 
   &:has(.pinned-indicator) {
     .actions-mask,
     .conversation-actions {
       opacity: 1;
+    }
+  }
+
+  &.has-status:not(:hover) {
+    .actions-mask,
+    .conversation-actions {
+      opacity: 0;
     }
   }
 }
@@ -282,6 +309,14 @@ const renameChat = () => {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
+}
+
+.status-mask {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 40px;
+  background: linear-gradient(to right, transparent, var(--main-5) 24px);
+  pointer-events: none;
 }
 
 .conversation-actions {

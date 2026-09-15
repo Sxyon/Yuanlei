@@ -45,8 +45,12 @@ def _load_module():
 def _docker_backend(module, tmp_path, run_container):
     backend = object.__new__(module.LocalContainerProvisionerBackend)
     backend._lock = threading.RLock()
+    backend._sandbox_locks = {}
+    backend._delete_slots = threading.BoundedSemaphore(16)
+    backend._stop_timeout_seconds = 2
     backend._container_port = 8080
     backend._network_prefix = "yuxi-know-sandbox"
+    backend._network_pool = None
     backend._sandbox_image = "sandbox-image"
     backend._container_prefix = "yuxi-sandbox"
     backend._sandbox_env = {}
@@ -122,11 +126,196 @@ def test_merged_sandbox_env_user_values_override_global(monkeypatch):
     }
 
 
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        (
+            "core",
+            {
+                "DISABLE_BROWSER": "true",
+                "DISABLE_MCP_BROWSER": "true",
+                "DISABLE_VNC": "true",
+                "DISABLE_JUPYTER": "true",
+                "DISABLE_CODE_SERVER": "true",
+                "DISABLE_NODEJS_REPL": "true",
+            },
+        ),
+        (
+            "browser",
+            {
+                "DISABLE_BROWSER": "false",
+                "DISABLE_MCP_BROWSER": "false",
+                "DISABLE_VNC": "false",
+                "DISABLE_JUPYTER": "true",
+                "DISABLE_CODE_SERVER": "true",
+                "DISABLE_NODEJS_REPL": "true",
+            },
+        ),
+        (
+            "full",
+            {
+                "DISABLE_BROWSER": "false",
+                "DISABLE_MCP_BROWSER": "false",
+                "DISABLE_VNC": "false",
+                "DISABLE_JUPYTER": "false",
+                "DISABLE_CODE_SERVER": "false",
+                "DISABLE_NODEJS_REPL": "false",
+            },
+        ),
+    ],
+)
+def test_sandbox_runtime_profile_environment(profile, expected):
+    module = _load_module()
+
+    assert module.sandbox_runtime_environment(profile) == expected
+
+
+def test_sandbox_runtime_profile_rejects_unknown_value():
+    module = _load_module()
+
+    with pytest.raises(RuntimeError, match="invalid SANDBOX_RUNTIME_PROFILE"):
+        module.sandbox_runtime_profile("unknown")
+
+    with pytest.raises(RuntimeError, match="invalid SANDBOX_RUNTIME_PROFILE"):
+        module.sandbox_runtime_profile("")
+
+
+def test_docker_network_pool_reads_dedicated_subnets(monkeypatch):
+    module = _load_module()
+    monkeypatch.setenv("DOCKER_ADDRESS_POOL", "10.253.240.0/20")
+    monkeypatch.setenv("DOCKER_SUBNET_PREFIX", "28")
+
+    address_pool, subnet_prefix = module.docker_network_pool()
+
+    assert str(address_pool) == "10.253.240.0/20"
+    assert subnet_prefix == 28
+
+
+@pytest.mark.parametrize(
+    ("address_pool", "subnet_prefix", "error_match"),
+    [
+        ("10.253.240.1/20", "28", "invalid DOCKER_ADDRESS_POOL"),
+        ("fd00::/64", "80", "must be an IPv4 network"),
+        ("10.253.240.0/20", "30", "between the address pool prefix and 29"),
+        ("10.253.240.0/20", "invalid", "must be an integer"),
+    ],
+)
+def test_docker_network_pool_rejects_invalid_configuration(monkeypatch, address_pool, subnet_prefix, error_match):
+    module = _load_module()
+    monkeypatch.setenv("DOCKER_ADDRESS_POOL", address_pool)
+    monkeypatch.setenv("DOCKER_SUBNET_PREFIX", subnet_prefix)
+
+    with pytest.raises(RuntimeError, match=error_match):
+        module.docker_network_pool()
+
+
+def test_docker_network_pool_rejects_prefix_without_pool(monkeypatch):
+    module = _load_module()
+    monkeypatch.delenv("DOCKER_ADDRESS_POOL", raising=False)
+    monkeypatch.setenv("DOCKER_SUBNET_PREFIX", "28")
+
+    with pytest.raises(RuntimeError, match="requires DOCKER_ADDRESS_POOL"):
+        module.docker_network_pool()
+
+
+def test_sandbox_container_stop_timeout_defaults_to_two_seconds(monkeypatch):
+    module = _load_module()
+    monkeypatch.delenv("SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS", raising=False)
+
+    assert module.sandbox_container_stop_timeout_seconds() == 2
+
+
+def test_sandbox_container_stop_timeout_reads_configured_value():
+    module = _load_module()
+
+    assert module.sandbox_container_stop_timeout_seconds("3") == 3
+
+
+@pytest.mark.parametrize("value", ["", "0", "invalid"])
+def test_sandbox_container_stop_timeout_rejects_invalid_value(value):
+    module = _load_module()
+
+    with pytest.raises(RuntimeError, match="SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS"):
+        module.sandbox_container_stop_timeout_seconds(value)
+
+
+def test_sandbox_delete_concurrency_rejects_invalid_configuration():
+    module = _load_module()
+
+    assert module.sandbox_delete_concurrency("16") == 16
+    with pytest.raises(RuntimeError, match="must be >= 1"):
+        module.sandbox_delete_concurrency("0")
+    with pytest.raises(RuntimeError, match="must be an integer"):
+        module.sandbox_delete_concurrency("invalid")
+
+
 def test_normalize_env_converts_values_to_strings(monkeypatch):
     monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
     module = _load_module()
 
     assert module.normalize_env({"A": 1, "B": None, "": "ignored"}) == {"A": "1", "B": ""}
+
+
+def test_wait_for_sandbox_ready_uses_bounded_fast_backoff(monkeypatch):
+    module = _load_module()
+    clock = SimpleNamespace(now=0.0, sleeps=[])
+    probe_timeouts = []
+
+    def fake_sleep(seconds):
+        clock.sleeps.append(seconds)
+        clock.now += seconds
+
+    class FailingOpener:
+        def open(self, _url, *, timeout):
+            probe_timeouts.append(timeout)
+            raise OSError("not ready")
+
+    monkeypatch.setattr(
+        module,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now, sleep=fake_sleep),
+    )
+    monkeypatch.setattr(module.request, "build_opener", lambda *_args: FailingOpener())
+    monkeypatch.setattr(
+        module,
+        "random",
+        SimpleNamespace(uniform=lambda _lower, _upper: 1.0),
+        raising=False,
+    )
+
+    assert module.wait_for_sandbox_ready("http://sandbox", timeout_seconds=2.2) is False
+    assert clock.sleeps == pytest.approx([0.05, 0.1, 0.2, 0.4, 0.8, 0.65])
+    assert all(0 < timeout <= 3 for timeout in probe_timeouts)
+    assert clock.now == pytest.approx(2.2)
+
+
+def test_wait_for_sandbox_ready_returns_immediately_when_first_probe_succeeds(monkeypatch):
+    module = _load_module()
+    sleeps = []
+
+    class SuccessfulResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class SuccessfulOpener:
+        def open(self, _url, *, timeout):
+            assert timeout == 3
+            return SuccessfulResponse()
+
+    monkeypatch.setattr(
+        module,
+        "time",
+        SimpleNamespace(monotonic=lambda: 0.0, sleep=sleeps.append),
+    )
+    monkeypatch.setattr(module.request, "build_opener", lambda *_args: SuccessfulOpener())
+
+    assert module.wait_for_sandbox_ready("http://sandbox", timeout_seconds=30) is True
+    assert sleeps == []
 
 
 def test_local_container_identity_validation_rejects_unsafe_path_segments(monkeypatch):
@@ -612,6 +801,30 @@ def test_create_sandbox_forwards_environment_policy(monkeypatch):
     assert calls[0]["inherit_env"] is False
 
 
+def test_create_sandbox_reports_address_pool_exhaustion_as_unavailable(monkeypatch):
+    module = _load_module()
+    monkeypatch.setenv("SANDBOX_PROVISIONER_TOKEN", "test-provisioner-token-that-is-long-enough")
+
+    def create(*_args, **_kwargs):
+        raise module.SandboxCapacityError("Docker Sandbox address pool 10.253.240.0/20 has no available /28 subnet")
+
+    monkeypatch.setattr(module, "backend_impl", SimpleNamespace(create=create))
+
+    with TestClient(module.app) as client:
+        response = client.post(
+            "/api/sandboxes",
+            headers={"Authorization": "Bearer test-provisioner-token-that-is-long-enough"},
+            json={
+                "sandbox_id": "sandbox-capacity",
+                "thread_id": "thread-1",
+                "uid": "user-1",
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"].endswith("has no available /28 subnet")
+
+
 def test_authenticated_proxy_forwards_request_without_management_token(monkeypatch):
     token = "test-provisioner-token-that-is-long-enough"
     monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
@@ -730,26 +943,50 @@ def test_docker_backend_uses_private_network_without_published_port(monkeypatch,
     assert "ports" not in captured[0][1]
 
 
-def test_docker_ephemeral_sandbox_has_only_runtime_identity_environment_and_no_persistent_mounts(
+def test_docker_runtime_profile_cannot_be_overridden_by_request(monkeypatch, tmp_path):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module, backend, captured = _docker_backend_with_running_container(monkeypatch, tmp_path)
+    monkeypatch.setattr(module, "runtime_profile_name", "core")
+    backend._sandbox_env = {"GLOBAL_VALUE": "global", "DISABLE_BROWSER": "false"}
+
+    backend.create(
+        "sandbox-1",
+        "thread-1",
+        "user-1",
+        {"REQUEST_VALUE": "request", "DISABLE_BROWSER": "false"},
+    )
+
+    environment = captured[0][1]["environment"]
+    assert environment["GLOBAL_VALUE"] == "global"
+    assert environment["REQUEST_VALUE"] == "request"
+    assert environment["DISABLE_BROWSER"] == "true"
+
+
+def test_docker_ephemeral_sandbox_has_runtime_profile_and_identity_without_persistent_mounts(
     monkeypatch,
     tmp_path,
 ):
     monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
-    _, backend, captured = _docker_backend_with_running_container(monkeypatch, tmp_path)
+    module, backend, captured = _docker_backend_with_running_container(monkeypatch, tmp_path)
     backend._sandbox_env = {"GLOBAL_SECRET": "value"}
     uid = "remote-skill-ephemeral"
 
     backend.create("sandbox-1", "thread-1", uid, {"USER_SECRET": "value"}, inherit_env=False)
 
     run_config = captured[0][1]
-    assert run_config["environment"] == {"USER": "gem", "USER_UID": "1000", "USER_GID": "1000"}
+    assert run_config["environment"] == {
+        **module.sandbox_runtime_environment("core"),
+        "USER": "gem",
+        "USER_UID": "1000",
+        "USER_GID": "1000",
+    }
     assert run_config["volumes"] == {}
     assert run_config["labels"]["storage-mode"] == "ephemeral"
     assert not (backend._user_data_container_path / "shared" / uid).exists()
     assert not (backend._skill_projections_container_path / uid).exists()
 
 
-def test_kubernetes_ephemeral_sandbox_uses_only_empty_home(monkeypatch):
+def test_kubernetes_ephemeral_sandbox_uses_profile_and_only_empty_home(monkeypatch):
     monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
     module = _load_module()
 
@@ -775,6 +1012,7 @@ def test_kubernetes_ephemeral_sandbox_uses_only_empty_home(monkeypatch):
 
     assert pod.spec.automount_service_account_token is False
     assert {item.name: item.value for item in pod.spec.containers[0].env} == {
+        **module.sandbox_runtime_environment("core"),
         "USER": "gem",
         "USER_UID": "1000",
         "USER_GID": "1000",
@@ -876,6 +1114,7 @@ def test_kubernetes_storage_init_migrates_only_real_entries(tmp_path, monkeypatc
     document.chmod(0o666)
     outside = tmp_path / "outside"
     outside.mkdir()
+    outside.chmod(0o755)
     (workspace / "linked").symlink_to(outside, target_is_directory=True)
 
     script = module.kubernetes_storage_init_script("user-1", "projects/11111111-1111-4111-8111-111111111111")
@@ -1063,7 +1302,7 @@ def test_docker_backend_cleans_up_sandbox_and_network_on_failure(monkeypatch, tm
             return None
 
         def stop(self, timeout):
-            assert timeout == 10
+            assert timeout == 2
             self.status = "exited"
 
         def remove(self, *, v, force):
@@ -1099,6 +1338,7 @@ def test_docker_backend_assigns_each_sandbox_a_distinct_network(monkeypatch):
     monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
     module = _load_module()
     backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._lock = threading.RLock()
     backend._network_prefix = "yuxi-know-sandbox"
 
     first_network = backend._network_name("sandbox-1")
@@ -1115,6 +1355,274 @@ def test_docker_backend_assigns_each_sandbox_a_distinct_network(monkeypatch):
         SimpleNamespace(attrs={"NetworkSettings": {"Networks": {first_network: {}, second_network: {}}}}),
         "sandbox-1",
     )
+
+
+def test_docker_backend_creates_network_from_dedicated_address_pool(monkeypatch):
+    module = _load_module()
+
+    class NotFound(Exception):
+        pass
+
+    class IPAMPool:
+        def __init__(self, *, subnet):
+            self.subnet = subnet
+
+    class IPAMConfig:
+        def __init__(self, *, pool_configs):
+            self.pool_configs = pool_configs
+
+    class FakeNetwork:
+        attrs = {
+            "Labels": {
+                "managed-by": "yuxi-sandbox-provisioner",
+                "sandbox-id": "sandbox-1",
+            },
+            "Containers": {},
+            "IPAM": {"Config": [{"Subnet": "10.253.240.0/28"}]},
+        }
+
+        def reload(self):
+            return None
+
+        def connect(self, _container, aliases):
+            assert aliases == ["sandbox-provisioner"]
+
+    captured = []
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._lock = threading.RLock()
+    backend._network_prefix = "yuxi-know-sandbox"
+    backend._network_pool = (module.ipaddress.ip_network("10.253.240.0/20"), 28)
+    backend._docker = SimpleNamespace(types=SimpleNamespace(IPAMPool=IPAMPool, IPAMConfig=IPAMConfig))
+    backend._provisioner_container = SimpleNamespace(id="provisioner-id")
+
+    def create_network(name, **kwargs):
+        captured.append((name, kwargs))
+        return FakeNetwork()
+
+    backend._client = SimpleNamespace(
+        networks=SimpleNamespace(
+            get=lambda _name: (_ for _ in ()).throw(NotFound()),
+            list=lambda: [],
+            create=create_network,
+        )
+    )
+    monkeypatch.setitem(sys.modules, "docker.errors", SimpleNamespace(NotFound=NotFound))
+
+    network_name = backend._ensure_network("sandbox-1")
+
+    assert network_name == "yuxi-know-sandbox-sandbox-1"
+    assert captured[0][0] == network_name
+    assert captured[0][1]["ipam"].pool_configs[0].subnet == "10.253.240.0/28"
+
+
+def test_docker_backend_skips_used_subnet_and_reuses_it_after_cleanup():
+    module = _load_module()
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._network_pool = (module.ipaddress.ip_network("10.253.240.0/27"), 28)
+
+    occupied = SimpleNamespace(attrs={"IPAM": {"Config": [{"Subnet": "10.253.240.0/28"}]}})
+    networks = [occupied]
+    backend._client = SimpleNamespace(networks=SimpleNamespace(list=lambda: list(networks)))
+
+    assert str(backend._next_network_subnet()) == "10.253.240.16/28"
+
+    networks.clear()
+    assert str(backend._next_network_subnet()) == "10.253.240.0/28"
+
+
+def test_docker_backend_reports_dedicated_address_pool_exhaustion():
+    module = _load_module()
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._network_pool = (module.ipaddress.ip_network("10.253.240.0/29"), 29)
+    backend._client = SimpleNamespace(
+        networks=SimpleNamespace(
+            list=lambda: [SimpleNamespace(attrs={"IPAM": {"Config": [{"Subnet": "10.253.240.0/29"}]}})]
+        )
+    )
+
+    with pytest.raises(module.SandboxCapacityError, match="has no available /29 subnet"):
+        backend._next_network_subnet()
+
+
+def test_docker_backend_retries_subnet_conflict_from_another_provisioner():
+    module = _load_module()
+
+    class IPAMPool:
+        def __init__(self, *, subnet):
+            self.subnet = subnet
+
+    class IPAMConfig:
+        def __init__(self, *, pool_configs):
+            self.pool_configs = pool_configs
+
+    created_subnets = []
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._network_pool = (module.ipaddress.ip_network("10.253.240.0/27"), 28)
+    backend._docker = SimpleNamespace(types=SimpleNamespace(IPAMPool=IPAMPool, IPAMConfig=IPAMConfig))
+
+    def create_network(_name, **kwargs):
+        subnet = kwargs["ipam"].pool_configs[0].subnet
+        created_subnets.append(subnet)
+        if len(created_subnets) == 1:
+            raise RuntimeError("Pool overlaps with other one on this address space")
+        return SimpleNamespace(name="created")
+
+    backend._client = SimpleNamespace(networks=SimpleNamespace(list=lambda: [], create=create_network))
+
+    network = backend._create_network("sandbox-network", "sandbox-1")
+
+    assert network.name == "created"
+    assert created_subnets == ["10.253.240.0/28", "10.253.240.16/28"]
+
+
+def test_docker_backend_deletes_distinct_sandboxes_with_bounded_parallelism():
+    module = _load_module()
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._lock = threading.RLock()
+    backend._sandbox_locks = {}
+    backend._delete_slots = threading.BoundedSemaphore(2)
+    backend._stop_timeout_seconds = 2
+
+    state_lock = threading.Lock()
+    two_stops_entered = threading.Event()
+    release_stops = threading.Event()
+    active_stops = 0
+    peak_stops = 0
+
+    class FakeContainer:
+        status = "running"
+
+        def __init__(self, sandbox_id):
+            self.id = f"generation-{sandbox_id}"
+
+        def reload(self):
+            return None
+
+        def stop(self, timeout):
+            nonlocal active_stops, peak_stops
+            assert timeout == 2
+            with state_lock:
+                active_stops += 1
+                peak_stops = max(peak_stops, active_stops)
+                if active_stops == 2:
+                    two_stops_entered.set()
+            assert release_stops.wait(timeout=2)
+            with state_lock:
+                active_stops -= 1
+
+        def remove(self, *, v, force):
+            assert v is True
+            assert force is True
+
+    containers = {
+        sandbox_id: FakeContainer(sandbox_id) for sandbox_id in ("sandbox-1", "sandbox-2", "sandbox-3", "sandbox-4")
+    }
+    backend._get_container = containers.get
+    deleted_networks = []
+    backend._delete_network = deleted_networks.append
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(backend.delete, sandbox_id) for sandbox_id in containers]
+        assert two_stops_entered.wait(timeout=1)
+        release_stops.set()
+        for future in futures:
+            future.result(timeout=2)
+
+    assert peak_stops == 2
+    assert set(deleted_networks) == set(containers)
+
+
+def test_docker_backend_serializes_same_sandbox_generation():
+    module = _load_module()
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._lock = threading.RLock()
+    backend._sandbox_locks = {}
+
+    first = backend._sandbox_lock("sandbox-1")
+
+    assert backend._sandbox_lock("sandbox-1") is first
+    assert backend._sandbox_lock("sandbox-2") is not first
+
+
+def test_docker_backend_serializes_create_and_delete_for_same_sandbox(monkeypatch):
+    module = _load_module()
+    backend = object.__new__(module.LocalContainerProvisionerBackend)
+    backend._lock = threading.RLock()
+    backend._sandbox_locks = {}
+    backend._delete_slots = threading.BoundedSemaphore(1)
+    backend._stop_timeout_seconds = 2
+    backend._container_port = 8080
+    backend._health_timeout_seconds = 1
+
+    create_lookup_entered = threading.Event()
+    release_create_lookup = threading.Event()
+    delete_lookup_entered = threading.Event()
+    caller = threading.local()
+
+    class FakeContainer:
+        id = "generation-1"
+        name = "yuxi-sandbox-sandbox-1"
+        status = "running"
+        labels = {
+            "thread-id": "thread-1",
+            "workdir-path": "",
+            "storage-mode": "persistent",
+        }
+        attrs = {"State": {"Status": "running"}}
+        removed = False
+
+        def reload(self):
+            return None
+
+        def stop(self, timeout):
+            assert timeout == 2
+
+        def remove(self, *, v, force):
+            assert v is True
+            assert force is True
+            self.removed = True
+
+    container = FakeContainer()
+
+    def get_container(_sandbox_id):
+        if caller.role == "create":
+            create_lookup_entered.set()
+            assert release_create_lookup.wait(timeout=2)
+        else:
+            delete_lookup_entered.set()
+        return None if container.removed else container
+
+    def create_sandbox():
+        caller.role = "create"
+        return backend.create("sandbox-1", "thread-1", "user-1")
+
+    def delete_sandbox():
+        caller.role = "delete"
+        backend.delete("sandbox-1", expected_generation="generation-1")
+
+    backend._get_container = get_container
+    backend._ensure_network = lambda _sandbox_id: "yuxi-know-sandbox-sandbox-1"
+    backend._delete_network = lambda _sandbox_id: None
+    backend._is_expected_skills_mount = lambda _container, _uid: True
+    backend._is_on_expected_network = lambda _container, _sandbox_id: True
+    backend._has_expected_user_data_mounts = lambda _container, _uid: True
+    monkeypatch.setattr(module, "wait_for_sandbox_ready", lambda _url, timeout_seconds: True)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        create_future = executor.submit(create_sandbox)
+        assert create_lookup_entered.wait(timeout=1)
+        delete_future = executor.submit(delete_sandbox)
+        try:
+            assert not delete_lookup_entered.wait(timeout=0.1)
+        finally:
+            release_create_lookup.set()
+
+        record = create_future.result(timeout=2)
+        delete_future.result(timeout=2)
+
+    assert record.generation == "generation-1"
+    assert delete_lookup_entered.is_set()
+    assert container.removed is True
 
 
 def test_docker_backend_reconnects_provisioner_before_reusing_sandbox(monkeypatch, tmp_path):
@@ -1302,6 +1810,121 @@ def test_quiesce_waits_for_authoritative_inventory_and_blocks_new_creates(
             )
         )
     assert exc_info.value.status_code == 503
+
+
+def test_quiesce_deletes_large_inventory_with_configured_parallelism(monkeypatch):
+    """全局静默必须并行清理 100 个 runtime，不能串行耗尽迁移 deadline。"""
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_DELETE_CONCURRENCY", "32")
+    module = _load_module()
+    records = {
+        f"sandbox-{index}": module.SandboxRecord(
+            sandbox_id=f"sandbox-{index}",
+            sandbox_url="",
+            status="running",
+            generation=f"generation-{index}",
+        )
+        for index in range(100)
+    }
+    state_lock = threading.Lock()
+    release_deletes = threading.Event()
+    capacity_reached = threading.Event()
+    active_deletes = 0
+    peak_deletes = 0
+
+    class FakeBackend:
+        def list(self):
+            with state_lock:
+                return list(records.values())
+
+        def delete(self, sandbox_id, *, expected_generation=None):
+            nonlocal active_deletes, peak_deletes
+            with state_lock:
+                assert records[sandbox_id].generation == expected_generation
+                active_deletes += 1
+                peak_deletes = max(peak_deletes, active_deletes)
+                if active_deletes == 32:
+                    capacity_reached.set()
+            assert release_deletes.wait(timeout=2)
+            with state_lock:
+                records.pop(sandbox_id)
+                active_deletes -= 1
+
+    monkeypatch.setattr(module, "backend_impl", FakeBackend())
+    monkeypatch.setattr(module, "sandbox_quiescence_gate", module.SandboxQuiescenceGate())
+    monkeypatch.setattr(module, "sandbox_operation_pins", module.SandboxOperationPins())
+    monkeypatch.setattr(module.idle_reaper, "forget", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    result = {}
+
+    def quiesce():
+        result["response"] = module.quiesce_sandboxes(timeout_seconds=2)
+
+    thread = threading.Thread(target=quiesce)
+    thread.start()
+    try:
+        assert capacity_reached.wait(timeout=1)
+        assert peak_deletes == 32
+    finally:
+        release_deletes.set()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert result["response"] == module.QuiesceSandboxesResponse(ok=True, deleted=100)
+
+
+def test_quiesce_large_inventory_honors_delete_deadline(monkeypatch):
+    """100 个阻塞删除必须按 deadline 返回，不能串行等待全部 stop。"""
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_DELETE_CONCURRENCY", "32")
+    module = _load_module()
+    records = [
+        module.SandboxRecord(
+            sandbox_id=f"sandbox-{index}",
+            sandbox_url="",
+            status="running",
+            generation=f"generation-{index}",
+        )
+        for index in range(100)
+    ]
+    state_lock = threading.Lock()
+    release_deletes = threading.Event()
+    delete_started = threading.Event()
+    deletes_drained = threading.Event()
+    active_deletes = 0
+
+    class FakeBackend:
+        def delete(self, _sandbox_id, *, expected_generation=None):
+            nonlocal active_deletes
+            assert expected_generation is not None
+            with state_lock:
+                active_deletes += 1
+                delete_started.set()
+            try:
+                assert release_deletes.wait(timeout=2)
+            finally:
+                with state_lock:
+                    active_deletes -= 1
+                    if active_deletes == 0:
+                        deletes_drained.set()
+
+    monkeypatch.setattr(module, "backend_impl", FakeBackend())
+    monkeypatch.setattr(module, "sandbox_operation_pins", module.SandboxOperationPins())
+    monkeypatch.setattr(module.idle_reaper, "forget", lambda *_args, **_kwargs: None)
+
+    started_at = module.time.monotonic()
+    try:
+        with pytest.raises(module.SandboxQuiesceTimeoutError):
+            module._delete_sandbox_records_for_quiescence(
+                records,
+                timeout_seconds=0.05,
+            )
+    finally:
+        release_deletes.set()
+
+    assert delete_started.is_set()
+    assert module.time.monotonic() - started_at < 0.5
+    assert deletes_drained.wait(timeout=1)
 
 
 def test_quiescence_gate_waits_for_create_already_in_flight():

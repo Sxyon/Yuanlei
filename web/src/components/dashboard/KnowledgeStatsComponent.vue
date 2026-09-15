@@ -27,355 +27,159 @@
 
     <a-divider />
 
-    <!-- 图表区域 -->
-    <a-row :gutter="24">
-      <!-- 文件类型分布 -->
-      <a-col :span="24">
-        <div class="chart-container">
-          <h4>文件类型分布</h4>
-          <div ref="fileTypeChartRef" class="chart donut-chart-container">
-            <div class="carousel-info" v-if="fileTypeData.length > 0">
-              <div
-                class="carousel-item"
-                :class="{ active: currentCarouselIndex === index }"
-                v-for="(item, index) in fileTypeData"
-                :key="item.name"
-              >
-                <div class="carousel-label">{{ item.name }}</div>
-                <div class="carousel-value">{{ item.value }}</div>
-                <div class="carousel-percent">
-                  {{ ((item.value / totalFiles) * 100).toFixed(1) }}%
-                </div>
-              </div>
-            </div>
+    <div class="file-distribution">
+      <h4>文件类型分布</h4>
+      <template v-if="fileTypeData.length">
+        <div class="donut-wrap">
+          <div ref="fileTypeChartRef" class="file-type-chart"></div>
+          <div class="donut-summary">
+            <span>文件总数</span>
+            <strong>{{ totalFiles.toLocaleString() }}</strong>
           </div>
         </div>
-      </a-col>
-    </a-row>
+        <ul class="file-type-legend" aria-label="文件类型数量与占比">
+          <li v-for="(item, index) in fileTypeData" :key="item.name">
+            <span class="legend-swatch" :style="{ backgroundColor: getColorByIndex(index) }"></span>
+            <span class="legend-name">{{ item.name }}</span>
+            <span class="legend-value">{{ item.value.toLocaleString() }}</span>
+            <span class="legend-percent">{{
+              item.value / totalFiles < 0.001
+                ? '<0.1%'
+                : `${((item.value / totalFiles) * 100).toFixed(1)}%`
+            }}</span>
+          </li>
+        </ul>
+      </template>
+      <a-empty v-else description="暂无文件类型数据" />
+    </div>
   </a-card>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick, computed } from 'vue'
-import * as echarts from 'echarts'
-import { getColorPalette } from '@/utils/chartColors'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import * as echarts from '@/utils/dashboardCharts'
+import { getColorByIndex, getColorPalette } from '@/utils/chartColors'
 import { useThemeStore } from '@/stores/theme'
 import { formatNumber, formatStorageSize } from '@/utils/dashboard'
 import { Database, FileText, HardDrive } from '@lucide/vue'
 import DashboardMetricCard from './DashboardMetricCard.vue'
 
-// CSS 变量解析工具函数
-function getCSSVariable(variableName, element = document.documentElement) {
-  return getComputedStyle(element).getPropertyValue(variableName).trim()
-}
-
-// theme store
-const themeStore = useThemeStore()
-
-// Props
 const props = defineProps({
-  knowledgeStats: {
-    type: Object,
-    default: () => ({})
-  },
-  loading: {
-    type: Boolean,
-    default: false
-  }
+  knowledgeStats: { type: Object, default: () => ({}) },
+  loading: { type: Boolean, default: false }
 })
-
-// Chart refs
+const themeStore = useThemeStore()
 const fileTypeChartRef = ref(null)
 let fileTypeChart = null
-
-// File type chart data for carousel
-const fileTypeData = ref([])
-const totalFiles = ref(0)
-const currentCarouselIndex = ref(0)
-let carouselTimer = null
-
-// 计算属性
+let resizeObserver = null
 const formattedStorage = computed(() => formatStorageSize(props.knowledgeStats?.total_storage_size))
+const fileTypeData = computed(() =>
+  Object.entries(props.knowledgeStats?.file_type_distribution || {})
+    .map(([name, value]) => ({ name: name || '未知', value: Number(value) }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value)
+)
+const totalFiles = computed(() => fileTypeData.value.reduce((sum, item) => sum + item.value, 0))
 
-// const averageFilesPerDatabase = computed(() => {
-//   const databases = props.knowledgeStats?.total_databases || 0
-//   const files = props.knowledgeStats?.total_files || 0
-//   return databases > 0 ? files / databases : 0
-// })
-
-// const averageNodeSize = computed(() => {
-//   const nodes = props.knowledgeStats?.total_nodes || 0
-//   const size = props.knowledgeStats?.total_storage_size || 0
-//   return nodes > 0 ? size / (nodes * 1024) : 0 // 转换为KB
-// })
-
-// 初始化文件类型分布图
-const initFileTypeChart = () => {
+/** 更新圆环，明细由独立 DOM 展示，避免图例覆盖图形。 */
+async function updateChart() {
+  await nextTick()
+  resizeObserver?.disconnect()
+  fileTypeChart?.dispose()
+  fileTypeChart = null
   if (!fileTypeChartRef.value) return
-
-  // 如果已存在图表实例，先销毁
-  if (fileTypeChart) {
-    fileTypeChart.dispose()
-    fileTypeChart = null
-  }
-
   fileTypeChart = echarts.init(fileTypeChartRef.value)
-
-  const fileTypesData = props.knowledgeStats?.file_type_distribution || {}
-  if (Object.keys(fileTypesData).length > 0) {
-    const data = Object.entries(fileTypesData)
-      .map(([type, count]) => ({
-        name: type || '未知',
-        value: count
-      }))
-      .sort((a, b) => b.value - a.value) // 按数量排序
-
-    // 设置轮播数据
-    fileTypeData.value = data
-    totalFiles.value = data.reduce((sum, item) => sum + item.value, 0)
-
-    // 启动轮播
-    startCarousel()
-
-    const option = {
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: getCSSVariable('--gray-0'),
-        borderColor: getCSSVariable('--gray-200'),
-        borderWidth: 1,
-        textStyle: {
-          color: getCSSVariable('--gray-600')
-        },
-        formatter: '{a} <br/>{b}: {c} ({d}%)'
-      },
-      legend: {
-        orient: 'horizontal',
-        bottom: '5%',
-        left: 'center',
-        itemGap: 16,
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: {
-          fontSize: 11,
-          color: getCSSVariable('--gray-600')
-        }
-      },
-      series: [
-        {
-          name: '文件类型',
-          type: 'pie',
-          radius: ['45%', '75%'], // 调整为更大的环，为中心信息留出更多空间
-          center: ['50%', '45%'], // 向上移动，为中心和底部图例留出空间
-          avoidLabelOverlap: true, // 避免标签重叠
-          itemStyle: {
-            borderRadius: 8,
-            borderColor: getCSSVariable('--gray-0'),
-            borderWidth: 2
-          },
-          label: {
-            show: false // 隐藏饼图上的标签，使用图例代替
-          },
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowColor: getCSSVariable('--shadow-3')
-            }
-          },
-          labelLine: {
-            show: false // 隐藏标签线
-          },
-          data: data,
-          color: getColorPalette()
-        }
-      ]
-    }
-
-    fileTypeChart.setOption(option)
-  } else {
-    // 清空轮播数据
-    fileTypeData.value = []
-    totalFiles.value = 0
-    stopCarousel()
-
-    // 如果没有文件类型数据，显示一个占位图表
-    const option = {
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: getCSSVariable('--gray-0'),
-        borderColor: getCSSVariable('--gray-200'),
-        borderWidth: 1,
-        textStyle: {
-          color: getCSSVariable('--gray-600')
-        },
-        formatter: '{a} <br/>{b}: {c} ({d}%)'
-      },
-      series: [
-        {
-          name: '文件类型',
-          type: 'pie',
-          radius: ['45%', '75%'],
-          center: ['50%', '45%'],
-          avoidLabelOverlap: true,
-          itemStyle: {
-            borderRadius: 8,
-            borderColor: getCSSVariable('--gray-0'),
-            borderWidth: 2
-          },
-          label: {
-            show: false
-          },
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowColor: getCSSVariable('--shadow-3')
-            }
-          },
-          labelLine: {
-            show: false
-          },
-          data: [{ name: '暂无数据', value: 1 }],
-          color: [getCSSVariable('--color-info-500')]
-        }
-      ]
-    }
-
-    fileTypeChart.setOption(option)
-  }
-}
-
-// 轮播功能
-const startCarousel = () => {
-  stopCarousel() // 先停止之前的轮播
-  if (fileTypeData.value.length <= 1) return
-
-  // 重置索引
-  currentCarouselIndex.value = 0
-
-  // 启动新的轮播，每3秒切换一次
-  carouselTimer = setInterval(() => {
-    currentCarouselIndex.value = (currentCarouselIndex.value + 1) % fileTypeData.value.length
-  }, 3000)
-}
-
-const stopCarousel = () => {
-  if (carouselTimer) {
-    clearInterval(carouselTimer)
-    carouselTimer = null
-  }
-}
-
-// 更新图表
-const updateCharts = () => {
-  nextTick(() => {
-    initFileTypeChart()
+  fileTypeChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', renderMode: 'richText' },
+    series: [
+      {
+        name: '文件类型',
+        type: 'pie',
+        radius: ['58%', '82%'],
+        center: ['50%', '50%'],
+        label: { show: false },
+        labelLine: { show: false },
+        data: fileTypeData.value,
+        color: getColorPalette()
+      }
+    ]
   })
+  resizeObserver = new ResizeObserver(() => fileTypeChart?.resize())
+  resizeObserver.observe(fileTypeChartRef.value)
 }
 
-// 监听数据变化
-watch(
-  () => props.knowledgeStats,
-  () => {
-    updateCharts()
-  },
-  { deep: true }
-)
-
-// 窗口大小变化时重新调整图表
-const handleResize = () => {
-  if (fileTypeChart) fileTypeChart.resize()
+/** 释放图表实例与尺寸观察器。 */
+function cleanup() {
+  resizeObserver?.disconnect()
+  fileTypeChart?.dispose()
+  fileTypeChart = null
 }
-
-onMounted(() => {
-  updateCharts()
-  window.addEventListener('resize', handleResize)
+watch([() => props.knowledgeStats, () => props.loading, () => themeStore.isDark], updateChart, {
+  deep: true
 })
-
-// 监听主题变化，重新渲染图表
-watch(
-  () => themeStore.isDark,
-  () => {
-    if (props.knowledgeStats && fileTypeChart) {
-      nextTick(() => {
-        updateCharts()
-      })
-    }
-  }
-)
-
-// 组件卸载时清理
-const cleanup = () => {
-  window.removeEventListener('resize', handleResize)
-  stopCarousel() // 停止轮播
-  if (fileTypeChart) {
-    fileTypeChart.dispose()
-    fileTypeChart = null
-  }
-}
-
-// 导出清理函数供父组件调用
-defineExpose({
-  cleanup
-})
+onMounted(updateChart)
+onBeforeUnmount(cleanup)
+defineExpose({ cleanup })
 </script>
 
 <style scoped lang="less">
-// KnowledgeStatsComponent 特有的样式
-.chart-container {
-  .chart {
-    height: 300px;
-    width: 100%;
+.file-distribution h4,
+.legend-value {
+  color: var(--color-text);
+}
+.donut-wrap {
+  position: relative;
+  height: 220px;
+}
+.file-type-chart {
+  width: 100%;
+  height: 100%;
+}
+.donut-summary {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  strong {
+    margin-top: 4px;
+    font-size: 24px;
+    color: var(--color-text);
   }
-
-  // 环形图容器样式
-  .donut-chart-container {
-    position: relative;
-
-    .carousel-info {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      pointer-events: none;
-      z-index: 10;
-
-      .carousel-item {
-        opacity: 0;
-        transition: opacity 0.5s ease-in-out;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        white-space: nowrap;
-
-        &.active {
-          opacity: 1;
-        }
-
-        .carousel-label {
-          font-size: 14px;
-          font-weight: 600;
-          color: var(--gray-500);
-          margin-bottom: 4px;
-        }
-
-        .carousel-value {
-          font-size: 24px;
-          font-weight: 700;
-          color: var(--gray-800);
-          margin-bottom: 2px;
-          line-height: 1;
-        }
-
-        .carousel-percent {
-          font-size: 12px;
-          color: var(--gray-400);
-          font-weight: 500;
-        }
-      }
-    }
+}
+.file-type-legend {
+  padding: 0;
+  margin: 8px 0 0;
+  list-style: none;
+  li {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto 52px;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
   }
+}
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.legend-name {
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+.legend-value,
+.legend-percent {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.legend-percent {
+  color: var(--color-text-secondary);
 }
 </style>

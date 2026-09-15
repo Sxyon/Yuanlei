@@ -11,6 +11,7 @@ from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt.tool_node import ToolRuntime
 from langgraph.types import Command
+from pydantic import BaseModel
 
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES
@@ -18,6 +19,9 @@ from yuxi.repositories.user_repository import UserRepository
 from yuxi.services.input_message_service import build_chat_input_message
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import Agent
+
+# 五个内建工具的签名固定；仅复用参数类型，闭包与父 Run 仍逐次创建。
+_TOOL_INPUT_SCHEMAS: dict[str, type[BaseModel]] = {}
 
 
 def _subagent_run_service_module():
@@ -28,7 +32,15 @@ def _subagent_run_service_module():
 
 def _async_only_tool(*, name: str, coroutine: Callable[..., Awaitable[Any]], description: str) -> StructuredTool:
     """后台子智能体工具只在异步链路执行；仅声明 coroutine，同步调用由 LangChain 直接报错。"""
-    return StructuredTool.from_function(name=name, coroutine=coroutine, description=description, infer_schema=True)
+    tool = StructuredTool.from_function(
+        name=name,
+        coroutine=coroutine,
+        description=description,
+        args_schema=_TOOL_INPUT_SCHEMAS.get(name),
+        infer_schema=True,
+    )
+    _TOOL_INPUT_SCHEMAS.setdefault(name, tool.args_schema)
+    return tool
 
 
 TASK_SYSTEM_PROMPT = """## `task`（子智能体任务工具）

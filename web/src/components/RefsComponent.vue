@@ -37,10 +37,10 @@
       <span
         v-if="messageFinishedAt"
         class="time-entry"
-        :class="{ toggleable: messageDurationMs }"
+        :class="{ toggleable: hasMessageDuration }"
         @click="toggleTimeDisplay"
         :title="
-          messageDurationMs
+          hasMessageDuration
             ? showingDuration
               ? '点击显示结束时间'
               : '点击显示执行耗时'
@@ -122,13 +122,15 @@ import {
   ChevronDown
 } from '@lucide/vue'
 import { agentApi } from '@/apis'
-import { formatChatTime, parseToShanghai } from '@/utils/time'
+import { formatChatTime } from '@/utils/time'
 import KnowledgeSourceSection from '@/components/KnowledgeSourceSection.vue'
 import WebSearchSourceSection from '@/components/WebSearchSourceSection.vue'
+import { formatRunTimingDuration, getRunTotalLatencyMs } from '@/utils/runTiming'
 
 const emit = defineEmits(['retry', 'openRefs'])
 const props = defineProps({
   message: Object,
+  run: { type: Object, default: null },
   showRefs: {
     type: [Array, Boolean],
     default: () => false
@@ -173,27 +175,19 @@ const feedbackState = reactive({
 // 对话结束时间 / 执行耗时切换
 const showingDuration = ref(false)
 const messageFinishedAt = computed(() => {
-  const finishedAt = msg.value?.run_finished_at || msg.value?.created_at
+  const finishedAt = props.run?.timing?.finished_at || msg.value?.created_at
   return finishedAt ? formatChatTime(finishedAt) : ''
 })
 const messageDurationMs = computed(() => {
-  const started = parseToShanghai(msg.value?.run_started_at)
-  const finished = parseToShanghai(msg.value?.run_finished_at || msg.value?.created_at)
-  if (!started || !finished) return 0
-  const duration = finished.valueOf() - started.valueOf()
-  return Number.isFinite(duration) && duration > 0 ? duration : 0
+  return getRunTotalLatencyMs(props.run?.timing)
 })
+const hasMessageDuration = computed(() => messageDurationMs.value !== null)
 const messageDurationLabel = computed(() => {
-  const ms = messageDurationMs.value
-  if (!ms) return ''
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `耗时 ${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const restSeconds = seconds % 60
-  return `耗时 ${minutes}分${restSeconds}s`
+  const duration = formatRunTimingDuration(messageDurationMs.value)
+  return duration ? `耗时 ${duration}` : ''
 })
 const toggleTimeDisplay = () => {
-  if (!messageDurationMs.value) return
+  if (!hasMessageDuration.value) return
   showingDuration.value = !showingDuration.value
 }
 
@@ -466,6 +460,7 @@ const cancelDislike = () => {
         }
       }
     }
+
   }
 
   .sources-panel-body {

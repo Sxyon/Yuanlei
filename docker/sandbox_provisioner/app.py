@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
+import random
 import re
 import secrets
 import threading
 import time
+import weakref
 from collections.abc import AsyncIterator
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -23,6 +27,36 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 SANDBOX_ENV_FILE = Path(__file__).parent / "sandbox.env"
+DEFAULT_SANDBOX_IMAGE = (
+    "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0"
+)
+SANDBOX_RUNTIME_ENVIRONMENTS = {
+    "core": {
+        "DISABLE_BROWSER": "true",
+        "DISABLE_MCP_BROWSER": "true",
+        "DISABLE_VNC": "true",
+        "DISABLE_JUPYTER": "true",
+        "DISABLE_CODE_SERVER": "true",
+        "DISABLE_NODEJS_REPL": "true",
+    },
+    "browser": {
+        "DISABLE_BROWSER": "false",
+        "DISABLE_MCP_BROWSER": "false",
+        "DISABLE_VNC": "false",
+        "DISABLE_JUPYTER": "true",
+        "DISABLE_CODE_SERVER": "true",
+        "DISABLE_NODEJS_REPL": "true",
+    },
+    "full": {
+        "DISABLE_BROWSER": "false",
+        "DISABLE_MCP_BROWSER": "false",
+        "DISABLE_VNC": "false",
+        "DISABLE_JUPYTER": "false",
+        "DISABLE_CODE_SERVER": "false",
+        "DISABLE_NODEJS_REPL": "false",
+    },
+}
+DEFAULT_DOCKER_SUBNET_PREFIX = 28
 SAFE_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROXY_RESPONSE_HEADERS = frozenset(
     {"cache-control", "content-disposition", "content-type", "etag", "last-modified"}
@@ -45,6 +79,11 @@ PERSISTENT_SANDBOX_MOUNT_ROOTS = (
     "/home/gem/user-data",
     "/home/gem/projects",
 )
+SANDBOX_READY_INITIAL_DELAY_SECONDS = 0.05
+SANDBOX_READY_MAX_DELAY_SECONDS = 1.0
+SANDBOX_READY_BACKOFF_MULTIPLIER = 2.0
+SANDBOX_READY_JITTER_RATIO = 0.2
+SANDBOX_READY_REQUEST_TIMEOUT_SECONDS = 3.0
 
 
 def _is_persistent_sandbox_mount_path(path: str) -> bool:
@@ -171,6 +210,88 @@ def merged_sandbox_env(
     return {**global_env, **normalize_env(user_env)}
 
 
+def sandbox_runtime_profile(value: str | None = None) -> str:
+    """解析部署级 Sandbox 运行规格，并拒绝未知取值。"""
+    raw_value = os.getenv("SANDBOX_RUNTIME_PROFILE", "core") if value is None else value
+    profile = raw_value.strip().lower()
+    if profile not in SANDBOX_RUNTIME_ENVIRONMENTS:
+        allowed = ", ".join(SANDBOX_RUNTIME_ENVIRONMENTS)
+        raise RuntimeError(
+            f"invalid SANDBOX_RUNTIME_PROFILE={profile!r}; expected one of: {allowed}"
+        )
+    return profile
+
+
+def sandbox_runtime_environment(profile: str) -> dict[str, str]:
+    """返回由运行规格拥有且请求不能覆盖的容器环境变量。"""
+    return dict(SANDBOX_RUNTIME_ENVIRONMENTS[sandbox_runtime_profile(profile)])
+
+
+def docker_network_pool() -> tuple[ipaddress.IPv4Network, int] | None:
+    """读取 Docker Sandbox 专用 IPv4 地址池。"""
+    raw_address_pool = os.getenv("DOCKER_ADDRESS_POOL", "").strip()
+    raw_subnet_prefix = os.getenv("DOCKER_SUBNET_PREFIX", "").strip()
+    if not raw_address_pool:
+        if raw_subnet_prefix:
+            raise RuntimeError("DOCKER_SUBNET_PREFIX requires DOCKER_ADDRESS_POOL")
+        return None
+
+    try:
+        address_pool = ipaddress.ip_network(raw_address_pool, strict=True)
+    except ValueError as exc:
+        raise RuntimeError(f"invalid DOCKER_ADDRESS_POOL={raw_address_pool!r}") from exc
+    if not isinstance(address_pool, ipaddress.IPv4Network):
+        raise RuntimeError("DOCKER_ADDRESS_POOL must be an IPv4 network")
+
+    prefix_value = raw_subnet_prefix or str(DEFAULT_DOCKER_SUBNET_PREFIX)
+    try:
+        subnet_prefix = int(prefix_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"DOCKER_SUBNET_PREFIX must be an integer, got {prefix_value!r}"
+        ) from exc
+    if subnet_prefix < address_pool.prefixlen or subnet_prefix > 29:
+        raise RuntimeError(
+            "DOCKER_SUBNET_PREFIX must be between the address pool prefix and 29"
+        )
+    return address_pool, subnet_prefix
+
+
+def sandbox_delete_concurrency(value: str | None = None) -> int:
+    """读取 Docker Sandbox 有界并行销毁数。"""
+    raw_value = (
+        os.getenv("SANDBOX_DELETE_CONCURRENCY", "16") if value is None else value
+    ).strip()
+    try:
+        concurrency = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"SANDBOX_DELETE_CONCURRENCY must be an integer, got {raw_value!r}"
+        ) from exc
+    if concurrency < 1:
+        raise RuntimeError("SANDBOX_DELETE_CONCURRENCY must be >= 1")
+    return concurrency
+
+
+def sandbox_container_stop_timeout_seconds(value: str | None = None) -> int:
+    """读取 Docker Sandbox 收到 SIGTERM 后的最大等待秒数。"""
+    raw_value = (
+        os.getenv("SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS", "2")
+        if value is None
+        else value
+    ).strip()
+    try:
+        timeout_seconds = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS must be an integer, "
+            f"got {raw_value!r}"
+        ) from exc
+    if timeout_seconds < 1:
+        raise RuntimeError("SANDBOX_CONTAINER_STOP_TIMEOUT_SECONDS must be >= 1")
+    return timeout_seconds
+
+
 def provisioner_token() -> str:
     token = os.getenv("SANDBOX_PROVISIONER_TOKEN", "").strip()
     if len(token) < 32:
@@ -248,6 +369,14 @@ class SandboxRecord:
 
 class SandboxGenerationMismatchError(RuntimeError):
     """删除请求引用的 Sandbox generation 已经过期。"""
+
+
+class SandboxCapacityError(RuntimeError):
+    """Sandbox 基础设施容量已耗尽。"""
+
+
+class SandboxQuiesceTimeoutError(RuntimeError):
+    """Sandbox 全局静默未在调用方 deadline 内完成。"""
 
 
 class SandboxOperationPins:
@@ -387,40 +516,60 @@ class MemoryProvisionerBackend:
             self._records.pop(sandbox_id, None)
 
 
-def wait_for_sandbox_ready(sandbox_url: str, timeout_seconds: int = 30) -> bool:
-    deadline = time.time() + timeout_seconds
+def wait_for_sandbox_ready(sandbox_url: str, timeout_seconds: float = 30) -> bool:
+    deadline = time.monotonic() + timeout_seconds
     opener = request.build_opener(request.ProxyHandler({}))
-    while time.time() < deadline:
+    delay_seconds = SANDBOX_READY_INITIAL_DELAY_SECONDS
+    while True:
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            return False
         try:
             with opener.open(
-                f"{sandbox_url.rstrip('/')}/v1/sandbox", timeout=3
+                f"{sandbox_url.rstrip('/')}/v1/sandbox",
+                timeout=min(SANDBOX_READY_REQUEST_TIMEOUT_SECONDS, remaining_seconds),
             ) as response:
                 status_code = getattr(response, "status", 200)
             if status_code == 200:
                 return True
         except Exception:
             pass
-        time.sleep(1)
-    return False
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            return False
+        jitter_factor = random.uniform(
+            1 - SANDBOX_READY_JITTER_RATIO,
+            1 + SANDBOX_READY_JITTER_RATIO,
+        )
+        time.sleep(min(remaining_seconds, delay_seconds * jitter_factor))
+        delay_seconds = min(
+            SANDBOX_READY_MAX_DELAY_SECONDS,
+            delay_seconds * SANDBOX_READY_BACKOFF_MULTIPLIER,
+        )
 
 
 class LocalContainerProvisionerBackend:
     def __init__(self):
-        import docker
         from docker.errors import DockerException
+
+        import docker
 
         self._docker = docker
         self._lock = threading.RLock()
+        self._sandbox_locks = weakref.WeakValueDictionary()
+        self._delete_slots = threading.BoundedSemaphore(sandbox_delete_concurrency())
+        self._stop_timeout_seconds = sandbox_container_stop_timeout_seconds()
         self._container_port = int(os.getenv("SANDBOX_CONTAINER_PORT", "8080"))
         self._sandbox_image = os.getenv(
             "SANDBOX_IMAGE",
-            "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest",
+            DEFAULT_SANDBOX_IMAGE,
         )
         self._network_prefix = os.getenv("DOCKER_NETWORK_PREFIX")
         if not self._network_prefix:
             raise RuntimeError(
                 "DOCKER_NETWORK_PREFIX is required for the docker backend"
             )
+        self._network_pool = docker_network_pool()
         self._user_data_host_path = os.getenv("DOCKER_USER_DATA_HOST_PATH")
         self._skill_projections_host_path = os.getenv(
             "DOCKER_SKILL_PROJECTIONS_HOST_PATH"
@@ -500,6 +649,15 @@ class LocalContainerProvisionerBackend:
     def _network_name(self, sandbox_id: str) -> str:
         prefix = self._network_prefix.rstrip("-_")
         return f"{prefix}-{self._sanitize_id(sandbox_id)}"
+
+    def _sandbox_lock(self, sandbox_id: str) -> threading.RLock:
+        """返回只串行化同一 Sandbox generation 的进程内锁。"""
+        with self._lock:
+            lock = self._sandbox_locks.get(sandbox_id)
+            if lock is None:
+                lock = threading.RLock()
+                self._sandbox_locks[sandbox_id] = lock
+            return lock
 
     def _user_skills_host_path(self, uid: str) -> Path:
         return Path(self._skill_projections_host_path) / uid
@@ -626,6 +784,81 @@ class LocalContainerProvisionerBackend:
             and labels.get("sandbox-id") == sandbox_id
         )
 
+    @staticmethod
+    def _network_ipv4_subnets(network) -> list[ipaddress.IPv4Network]:
+        """读取 Docker 网络当前占用的 IPv4 子网。"""
+        subnets = []
+        ipam_configs = (network.attrs.get("IPAM") or {}).get("Config") or []
+        for config in ipam_configs:
+            raw_subnet = str((config or {}).get("Subnet") or "").strip()
+            if not raw_subnet:
+                continue
+            try:
+                subnet = ipaddress.ip_network(raw_subnet, strict=False)
+            except ValueError:
+                continue
+            if isinstance(subnet, ipaddress.IPv4Network):
+                subnets.append(subnet)
+        return subnets
+
+    def _next_network_subnet(
+        self, excluded: set[ipaddress.IPv4Network] | None = None
+    ) -> ipaddress.IPv4Network:
+        """从专用地址池选择不与现有 Docker 网络重叠的子网。"""
+        if self._network_pool is None:
+            raise RuntimeError("Docker Sandbox address pool is not configured")
+        address_pool, subnet_prefix = self._network_pool
+        unavailable = set(excluded or ())
+        for network in self._client.networks.list():
+            unavailable.update(self._network_ipv4_subnets(network))
+
+        for candidate in address_pool.subnets(new_prefix=subnet_prefix):
+            if candidate in unavailable:
+                continue
+            if any(candidate.overlaps(subnet) for subnet in unavailable):
+                continue
+            return candidate
+        raise SandboxCapacityError(
+            f"Docker Sandbox address pool {address_pool} has no available "
+            f"/{subnet_prefix} subnet"
+        )
+
+    @staticmethod
+    def _is_subnet_allocation_conflict(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return "overlap" in message or "already allocated" in message
+
+    def _create_network(self, network_name: str, sandbox_id: str):
+        """创建 Sandbox 网络，并在跨进程子网竞争时重新选择。"""
+        labels = {
+            "managed-by": "yuxi-sandbox-provisioner",
+            "sandbox-id": sandbox_id,
+        }
+        if self._network_pool is None:
+            return self._client.networks.create(
+                network_name,
+                driver="bridge",
+                labels=labels,
+            )
+
+        attempted: set[ipaddress.IPv4Network] = set()
+        while True:
+            subnet = self._next_network_subnet(attempted)
+            ipam = self._docker.types.IPAMConfig(
+                pool_configs=[self._docker.types.IPAMPool(subnet=str(subnet))]
+            )
+            try:
+                return self._client.networks.create(
+                    network_name,
+                    driver="bridge",
+                    labels=labels,
+                    ipam=ipam,
+                )
+            except Exception as exc:
+                if not self._is_subnet_allocation_conflict(exc):
+                    raise
+                attempted.add(subnet)
+
     def _ensure_network(self, sandbox_id: str) -> str:
         from docker.errors import NotFound
 
@@ -633,14 +866,13 @@ class LocalContainerProvisionerBackend:
         try:
             network = self._client.networks.get(network_name)
         except NotFound:
-            network = self._client.networks.create(
-                network_name,
-                driver="bridge",
-                labels={
-                    "managed-by": "yuxi-sandbox-provisioner",
-                    "sandbox-id": sandbox_id,
-                },
-            )
+            # 子网扫描与 network create 必须是同一进程内的原子区间；
+            # Docker 的重叠拒绝继续处理跨 provisioner 竞争。
+            with self._lock:
+                try:
+                    network = self._client.networks.get(network_name)
+                except NotFound:
+                    network = self._create_network(network_name, sandbox_id)
 
         network.reload()
         if not self._has_expected_network_ownership(network, sandbox_id):
@@ -707,7 +939,7 @@ class LocalContainerProvisionerBackend:
         workdir_path: str | None = None,
         inherit_env: bool = True,
     ) -> SandboxRecord:
-        with self._lock:
+        with self._sandbox_lock(sandbox_id):
             safe_thread_id = self._validate_thread_id(thread_id)
             safe_uid = self._validate_uid(uid)
             safe_workdir_path = (
@@ -854,6 +1086,7 @@ class LocalContainerProvisionerBackend:
             sandbox_env = (
                 merged_sandbox_env(self._sandbox_env, env or {}) if inherit_env else {}
             )
+            sandbox_env.update(sandbox_runtime_environment(runtime_profile_name))
             sandbox_env.update({"USER": "gem", "USER_UID": "1000", "USER_GID": "1000"})
             run_kwargs["environment"] = sandbox_env
 
@@ -987,7 +1220,7 @@ class LocalContainerProvisionerBackend:
     def delete(
         self, sandbox_id: str, *, expected_generation: str | None = None
     ) -> None:
-        with self._lock:
+        with self._sandbox_lock(sandbox_id), self._delete_slots:
             container = self._get_container(sandbox_id)
             if container is not None:
                 container.reload()
@@ -997,7 +1230,7 @@ class LocalContainerProvisionerBackend:
                         "sandbox generation does not match delete request"
                     )
                 if container.status == "running":
-                    container.stop(timeout=10)
+                    container.stop(timeout=self._stop_timeout_seconds)
                 container.remove(v=True, force=True)
             self._delete_network(sandbox_id)
 
@@ -1010,7 +1243,7 @@ class KubernetesProvisionerBackend:
         self._namespace = os.getenv("K8S_NAMESPACE", "yuxi-know")
         self._sandbox_image = os.getenv(
             "SANDBOX_IMAGE",
-            "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest",
+            DEFAULT_SANDBOX_IMAGE,
         )
         self._skill_pvc = os.getenv("SKILLS_PVC", "yuxi-skills")
         self._user_data_pvc = os.getenv("USER_DATA_PVC", "yuxi-user-data")
@@ -1050,6 +1283,7 @@ class KubernetesProvisionerBackend:
     ):
         pod_name = self._pod_name(sandbox_id)
         sandbox_env = merged_sandbox_env(self._sandbox_env, env) if inherit_env else {}
+        sandbox_env.update(sandbox_runtime_environment(runtime_profile_name))
         sandbox_env.update({"USER": "gem", "USER_UID": "1000", "USER_GID": "1000"})
         env_vars = [
             self._client.V1EnvVar(name=key, value=value)
@@ -1644,6 +1878,7 @@ def _build_backend():
     return MemoryProvisionerBackend(), backend
 
 
+runtime_profile_name = sandbox_runtime_profile()
 backend_impl, backend_name = _build_backend()
 sandbox_operation_pins = SandboxOperationPins()
 sandbox_quiescence_gate = SandboxQuiescenceGate()
@@ -1685,6 +1920,7 @@ def health():
     return {
         "status": "ok",
         "backend": backend_name,
+        "runtime_profile": runtime_profile_name,
         "idle_timeout_seconds": idle_reaper._idle_timeout_seconds,  # noqa: SLF001
         "idle_check_interval_seconds": idle_reaper._check_interval_seconds,  # noqa: SLF001
         "tracked_sandboxes": tracked,
@@ -1716,6 +1952,8 @@ def create_sandbox(payload: CreateSandboxRequest):
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except SandboxCapacityError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
         finally:
@@ -1802,30 +2040,87 @@ def quiesce_sandboxes(timeout_seconds: int = 180):
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         if not records:
             return QuiesceSandboxesResponse(ok=True, deleted=len(deleted_ids))
-        for record in records:
-            sandbox_operation_pins.begin_delete(record.sandbox_id)
-            try:
-                backend_impl.delete(
-                    record.sandbox_id,
-                    expected_generation=record.generation,
-                )
-            except SandboxGenerationMismatchError:
-                continue
-            except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=500, detail=str(exc)) from exc
-            finally:
-                sandbox_operation_pins.end_delete(record.sandbox_id)
-            idle_reaper.forget(
-                record.sandbox_id,
-                expected_generation=record.generation,
-            )
-            deleted_ids.add(record.sandbox_id)
-        if time.monotonic() >= deadline:
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
             raise HTTPException(
                 status_code=504,
                 detail="timed out waiting for sandbox runtimes to terminate",
             )
-        time.sleep(0.25)
+        try:
+            deleted_ids.update(
+                _delete_sandbox_records_for_quiescence(
+                    records,
+                    timeout_seconds=remaining_seconds,
+                )
+            )
+        except SandboxQuiesceTimeoutError as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="timed out waiting for sandbox runtimes to terminate",
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
+
+
+def _delete_sandbox_records_for_quiescence(
+    records: list[SandboxRecord],
+    *,
+    timeout_seconds: float,
+) -> set[str]:
+    """在同一 deadline 内有界并行删除一次权威 Sandbox inventory。"""
+
+    if not records:
+        return set()
+    executor = ThreadPoolExecutor(
+        max_workers=min(sandbox_delete_concurrency(), len(records)),
+        thread_name_prefix="sandbox-quiesce",
+    )
+    futures = [
+        executor.submit(_delete_sandbox_record_for_quiescence, record)
+        for record in records
+    ]
+    try:
+        done, pending = wait(
+            futures,
+            timeout=max(0.0, timeout_seconds),
+            return_when=FIRST_EXCEPTION,
+        )
+        failed = next(
+            (future for future in done if future.exception() is not None),
+            None,
+        )
+        if failed is not None:
+            failed.result()
+        if pending:
+            raise SandboxQuiesceTimeoutError
+        return {
+            sandbox_id
+            for future in done
+            if (sandbox_id := future.result()) is not None
+        }
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def _delete_sandbox_record_for_quiescence(record: SandboxRecord) -> str | None:
+    """带 operation pin 和 generation fence 删除一条 Sandbox inventory。"""
+
+    sandbox_operation_pins.begin_delete(record.sandbox_id)
+    try:
+        backend_impl.delete(
+            record.sandbox_id,
+            expected_generation=record.generation,
+        )
+    except SandboxGenerationMismatchError:
+        return None
+    finally:
+        sandbox_operation_pins.end_delete(record.sandbox_id)
+    idle_reaper.forget(
+        record.sandbox_id,
+        expected_generation=record.generation,
+    )
+    return record.sandbox_id
 
 
 @app.delete(

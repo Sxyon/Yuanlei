@@ -23,6 +23,7 @@
 <script setup>
 import { computed } from 'vue'
 import BaseToolCall from '../BaseToolCall.vue'
+import { getToolCallStatus } from '../toolRegistry'
 
 const props = defineProps({
   toolCall: {
@@ -51,6 +52,7 @@ const kbList = computed(() => {
 })
 
 const headerSummary = computed(() => {
+  if (getToolCallStatus(props.toolCall) === 'error') return '执行失败'
   const names = kbList.value.map((kb) => kb?.name).filter(Boolean)
   if (!names.length) return '暂无知识库'
 

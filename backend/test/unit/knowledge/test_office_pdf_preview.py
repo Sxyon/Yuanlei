@@ -23,9 +23,6 @@ class FakeKnowledgeBase(KnowledgeBase):
     async def index_file(self, kb_id: str, file_id: str, operator_id: str | None = None) -> dict:
         return {}
 
-    async def update_content(self, kb_id: str, file_ids: list[str], params: dict | None = None) -> list[dict]:
-        return []
-
     async def aquery(self, query_text: str, kb_id: str, **kwargs) -> list[dict]:
         return []
 
