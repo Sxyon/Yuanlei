@@ -17,7 +17,7 @@
     />
     <a-tabs v-model:active-key="activeTab">
       <a-tab-pane key="repositories" tab="仓库">
-        <a-form layout="vertical" class="create-form" @finish="createRepository">
+        <a-form layout="vertical" class="create-form">
           <div class="form-grid">
             <a-form-item label="Connection" required>
               <a-select
@@ -39,7 +39,11 @@
               <a-input v-model:value="repositoryForm.repository_name" placeholder="仓库名" />
             </a-form-item>
           </div>
-          <a-button type="primary" html-type="submit" :loading="savingRepository"
+          <a-button
+            type="primary"
+            html-type="button"
+            :loading="savingRepository"
+            @click="createRepository"
             >绑定仓库</a-button
           >
         </a-form>
@@ -75,7 +79,7 @@
       </a-tab-pane>
 
       <a-tab-pane key="connections" tab="Connections">
-        <a-form layout="vertical" class="create-form" @finish="createConnection">
+        <a-form layout="vertical" class="create-form">
           <div class="form-grid">
             <a-form-item label="名称" required
               ><a-input v-model:value="connectionForm.name"
@@ -102,7 +106,11 @@
               autocomplete="new-password"
             />
           </a-form-item>
-          <a-button type="primary" html-type="submit" :loading="savingConnection"
+          <a-button
+            type="primary"
+            html-type="button"
+            :loading="savingConnection"
+            @click="createConnection"
             >创建 connection</a-button
           >
         </a-form>

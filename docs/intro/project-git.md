@@ -24,13 +24,27 @@
 | SSH Host | `gitea.example.com` | worker 执行 fetch 和 push |
 | SSH Port | `22` | 与 Gitea 返回的 canonical SSH URL 一致 |
 
-从可信管理通道取得 SSH host public key，并核对管理员公布的 fingerprint。连接表单需要 OpenSSH `known_hosts` 格式，例如：
+这里填写的是 **Gitea SSH 服务器的主机公钥记录**，不是用户或仓库的 SSH 密钥对，也不是 `.env` 中的 `YUXI_GIT_CREDENTIAL_KEY`。它用于让 worker 确认自己连接的确实是目标 Gitea SSH 服务。
+
+从可信管理通道取得 SSH host public key，并核对管理员公布的 fingerprint。连接表单需要完整的 OpenSSH `known_hosts` 行，例如：
 
 ```text
 gitea.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 ```
 
-非 22 端口的第一列使用 `[host]:port`。Yuxi 不自动接受首次出现的 host key；host、port 或 key 不匹配时 connection 创建或 Git 操作会失败。
+非 22 端口的第一列使用 `[host]:port`。开发 Compose 中应填写 worker 实际访问的内部地址，例如：
+
+```text
+[gitea]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
+```
+
+可以用 `ssh-keyscan` 读取候选记录，再通过 Gitea 主机控制台或管理员公布的信息核对 fingerprint：
+
+```bash
+ssh-keyscan -p 2223 127.0.0.1 2>/dev/null | ssh-keygen -lf -
+```
+
+本机映射端口得到的第一列是 `[127.0.0.1]:2223`；核对 fingerprint 后，connection 中第一列要按 worker 使用的 endpoint 写成 `[gitea]:2222`，公钥类型和公钥内容保持不变。`ssh-keyscan` 的输出本身不构成可信验证。Yuxi 不自动接受首次出现的 host key；host、port 或 key 不匹配时 connection 创建或 Git 操作会失败。
 
 在 Gitea 的用户设置中创建 API Token。Token 只在 connection 创建或更新时提交一次，页面和 API 响应不会返回原值。
 
@@ -43,7 +57,7 @@ gitea.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 1. 名称：用于识别这套 Gitea 连接。
 2. API Origin：必须精确命中管理员配置的 allowlist。
 3. SSH Host 和 SSH Port：必须与仓库 canonical SSH URL 一致。
-4. SSH known-host key：粘贴已核对 fingerprint 的完整行。
+4. SSH known-host key：粘贴已核对 fingerprint 的 Gitea **服务器主机公钥记录**完整行。
 5. Gitea API Token：粘贴本次使用的 Token。
 
 点击“创建 connection”。成功后列表显示 connection 名称、provider 和 SSH endpoint，Token 输入框被清空。服务端会先调用 Gitea 验证 Token；验证失败、origin 未允许或 SSH 信任锚格式错误时不会保存 connection。
@@ -57,6 +71,8 @@ gitea.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 - **Repository**：Gitea 仓库名，不包含 `.git`。
 
 点击“绑定仓库”。Yuxi 先保存 `provisioning` 状态，再由 worker 创建每仓库独立的可写 deploy key、验证仓库元数据并初始化本地 bare repository。状态变为 `active` 后绑定完成；`provision_failed` 会显示错误摘要和“重试”按钮。
+
+仓库 deploy key 不需要手工创建或粘贴。绑定时，Yuxi 自动生成一对独立的 Ed25519 密钥：公钥通过 Gitea API 写入仓库的 Deploy Keys，私钥由 `YUXI_GIT_CREDENTIAL_KEY` 加密后保存在 PostgreSQL。停用仓库绑定时，worker 撤销 Gitea 中对应的 deploy key，并销毁数据库中的私钥密文引用。
 
 一个 Project 可以重复此步骤绑定多个仓库。Alias 只负责显示和工具查找，磁盘目录由服务端根据 alias 和 binding ID 派生。
 

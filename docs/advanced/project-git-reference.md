@@ -26,6 +26,17 @@ docker compose up -d --force-recreate api worker
 
 这些变量不传给 `sandbox-provisioner` 或动态 Sandbox。Gitea Token 和 deploy private key也不进入 Sandbox environment、UserWorkspace、Agent prompt、Run manifest、日志或 Git remote URL。
 
+## 四类凭据和密钥
+
+| 名称 | 来源与存放位置 | 是否敏感 | 用途 |
+| --- | --- | --- | --- |
+| Gitea SSH host key | Gitea SSH 服务持有私钥；connection 保存已核验的服务器公钥 `known_hosts` 行 | 公钥不敏感 | worker 校验远端服务器身份，防止连到错误主机 |
+| Gitea API Token | 用户在 Gitea 创建；Yuxi 加密保存于 PostgreSQL | 敏感 | 查询仓库元数据、保护规则及管理 deploy key |
+| 仓库 deploy keypair | 绑定仓库时由 Yuxi 自动生成；公钥注册到 Gitea，私钥加密保存于 PostgreSQL | 私钥敏感 | 可信 worker 对该仓库执行 fetch 和 push |
+| `YUXI_GIT_CREDENTIAL_KEY` | 运维生成并放在 API/worker 环境中 | 高度敏感 | AES-GCM 加密 API Token 和 deploy private key，本身不参与 SSH 认证 |
+
+停用仓库绑定后，远端 deploy key 被撤销，对应私钥密文引用被销毁；保留本地 bare repository、worktree 和远端任务分支。Connection 的 host key 与 deploy key 是两条不同信任链，不能互相替代。
+
 ## 开发 Compose 的 Gitea
 
 仓库提供 `git-integration` profile，用于真实 Gitea integration 和本地功能验证：
