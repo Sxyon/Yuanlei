@@ -1,5 +1,6 @@
 from .context import context_aware_prompt, context_based_model
 from .dynamic_tool import DynamicToolMiddleware
+from .git_tool_error import GitToolErrorMiddleware
 from .memory import create_memory_middleware
 from .model_input import ImageInputCompatibilityMiddleware
 from .network_retry import NetworkRetryMiddleware
@@ -9,6 +10,7 @@ from .token_usage import TokenUsageMiddleware
 
 __all__ = [
     "DynamicToolMiddleware",
+    "GitToolErrorMiddleware",
     "ImageInputCompatibilityMiddleware",
     "NetworkRetryMiddleware",
     "SteerMiddleware",

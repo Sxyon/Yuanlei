@@ -78,6 +78,7 @@ def build_prompt_with_context(context):
 <| Project Git 工作区 |>
 当前 Project 配置了 Git 仓库，但本任务尚未分配 worktree。
 - 需要仓库时先调用 git_list_project_repositories，再调用 git_prepare_worktree
+- git_prepare_worktree 的 branch_slug 必须是 ASCII kebab-case（仅小写字母、数字、连字符，如 project-git-extend），最长 48 字符；branch_kind 仅支持 feature/fix/docs/refactor/chore/test
 - git_prepare_worktree 与 git_push_branch 需要用户逐次批准
 - 不要自行 clone、fetch、push、修改 remote 或执行 git worktree add/remove/prune
 """

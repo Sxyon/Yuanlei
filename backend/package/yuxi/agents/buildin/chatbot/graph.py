@@ -14,6 +14,7 @@ from yuxi.agents.context import (
     prepare_agent_runtime_context,
 )
 from yuxi.agents.middlewares import (
+    GitToolErrorMiddleware,
     ImageInputCompatibilityMiddleware,
     NetworkRetryMiddleware,
     SteerMiddleware,
@@ -69,6 +70,9 @@ async def _build_middlewares(context, backend):
     )
     if approval_middleware:
         middlewares.append(approval_middleware)
+    # Git 工具的业务校验失败（如 branch_slug 格式）收敛为 error ToolMessage 交给
+    # 模型修正或报告阻塞，避免可自愈错误 panic 整个 Run；放在最内层靠近工具执行。
+    middlewares.append(GitToolErrorMiddleware())
     return middlewares
 
 

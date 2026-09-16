@@ -36,7 +36,12 @@ async def git_prepare_worktree(
     task_purpose: str,
     runtime: ToolRuntime,
 ) -> dict:
-    """经人工批准后，为当前根任务申请并准备一个 Project 仓库 worktree。"""
+    """经人工批准后，为当前根任务申请并准备一个 Project 仓库 worktree。
+
+    branch_kind 仅支持 feature/fix/docs/refactor/chore/test；branch_slug 必须是
+    ASCII kebab-case（仅小写字母、数字、连字符，例如 project-git-extend），
+    最长 48 字符。
+    """
     run_id, uid = _authorized_identity(runtime)
     return await prepare_project_git_worktree_for_run(
         run_id=run_id,
