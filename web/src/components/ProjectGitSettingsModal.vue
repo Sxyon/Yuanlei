@@ -17,7 +17,17 @@
     />
     <a-tabs v-model:active-key="activeTab">
       <a-tab-pane key="repositories" tab="仓库">
-        <a-form layout="vertical" class="create-form">
+        <div v-if="repositories.length" class="section-head">
+          <a-button
+            type="primary"
+            danger
+            size="small"
+            @click="showRepositoryForm = !showRepositoryForm"
+          >
+            {{ showRepositoryForm ? '收起' : '添加仓库' }}
+          </a-button>
+        </div>
+        <a-form v-if="!repositories.length || showRepositoryForm" layout="vertical" class="create-form">
           <div class="form-grid">
             <a-form-item label="Connection" required>
               <a-select
@@ -75,7 +85,7 @@
                 <small>{{ item.purpose || '项目仓库' }}</small>
                 <small>
                   远端默认 {{ item.default_branch || '等待读取' }} · 任务基线
-                  {{ item.configured_base_branch || item.default_branch || '等待读取' }}
+                  {{ item.configured_base_branch || '未设置（保存时将取远端默认）' }}
                 </small>
               </div>
               <div class="item-actions">
@@ -96,32 +106,61 @@
               </div>
               <p v-if="item.last_error_message" class="item-error">{{ item.last_error_message }}</p>
               <div v-if="item.status === 'active' && policyDrafts[item.id]" class="policy-editor">
-                <a-input
-                  v-model:value="policyDrafts[item.id].purpose"
-                  maxlength="500"
-                  aria-label="仓库用途"
-                />
-                <a-input
-                  v-model:value="policyDrafts[item.id].configured_base_branch"
-                  maxlength="255"
-                  aria-label="默认任务基线"
-                />
-                <a-select
-                  v-model:value="policyDrafts[item.id].allowed_base_branches"
-                  mode="tags"
-                  :max-tag-count="3"
-                  aria-label="允许的任务基线"
-                />
-                <a-button
-                  size="small"
-                  :loading="savingPolicyId === item.id"
-                  @click="savePolicy(item)"
-                >保存策略</a-button>
-                <a-button
-                  v-if="isPolicyDirty(item.id)"
-                  size="small"
-                  @click="restorePolicy(item)"
-                >恢复</a-button>
+                <label class="policy-field">
+                  <span class="policy-label">
+                    仓库用途
+                    <a-tooltip title="写给 Agent 看的仓库说明，帮助它在多个仓库中判断这个任务该用哪个仓库，例如「后端 API」「前端官网」。不影响程序逻辑。">
+                      <QuestionCircleOutlined class="policy-help" />
+                    </a-tooltip>
+                  </span>
+                  <a-input
+                    v-model:value="policyDrafts[item.id].purpose"
+                    maxlength="500"
+                    aria-label="仓库用途"
+                  />
+                </label>
+                <label class="policy-field">
+                  <span class="policy-label">
+                    默认任务基线
+                    <a-tooltip title="任务不指定基线时默认从哪个分支拉新分支。留空保存时会重置为当时的远端默认分支并固定，之后远端默认分支变化不会跟随。">
+                      <QuestionCircleOutlined class="policy-help" />
+                    </a-tooltip>
+                  </span>
+                  <a-input
+                    v-model:value="policyDrafts[item.id].configured_base_branch"
+                    maxlength="255"
+                    aria-label="默认任务基线"
+                    :placeholder="`留空保存时重置为远端默认（当前 ${item.default_branch || '读取中'}）`"
+                  />
+                </label>
+                <label class="policy-field policy-field-wide">
+                  <span class="policy-label">
+                    允许的任务基线
+                    <a-tooltip title="任务可选择的基线分支白名单，请求不在名单内会被拒绝；默认任务基线必须包含在名单内。想支持从不同分支拉新分支执行任务，把这些分支都加进名单。留空保存时重置为仅包含默认任务基线。">
+                      <QuestionCircleOutlined class="policy-help" />
+                    </a-tooltip>
+                  </span>
+                  <a-select
+                    v-model:value="policyDrafts[item.id].allowed_base_branches"
+                    mode="tags"
+                    :max-tag-count="6"
+                    aria-label="允许的任务基线"
+                    placeholder="可拉新分支的基线白名单"
+                  />
+                </label>
+                <div class="policy-actions">
+                  <a-button
+                    v-if="isPolicyDirty(item.id)"
+                    size="small"
+                    @click="restorePolicy(item)"
+                  >恢复</a-button>
+                  <a-button
+                    size="small"
+                    type="primary"
+                    :loading="savingPolicyId === item.id"
+                    @click="savePolicy(item)"
+                  >保存策略</a-button>
+                </div>
               </div>
             </article>
           </div>
@@ -129,7 +168,17 @@
       </a-tab-pane>
 
       <a-tab-pane key="connections" tab="Connections">
-        <a-form layout="vertical" class="create-form">
+        <div v-if="connections.length" class="section-head">
+          <a-button
+            type="primary"
+            danger
+            size="small"
+            @click="showConnectionForm = !showConnectionForm"
+          >
+            {{ showConnectionForm ? '收起' : '添加 Connection' }}
+          </a-button>
+        </div>
+        <a-form v-if="!connections.length || showConnectionForm" layout="vertical" class="create-form">
           <div class="form-grid">
             <a-form-item label="名称" required
               ><a-input v-model:value="connectionForm.name"
@@ -236,6 +285,7 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { gitApi } from '@/apis/git_api'
 import { projectApi } from '@/apis/project_api'
 
@@ -250,6 +300,8 @@ const updatingCredential = ref(false)
 const editingConnectionId = ref('')
 const credentialToken = ref('')
 const error = ref('')
+const showRepositoryForm = ref(false)
+const showConnectionForm = ref(false)
 const connections = ref([])
 const repositories = ref([])
 const worktrees = ref([])
@@ -260,7 +312,9 @@ let pollTimer = null
 // 服务器当前值的快照；草稿未修改时跟随快照，修改后保留用户输入
 const snapshotPolicy = (item) => ({
   purpose: item.purpose || '项目仓库',
-  configured_base_branch: item.configured_base_branch || item.default_branch || '',
+  // configured_base_branch 留空表示跟随远端默认分支，不能用 default_branch 回填，
+  // 否则保存时会把"跟随远端"隐式固化为 pinned 值
+  configured_base_branch: item.configured_base_branch || '',
   allowed_base_branches: [...(item.allowed_base_branches || [])]
 })
 const clonePolicy = (policy) => ({
@@ -338,6 +392,7 @@ const createConnection = async () => {
     connectionForm.ssh_known_host_key = ''
     connectionForm.name = ''
     await load({ quiet: true })
+    showConnectionForm.value = false
     message.success('Gitea connection 已创建')
   } catch (requestError) {
     connectionForm.api_token = ''
@@ -361,6 +416,7 @@ const createRepository = async () => {
     repositoryForm.configured_base_branch = ''
     repositoryForm.allowed_base_branches = []
     await load({ quiet: true })
+    showRepositoryForm.value = false
   } catch (requestError) {
     error.value = requestError?.message || '仓库绑定失败'
   } finally {
@@ -480,6 +536,11 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 .git-alert {
   margin-bottom: 12px;
 }
+.section-head {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 10px;
+}
 .create-form {
   padding: 14px;
   margin-bottom: 18px;
@@ -534,9 +595,39 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 .policy-editor {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(180px, 2fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 12px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
+  background: var(--gray-25);
+}
+.policy-field {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.policy-field-wide {
+  grid-column: 1 / -1;
+}
+.policy-label {
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
+  color: var(--gray-600);
+  font-size: 12px;
+}
+.policy-help {
+  color: var(--gray-400);
+  font-size: 12px;
+  cursor: help;
+}
+.policy-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .credential-update {
   grid-column: 1 / -1;
