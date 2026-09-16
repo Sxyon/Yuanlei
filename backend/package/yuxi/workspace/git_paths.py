@@ -16,7 +16,7 @@ from yuxi.workspace.paths import user_workdir_host_dir
 _UNSAFE_SLUG = re.compile(r"[^a-z0-9]+")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_REF_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_BRANCH_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_BRANCH_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$")
 
 
 def derive_repository_directory(alias: str, repository_id: str) -> str:
@@ -51,7 +51,11 @@ def derive_task_branch(uid: str, runtime_scope_id: str) -> str:
 
 
 def normalize_branch_slug(value: str) -> str:
-    """校验模型或用户提供的 ASCII kebab-case 分支描述。"""
+    """校验模型或用户提供的分支描述，支持用 ``/`` 表达分支层级分组。
+
+    每个 ``/`` 分隔的段须为 ASCII kebab-case（小写字母、数字、连字符），
+    总长不超过 48 字符。
+    """
     slug = str(value or "").strip()
     if len(slug) > 48 or not _BRANCH_SLUG.fullmatch(slug):
         raise ValueError("branch_slug must be ASCII kebab-case with at most 48 characters")
