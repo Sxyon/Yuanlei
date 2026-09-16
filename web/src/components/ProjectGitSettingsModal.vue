@@ -117,6 +117,11 @@
                   :loading="savingPolicyId === item.id"
                   @click="savePolicy(item)"
                 >保存策略</a-button>
+                <a-button
+                  v-if="isPolicyDirty(item.id)"
+                  size="small"
+                  @click="restorePolicy(item)"
+                >恢复</a-button>
               </div>
             </article>
           </div>
@@ -249,7 +254,29 @@ const connections = ref([])
 const repositories = ref([])
 const worktrees = ref([])
 const policyDrafts = reactive({})
+const policySnapshots = reactive({})
 let pollTimer = null
+
+// 服务器当前值的快照；草稿未修改时跟随快照，修改后保留用户输入
+const snapshotPolicy = (item) => ({
+  purpose: item.purpose || '项目仓库',
+  configured_base_branch: item.configured_base_branch || item.default_branch || '',
+  allowed_base_branches: [...(item.allowed_base_branches || [])]
+})
+const clonePolicy = (policy) => ({
+  ...policy,
+  allowed_base_branches: [...policy.allowed_base_branches]
+})
+const isPolicyDirty = (id) => {
+  const draft = policyDrafts[id]
+  const snap = policySnapshots[id]
+  if (!draft || !snap) return false
+  return (
+    draft.purpose !== snap.purpose ||
+    draft.configured_base_branch !== snap.configured_base_branch ||
+    JSON.stringify(draft.allowed_base_branches) !== JSON.stringify(snap.allowed_base_branches)
+  )
+}
 
 const connectionForm = reactive({
   name: '',
@@ -284,10 +311,10 @@ const load = async ({ quiet = false } = {}) => {
     connections.value = connectionRows
     repositories.value = repositoryRows
     repositoryRows.forEach((item) => {
-      policyDrafts[item.id] = {
-        purpose: item.purpose || '项目仓库',
-        configured_base_branch: item.configured_base_branch || item.default_branch || '',
-        allowed_base_branches: [...(item.allowed_base_branches || [])]
+      policySnapshots[item.id] = snapshotPolicy(item)
+      // 用户已修改的草稿不被轮询覆盖；未修改的跟随服务器最新值
+      if (!policyDrafts[item.id] || !isPolicyDirty(item.id)) {
+        policyDrafts[item.id] = clonePolicy(policySnapshots[item.id])
       }
     })
     worktrees.value = worktreeRows
@@ -358,6 +385,11 @@ const savePolicy = async (item) => {
   } finally {
     savingPolicyId.value = ''
   }
+}
+
+const restorePolicy = (item) => {
+  if (!policySnapshots[item.id]) return
+  policyDrafts[item.id] = clonePolicy(policySnapshots[item.id])
 }
 
 const retryRepository = async (item) => {
