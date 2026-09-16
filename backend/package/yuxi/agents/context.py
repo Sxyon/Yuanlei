@@ -210,6 +210,11 @@ class BaseContext:
         metadata={"name": "Project Git Worktrees", "configurable": False, "hide": True},
     )
 
+    project_git_enabled: bool = field(
+        default=False,
+        metadata={"name": "Project Git Capability", "configurable": False, "hide": True},
+    )
+
     system_prompt: str = field(
         default="You are a helpful assistant.",
         metadata={"name": "系统提示词", "description": "用来描述智能体的角色和行为", "kind": "prompt"},

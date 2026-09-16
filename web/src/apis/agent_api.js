@@ -264,6 +264,15 @@ export const multimodalApi = {
 // =============================================================================
 
 export const threadApi = {
+  getGitRepositories: (threadId) =>
+    apiGet(`/api/chat/thread/${threadId}/git-repositories`),
+
+  selectGitRepository: (threadId, payload) =>
+    apiPost(`/api/chat/thread/${threadId}/git-repositories`, payload),
+
+  retryGitRepository: (threadId, repositoryId) =>
+    apiPost(`/api/chat/thread/${threadId}/git-repositories/${repositoryId}/retry`, {}),
+
   /**
    * 获取对话线程列表
    * @param {string | null | undefined} agentId - 智能体ID，可选；不传时返回全部智能体对话

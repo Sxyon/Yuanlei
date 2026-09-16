@@ -8,7 +8,7 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
-from yuxi.git.hosting import DeployKey, HostedRepository
+from yuxi.git.hosting import DeployKey, HostedBranch, HostedRepository
 
 
 class GiteaProvider:
@@ -35,6 +35,22 @@ class GiteaProvider:
         if parsed_owner != owner or parsed_name != name or not default_branch:
             raise ValueError("Gitea repository metadata does not match the requested repository")
         return HostedRepository(str(data["id"]), parsed_owner, parsed_name, ssh_url, default_branch)
+
+    async def get_branch(self, owner: str, name: str, branch: str) -> HostedBranch:
+        """精确读取一个分支，不接受 tag 或完整 ref。"""
+        normalized = str(branch or "").strip()
+        if not normalized or normalized.startswith("refs/"):
+            raise ValueError("invalid Gitea branch name")
+        data = await self._request(
+            "GET",
+            f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/branches/{quote(normalized, safe='')}",
+        )
+        returned_name = str(data.get("name") or "").strip()
+        commit = data.get("commit") if isinstance(data, dict) else None
+        commit_sha = str(commit.get("id") or "").strip() if isinstance(commit, dict) else ""
+        if returned_name != normalized or not commit_sha:
+            raise ValueError("Gitea branch metadata does not match the requested branch")
+        return HostedBranch(returned_name, commit_sha)
 
     async def list_deploy_keys(self, owner: str, name: str) -> list[DeployKey]:
         """分页列出仓库的全部 deploy key。"""

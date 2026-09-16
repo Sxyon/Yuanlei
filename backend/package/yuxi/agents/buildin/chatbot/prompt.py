@@ -53,19 +53,33 @@ def build_prompt_with_context(context):
 - 父子智能体共享同一个 Project Workdir 与执行树 runtime；并发写同一路径遵循真实 POSIX 结果
 """
     git_repositories = getattr(context, "git_repositories", None) or []
+    project_git_enabled = bool(getattr(context, "project_git_enabled", False))
     git_prompt = ""
     if git_repositories:
         rows = "\n".join(
-            f"- {item['alias']}: path={item['path']}, branch={item['branch']}, base={item['base_branch']}"
+            (
+                f"- {item['alias']}: purpose={item['purpose']}, task_purpose={item['task_purpose']}, "
+                f"path={item['path']}, branch={item['branch']}, base={item['base_branch']}, "
+                f"base_sha={item['base_sha']}"
+            )
             for item in git_repositories
         )
         git_prompt = f"""
 <| Project Git 工作区 |>
 以下 worktree 已按根任务分配，Root Agent 与 SubAgent 共享，同一 Project 的其他根任务使用不同目录：
 {rows}
-- 使用 execute 与 `git -C <path>` 完成 status、diff、add、commit；不要 clone、fetch、push 或修改 remote
+- 使用 execute 与 `git -C <path>` 完成 status、diff、add、commit
+- 不要执行 clone、fetch、push、remote add/set-url、worktree add/remove/prune 或 branch -D
 - 只在已分配分支提交，不切换、创建或删除其他分支，不操作 bare repository.git
 - 推送时先确认 worktree clean，读取完整 HEAD SHA，再由 Root Agent 调用 git_push_branch
+"""
+    elif project_git_enabled:
+        git_prompt = """
+<| Project Git 工作区 |>
+当前 Project 配置了 Git 仓库，但本任务尚未分配 worktree。
+- 需要仓库时先调用 git_list_project_repositories，再调用 git_prepare_worktree
+- git_prepare_worktree 与 git_push_branch 需要用户逐次批准
+- 不要自行 clone、fetch、push、修改 remote 或执行 git worktree add/remove/prune
 """
     sections = [current_date, PROMPT.strip(), filesystem_prompt.strip()]
     if git_prompt:

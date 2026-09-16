@@ -25,11 +25,15 @@ def test_chatbot_prompt_injects_only_local_git_worktree_contract():
             git_repositories=[
                 {
                     "alias": "api",
+                    "purpose": "后端 API",
+                    "task_purpose": "实现退款",
                     "path": "/home/gem/user-data/projects/project-id/repos/api/worktrees/task",
                     "branch": "codex/task-abc",
                     "base_branch": "main",
+                    "base_sha": "a" * 40,
                 }
             ],
+            project_git_enabled=True,
         )
     )
 

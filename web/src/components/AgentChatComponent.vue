@@ -61,6 +61,7 @@
             :is-file-panel-open="isFilePanelOpen"
             :is-state-panel-open="statePanelOpen"
             :has-active-thread="!!currentChatId"
+            :current-thread="currentThread"
             :toggle-agent-panel="toggleAgentPanel"
           ></slot>
         </div>

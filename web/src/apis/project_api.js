@@ -25,6 +25,9 @@ export const projectApi = {
   retryRepository: (projectId, repositoryId) =>
     apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/retry`, {}),
 
+  updateRepositoryPolicy: (projectId, repositoryId, payload) =>
+    apiPut(`/api/projects/${projectId}/repositories/${repositoryId}/policy`, payload),
+
   deactivateRepository: (projectId, repositoryId) =>
     apiDelete(`/api/projects/${projectId}/repositories/${repositoryId}`),
 

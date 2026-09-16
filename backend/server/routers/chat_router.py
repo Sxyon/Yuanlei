@@ -35,6 +35,11 @@ from yuxi.services.artifact_service import (
 )
 from yuxi.services.feedback_service import get_message_feedback_view, submit_message_feedback_view
 from yuxi.services.context_compression_service import compress_thread_context as compress_context
+from yuxi.services.project_git_service import (
+    list_conversation_git_repositories_view,
+    retry_conversation_git_repository_view,
+    select_conversation_git_repository_view,
+)
 from yuxi.utils.logging_config import logger
 from yuxi.utils.image_processor import process_uploaded_image
 
@@ -56,6 +61,18 @@ class ImageUploadResponse(BaseModel):
 
 
 chat = APIRouter(prefix="/chat", tags=["chat"])
+
+
+class ConversationGitRepositorySelect(BaseModel):
+    """根 Conversation 的单仓库 allocation 意图。"""
+
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=128)
+    repository_alias: str = Field(min_length=1, max_length=80)
+    base_branch: str = Field(min_length=1, max_length=255)
+    branch_kind: str
+    branch_slug: str = Field(min_length=1, max_length=48)
+    task_purpose: str = Field(min_length=1, max_length=500)
 
 
 @chat.post("/call")
@@ -98,6 +115,44 @@ async def get_thread_history(
     except Exception as e:
         logger.error(f"获取对话历史消息出错: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"获取对话历史消息出错: {str(e)}")
+
+
+@chat.get("/thread/{thread_id}/git-repositories")
+async def list_conversation_git_repositories(
+    thread_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出根 Conversation 可选仓库和当前 allocation。"""
+    return await list_conversation_git_repositories_view(
+        uid=str(current_user.uid), thread_id=thread_id, db=db
+    )
+
+
+@chat.post("/thread/{thread_id}/git-repositories", status_code=202)
+async def select_conversation_git_repository(
+    thread_id: str,
+    payload: ConversationGitRepositorySelect,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """持久化根任务仓库选择，Git 准备延迟到下一次 preflight。"""
+    return await select_conversation_git_repository_view(
+        uid=str(current_user.uid), thread_id=thread_id, db=db, **payload.model_dump()
+    )
+
+
+@chat.post("/thread/{thread_id}/git-repositories/{repository_id}/retry", status_code=202)
+async def retry_conversation_git_repository(
+    thread_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """显式重试失败的根任务 worktree。"""
+    return await retry_conversation_git_repository_view(
+        uid=str(current_user.uid), thread_id=thread_id, repository_id=repository_id, db=db
+    )
 
 
 @chat.get("/thread/{thread_id}/audits")

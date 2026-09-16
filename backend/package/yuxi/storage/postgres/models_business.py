@@ -249,8 +249,11 @@ class ProjectGitRepository(Base):
     remote_repository_id = Column(String(128), nullable=True)
     repository_owner = Column(String(255), nullable=False)
     repository_name = Column(String(255), nullable=False)
+    purpose = Column(Text, nullable=False, default="项目仓库", server_default="项目仓库")
     canonical_ssh_url = Column(String(1024), nullable=True)
     default_branch = Column(String(255), nullable=True)
+    configured_base_branch = Column(String(255), nullable=True)
+    allowed_base_branches = Column(JSON_VALUE, nullable=False, default=list)
     deploy_public_key = Column(Text, nullable=False)
     deploy_public_key_fingerprint = Column(String(128), nullable=False)
     deploy_private_credential_id = Column(String(64), nullable=False)
@@ -275,7 +278,10 @@ class ProjectGitRepository(Base):
             "directory_name": self.directory_name,
             "repository_owner": self.repository_owner,
             "repository_name": self.repository_name,
+            "purpose": self.purpose,
             "default_branch": self.default_branch,
+            "configured_base_branch": self.configured_base_branch,
+            "allowed_base_branches": self.allowed_base_branches or [],
             "status": self.status,
             "last_error_code": self.last_error_code,
             "last_error_message": self.last_error_message,
@@ -290,14 +296,29 @@ class ProjectGitWorktree(Base):
     __tablename__ = "project_git_worktrees"
     __table_args__ = (
         UniqueConstraint("repository_id", "runtime_scope_id", name="uq_project_git_worktrees_repository_scope"),
+        UniqueConstraint("uid", "selection_request_id", name="uq_project_git_worktrees_uid_selection_request"),
         ForeignKeyConstraint(
             ["repository_id", "project_id", "uid"],
             ["project_git_repositories.id", "project_git_repositories.project_id", "project_git_repositories.uid"],
             name="fk_project_git_worktrees_repository_identity",
         ),
         CheckConstraint(
-            "status IN ('preparing', 'ready', 'prepare_failed', 'cleanup_pending', 'cleanup_failed', 'removed')",
+            "status IN ('requested', 'preparing', 'ready', 'prepare_failed', "
+            "'cleanup_pending', 'cleanup_failed', 'removed')",
             name="ck_project_git_worktrees_status",
+        ),
+        CheckConstraint(
+            "selection_source IN ('user', 'agent', 'legacy')",
+            name="ck_project_git_worktrees_selection_source",
+        ),
+        CheckConstraint(
+            "branch_kind IN ('feature', 'fix', 'docs', 'refactor', 'chore', 'test', 'legacy')",
+            name="ck_project_git_worktrees_branch_kind",
+        ),
+        CheckConstraint(
+            "(branch_kind = 'legacy' AND branch_slug IS NULL) OR "
+            "(branch_kind <> 'legacy' AND branch_slug IS NOT NULL)",
+            name="ck_project_git_worktrees_branch_slug",
         ),
     )
 
@@ -307,9 +328,16 @@ class ProjectGitWorktree(Base):
     uid = Column(String(64), nullable=False, index=True)
     runtime_scope_id = Column(String(64), nullable=False, index=True)
     task_key = Column(String(64), nullable=False)
+    selection_source = Column(String(16), nullable=False)
+    task_purpose = Column(Text, nullable=False)
+    branch_kind = Column(String(16), nullable=False)
+    branch_slug = Column(String(48), nullable=True)
+    requested_by_run_id = Column(String(64), nullable=True, index=True)
+    allocation_generation = Column(Integer, nullable=False, default=1, server_default="1")
+    selection_request_id = Column(String(128), nullable=True)
     branch_name = Column(String(255), nullable=False)
     base_branch = Column(String(255), nullable=False)
-    base_sha = Column(String(64), nullable=False)
+    base_sha = Column(String(64), nullable=True)
     last_observed_head_sha = Column(String(64), nullable=True)
     last_pushed_sha = Column(String(64), nullable=True)
     relative_path = Column(String(512), nullable=False)
@@ -328,7 +356,15 @@ class ProjectGitWorktree(Base):
         return {
             "id": self.id,
             "repository_id": self.repository_id,
+            "project_id": self.project_id,
+            "runtime_scope_id": self.runtime_scope_id,
             "task_key": self.task_key,
+            "selection_source": self.selection_source,
+            "task_purpose": self.task_purpose,
+            "branch_kind": self.branch_kind,
+            "branch_slug": self.branch_slug,
+            "requested_by_run_id": self.requested_by_run_id,
+            "allocation_generation": self.allocation_generation,
             "branch": self.branch_name,
             "base_branch": self.base_branch,
             "base_sha": self.base_sha,

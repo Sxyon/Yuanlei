@@ -22,6 +22,14 @@ class HostedRepository:
 
 
 @dataclass(frozen=True)
+class HostedBranch:
+    """托管商返回的精确 branch 与 commit。"""
+
+    name: str
+    commit_sha: str
+
+
+@dataclass(frozen=True)
 class DeployKey:
     """远端 deploy key 的最小投影。"""
 
@@ -37,6 +45,8 @@ class GitHostingProvider(Protocol):
     async def verify_connection(self) -> None: ...
 
     async def get_repository(self, owner: str, name: str) -> HostedRepository: ...
+
+    async def get_branch(self, owner: str, name: str, branch: str) -> HostedBranch: ...
 
     async def list_deploy_keys(self, owner: str, name: str) -> list[DeployKey]: ...
 

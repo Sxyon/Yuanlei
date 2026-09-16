@@ -10,6 +10,18 @@
           :is-new-conversation="!getRouteThreadId()"
           @thread-change="handleThreadChange"
         >
+          <template #header-right="{ currentThread, hasActiveThread }">
+            <button
+              v-if="hasActiveThread && currentThread?.status !== 'subagent'"
+              type="button"
+              class="task-git-button"
+              title="管理当前任务使用的 Git 仓库"
+              @click="openTaskRepositories(currentThread)"
+            >
+              <GitBranch :size="16" />
+              <span>任务仓库</span>
+            </button>
+          </template>
           <template #input-actions-left="{ hasActiveThread, isCreatingThread }">
             <ActionDropdown
               upward
@@ -112,19 +124,26 @@
       :backend-options="agentBackendOptions"
       @saved="handleAgentSaved"
     />
+    <ConversationGitRepositoriesModal
+      :open="Boolean(gitModalThread)"
+      :thread-id="gitModalThread?.id || ''"
+      :project-id="gitModalThread?.project_id || ''"
+      @update:open="(open) => !open && (gitModalThread = null)"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { Settings2, Check, Plus } from '@lucide/vue'
+import { Settings2, Check, GitBranch, Plus } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { agentApi } from '@/apis/agent_api'
 import ActionDropdown from '@/components/common/ActionDropdown.vue'
 import ActionTrigger from '@/components/common/ActionTrigger.vue'
 import AgentChatComponent from '@/components/AgentChatComponent.vue'
 import AgentEditModal from '@/components/model-management/AgentEditModal.vue'
+import ConversationGitRepositoriesModal from '@/components/ConversationGitRepositoriesModal.vue'
 import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import { handleChatError } from '@/utils/errorHandler'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
@@ -136,6 +155,12 @@ import { storeToRefs } from 'pinia'
 // 组件引用
 const chatComponentRef = ref(null)
 const agentEditModalRef = ref(null)
+const gitModalThread = ref(null)
+
+const openTaskRepositories = (thread) => {
+  if (!thread?.id || !thread?.project_id) return
+  gitModalThread.value = thread
+}
 
 // Stores
 const agentStore = useAgentStore()
@@ -373,5 +398,29 @@ const openAgentManagement = async () => {
 .content {
   flex: 1;
   overflow: hidden;
+}
+
+.task-git-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  color: var(--gray-700);
+  background: var(--gray-0);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--primary-400);
+    color: var(--primary-600);
+  }
+}
+
+@media (max-width: 640px) {
+  .task-git-button span {
+    display: none;
+  }
 }
 </style>

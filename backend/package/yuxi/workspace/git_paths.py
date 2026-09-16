@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import subprocess
 import unicodedata
 from pathlib import Path, PurePosixPath
 
@@ -15,6 +16,7 @@ from yuxi.workspace.paths import user_workdir_host_dir
 _UNSAFE_SLUG = re.compile(r"[^a-z0-9]+")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_REF_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_BRANCH_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def derive_repository_directory(alias: str, repository_id: str) -> str:
@@ -46,6 +48,54 @@ def configured_branch_prefix() -> str:
 def derive_task_branch(uid: str, runtime_scope_id: str) -> str:
     """派生根任务分支。"""
     return f"{configured_branch_prefix()}task-{derive_task_key(uid, runtime_scope_id)}"
+
+
+def normalize_branch_slug(value: str) -> str:
+    """校验模型或用户提供的 ASCII kebab-case 分支描述。"""
+    slug = str(value or "").strip()
+    if len(slug) > 48 or not _BRANCH_SLUG.fullmatch(slug):
+        raise ValueError("branch_slug must be ASCII kebab-case with at most 48 characters")
+    return slug
+
+
+def normalize_base_branch(value: str) -> str:
+    """校验用户可选择的精确 branch name，拒绝完整 ref 与 revision 表达式。"""
+    branch = str(value or "").strip()
+    if not branch or len(branch) > 255 or branch.startswith("refs/"):
+        raise ValueError("invalid base branch")
+    completed = subprocess.run(
+        ["git", "check-ref-format", "--branch", branch],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=5,
+    )
+    if completed.returncode != 0:
+        raise ValueError("invalid base branch")
+    return branch
+
+
+def derive_allocation_branch(kind: str, slug: str, uid: str, runtime_scope_id: str) -> str:
+    """由受限业务意图生成任务分支，并交给 Git 校验最终 ref。"""
+    normalized_kind = str(kind or "").strip()
+    if normalized_kind not in {"feature", "fix", "docs", "refactor", "chore", "test"}:
+        raise ValueError("unsupported branch_kind")
+    branch = (
+        f"{configured_branch_prefix()}{normalized_kind}/"
+        f"{normalize_branch_slug(slug)}-{derive_task_key(uid, runtime_scope_id)[:8]}"
+    )
+    completed = subprocess.run(
+        ["git", "check-ref-format", "--branch", branch],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=5,
+    )
+    if completed.returncode != 0:
+        raise ValueError("generated task branch is not a valid Git branch")
+    return branch
 
 
 def repository_relative_paths(directory_name: str, task_key: str | None = None) -> tuple[str, str | None]:

@@ -76,6 +76,7 @@ class GitExecutor:
         worktree_path: Path,
         branch: str,
         base_branch: str,
+        base_sha: str | None = None,
         worktree_add_path: Path | None = None,
         worktree_name: str | None = None,
         worktree_registered: bool | None = None,
@@ -88,6 +89,7 @@ class GitExecutor:
             worktree_path=worktree_path,
             branch=branch,
             base_branch=base_branch,
+            base_sha=base_sha,
             worktree_add_path=worktree_add_path,
             worktree_name=worktree_name,
             worktree_registered=worktree_registered,
@@ -195,6 +197,7 @@ class GitExecutor:
         worktree_path: Path,
         branch: str,
         base_branch: str,
+        base_sha: str | None = None,
         worktree_add_path: Path | None = None,
         worktree_name: str | None = None,
         worktree_registered: bool | None = None,
@@ -213,10 +216,19 @@ class GitExecutor:
                 raise GitExecutionError("existing worktree is bound to another branch")
             return state
         base_ref = f"refs/remotes/origin/{base_branch}"
-        base_sha = self._run(
-            self._git_args(bare_path, "rev-parse", "--verify", f"{base_ref}^{{commit}}"),
-            pass_fds=pass_fds,
-        )
+        resolved_base_sha = base_sha
+        if resolved_base_sha is None:
+            resolved_base_sha = self._run(
+                self._git_args(bare_path, "rev-parse", "--verify", f"{base_ref}^{{commit}}"),
+                pass_fds=pass_fds,
+            ).stdout.strip()
+        else:
+            verified = self._run(
+                self._git_args(bare_path, "rev-parse", "--verify", f"{resolved_base_sha}^{{commit}}"),
+                pass_fds=pass_fds,
+            ).stdout.strip()
+            if verified != resolved_base_sha:
+                raise GitExecutionError("frozen base SHA is not an exact commit")
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
         branch_exists = (
             self._run(
@@ -231,7 +243,7 @@ class GitExecutor:
             args = self._git_args(bare_path, "worktree", "add", str(add_path), branch)
         else:
             args = self._git_args(
-                bare_path, "worktree", "add", "-b", branch, str(add_path), base_sha.stdout.strip()
+                bare_path, "worktree", "add", "-b", branch, str(add_path), resolved_base_sha
             )
         self._run(args, pass_fds=pass_fds)
         self._run(

@@ -13,9 +13,12 @@ from yuxi.git.hosting import UnsupportedGitProviderError, create_git_hosting_pro
 from yuxi.storage.postgres.models_business import GitConnection, ProjectGitRepository
 from yuxi.workspace.git_paths import (
     configured_branch_prefix,
+    derive_allocation_branch,
     derive_repository_directory,
     derive_task_branch,
     derive_task_key,
+    normalize_base_branch,
+    normalize_branch_slug,
     require_commit_sha,
     resolve_project_git_host_paths,
     runtime_git_worktree_path,
@@ -55,6 +58,34 @@ def test_directory_and_task_keys_do_not_embed_hostile_input(monkeypatch):
     assert directory.startswith("api-repo-")
     assert len(task_key) == 24
     assert derive_task_branch("uid:external", "root/conversation") == f"codex/task-{task_key}"
+
+
+def test_allocation_branch_is_server_derived_from_validated_intent(monkeypatch):
+    monkeypatch.setenv("YUXI_GIT_BRANCH_PREFIX", "codex/")
+
+    branch = derive_allocation_branch("feature", "order-refund", "user-1", "thread-1")
+
+    assert branch == f"codex/feature/order-refund-{derive_task_key('user-1', 'thread-1')[:8]}"
+
+
+@pytest.mark.parametrize("kind", ["", "legacy", "release", "Feature"])
+def test_allocation_branch_rejects_unapproved_kind(monkeypatch, kind):
+    monkeypatch.setenv("YUXI_GIT_BRANCH_PREFIX", "codex/")
+
+    with pytest.raises(ValueError, match="branch_kind"):
+        derive_allocation_branch(kind, "safe-slug", "user-1", "thread-1")
+
+
+@pytest.mark.parametrize("slug", ["", "Upper", "with/slash", "two--parts", "a" * 49])
+def test_branch_slug_is_strict_ascii_kebab_case(slug):
+    with pytest.raises(ValueError, match="branch_slug"):
+        normalize_branch_slug(slug)
+
+
+@pytest.mark.parametrize("branch", ["", "refs/heads/main", "main..next", "-main", "main~1"])
+def test_base_branch_rejects_refs_and_revision_expressions(branch):
+    with pytest.raises(ValueError, match="base branch"):
+        normalize_base_branch(branch)
 
 
 @pytest.mark.parametrize("prefix", ["", "codex", "/codex/", "codex//", "codex.lock/", "codex@{/", "../"])
@@ -153,6 +184,29 @@ async def test_gitea_branch_protection_matches_glob_rules(monkeypatch):
 
     assert await provider.is_branch_protected("owner", "repo", "codex/task-123") is True
     assert await provider.is_branch_protected("owner", "repo", "feature/task-123") is False
+
+
+@pytest.mark.asyncio
+async def test_gitea_get_branch_requires_exact_returned_name_and_commit(monkeypatch):
+    monkeypatch.setenv("YUXI_GIT_ALLOWED_GITEA_ORIGINS", "https://gitea.example.invalid")
+    provider = GiteaProvider(
+        api_origin="https://gitea.example.invalid",
+        api_token="test-only",
+        ssh_host="gitea.example.invalid",
+        ssh_port=22,
+    )
+
+    async def request(method, path, **kwargs):
+        assert method == "GET"
+        assert path.endswith("/branches/release%2Fstable")
+        assert not kwargs
+        return {"name": "release/stable", "commit": {"id": "a" * 40}}
+
+    monkeypatch.setattr(provider, "_request", request)
+
+    branch = await provider.get_branch("owner", "repo", "release/stable")
+    assert branch.name == "release/stable"
+    assert branch.commit_sha == "a" * 40
 
 
 @pytest.mark.asyncio

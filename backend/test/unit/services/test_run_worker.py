@@ -406,9 +406,10 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, run_obj: SimpleNamespace):
     monkeypatch.setattr(run_worker, "_record_run_timing_best_effort", fake_noop)
     monkeypatch.setattr(
         run_worker,
-        "prepare_project_git_worktrees",
+        "prepare_selected_project_git_worktrees",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(run_worker, "project_git_enabled_for_project", AsyncMock(return_value=False))
     monkeypatch.setattr(
         run_worker,
         "_validate_run_workdir_binding",

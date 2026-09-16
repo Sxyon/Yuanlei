@@ -29,7 +29,16 @@ from yuxi.agents.tool_approval import SENSITIVE_BACKEND_TOOLS, normalize_tool_ap
 from yuxi.agents.toolkits.service import resolve_configured_runtime_tools
 from yuxi.models.chat import load_chat_model, resolve_chat_model_spec
 
-_SUBAGENT_DISABLED_TOOLS = frozenset({"present_artifacts", "ask_user_question", "install_skill", "git_push_branch"})
+_SUBAGENT_DISABLED_TOOLS = frozenset(
+    {
+        "present_artifacts",
+        "ask_user_question",
+        "install_skill",
+        "git_list_project_repositories",
+        "git_prepare_worktree",
+        "git_push_branch",
+    }
+)
 # 默认审批模式额外隐藏敏感 backend 工具，避免子智能体绕过主线程逐项审批。
 _SUBAGENT_DISABLED_TOOLS_DEFAULT_MODE = _SUBAGENT_DISABLED_TOOLS | SENSITIVE_BACKEND_TOOLS
 

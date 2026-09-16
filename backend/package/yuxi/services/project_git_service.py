@@ -30,9 +30,11 @@ from yuxi.storage.postgres.models_business import (
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.workspace.git_paths import (
+    derive_allocation_branch,
     derive_repository_directory,
-    derive_task_branch,
     derive_task_key,
+    normalize_base_branch,
+    normalize_branch_slug,
     repository_relative_paths,
     require_commit_sha,
     resolve_project_git_host_paths,
@@ -44,6 +46,10 @@ WORKTREE_LEASE_SECONDS = 300
 
 class ProjectGitBusyError(RuntimeError):
     """另一个 worker 正在准备相同任务 worktree。"""
+
+
+class ProjectGitSelectionError(RuntimeError):
+    """已选择仓库的持久配置无法继续当前 Run。"""
 
 
 async def create_git_connection_view(
@@ -192,6 +198,9 @@ async def create_project_repository_view(
     repository_owner: str,
     repository_name: str,
     db,
+    purpose: str = "项目仓库",
+    configured_base_branch: str | None = None,
+    allowed_base_branches: list[str] | None = None,
 ) -> tuple[dict, tuple[str, int] | None]:
     """持久化 provisioning 意图；调用方提交后发布返回的 job。"""
     store = ProjectGitRepositoryStore(db)
@@ -205,6 +214,9 @@ async def create_project_repository_view(
             alias=alias,
             repository_owner=repository_owner,
             repository_name=repository_name,
+            purpose=purpose,
+            configured_base_branch=configured_base_branch,
+            allowed_base_branches=allowed_base_branches,
         ):
             raise HTTPException(status_code=409, detail="request_id 已用于其他仓库绑定")
         return existing.to_dict(), None
@@ -213,6 +225,10 @@ async def create_project_repository_view(
     if project is None or connection is None:
         raise HTTPException(status_code=404, detail="Project 或 Git connection 不存在")
     normalized_alias = _validate_alias(alias)
+    normalized_purpose = _validate_purpose(purpose, "purpose")
+    normalized_configured, normalized_allowed = _normalize_repository_policy(
+        configured_base_branch, allowed_base_branches
+    )
     private_key, public_key, fingerprint = _generate_deploy_key()
     encrypted = _credential_owner_http().encrypt(uid=uid, purpose="deploy_private_key", plaintext=private_key)
     credential = _credential_model(encrypted)
@@ -226,6 +242,9 @@ async def create_project_repository_view(
         directory_name=derive_repository_directory(normalized_alias, repository_id),
         repository_owner=_validate_repository_part(repository_owner),
         repository_name=_validate_repository_part(repository_name),
+        purpose=normalized_purpose,
+        configured_base_branch=normalized_configured,
+        allowed_base_branches=normalized_allowed,
         deploy_public_key=public_key,
         deploy_public_key_fingerprint=fingerprint,
         deploy_private_credential_id=credential.id,
@@ -247,6 +266,9 @@ async def create_project_repository_view(
             alias=alias,
             repository_owner=repository_owner,
             repository_name=repository_name,
+            purpose=purpose,
+            configured_base_branch=configured_base_branch,
+            allowed_base_branches=allowed_base_branches,
         ):
             raise HTTPException(status_code=409, detail="repository alias 或 request_id 已存在") from exc
         binding = replay
@@ -258,6 +280,136 @@ async def list_project_repositories_view(*, uid: str, project_id: str, db) -> li
     """列出当前用户 Project 的仓库绑定。"""
     await _require_selectable_project(uid, project_id, db)
     return [item.to_dict() for item in await ProjectGitRepositoryStore(db).list_project_bindings(project_id, uid)]
+
+
+async def update_project_repository_policy_view(
+    *,
+    uid: str,
+    project_id: str,
+    repository_id: str,
+    purpose: str,
+    configured_base_branch: str | None,
+    allowed_base_branches: list[str] | None,
+    db,
+) -> dict:
+    """验证 Gitea 精确分支后更新只影响未来 allocation 的仓库策略。"""
+    store = ProjectGitRepositoryStore(db)
+    binding = await store.get_binding(repository_id, uid, lock=True)
+    if binding is None or binding.project_id != project_id or binding.status != "active":
+        raise HTTPException(status_code=409, detail="仓库当前不可更新策略")
+    connection = await store.get_connection(binding.connection_id, uid, active_only=True)
+    token_credential = (
+        await store.get_credential(connection.api_token_credential_id, uid) if connection is not None else None
+    )
+    if connection is None or token_credential is None:
+        raise HTTPException(status_code=409, detail="仓库连接不可用")
+    normalized_purpose = _validate_purpose(purpose, "purpose")
+    configured, allowed = _normalize_repository_policy(configured_base_branch, allowed_base_branches)
+    effective_configured = configured or binding.default_branch
+    if not effective_configured:
+        raise HTTPException(status_code=409, detail="仓库远端默认分支尚未就绪")
+    effective_allowed = allowed or [effective_configured]
+    if effective_configured not in effective_allowed:
+        raise HTTPException(status_code=422, detail="configured_base_branch 必须位于 allowed_base_branches")
+    provider = create_git_hosting_provider(
+        provider=connection.provider,
+        api_origin=connection.api_origin,
+        api_token=GitCredentialOwner().decrypt(token_credential),
+        ssh_host=connection.ssh_host,
+        ssh_port=connection.ssh_port,
+    )
+    try:
+        for branch in effective_allowed:
+            await provider.get_branch(binding.repository_owner, binding.repository_name, branch)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="仓库策略包含不存在的 Gitea 分支") from exc
+    binding.purpose = normalized_purpose
+    binding.configured_base_branch = effective_configured
+    binding.allowed_base_branches = effective_allowed
+    binding.updated_at = utc_now_naive()
+    await db.commit()
+    return binding.to_dict()
+
+
+async def list_conversation_git_repositories_view(*, uid: str, thread_id: str, db) -> list[dict]:
+    """列出根 Conversation 的可选仓库及当前 allocation。"""
+    conversation, project = await _require_root_conversation(uid, thread_id, db)
+    del conversation
+    store = ProjectGitRepositoryStore(db)
+    bindings = await store.list_project_bindings(project.id, uid)
+    allocations = {
+        item.repository_id: item for item in await store.list_scope_worktrees(thread_id, uid)
+    }
+    return [
+        _conversation_repository_view(binding, allocations.get(binding.id), project.workdir_path)
+        for binding in bindings
+    ]
+
+
+async def select_conversation_git_repository_view(
+    *,
+    uid: str,
+    thread_id: str,
+    request_id: str,
+    repository_alias: str,
+    base_branch: str,
+    branch_kind: str,
+    branch_slug: str,
+    task_purpose: str,
+    db,
+) -> dict:
+    """持久化用户对根任务仓库的选择，不在 HTTP 请求中执行 Git 副作用。"""
+    _conversation, project = await _require_root_conversation(uid, thread_id, db, lock=True)
+    store = ProjectGitRepositoryStore(db)
+    binding = await store.get_active_binding_by_alias(
+        project_id=project.id,
+        uid=uid,
+        alias=_validate_alias(repository_alias),
+        lock=True,
+    )
+    if binding is None:
+        raise HTTPException(status_code=404, detail="Project 中不存在可用的仓库 alias")
+    try:
+        worktree = await _request_worktree_allocation(
+            store=store,
+            binding=binding,
+            uid=uid,
+            runtime_scope_id=thread_id,
+            request_id=_required(request_id, "request_id"),
+            selection_source="user",
+            requested_by_run_id=None,
+            base_branch=base_branch,
+            branch_kind=branch_kind,
+            branch_slug=branch_slug,
+            task_purpose=task_purpose,
+            explicit_retry=False,
+        )
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="仓库 allocation 已并发创建") from exc
+    return _conversation_repository_view(binding, worktree, project.workdir_path)
+
+
+async def retry_conversation_git_repository_view(
+    *, uid: str, thread_id: str, repository_id: str, db
+) -> dict:
+    """显式把当前根任务的 prepare_failed allocation 恢复为 requested。"""
+    _conversation, project = await _require_root_conversation(uid, thread_id, db, lock=True)
+    store = ProjectGitRepositoryStore(db)
+    binding = await store.get_binding(repository_id, uid, lock=True)
+    worktree = await store.get_worktree(repository_id, thread_id, uid, lock=True)
+    if binding is None or binding.project_id != project.id or worktree is None or worktree.status != "prepare_failed":
+        raise HTTPException(status_code=409, detail="任务仓库当前不可重试")
+    if binding.status != "active":
+        raise HTTPException(status_code=409, detail="仓库绑定当前不可用")
+    worktree.status = "requested"
+    worktree.lease_owner = None
+    worktree.lease_expires_at = None
+    worktree.last_error_code = worktree.last_error_message = None
+    worktree.updated_at = utc_now_naive()
+    await db.commit()
+    return _conversation_repository_view(binding, worktree, project.workdir_path)
 
 
 async def retry_project_repository_view(*, uid: str, project_id: str, repository_id: str, db):
@@ -368,17 +520,28 @@ async def reconcile_project_git_operations() -> list[str]:
     return enqueued
 
 
-async def prepare_project_git_worktrees(
+async def prepare_selected_project_git_worktrees(
     *, uid: str, project_id: str, workdir_path: str, runtime_scope_id: str, worker_id: str
 ) -> list[dict]:
-    """在 Agent 构图前准备全部 active 仓库的根任务 worktree。"""
+    """在 Agent 构图前只准备当前根任务显式选择的仓库。"""
     async with pg_manager.get_async_session_context() as db:
-        bindings = await ProjectGitRepositoryStore(db).list_project_bindings(project_id, uid)
-    live = [item for item in bindings if item.status != "disabled"]
-    if any(item.status != "active" for item in live):
-        raise ProjectGitBusyError("Project Git repositories are not ready")
+        store = ProjectGitRepositoryStore(db)
+        allocations = await store.list_scope_worktrees(runtime_scope_id, uid)
+        pairs = [(item, await store.get_binding(item.repository_id, uid)) for item in allocations]
     snapshots = []
-    for binding in live:
+    for worktree, binding in pairs:
+        if binding is None or binding.project_id != project_id:
+            raise ProjectGitSelectionError("Selected Project Git repository ownership is invalid")
+        if binding.status == "provisioning":
+            raise ProjectGitBusyError("Selected Project Git repository is not ready")
+        if binding.status != "active":
+            raise ProjectGitSelectionError("Selected Project Git repository is disabled or deleting")
+        if worktree.status == "prepare_failed":
+            raise ProjectGitSelectionError("Selected Project Git worktree requires explicit retry")
+        if worktree.status in {"cleanup_pending", "cleanup_failed"}:
+            raise ProjectGitSelectionError("Selected Project Git worktree is being cleaned up")
+        if worktree.status not in {"requested", "preparing", "ready"}:
+            raise ProjectGitSelectionError("Selected Project Git worktree has an invalid state")
         try:
             snapshots.append(
                 await _prepare_repository_worktree(
@@ -392,6 +555,104 @@ async def prepare_project_git_worktrees(
         except GitExecutionError as exc:
             raise ProjectGitBusyError("Project Git worktree preparation must be retried") from exc
     return snapshots
+
+
+async def project_git_enabled_for_project(*, uid: str, project_id: str) -> bool:
+    """读取 Root graph 是否应装配 Project Git 管理工具。"""
+    async with pg_manager.get_async_session_context() as db:
+        return await ProjectGitRepositoryStore(db).project_has_non_disabled_binding(project_id, uid)
+
+
+async def list_project_git_repositories_for_run(*, run_id: str, uid: str) -> dict:
+    """从 ToolRuntime 重建 Root Run 授权并返回脱敏仓库列表。"""
+    async with pg_manager.get_async_session_context() as db:
+        run, _conversation, project = await _require_authorized_root_run(run_id, uid, db)
+        store = ProjectGitRepositoryStore(db)
+        bindings = await store.list_project_bindings(project.id, uid)
+        allocations = {
+            item.repository_id: item for item in await store.list_scope_worktrees(run.runtime_scope_id, uid)
+        }
+        repositories = [
+            _tool_repository_view(binding, allocations.get(binding.id), project.workdir_path)
+            for binding in bindings
+            if binding.status != "disabled" or binding.id in allocations
+        ]
+    return {"repositories": repositories}
+
+
+async def prepare_project_git_worktree_for_run(
+    *,
+    run_id: str,
+    uid: str,
+    repository_alias: str,
+    base_branch: str,
+    branch_kind: str,
+    branch_slug: str,
+    task_purpose: str,
+) -> dict:
+    """在工具审批后持久化意图，再同步准备或幂等复用任务 worktree。"""
+    from sqlalchemy import select
+    from yuxi.storage.postgres.models_business import OperationLog, User
+
+    async with pg_manager.get_async_session_context() as db:
+        run, _conversation, project = await _require_authorized_root_run(run_id, uid, db)
+        store = ProjectGitRepositoryStore(db)
+        binding = await store.get_active_binding_by_alias(
+            project_id=project.id,
+            uid=uid,
+            alias=_validate_alias(repository_alias),
+            lock=True,
+        )
+        if binding is None:
+            raise PermissionError("Repository alias is not active for this Project")
+        worktree = await _request_worktree_allocation(
+            store=store,
+            binding=binding,
+            uid=uid,
+            runtime_scope_id=run.runtime_scope_id,
+            request_id=None,
+            selection_source="agent",
+            requested_by_run_id=run.id,
+            base_branch=base_branch,
+            branch_kind=branch_kind,
+            branch_slug=branch_slug,
+            task_purpose=task_purpose,
+            explicit_retry=True,
+        )
+        user_id = await db.scalar(select(User.id).where(User.uid == str(uid)))
+        if user_id is None:
+            raise PermissionError("Git prepare audit owner is unavailable")
+        db.add(
+            OperationLog(
+                user_id=user_id,
+                operation="git_prepare_worktree_requested",
+                details=json.dumps(
+                    {
+                        "run_id": run.id,
+                        "project_id": project.id,
+                        "repository_id": binding.id,
+                        "repository_alias": binding.alias,
+                        "runtime_scope_id": run.runtime_scope_id,
+                        "allocation_generation": worktree.allocation_generation,
+                        "branch": worktree.branch_name,
+                        "base_branch": worktree.base_branch,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            )
+        )
+        await db.commit()
+        workdir_path = project.workdir_path
+        scope = run.runtime_scope_id
+        binding_id = binding.id
+    return await _prepare_repository_worktree(
+        uid=uid,
+        binding_id=binding_id,
+        workdir_path=workdir_path,
+        runtime_scope_id=scope,
+        worker_id=f"tool:{run_id}",
+    )
 
 
 async def push_project_git_branch(*, run_id: str, uid: str, repository_alias: str, expected_head_sha: str) -> dict:
@@ -534,6 +795,8 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
             ssh_port = connection.ssh_port
             repository_owner = binding.repository_owner
             repository_name = binding.repository_name
+            configured_base_branch = getattr(binding, "configured_base_branch", None)
+            allowed_base_branches = list(getattr(binding, "allowed_base_branches", None) or [])
             public_key = binding.deploy_public_key
             public_key_fingerprint = binding.deploy_public_key_fingerprint
             title = f"yuxi:{binding.id}"
@@ -549,6 +812,12 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
             ssh_port=ssh_port,
         )
         metadata = await provider.get_repository(repository_owner, repository_name)
+        effective_configured = configured_base_branch or metadata.default_branch
+        effective_allowed = allowed_base_branches or [effective_configured]
+        if effective_configured not in effective_allowed:
+            raise RuntimeError("Configured base branch is not allowed")
+        for branch_name in effective_allowed:
+            await provider.get_branch(repository_owner, repository_name, branch_name)
         keys = await provider.list_deploy_keys(repository_owner, repository_name)
         remote_key = next(
             (
@@ -583,6 +852,8 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
                 binding.remote_repository_id = metadata.id
                 binding.canonical_ssh_url = metadata.ssh_url
                 binding.default_branch = metadata.default_branch
+                binding.configured_base_branch = effective_configured
+                binding.allowed_base_branches = effective_allowed
                 binding.remote_deploy_key_id = remote_key.id
                 binding.status = "active"
                 binding.last_error_code = binding.last_error_message = None
@@ -677,7 +948,7 @@ async def _cleanup_project_worktree(worktree_id: str) -> None:
                 raise RuntimeError("Git worktree ownership is unavailable")
             if await store.has_nonterminal_run(worktree.project_id, worktree.runtime_scope_id, worktree.uid):
                 raise RuntimeError("Git worktree still has active AgentRun")
-            _bare_path, path = resolve_project_git_host_paths(
+            bare_path, path = resolve_project_git_host_paths(
                 worktree.uid,
                 project.workdir_path,
                 binding.directory_name,
@@ -705,7 +976,6 @@ async def _prepare_repository_worktree(
 ) -> dict:
     """取得 lease 后刷新 bare repo 并创建或复用任务 worktree。"""
     task_key = derive_task_key(uid, runtime_scope_id)
-    branch = derive_task_branch(uid, runtime_scope_id)
     now = utc_now_naive()
     async with pg_manager.get_async_session_context() as db:
         from sqlalchemy import select
@@ -718,32 +988,14 @@ async def _prepare_repository_worktree(
         store = ProjectGitRepositoryStore(db)
         worktree = await store.get_worktree(binding.id, runtime_scope_id, uid, lock=True)
         if worktree is None:
-            _, relative_path = repository_relative_paths(binding.directory_name, task_key)
-            worktree = ProjectGitWorktree(
-                id=str(uuid.uuid4()),
-                repository_id=binding.id,
-                project_id=binding.project_id,
-                uid=uid,
-                runtime_scope_id=runtime_scope_id,
-                task_key=task_key,
-                branch_name=branch,
-                base_branch=binding.default_branch,
-                base_sha="",
-                relative_path=relative_path,
-            )
-            try:
-                await store.add_worktree(worktree)
-            except IntegrityError as exc:
-                await db.rollback()
-                raise ProjectGitBusyError("Task worktree was created concurrently") from exc
+            raise ProjectGitSelectionError("Task repository was not selected")
         _, expected_relative_path = repository_relative_paths(binding.directory_name, task_key)
-        if (
-            worktree.task_key != task_key
-            or worktree.branch_name != branch
-            or worktree.base_branch != binding.default_branch
-            or worktree.relative_path != expected_relative_path
-        ):
+        if worktree.task_key != task_key or worktree.relative_path != expected_relative_path:
             raise ProjectGitBusyError("Task worktree identity does not match its root scope")
+        branch = worktree.branch_name
+        base_branch = worktree.base_branch
+        if branch in {base_branch, binding.default_branch} or not branch.startswith(_branch_prefix()):
+            raise ProjectGitSelectionError("Task worktree branch is not a valid allocation branch")
         bare_path, path = resolve_project_git_host_paths(
             uid, workdir_path, binding.directory_name, task_key, create_parents=True
         )
@@ -752,21 +1004,41 @@ async def _prepare_repository_worktree(
             if state.branch != branch:
                 raise ProjectGitBusyError("Task worktree branch changed outside its allocation")
             return _worktree_snapshot(binding, worktree, workdir_path)
+        if worktree.status == "prepare_failed":
+            raise ProjectGitSelectionError("Task worktree requires explicit retry")
+        if worktree.status not in {"requested", "preparing", "ready"}:
+            raise ProjectGitSelectionError("Task worktree is not preparable")
         if not await store.acquire_worktree_lease(
             worktree, owner=worker_id, expires_at=now + timedelta(seconds=WORKTREE_LEASE_SECONDS), now=now
         ):
             raise ProjectGitBusyError("Task worktree is being prepared")
         connection = await store.get_connection(binding.connection_id, uid, active_only=True)
         key_credential = await store.get_credential(binding.deploy_private_credential_id, uid)
-        if connection is None or key_credential is None:
+        api_credential = (
+            await store.get_credential(connection.api_token_credential_id, uid) if connection is not None else None
+        )
+        if connection is None or key_credential is None or api_credential is None:
             raise ProjectGitBusyError("Git credentials are unavailable")
-        private_key = GitCredentialOwner().decrypt(key_credential)
+        credential_owner = GitCredentialOwner()
+        private_key = credential_owner.decrypt(key_credential)
+        api_token = credential_owner.decrypt(api_credential)
         remote_url = binding.canonical_ssh_url
-        default_branch = binding.default_branch
         known_hosts = connection.ssh_known_host_key
+        provider_args = {
+            "provider": connection.provider,
+            "api_origin": connection.api_origin,
+            "api_token": api_token,
+            "ssh_host": connection.ssh_host,
+            "ssh_port": connection.ssh_port,
+        }
+        repository_owner = binding.repository_owner
+        repository_name = binding.repository_name
         await db.commit()
     bundle = None
     try:
+        provider = create_git_hosting_provider(**provider_args)
+        if await provider.is_branch_protected(repository_owner, repository_name, branch):
+            raise PermissionError("Protected branch cannot be allocated")
         bundle = await GitExecutor().fetch_remote_bundle(
             remote_url=remote_url, private_key=private_key, known_hosts=known_hosts
         )
@@ -777,11 +1049,19 @@ async def _prepare_repository_worktree(
                 raise ProjectGitBusyError("Task worktree lease was lost")
             await store.acquire_maintenance_lock(binding_id)
             await GitExecutor().import_bundle(bundle_path=bundle, bare_path=bare_path)
+            fetched_base_sha = await _rev_parse(bare_path, f"refs/remotes/origin/{base_branch}")
+            if worktree.base_sha is None:
+                worktree.base_sha = fetched_base_sha
+            remote_branch_sha = await _try_rev_parse(bare_path, f"refs/remotes/origin/{branch}")
+            if remote_branch_sha is not None and worktree.last_pushed_sha != remote_branch_sha:
+                raise GitExecutionError("remote task branch belongs to another allocation history")
             state = await GitExecutor().ensure_worktree(
-                bare_path=bare_path, worktree_path=path, branch=branch, base_branch=default_branch
+                bare_path=bare_path,
+                worktree_path=path,
+                branch=branch,
+                base_branch=base_branch,
+                base_sha=worktree.base_sha,
             )
-            base_sha = await _rev_parse(bare_path, f"refs/remotes/origin/{default_branch}")
-            worktree.base_sha = worktree.base_sha or base_sha
             worktree.last_observed_head_sha = state.head_sha
             worktree.status = "ready"
             worktree.lease_owner = None
@@ -802,12 +1082,225 @@ def _worktree_snapshot(binding: ProjectGitRepository, worktree: ProjectGitWorktr
     return {
         "alias": binding.alias,
         "repository_id": binding.id,
+        "purpose": binding.purpose,
+        "task_purpose": worktree.task_purpose,
         "path": runtime_git_worktree_path(workdir_path, worktree.relative_path),
         "branch": worktree.branch_name,
         "base_branch": worktree.base_branch,
         "base_sha": worktree.base_sha,
+        "selection_source": worktree.selection_source,
         "status": "ready",
     }
+
+
+async def _request_worktree_allocation(
+    *,
+    store: ProjectGitRepositoryStore,
+    binding: ProjectGitRepository,
+    uid: str,
+    runtime_scope_id: str,
+    request_id: str | None,
+    selection_source: str,
+    requested_by_run_id: str | None,
+    base_branch: str,
+    branch_kind: str,
+    branch_slug: str,
+    task_purpose: str,
+    explicit_retry: bool,
+) -> ProjectGitWorktree:
+    """幂等创建或重新激活一个根任务仓库 allocation。"""
+    try:
+        normalized_base = normalize_base_branch(base_branch)
+        normalized_slug = normalize_branch_slug(branch_slug)
+        branch = derive_allocation_branch(branch_kind, normalized_slug, uid, runtime_scope_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    normalized_kind = str(branch_kind).strip()
+    normalized_purpose = _validate_purpose(task_purpose, "task_purpose")
+    if normalized_base not in (binding.allowed_base_branches or []):
+        raise HTTPException(status_code=422, detail="base_branch 不在仓库允许列表")
+    if branch in {normalized_base, binding.default_branch}:
+        raise HTTPException(status_code=422, detail="任务分支不能等于 base/default branch")
+
+    if request_id:
+        replay = await store.get_worktree_by_selection_request(request_id, uid, lock=True)
+        if replay is not None:
+            if replay.repository_id != binding.id or replay.runtime_scope_id != runtime_scope_id:
+                raise HTTPException(status_code=409, detail="request_id 已用于其他任务仓库")
+            if not _allocation_intent_matches(
+                replay, normalized_base, normalized_kind, normalized_slug, normalized_purpose, branch
+            ):
+                raise HTTPException(status_code=409, detail="request_id 已用于其他仓库意图")
+            return replay
+
+    worktree = await store.get_worktree(binding.id, runtime_scope_id, uid, lock=True)
+    task_key = derive_task_key(uid, runtime_scope_id)
+    _, relative_path = repository_relative_paths(binding.directory_name, task_key)
+    if worktree is None:
+        worktree = ProjectGitWorktree(
+            id=str(uuid.uuid4()),
+            repository_id=binding.id,
+            project_id=binding.project_id,
+            uid=str(uid),
+            runtime_scope_id=runtime_scope_id,
+            task_key=task_key,
+            selection_source=selection_source,
+            task_purpose=normalized_purpose,
+            branch_kind=normalized_kind,
+            branch_slug=normalized_slug,
+            requested_by_run_id=requested_by_run_id,
+            allocation_generation=1,
+            selection_request_id=request_id,
+            branch_name=branch,
+            base_branch=normalized_base,
+            base_sha=None,
+            relative_path=relative_path,
+            status="requested",
+        )
+        return await store.add_worktree(worktree)
+
+    same_intent = _allocation_intent_matches(
+        worktree, normalized_base, normalized_kind, normalized_slug, normalized_purpose, branch
+    )
+    if worktree.status != "removed":
+        if not same_intent:
+            raise HTTPException(status_code=409, detail="当前任务已为该仓库固定其他分支意图")
+        if worktree.status == "prepare_failed" and explicit_retry:
+            worktree.status = "requested"
+            worktree.lease_owner = None
+            worktree.lease_expires_at = None
+            worktree.last_error_code = worktree.last_error_message = None
+        return worktree
+
+    worktree.allocation_generation += 1
+    worktree.selection_source = selection_source
+    worktree.requested_by_run_id = requested_by_run_id
+    worktree.selection_request_id = request_id
+    worktree.status = "requested"
+    worktree.lease_owner = None
+    worktree.lease_expires_at = None
+    worktree.last_error_code = worktree.last_error_message = None
+    if not same_intent:
+        worktree.task_purpose = normalized_purpose
+        worktree.branch_kind = normalized_kind
+        worktree.branch_slug = normalized_slug
+        worktree.branch_name = branch
+        worktree.base_branch = normalized_base
+        worktree.base_sha = None
+        worktree.last_observed_head_sha = None
+        worktree.last_pushed_sha = None
+    worktree.updated_at = utc_now_naive()
+    return worktree
+
+
+def _allocation_intent_matches(
+    worktree: ProjectGitWorktree,
+    base_branch: str,
+    branch_kind: str,
+    branch_slug: str,
+    task_purpose: str,
+    branch_name: str,
+) -> bool:
+    """比较当前 generation 的稳定仓库意图。"""
+    return (
+        worktree.base_branch == base_branch
+        and worktree.branch_kind == branch_kind
+        and worktree.branch_slug == branch_slug
+        and worktree.task_purpose == task_purpose
+        and worktree.branch_name == branch_name
+    )
+
+
+def _conversation_repository_view(
+    binding: ProjectGitRepository, worktree: ProjectGitWorktree | None, workdir_path: str
+) -> dict:
+    """构造 Conversation 仓库设置视图，不暴露远端和宿主路径。"""
+    allocation = worktree.to_dict() if worktree is not None else None
+    if allocation is not None:
+        allocation["sandbox_path"] = (
+            runtime_git_worktree_path(workdir_path, worktree.relative_path)
+            if worktree.status == "ready"
+            else None
+        )
+        allocation.pop("relative_path", None)
+    return {
+        "id": binding.id,
+        "alias": binding.alias,
+        "purpose": binding.purpose,
+        "status": binding.status,
+        "default_branch": binding.default_branch,
+        "default_base_branch": binding.configured_base_branch or binding.default_branch,
+        "allowed_base_branches": binding.allowed_base_branches or [],
+        "allocation": allocation,
+    }
+
+
+def _tool_repository_view(
+    binding: ProjectGitRepository, worktree: ProjectGitWorktree | None, workdir_path: str
+) -> dict:
+    """构造模型可见的最小仓库发现结果。"""
+    result = _conversation_repository_view(binding, worktree, workdir_path)
+    allocation = result.pop("allocation")
+    result["task_allocation_status"] = allocation["status"] if allocation else None
+    if allocation:
+        result["task_branch"] = allocation["branch"]
+        result["task_path"] = allocation["sandbox_path"]
+        result["task_purpose"] = allocation["task_purpose"]
+    return result
+
+
+async def _require_root_conversation(uid: str, thread_id: str, db, *, lock: bool = False):
+    """由公开 thread identity 回读当前用户的根 Conversation 与 Project。"""
+    from sqlalchemy import select
+    from yuxi.storage.postgres.models_business import Conversation, Project
+
+    query = (
+        select(Conversation, Project)
+        .join(Project, Project.id == Conversation.project_id)
+        .where(
+            Conversation.thread_id == thread_id,
+            Conversation.uid == str(uid),
+            Conversation.status != "deleted",
+            Project.uid == str(uid),
+            Project.status == "active",
+        )
+    )
+    if lock:
+        query = query.with_for_update()
+    result = (await db.execute(query)).one_or_none()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Conversation 不存在")
+    conversation, project = result
+    if conversation.status == "subagent":
+        raise HTTPException(status_code=409, detail="SubAgent Conversation 不能管理任务仓库")
+    return conversation, project
+
+
+async def _require_authorized_root_run(run_id: str, uid: str, db):
+    """从数据库关系重建 Git 管理工具的 Root Run 授权。"""
+    from sqlalchemy import select
+    from yuxi.storage.postgres.models_business import AgentRun, Conversation, Project
+
+    result = (
+        await db.execute(
+            select(AgentRun, Conversation, Project)
+            .join(Conversation, Conversation.id == AgentRun.conversation_id)
+            .join(Project, Project.id == Conversation.project_id)
+            .where(
+                AgentRun.id == run_id,
+                AgentRun.uid == str(uid),
+                Conversation.uid == str(uid),
+                Project.uid == str(uid),
+            )
+            .with_for_update()
+        )
+    ).one_or_none()
+    if result is None:
+        raise PermissionError("Run is not authorized for Project Git")
+    run, conversation, project = result
+    if run.run_type == "subagent" or run.status != "running" or project.status != "active":
+        raise PermissionError("Only a running Root AgentRun can manage Project Git")
+    return run, conversation, project
 
 
 async def _record_binding_failure(repository_id: str, generation: int, status: str, code: str) -> None:
@@ -894,6 +1387,28 @@ async def _rev_parse(bare_path: Path, ref: str) -> str:
     return await asyncio.to_thread(run)
 
 
+async def _try_rev_parse(bare_path: Path, ref: str) -> str | None:
+    """回读可选 ref；不存在返回 None，其他 Git 错误仍显式失败。"""
+    import asyncio
+    import subprocess
+
+    def run() -> str | None:
+        result = subprocess.run(
+            ["git", "-c", "core.hooksPath=/dev/null", "--git-dir", str(bare_path), "rev-parse", f"{ref}^{{commit}}"],
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        if result.returncode == 128:
+            return None
+        raise GitExecutionError("failed to inspect optional Git ref")
+
+    return await asyncio.to_thread(run)
+
+
 async def _require_selectable_project(uid: str, project_id: str, db):
     """要求 Project 可由当前用户管理。"""
     project = await ProjectRepository(db).get_for_user(project_id, uid)
@@ -950,14 +1465,27 @@ def _binding_intent_matches(
     alias: str,
     repository_owner: str,
     repository_name: str,
+    purpose: str,
+    configured_base_branch: str | None,
+    allowed_base_branches: list[str] | None,
 ) -> bool:
     """比较 repository binding 幂等请求的完整业务 identity。"""
+    try:
+        normalized_configured, normalized_allowed = _normalize_repository_policy(
+            configured_base_branch, allowed_base_branches
+        )
+        normalized_purpose = _validate_purpose(purpose, "purpose")
+    except HTTPException:
+        return False
     return (
         existing.project_id == project_id
         and existing.connection_id == connection_id
         and existing.alias == alias.strip()
         and existing.repository_owner == repository_owner.strip()
         and existing.repository_name == repository_name.strip()
+        and getattr(existing, "purpose", "项目仓库") == normalized_purpose
+        and getattr(existing, "configured_base_branch", None) == normalized_configured
+        and list(getattr(existing, "allowed_base_branches", None) or []) == normalized_allowed
     )
 
 
@@ -1031,6 +1559,33 @@ def _validate_api_token(value: object) -> str:
     if not isinstance(value, str) or not value or len(value) > 4096:
         raise HTTPException(status_code=422, detail="Gitea API Token 非法")
     return value
+
+
+def _validate_purpose(value: str, field: str) -> str:
+    """校验仓库用途等用户可见短说明。"""
+    normalized = _required(value, field)
+    if len(normalized) > 500 or any(ord(char) < 32 and char not in "\n\t" for char in normalized):
+        raise HTTPException(status_code=422, detail=f"{field} 非法")
+    return normalized
+
+
+def _normalize_repository_policy(
+    configured_base_branch: str | None, allowed_base_branches: list[str] | None
+) -> tuple[str | None, list[str]]:
+    """规范化精确 base branch 策略并保留用户顺序。"""
+    try:
+        configured = normalize_base_branch(configured_base_branch) if configured_base_branch else None
+        if allowed_base_branches is None:
+            allowed = []
+        elif not isinstance(allowed_base_branches, list):
+            raise ValueError("allowed_base_branches must be a list")
+        else:
+            allowed = list(dict.fromkeys(normalize_base_branch(item) for item in allowed_base_branches))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Git base branch 策略非法") from exc
+    if configured is not None and allowed and configured not in allowed:
+        raise HTTPException(status_code=422, detail="configured_base_branch 必须位于 allowed_base_branches")
+    return configured, allowed
 
 
 def _required(value: str, field: str) -> str:

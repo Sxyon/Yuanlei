@@ -23,7 +23,7 @@ from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.storage.postgres.models_business import AgentRun, Skill, User
 
-MANIFEST_SCHEMA_VERSION = 2
+MANIFEST_SCHEMA_VERSION = 3
 # 直接进入 manifest 的关键 limit 字段；未列出的 context 字段只以 config_digest 形式存在。
 MANIFEST_LIMIT_FIELDS = (
     "max_execution_steps",
@@ -101,10 +101,13 @@ def build_manifest_payload(
                 {
                     "alias": item["alias"],
                     "repository_id": item["repository_id"],
+                    "purpose": item["purpose"],
+                    "task_purpose": item["task_purpose"],
                     "path": item["path"],
                     "branch": item["branch"],
                     "base_branch": item["base_branch"],
                     "base_sha": item["base_sha"],
+                    "selection_source": item["selection_source"],
                 }
                 for item in (git_repositories or [])
             ],

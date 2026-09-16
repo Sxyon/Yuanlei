@@ -38,6 +38,24 @@
             <a-form-item label="Repository" required>
               <a-input v-model:value="repositoryForm.repository_name" placeholder="仓库名" />
             </a-form-item>
+            <a-form-item label="仓库用途" required>
+              <a-input v-model:value="repositoryForm.purpose" maxlength="500" placeholder="例如 后端 API" />
+            </a-form-item>
+            <a-form-item label="默认任务基线">
+              <a-input
+                v-model:value="repositoryForm.configured_base_branch"
+                maxlength="255"
+                placeholder="留空时使用远端默认分支"
+              />
+            </a-form-item>
+            <a-form-item class="full-row" label="允许的任务基线">
+              <a-select
+                v-model:value="repositoryForm.allowed_base_branches"
+                mode="tags"
+                :max-tag-count="4"
+                placeholder="留空时使用默认任务基线"
+              />
+            </a-form-item>
           </div>
           <a-button
             type="primary"
@@ -54,7 +72,11 @@
               <div>
                 <strong>{{ item.alias }}</strong>
                 <span>{{ item.repository_owner }}/{{ item.repository_name }}</span>
-                <small>默认分支 {{ item.default_branch || '等待读取' }}</small>
+                <small>{{ item.purpose || '项目仓库' }}</small>
+                <small>
+                  远端默认 {{ item.default_branch || '等待读取' }} · 任务基线
+                  {{ item.configured_base_branch || item.default_branch || '等待读取' }}
+                </small>
               </div>
               <div class="item-actions">
                 <a-tag :color="statusColor(item.status)">{{ item.status }}</a-tag>
@@ -73,6 +95,29 @@
                 </a-popconfirm>
               </div>
               <p v-if="item.last_error_message" class="item-error">{{ item.last_error_message }}</p>
+              <div v-if="item.status === 'active' && policyDrafts[item.id]" class="policy-editor">
+                <a-input
+                  v-model:value="policyDrafts[item.id].purpose"
+                  maxlength="500"
+                  aria-label="仓库用途"
+                />
+                <a-input
+                  v-model:value="policyDrafts[item.id].configured_base_branch"
+                  maxlength="255"
+                  aria-label="默认任务基线"
+                />
+                <a-select
+                  v-model:value="policyDrafts[item.id].allowed_base_branches"
+                  mode="tags"
+                  :max-tag-count="3"
+                  aria-label="允许的任务基线"
+                />
+                <a-button
+                  size="small"
+                  :loading="savingPolicyId === item.id"
+                  @click="savePolicy(item)"
+                >保存策略</a-button>
+              </div>
             </article>
           </div>
         </a-spin>
@@ -195,6 +240,7 @@ const activeTab = ref('repositories')
 const loading = ref(false)
 const savingConnection = ref(false)
 const savingRepository = ref(false)
+const savingPolicyId = ref('')
 const updatingCredential = ref(false)
 const editingConnectionId = ref('')
 const credentialToken = ref('')
@@ -202,6 +248,7 @@ const error = ref('')
 const connections = ref([])
 const repositories = ref([])
 const worktrees = ref([])
+const policyDrafts = reactive({})
 let pollTimer = null
 
 const connectionForm = reactive({
@@ -216,7 +263,10 @@ const repositoryForm = reactive({
   connection_id: '',
   alias: '',
   repository_owner: '',
-  repository_name: ''
+  repository_name: '',
+  purpose: '项目仓库',
+  configured_base_branch: '',
+  allowed_base_branches: []
 })
 const activeConnections = computed(() =>
   connections.value.filter((item) => item.status === 'active')
@@ -233,6 +283,13 @@ const load = async ({ quiet = false } = {}) => {
     ])
     connections.value = connectionRows
     repositories.value = repositoryRows
+    repositoryRows.forEach((item) => {
+      policyDrafts[item.id] = {
+        purpose: item.purpose || '项目仓库',
+        configured_base_branch: item.configured_base_branch || item.default_branch || '',
+        allowed_base_branches: [...(item.allowed_base_branches || [])]
+      }
+    })
     worktrees.value = worktreeRows
     error.value = ''
   } catch (requestError) {
@@ -273,11 +330,33 @@ const createRepository = async () => {
     repositoryForm.alias = ''
     repositoryForm.repository_owner = ''
     repositoryForm.repository_name = ''
+    repositoryForm.purpose = '项目仓库'
+    repositoryForm.configured_base_branch = ''
+    repositoryForm.allowed_base_branches = []
     await load({ quiet: true })
   } catch (requestError) {
     error.value = requestError?.message || '仓库绑定失败'
   } finally {
     savingRepository.value = false
+  }
+}
+
+const savePolicy = async (item) => {
+  const draft = policyDrafts[item.id]
+  if (!draft) return
+  savingPolicyId.value = item.id
+  try {
+    await projectApi.updateRepositoryPolicy(props.project.id, item.id, {
+      purpose: draft.purpose,
+      configured_base_branch: draft.configured_base_branch || null,
+      allowed_base_branches: draft.allowed_base_branches || []
+    })
+    await load({ quiet: true })
+    message.success('仓库策略已更新，仅影响未来任务')
+  } catch (requestError) {
+    error.value = requestError?.message || '仓库策略更新失败'
+  } finally {
+    savingPolicyId.value = ''
   }
 }
 
@@ -380,6 +459,9 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   grid-template-columns: 1fr 1fr;
   gap: 0 14px;
 }
+.full-row {
+  grid-column: 1 / -1;
+}
 .item-list {
   display: grid;
   gap: 8px;
@@ -417,6 +499,13 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   color: var(--color-error-700);
   font-size: 12px;
 }
+.policy-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(180px, 2fr) auto;
+  gap: 8px;
+  align-items: center;
+}
 .credential-update {
   grid-column: 1 / -1;
   display: grid;
@@ -434,6 +523,9 @@ onBeforeUnmount(() => clearInterval(pollTimer))
     justify-content: flex-start;
   }
   .credential-update {
+    grid-template-columns: 1fr;
+  }
+  .policy-editor {
     grid-template-columns: 1fr;
   }
 }

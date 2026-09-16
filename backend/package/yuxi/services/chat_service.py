@@ -1181,6 +1181,7 @@ async def stream_agent_chat(
         input_context["workdir_relative_path"] = workdir_path
         input_context["workdir_path"] = runtime_workdir_path(workdir_path)
         input_context["git_repositories"] = list(meta.get("git_repositories") or [])
+        input_context["project_git_enabled"] = bool(meta.get("project_git_enabled", False))
         meta["runtime_scope_id"] = runtime_scope_id
         meta["workdir_relative_path"] = workdir_path
         meta["workdir_path"] = input_context["workdir_path"]
@@ -1492,6 +1493,7 @@ async def stream_agent_resume(
     input_context["workdir_relative_path"] = workdir_path
     input_context["workdir_path"] = meta["workdir_path"]
     input_context["git_repositories"] = list(meta.get("git_repositories") or [])
+    input_context["project_git_enabled"] = bool(meta.get("project_git_enabled", False))
     langfuse_run = _build_langfuse_run_context(
         current_user=current_user,
         thread_id=thread_id,

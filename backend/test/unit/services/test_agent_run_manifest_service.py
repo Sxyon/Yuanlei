@@ -195,7 +195,7 @@ def test_missing_code_revision_is_explicitly_unresolved():
     manifest = _manifest()
 
     assert manifest["code_revision"] == "unresolved"
-    assert manifest["manifest_version"] == 2
+    assert manifest["manifest_version"] == 3
 
 
 def test_git_snapshot_is_explicit_and_excludes_remote_credentials():
@@ -213,10 +213,13 @@ def test_git_snapshot_is_explicit_and_excludes_remote_credentials():
             {
                 "alias": "api",
                 "repository_id": "repository-id",
+                "purpose": "后端 API",
+                "task_purpose": "实现退款",
                 "path": "/home/gem/user-data/projects/p/repos/api/worktrees/task",
                 "branch": "codex/task-abc",
                 "base_branch": "main",
                 "base_sha": "a" * 40,
+                "selection_source": "user",
                 "remote_url": "ssh://secret@example.invalid/repo.git",
                 "private_key": "SECRET",
             }

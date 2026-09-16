@@ -19,6 +19,7 @@ from yuxi.services.project_git_service import (
     list_project_repositories_view,
     list_project_worktrees_view,
     retry_project_repository_view,
+    update_project_repository_policy_view,
 )
 from yuxi.services.run_queue_service import (
     enqueue_project_git_operation,
@@ -65,6 +66,18 @@ class ProjectRepositoryCreate(BaseModel):
     alias: str = Field(min_length=1, max_length=80)
     repository_owner: str = Field(min_length=1, max_length=255)
     repository_name: str = Field(min_length=1, max_length=255)
+    purpose: str = Field(default="项目仓库", min_length=1, max_length=500)
+    configured_base_branch: str | None = Field(default=None, max_length=255)
+    allowed_base_branches: list[str] = Field(default_factory=list, max_length=100)
+
+
+class ProjectRepositoryPolicyUpdate(BaseModel):
+    """Project 仓库任务基线策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+    purpose: str = Field(min_length=1, max_length=500)
+    configured_base_branch: str | None = Field(default=None, max_length=255)
+    allowed_base_branches: list[str] = Field(default_factory=list, max_length=100)
 
 
 @projects.get("")
@@ -165,6 +178,24 @@ async def retry_project_repository(
     )
     await enqueue_project_git_operation(*job)
     return result
+
+
+@projects.put("/{project_id}/repositories/{repository_id}/policy")
+async def update_project_repository_policy(
+    project_id: str,
+    repository_id: str,
+    payload: ProjectRepositoryPolicyUpdate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """验证远端分支并更新未来任务使用的仓库策略。"""
+    return await update_project_repository_policy_view(
+        uid=str(current_user.uid),
+        project_id=project_id,
+        repository_id=repository_id,
+        db=db,
+        **payload.model_dump(),
+    )
 
 
 @projects.delete("/{project_id}/repositories/{repository_id}", status_code=status.HTTP_202_ACCEPTED)

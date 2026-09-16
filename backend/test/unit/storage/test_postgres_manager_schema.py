@@ -7,6 +7,7 @@ import pytest
 from yuxi.storage.postgres.manager import (
     BUSINESS_SCHEMA_VERSION,
     KNOWLEDGE_SCHEMA_VERSION,
+    YUANLEI_SCHEMA_VERSION,
     BusinessBase,
     KnowledgeBase,
     PostgresManager,
@@ -41,7 +42,13 @@ async def test_require_current_schema_rejects_missing_or_incompatible_domains(mo
     monkeypatch.setattr(
         manager,
         "get_schema_versions",
-        lambda: _async_value({"business": BUSINESS_SCHEMA_VERSION, "knowledge": KNOWLEDGE_SCHEMA_VERSION}),
+        lambda: _async_value(
+            {
+                "business": BUSINESS_SCHEMA_VERSION,
+                "knowledge": KNOWLEDGE_SCHEMA_VERSION,
+                "yuanlei": YUANLEI_SCHEMA_VERSION,
+            }
+        ),
     )
     await manager.require_current_schema()
 
@@ -185,6 +192,22 @@ async def test_release_upgrade_converges_run_timing_and_removes_cursor():
             in connection.statements
         )
     assert "ALTER TABLE IF EXISTS agent_runs DROP COLUMN IF EXISTS last_event_id" in connection.statements
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v1_to_v2_upgrade_backfills_legacy_allocations_before_constraints():
+    """Project Git v1 行必须保留并回填 legacy 语义后才收紧约束。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v1_to_v2()
+
+    statements = "\n".join(connection.statements)
+    assert "SET selection_source = 'legacy'" in statements
+    assert "SET branch_kind = 'legacy'" in statements
+    assert "ALTER COLUMN base_sha DROP NOT NULL" in statements
+    assert "'requested', 'preparing', 'ready'" in statements
+    assert statements.index("SET branch_kind = 'legacy'") < statements.index(
+        "ALTER COLUMN branch_kind SET NOT NULL"
+    )
 
 
 @pytest.mark.asyncio

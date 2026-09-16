@@ -128,6 +128,19 @@ class ProjectGitRepositoryStore:
         )
         return list(result.scalars())
 
+    async def project_has_non_disabled_binding(self, project_id: str, uid: str) -> bool:
+        """判断 Project 是否配置了仍可发现的 Git binding。"""
+        count = await self.db.scalar(
+            select(func.count())
+            .select_from(ProjectGitRepository)
+            .where(
+                ProjectGitRepository.project_id == project_id,
+                ProjectGitRepository.uid == str(uid),
+                ProjectGitRepository.status != "disabled",
+            )
+        )
+        return bool(count)
+
     async def list_pending_bindings(self) -> list[ProjectGitRepository]:
         """列出需要 reconciler 重投的仓库操作。"""
         result = await self.db.execute(
@@ -155,6 +168,31 @@ class ProjectGitRepositoryStore:
         self.db.add(worktree)
         await self.db.flush()
         return worktree
+
+    async def get_worktree_by_selection_request(
+        self, request_id: str, uid: str, *, lock: bool = False
+    ) -> ProjectGitWorktree | None:
+        """读取当前 allocation generation 的用户幂等请求。"""
+        query = select(ProjectGitWorktree).where(
+            ProjectGitWorktree.uid == str(uid),
+            ProjectGitWorktree.selection_request_id == request_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return await self.db.scalar(query)
+
+    async def list_scope_worktrees(self, runtime_scope_id: str, uid: str) -> list[ProjectGitWorktree]:
+        """列出根任务显式持久化的全部仓库 allocation。"""
+        result = await self.db.execute(
+            select(ProjectGitWorktree)
+            .where(
+                ProjectGitWorktree.runtime_scope_id == runtime_scope_id,
+                ProjectGitWorktree.uid == str(uid),
+                ProjectGitWorktree.status != "removed",
+            )
+            .order_by(ProjectGitWorktree.created_at)
+        )
+        return list(result.scalars())
 
     async def get_project_worktree(self, worktree_id: str, project_id: str, uid: str, *, lock: bool = False):
         """按 Project 和用户读取 worktree。"""

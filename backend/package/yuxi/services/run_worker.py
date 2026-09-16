@@ -30,9 +30,11 @@ from yuxi.services.chat_service import get_agent_state_view, stream_agent_chat, 
 from yuxi.services.input_message_service import restore_chat_input_message
 from yuxi.services.project_git_service import (
     ProjectGitBusyError,
-    prepare_project_git_worktrees,
+    ProjectGitSelectionError,
+    prepare_selected_project_git_worktrees,
     process_project_git_operation,
     process_project_git_worktree_cleanup,
+    project_git_enabled_for_project,
     reconcile_project_git_operations,
 )
 from yuxi.services.run_queue_service import (
@@ -577,7 +579,12 @@ def _require_persisted_manifest_match(persisted_run: AgentRun | None, *, recorde
 
 
 async def persist_run_manifest(
-    *, run: AgentRun, user, worker_id: str, git_repositories: list[dict] | None = None
+    *,
+    run: AgentRun,
+    user,
+    worker_id: str,
+    git_repositories: list[dict] | None = None,
+    project_git_enabled: bool = False,
 ) -> dict:
     """在执行上下文构造前固化运行清单与指纹；固化失败由调用方显式失败。"""
     async with pg_manager.get_async_session_context() as db:
@@ -594,6 +601,7 @@ async def persist_run_manifest(
             "normalized_context": result.normalized_context,
             "skill_runtime_snapshot": result.skill_runtime_snapshot,
             "git_repositories": git_repositories or [],
+            "project_git_enabled": project_git_enabled,
         }
 
 
@@ -1025,7 +1033,7 @@ async def process_agent_run(ctx, run_id: str):
 
         await run_ctx.start()
         try:
-            git_repositories = await prepare_project_git_worktrees(
+            git_repositories = await prepare_selected_project_git_worktrees(
                 uid=str(uid),
                 project_id=workdir_binding.project_id,
                 workdir_path=workdir_binding.workdir_path,
@@ -1034,6 +1042,18 @@ async def process_agent_run(ctx, run_id: str):
             )
         except ProjectGitBusyError as exc:
             raise RetryableRunError(str(exc)) from exc
+        except ProjectGitSelectionError as exc:
+            await mark_run_terminal(
+                run_id,
+                "failed",
+                "selected_project_git_invalid",
+                str(exc),
+                worker_id=worker_id,
+            )
+            return
+        project_git_enabled = await project_git_enabled_for_project(
+            uid=str(uid), project_id=workdir_binding.project_id
+        )
 
         resume_input = None
         if run_type == "resume":
@@ -1071,6 +1091,7 @@ async def process_agent_run(ctx, run_id: str):
                 user=user,
                 worker_id=worker_id,
                 git_repositories=git_repositories,
+                project_git_enabled=project_git_enabled,
             )
         except Exception as manifest_error:
             logger.error(f"Failed to persist AgentRun manifest: run={run_id}", exc_info=True)
@@ -1104,6 +1125,7 @@ async def process_agent_run(ctx, run_id: str):
             "workdir_relative_path": workdir_binding.workdir_path,
             "workdir_path": runtime_workdir_path(workdir_binding.workdir_path),
             "git_repositories": git_repositories,
+            "project_git_enabled": project_git_enabled,
         }
         if run_type == "subagent":
             meta["parent_thread_id"] = runtime.get("parent_thread_id")

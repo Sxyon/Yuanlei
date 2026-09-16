@@ -244,19 +244,24 @@ async def test_resolve_skill_gated_tools_registers_kb_tools():
 
 
 @pytest.mark.asyncio
-async def test_runtime_git_snapshot_registers_root_push_tool_without_skill():
-    """Git push 工具由可信运行快照装配，不依赖 Git Skill 或用户工具配置。"""
+async def test_project_git_capability_registers_root_management_tools_without_skill():
+    """Project Git 工具由可信能力快照装配，不依赖 Git Skill 或 ready worktree。"""
     context = SimpleNamespace(
         tools=[],
         mcps=[],
-        git_repositories=[{"alias": "api", "path": "/workspace/api"}],
+        project_git_enabled=True,
+        git_repositories=[],
         _effective_skill_slugs=[],
         _runtime_skills={},
     )
 
     runtime_tools = await resolve_configured_runtime_tools(context)
 
-    assert {tool.name for tool in runtime_tools} == {"git_push_branch"}
+    assert {tool.name for tool in runtime_tools} == {
+        "git_list_project_repositories",
+        "git_prepare_worktree",
+        "git_push_branch",
+    }
 
 
 @pytest.mark.asyncio

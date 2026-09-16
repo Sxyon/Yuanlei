@@ -27,6 +27,7 @@ def create_tool_approval_middleware(
     """按审批模式与当前 Project 构造敏感工具审批。"""
     write_requires_approval = _project_write_requires_approval(current_project_path or "")
     interrupt_on = {
+        "git_prepare_worktree": {"allowed_decisions": _ALLOWED_DECISIONS},
         "git_push_branch": {"allowed_decisions": _ALLOWED_DECISIONS},
     }
     if mode == "always_trust":
