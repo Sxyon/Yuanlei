@@ -76,10 +76,26 @@ def test_allocation_branch_rejects_unapproved_kind(monkeypatch, kind):
         derive_allocation_branch(kind, "safe-slug", "user-1", "thread-1")
 
 
-@pytest.mark.parametrize("slug", ["", "Upper", "with/slash", "two--parts", "a" * 49])
-def test_branch_slug_is_strict_ascii_kebab_case(slug):
+@pytest.mark.parametrize("slug", ["", "two--parts", "-lead", "trail-", "a--B", "a" * 49])
+def test_branch_slug_rejects_unfixable_input(slug):
     with pytest.raises(ValueError, match="branch_slug"):
         normalize_branch_slug(slug)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("order-refund", "order-refund"),
+        ("Upper", "upper"),
+        ("PJ1-project-git-extend", "pj1-project-git-extend"),
+        ("DeepSeek-Feature", "deepseek-feature"),
+        ("with/slash", "with/slash"),
+        ("UPPER/Group", "upper/group"),
+    ],
+)
+def test_branch_slug_normalizes_uppercase_to_kebab_case(raw, expected):
+    """模型生成含大写字母的 slug 时应静默转小写，而非硬拒绝导致整个 Run 失败。"""
+    assert normalize_branch_slug(raw) == expected
 
 
 @pytest.mark.parametrize("branch", ["", "refs/heads/main", "main..next", "-main", "main~1"])

@@ -36,7 +36,10 @@ Run 死亡。
 ## 替代方案
 
 - 校验层自动把输入转成小写/清洗：改变幂等意图匹配的语义，且违反信任边界显式
-  失败原则，拒绝。
+  失败原则，拒绝。**后记**：2026-09-17 实测本中间件在 resume 恢复中断时未生效，
+  `Error during resume: 422` 仍直接终结 Run，且模型反复生成大写 slug；该取舍已由
+  [deepseek-git-tool-error 修复](2026-09-17-deepseek-git-tool-error.md) 重开，
+  `normalize_branch_slug` 现先 `.lower()` 再校验。
 - 工具内捕获后返回 dict 错误载荷：ToolMessage 会是 success 状态，破坏工具审计
   对成功/失败的裁决语义，拒绝。
 - 全局放开 ToolNode `handle_tool_errors=True`：langchain `create_agent` 不暴露

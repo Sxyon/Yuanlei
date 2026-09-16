@@ -51,13 +51,15 @@ def derive_task_branch(uid: str, runtime_scope_id: str) -> str:
 
 
 def normalize_branch_slug(value: str) -> str:
-    """校验模型或用户提供的分支描述，支持用 ``/`` 表达分支层级分组。
+    """规范化模型或用户提供的分支描述，支持用 ``/`` 表达分支层级分组。
 
     每个 ``/`` 分隔的段须为 ASCII kebab-case（小写字母、数字、连字符），
-    总长不超过 48 字符。
+    总长不超过 48 字符。大写字母会静默转为小写，避免模型生成
+    ``PJ1-project-git-extend`` 之类含大写 slug 时被硬拒绝而中断整个 Run；
+    只有空串、连字符重复（``a--b``）、首尾连字符等无法安全归一化的输入才报错。
     """
-    slug = str(value or "").strip()
-    if len(slug) > 48 or not _BRANCH_SLUG.fullmatch(slug):
+    slug = str(value or "").strip().lower()
+    if not slug or len(slug) > 48 or not _BRANCH_SLUG.fullmatch(slug):
         raise ValueError("branch_slug must be ASCII kebab-case with at most 48 characters")
     return slug
 

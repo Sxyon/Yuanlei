@@ -97,16 +97,17 @@ def build_manifest_payload(
             "tools": _resource_keys(normalized_context.get("tools")),
             "mcps": _resource_keys(normalized_context.get("mcps")),
             "skills": skill_entries,
+            # 仅固化仓库的身份字段，排除 path/branch/base_sha 等运行时派生值：
+            # 这些值会在 worktree 准备过程中（base_sha 从 None 落到真实 SHA、path
+            # 随分配进度改变）漂移，导致 resume 重试时 write-once manifest 指纹不一致，
+            # 从而误判"运行资产已在重试前变化"而拒绝执行。
             "git_repositories": [
                 {
                     "alias": item["alias"],
                     "repository_id": item["repository_id"],
                     "purpose": item["purpose"],
                     "task_purpose": item["task_purpose"],
-                    "path": item["path"],
-                    "branch": item["branch"],
                     "base_branch": item["base_branch"],
-                    "base_sha": item["base_sha"],
                     "selection_source": item["selection_source"],
                 }
                 for item in (git_repositories or [])

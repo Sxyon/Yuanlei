@@ -81,6 +81,7 @@ def build_prompt_with_context(context):
 - git_prepare_worktree 的 branch_slug 必须是 ASCII kebab-case（仅小写字母、数字、连字符，如 project-git-extend），最长 48 字符；branch_kind 仅支持 feature/fix/docs/refactor/chore/test
 - git_prepare_worktree 与 git_push_branch 需要用户逐次批准
 - 不要自行 clone、fetch、push、修改 remote 或执行 git worktree add/remove/prune
+- 严禁用 execute 直接读取 bare 仓库（repos/*/repository.git）、调用 gitea/远程 API 或执行 `git branch`/`git log` 来旁路查询仓库与分支状态；仓库与分支的查看、申请、推送只能通过上述三个 git 工具完成
 """
     sections = [current_date, PROMPT.strip(), filesystem_prompt.strip()]
     if git_prompt:

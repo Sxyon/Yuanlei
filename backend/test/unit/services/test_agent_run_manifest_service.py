@@ -230,6 +230,84 @@ def test_git_snapshot_is_explicit_and_excludes_remote_credentials():
     assert "remote_url" not in serialized
     assert "private_key" not in serialized
     assert "SECRET" not in serialized
+    # 运行时派生字段（path/branch/base_sha）不进入 manifest，避免 worktree
+    # 准备进度导致 write-once 指纹漂移。
+    assert "worktrees/task" not in serialized
+    assert "codex/task-abc" not in serialized
+    assert "a" * 40 not in serialized
+
+
+def test_git_runtime_derived_fields_do_not_shift_manifest_fingerprint():
+    """worktree 准备过程中 path/branch/base_sha 变化不应改变 manifest 指纹。"""
+    base = {
+        "alias": "api",
+        "repository_id": "repository-id",
+        "purpose": "后端 API",
+        "task_purpose": "实现退款",
+        "base_branch": "main",
+        "selection_source": "user",
+    }
+
+    def _manifest_with_git(**git_overrides):
+        git = dict(base)
+        git.update(git_overrides)
+        return build_manifest_payload(
+            run_type="chat",
+            agent_slug="main",
+            backend_id="chatbot",
+            model_spec=None,
+            tool_approval_mode="default",
+            normalized_context={},
+            skill_entries=[],
+            code_revision="revision",
+            limits={},
+            git_repositories=[git],
+        )
+
+    # base_sha 从 None 落到真实 SHA、path/branch 随分配进度变化，指纹必须保持一致。
+    preparing = _manifest_with_git(path="/tmp/unprepared", branch="codex/task-abc", base_sha=None)
+    ready = _manifest_with_git(
+        path="/home/gem/user-data/projects/p/repos/api/worktrees/task",
+        branch="codex/task-abc",
+        base_sha="a" * 40,
+    )
+
+    assert compute_manifest_fingerprint(preparing) == compute_manifest_fingerprint(ready)
+
+
+def test_git_identity_field_change_does_shift_manifest_fingerprint():
+    """仓库身份字段（alias/repository_id/base_branch）变化必须改变 manifest 指纹。"""
+
+    def _manifest_with_git(**overrides):
+        base = {
+            "alias": "api",
+            "repository_id": "repository-id",
+            "purpose": "后端 API",
+            "task_purpose": "实现退款",
+            "base_branch": "main",
+            "selection_source": "user",
+        }
+        base.update(overrides)
+        return build_manifest_payload(
+            run_type="chat",
+            agent_slug="main",
+            backend_id="chatbot",
+            model_spec=None,
+            tool_approval_mode="default",
+            normalized_context={},
+            skill_entries=[],
+            code_revision="revision",
+            limits={},
+            git_repositories=[base],
+        )
+
+    baseline = _manifest_with_git()
+    assert compute_manifest_fingerprint(baseline) != compute_manifest_fingerprint(
+        _manifest_with_git(repository_id="other-repository-id")
+    )
+    assert compute_manifest_fingerprint(baseline) != compute_manifest_fingerprint(
+        _manifest_with_git(base_branch="develop")
+    )
 
 
 def test_non_string_model_spec_normalizes_to_none():
