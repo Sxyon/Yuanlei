@@ -16,6 +16,7 @@
       :thread-id="threadId"
       :file-upload-enabled="supportsFileUpload"
       :show-options-left="showInputOptions"
+      :enter-to-newline="sendLocked"
       @send="handleSend"
       @keydown="handleKeyDown"
       @composition-change="handleCompositionChange"
@@ -228,10 +229,6 @@ const handleKeyDown = (e) => {
   }
 
   if (e.key === 'Enter' && !e.shiftKey) {
-    if (sendLocked.value) {
-      e.preventDefault()
-      return
-    }
     e.preventDefault()
     handleSend()
   } else {

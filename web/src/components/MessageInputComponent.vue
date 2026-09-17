@@ -367,6 +367,10 @@ const props = defineProps({
   showOptionsLeft: {
     type: Boolean,
     default: true
+  },
+  enterToNewline: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -1120,7 +1124,7 @@ const handleKeyPress = (e) => {
     return
   }
 
-  if (e.key === 'Enter' && e.shiftKey) {
+  if (e.key === 'Enter' && (e.shiftKey || props.enterToNewline)) {
     e.preventDefault()
     replaceCurrentRawSelection('\n')
     return
