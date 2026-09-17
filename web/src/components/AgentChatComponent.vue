@@ -263,10 +263,12 @@
                     :thread-id="currentChatId"
                     :show-extra="!currentChatId"
                     :supports-file-upload="supportsFileUpload"
+                    :supports-project-file-pick="supportsFileUpload"
                     :attachments="currentPendingThreadAttachments"
                     @send="handleSendOrStop"
                     @upload-attachment="handleAttachmentUpload"
                     @remove-attachment="handleAttachmentRemove"
+                    @select-project-file="handleProjectFileSelect"
                   >
                     <template #extra>
                       <ProjectSelectionSection
@@ -329,6 +331,14 @@
                 :initial-files="attachmentInitialFiles"
                 :initial-files-key="attachmentInitialFilesKey"
                 @added="handleTmpAttachmentsAdded"
+              />
+
+              <ProjectFilePickerModal
+                v-model:open="projectFilePickerOpen"
+                :thread-id="currentChatId"
+                :confirming="projectFileReferenceInFlight"
+                @select="handleProjectFilesSelected"
+                @cancel="handleProjectFilePickerCancel"
               />
 
               <div class="bottom-actions" v-if="conversations.length > 0">
@@ -905,9 +915,11 @@ import { useAgentStreamHandler } from '@/composables/useAgentStreamHandler'
 import { useStreamSmoother } from '@/composables/useStreamSmoother'
 import { useAgentRequestQueue } from '@/composables/useAgentRequestQueue'
 import { useAgentMentionConfig } from '@/composables/useAgentMentionConfig'
+import { formatMentionToken } from '@/utils/mention_token'
 import AgentArtifactsCard from '@/components/AgentArtifactsCard.vue'
 import AgentPanel from '@/components/AgentPanel.vue'
 import AttachmentTmpUploadModal from '@/components/AttachmentTmpUploadModal.vue'
+import ProjectFilePickerModal from '@/components/ProjectFilePickerModal.vue'
 import ProjectSelectionSection from '@/components/ProjectSelectionSection.vue'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
 import { enrichTaskToolCalls, parseToolCallArgs } from '@/components/ToolCallingResult/toolRegistry'
@@ -1018,6 +1030,8 @@ const threadAttachmentsMap = ref({})
 const attachmentUploadModalOpen = ref(false)
 const attachmentInitialFiles = ref([])
 const attachmentInitialFilesKey = ref(0)
+const projectFilePickerOpen = ref(false)
+const projectFileReferenceInFlight = ref(false)
 const selectedProjectId = ref(AUTO_PROJECT_ID)
 const threadCreationRequestId = ref('')
 const isRefreshingState = ref(false)
@@ -3034,6 +3048,61 @@ const handleAttachmentRemove = async (attachment) => {
   } catch (error) {
     threadAttachmentsMap.value[threadId] = previousAttachments
     handleChatError(error, 'delete')
+  }
+}
+
+// ==================== 项目文件引用 ====================
+const handleProjectFileSelect = async () => {
+  if (
+    !AgentValidator.validateAgentIdWithError(
+      currentAgentId.value,
+      '引用项目文件',
+      handleValidationError
+    )
+  )
+    return
+
+  // 无线程状态引用项目文件会先创建线程，保证有可绑定的 Project Workdir。
+  await ensureAttachmentThread()
+  if (!currentChatId.value) return
+
+  projectFilePickerOpen.value = true
+}
+
+const handleProjectFilePickerCancel = () => {
+  projectFileReferenceInFlight.value = false
+}
+
+const handleProjectFilesSelected = async (files) => {
+  const threadId = currentChatId.value
+  if (!threadId || !Array.isArray(files) || !files.length) return
+
+  projectFileReferenceInFlight.value = true
+  try {
+    const payload = files.map((file) => ({ path: file.path, file_name: file.name }))
+    const response = await threadApi.referenceThreadAttachments(threadId, payload)
+    const referenced = Array.isArray(response?.attachments) ? response.attachments : []
+
+    // 引用成功后，同时以 @file token 引入对话框（复用 mention 的 runtime 路径）。
+    const tokens = referenced
+      .map((attachment) => attachment?.path)
+      .filter(Boolean)
+      .map((path) => formatMentionToken('file', path))
+    if (tokens.length) {
+      const suffix = tokens.join(' ')
+      userInput.value = [String(userInput.value || '').trimEnd(), suffix].filter(Boolean).join(' ')
+    }
+
+    await Promise.all([
+      fetchAgentState(currentAgentId.value, threadId),
+      fetchThreadAttachments(threadId)
+    ])
+    showFileTreePanel()
+  } catch (error) {
+    handleChatError(error, 'reference')
+  } finally {
+    projectFileReferenceInFlight.value = false
+    projectFilePickerOpen.value = false
   }
 }
 

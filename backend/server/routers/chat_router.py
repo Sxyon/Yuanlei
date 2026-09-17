@@ -16,6 +16,7 @@ from yuxi.services.attachment_service import (
     delete_thread_attachment_view,
     list_thread_attachments_view,
     parse_tmp_attachment_view,
+    reference_attachments_view,
     upload_tmp_attachment_view,
 )
 from yuxi.services.chat_service import get_agent_state_view
@@ -267,6 +268,7 @@ class AttachmentResponse(BaseModel):
     file_type: str | None = None
     file_size: int
     status: str
+    source: str = "upload"
     uploaded_at: str
     path: str
     artifact_url: str | None = None
@@ -318,6 +320,19 @@ class TmpAttachmentConfirmRequest(BaseModel):
 
 
 class TmpAttachmentConfirmResponse(BaseModel):
+    attachments: list[AttachmentResponse]
+
+
+class AttachmentReferenceItem(BaseModel):
+    path: str
+    file_name: str | None = None
+
+
+class AttachmentReferenceRequest(BaseModel):
+    attachments: list[AttachmentReferenceItem]
+
+
+class AttachmentReferenceResponse(BaseModel):
     attachments: list[AttachmentResponse]
 
 
@@ -471,6 +486,22 @@ async def confirm_tmp_thread_attachments(
 ):
     """将 tmp 附件正式加入线程附件列表。"""
     return await confirm_tmp_thread_attachments_view(
+        thread_id=thread_id,
+        attachments=[item.model_dump() for item in request.attachments],
+        db=db,
+        current_uid=str(current_user.uid),
+    )
+
+
+@chat.post("/thread/{thread_id}/attachments/reference", response_model=AttachmentReferenceResponse)
+async def reference_thread_attachments(
+    thread_id: str,
+    request: AttachmentReferenceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_required_user),
+):
+    """引用 Project 空间内已有文件为附件，不复制文件内容。"""
+    return await reference_attachments_view(
         thread_id=thread_id,
         attachments=[item.model_dump() for item in request.attachments],
         db=db,

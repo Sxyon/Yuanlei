@@ -61,11 +61,13 @@
         <AttachmentOptionsComponent
           :disabled="disabled"
           :file-upload-enabled="supportsFileUpload"
+          :project-file-pick-enabled="supportsProjectFilePick"
           :mention="mention"
           @upload="handleAttachmentUpload"
           @upload-image="handleImageUpload"
           @upload-image-success="handleImageUploadSuccess"
           @select-mention="handleMentionSelect"
+          @select-project-file="handleProjectFileSelect"
         />
       </template>
       <template #actions-left>
@@ -101,6 +103,7 @@ const props = defineProps({
   threadId: { type: String, default: '' },
   showExtra: { type: Boolean, default: false },
   supportsFileUpload: { type: Boolean, default: false },
+  supportsProjectFilePick: { type: Boolean, default: false },
   attachments: {
     type: Array,
     default: () => []
@@ -112,7 +115,8 @@ const emit = defineEmits([
   'send',
   'keydown',
   'upload-attachment',
-  'remove-attachment'
+  'remove-attachment',
+  'select-project-file'
 ])
 
 const inputRef = ref(null)
@@ -166,6 +170,10 @@ const handleImageUploadSuccess = () => {
 const handleMentionSelect = (item) => {
   inputRef.value?.insertMention(item)
   inputRef.value?.closeOptions()
+}
+
+const handleProjectFileSelect = () => {
+  emit('select-project-file')
 }
 
 const handleImageRemoved = () => {

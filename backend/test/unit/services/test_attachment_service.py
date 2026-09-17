@@ -217,6 +217,15 @@ class FakeWorkdir:
         if self.storage.files.pop(scope, None) is None:
             raise FileNotFoundError(scope)
 
+    def stat(self, scope: str) -> dict:
+        raw = str(scope or "/").strip() or "/"
+        pure = Path(raw)
+        if not raw.startswith("/") or ".." in pure.parts or "\\" in raw or "://" in raw:
+            raise ValueError("invalid Workdir scope path")
+        if scope not in self.storage.files:
+            raise FileNotFoundError(scope)
+        return {"is_dir": False, "size": len(self.storage.files[scope]), "modified_at": 0}
+
 
 class QueuedAgentRunRequestRepository(EmptyAgentRunRequestRepository):
     async def get_by_request_id(self, request_id: str):
@@ -654,3 +663,135 @@ async def test_delete_thread_attachment_does_not_delete_bytes_before_metadata_co
         )
 
     assert backend.files == {_scope_path(original): b"pdf"}
+
+
+@pytest.fixture
+def reference_attachment_env(monkeypatch: pytest.MonkeyPatch):
+    """构造 reference 流程所需的仓库与 Workdir 假实现。"""
+    fake_repo = FakeConversationRepository(db=None)
+    backend = FakeWorkdirStorage()
+    backend.files = {"/docs/问题描述.md": "说明内容".encode("utf-8")}
+
+    monkeypatch.setattr(service, "ConversationRepository", lambda _db: fake_repo)
+
+    async def resolve_binding(**kwargs):
+        del kwargs
+        return SimpleNamespace(workdir=FakeWorkdir(backend))
+
+    monkeypatch.setattr(workdir_service, "resolve_authorized_conversation_workdir", resolve_binding)
+    fake_repo.workdir_backend = backend
+    return fake_repo, backend
+
+
+@pytest.mark.asyncio
+async def test_reference_attachments_registers_runtime_path_without_copying(reference_attachment_env):
+    fake_repo, backend = reference_attachment_env
+
+    response = await service.reference_attachments_view(
+        thread_id="thread-1",
+        attachments=[{"path": "/docs/问题描述.md"}],
+        db=FakeDB(),
+        current_uid="user-1",
+    )
+
+    [attachment] = response["attachments"]
+    assert attachment["status"] == "referenced"
+    assert attachment["source"] == "reference"
+    assert attachment["file_name"] == "问题描述.md"
+
+    [stored] = fake_repo.attachments
+    assert stored["path"] == stored["original_path"]
+    assert stored["path"].startswith("/home/gem/user-data/projects/11111111-1111-4111-8111-111111111111/docs/")
+    assert stored["source"] == "reference"
+    # 引用不复制文件：Workdir 字节不变，仅登记路径。
+    assert backend.files == {"/docs/问题描述.md": "说明内容".encode("utf-8")}
+
+
+@pytest.mark.asyncio
+async def test_reference_attachments_rejects_missing_file(reference_attachment_env):
+    fake_repo, _backend = reference_attachment_env
+
+    with pytest.raises(service.HTTPException) as exc_info:
+        await service.reference_attachments_view(
+            thread_id="thread-1",
+            attachments=[{"path": "/docs/不存在.md"}],
+            db=FakeDB(),
+            current_uid="user-1",
+        )
+
+    assert exc_info.value.status_code == 404
+    assert fake_repo.attachments == []
+
+
+@pytest.mark.asyncio
+async def test_reference_attachments_rejects_directory(reference_attachment_env):
+    fake_repo, _backend = reference_attachment_env
+
+    class DirFakeWorkdir(FakeWorkdir):
+        def stat(self, scope: str) -> dict:
+            return {"is_dir": True, "size": 0, "modified_at": 0}
+
+    class DirFakeConversationRepository(FakeConversationRepository):
+        pass
+
+    async def resolve_binding(**kwargs):
+        del kwargs
+        return SimpleNamespace(workdir=DirFakeWorkdir(_backend))
+
+    import yuxi.services.workdir_service as wsvc
+
+    original = wsvc.resolve_authorized_conversation_workdir
+    wsvc.resolve_authorized_conversation_workdir = resolve_binding
+    try:
+        with pytest.raises(service.HTTPException) as exc_info:
+            await service.reference_attachments_view(
+                thread_id="thread-1",
+                attachments=[{"path": "/docs"}],
+                db=FakeDB(),
+                current_uid="user-1",
+            )
+    finally:
+        wsvc.resolve_authorized_conversation_workdir = original
+
+    assert exc_info.value.status_code == 400
+    assert fake_repo.attachments == []
+
+
+@pytest.mark.asyncio
+async def test_reference_attachments_rejects_escape_path(reference_attachment_env):
+    fake_repo, _backend = reference_attachment_env
+
+    with pytest.raises(service.HTTPException) as exc_info:
+        await service.reference_attachments_view(
+            thread_id="thread-1",
+            attachments=[{"path": "/../secret.md"}],
+            db=FakeDB(),
+            current_uid="user-1",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert fake_repo.attachments == []
+
+
+@pytest.mark.asyncio
+async def test_delete_reference_attachment_keeps_original_file(reference_attachment_env):
+    fake_repo, backend = reference_attachment_env
+    fake_repo.attachments = [
+        {
+            "file_id": "file-ref-1",
+            "file_name": "问题描述.md",
+            "status": "referenced",
+            "source": "reference",
+            "path": "/home/gem/user-data/projects/11111111-1111-4111-8111-111111111111/docs/问题描述.md",
+            "original_path": "/home/gem/user-data/projects/11111111-1111-4111-8111-111111111111/docs/问题描述.md",
+        }
+    ]
+
+    result = await service.delete_thread_attachment_view(
+        thread_id="thread-1", file_id="file-ref-1", db=FakeDB(), current_uid="user-1"
+    )
+
+    assert result == {"message": "附件引用已删除"}
+    assert fake_repo.attachments == []
+    # 引用删除只删元数据，原文件保持不变。
+    assert backend.files == {"/docs/问题描述.md": "说明内容".encode("utf-8")}

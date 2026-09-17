@@ -444,6 +444,15 @@ export const threadApi = {
     apiPost(`/api/chat/thread/${threadId}/attachments/confirm`, { attachments }),
 
   /**
+   * 引用 Project 空间内已有文件为附件（不复制文件内容）
+   * @param {string} threadId
+   * @param {Array} attachments - [{ path, file_name }]
+   * @returns {Promise}
+   */
+  referenceThreadAttachments: (threadId, attachments) =>
+    apiPost(`/api/chat/thread/${threadId}/attachments/reference`, { attachments }),
+
+  /**
    * 删除附件
    * @param {string} threadId
    * @param {string} fileId
