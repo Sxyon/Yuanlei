@@ -265,10 +265,12 @@
                     :supports-file-upload="supportsFileUpload"
                     :supports-project-file-pick="supportsFileUpload"
                     :attachments="currentPendingThreadAttachments"
+                    :pending-references="pendingWorkspaceReferences"
                     @send="handleSendOrStop"
                     @upload-attachment="handleAttachmentUpload"
                     @remove-attachment="handleAttachmentRemove"
                     @select-project-file="handleProjectFileSelect"
+                    @remove-pending-reference="handleRemovePendingReference"
                   >
                     <template #extra>
                       <ProjectSelectionSection
@@ -335,7 +337,6 @@
 
               <ProjectFilePickerModal
                 v-model:open="projectFilePickerOpen"
-                :thread-id="currentChatId"
                 :confirming="projectFileReferenceInFlight"
                 @select="handleProjectFilesSelected"
                 @cancel="handleProjectFilePickerCancel"
@@ -1032,6 +1033,8 @@ const attachmentInitialFiles = ref([])
 const attachmentInitialFilesKey = ref(0)
 const projectFilePickerOpen = ref(false)
 const projectFileReferenceInFlight = ref(false)
+// 首次发送前缓存的个人空间待引用文件；发送首条消息时随附件一起落库。
+const pendingWorkspaceReferences = ref([])
 const selectedProjectId = ref(AUTO_PROJECT_ID)
 const threadCreationRequestId = ref('')
 const isRefreshingState = ref(false)
@@ -3008,7 +3011,7 @@ const handleAttachmentUpload = async (files = []) => {
 
 const ensureAttachmentThread = async () => {
   if (currentChatId.value) return currentChatId.value
-  // 无线程状态上传附件会先创建线程：保留输入框已有文本并迁移到新线程草稿
+  // 无线程状态确认附件（上传或引用个人空间文件）时先创建线程：保留输入框已有文本并迁移到新线程草稿
   const inputText = userInput.value
   const threadId = await ensureActiveThread('新的对话')
   if (threadId && inputText) {
@@ -3051,21 +3054,9 @@ const handleAttachmentRemove = async (attachment) => {
   }
 }
 
-// ==================== 项目文件引用 ====================
-const handleProjectFileSelect = async () => {
-  if (
-    !AgentValidator.validateAgentIdWithError(
-      currentAgentId.value,
-      '引用项目文件',
-      handleValidationError
-    )
-  )
-    return
-
-  // 无线程状态引用项目文件会先创建线程，保证有可绑定的 Project Workdir。
-  await ensureAttachmentThread()
-  if (!currentChatId.value) return
-
+// ==================== 个人空间文件引用 ====================
+const handleProjectFileSelect = () => {
+  // 打开选择器不创建线程：个人空间树不依赖线程，用户首次发送前仍可自由切换智能体。
   projectFilePickerOpen.value = true
 }
 
@@ -3073,13 +3064,31 @@ const handleProjectFilePickerCancel = () => {
   projectFileReferenceInFlight.value = false
 }
 
+// 首次发送前只在前端缓存待引用文件；发送时随首条消息一起引用到真实线程。
 const handleProjectFilesSelected = async (files) => {
-  const threadId = currentChatId.value
-  if (!threadId || !Array.isArray(files) || !files.length) return
+  if (!Array.isArray(files) || !files.length) return
 
+  if (!currentChatId.value) {
+    const seen = new Set(pendingWorkspaceReferences.value.map((file) => file.path))
+    pendingWorkspaceReferences.value = [
+      ...pendingWorkspaceReferences.value,
+      ...files
+        .filter((file) => file?.path && !seen.has(file.path))
+        .map((file) => ({ path: file.path, name: file.name }))
+    ]
+    projectFilePickerOpen.value = false
+    return
+  }
+
+  // 已有线程：引用立即落库，保持既有交互。
   projectFileReferenceInFlight.value = true
   try {
-    const payload = files.map((file) => ({ path: file.path, file_name: file.name }))
+    const threadId = await ensureAttachmentThread()
+    const payload = files.map((file) => ({
+      path: file.path,
+      file_name: file.name,
+      source: file.source || 'workspace'
+    }))
     const response = await threadApi.referenceThreadAttachments(threadId, payload)
     const referenced = Array.isArray(response?.attachments) ? response.attachments : []
 
@@ -3104,6 +3113,12 @@ const handleProjectFilesSelected = async (files) => {
     projectFileReferenceInFlight.value = false
     projectFilePickerOpen.value = false
   }
+}
+
+const handleRemovePendingReference = (item) => {
+  pendingWorkspaceReferences.value = pendingWorkspaceReferences.value.filter(
+    (file) => file.path !== item?.path
+  )
 }
 
 // ==================== 审批功能管理 ====================
@@ -3341,7 +3356,8 @@ const selectThreadFromRoute = async (threadId) => {
 }
 
 const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
-  const text = userInput.value.trim()
+  let text = userInput.value.trim()
+  let titleBase = text
   const imageContent = image?.imageContent || null
   if (
     (!text && !image) ||
@@ -3368,6 +3384,37 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
     // 该线程由草稿发送创建，清理新建对话草稿，避免已发送文本再次还原
     threadDraftSession.clearDraftThread()
   }
+
+  // 首次发送：把选择器确认的待引用个人空间文件落库到真实线程，失败则中止发送并保留缓存。
+  if (pendingWorkspaceReferences.value.length) {
+    try {
+      const sendTextBase = text
+      const payload = pendingWorkspaceReferences.value.map((file) => ({
+        path: file.path,
+        file_name: file.name,
+        source: 'workspace'
+      }))
+      const response = await threadApi.referenceThreadAttachments(threadId, payload)
+      const referenced = Array.isArray(response?.attachments) ? response.attachments : []
+      const tokens = referenced
+        .map((attachment) => attachment?.path)
+        .filter(Boolean)
+        .map((path) => formatMentionToken('file', path))
+      if (tokens.length) {
+        text = [text, tokens.join(' ')].filter(Boolean).join(' ')
+      }
+      await fetchThreadAttachments(threadId)
+      pendingWorkspaceReferences.value = []
+      // 标题只基于用户原始输入，不包含 @file token。
+      titleBase = sendTextBase
+    } catch (error) {
+      handleChatError(error, 'reference')
+      // 引用失败中止发送：恢复输入区的图片，避免静默丢失粘贴内容。
+      agentInputAreaRef.value?.restoreImage?.(image)
+      return
+    }
+  }
+
   // 每次请求都下发输入框展示的模型，后端在同一事务内绑定到 Conversation。
   const modelSpec = currentModelSpec.value || null
   const toolApprovalMode = currentToolApprovalMode.value
@@ -3391,7 +3438,7 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
     .filter(Boolean)
 
   if ((threadMessages.value[threadId] || []).length === 0) {
-    const autoTitle = text.replace(/\s+/g, ' ').trim().slice(0, 2000)
+    const autoTitle = titleBase.replace(/\s+/g, ' ').trim().slice(0, 2000)
     if (autoTitle) {
       void (async () => {
         try {

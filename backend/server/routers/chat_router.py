@@ -1,6 +1,6 @@
 import traceback
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel, ConfigDict, Field
@@ -326,6 +326,7 @@ class TmpAttachmentConfirmResponse(BaseModel):
 class AttachmentReferenceItem(BaseModel):
     path: str
     file_name: str | None = None
+    source: Literal["workdir", "workspace"] = "workdir"
 
 
 class AttachmentReferenceRequest(BaseModel):
@@ -500,7 +501,7 @@ async def reference_thread_attachments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_required_user),
 ):
-    """引用 Project 空间内已有文件为附件，不复制文件内容。"""
+    """引用已有文件（Workdir 或个人空间）为附件，不复制文件内容。"""
     return await reference_attachments_view(
         thread_id=thread_id,
         attachments=[item.model_dump() for item in request.attachments],

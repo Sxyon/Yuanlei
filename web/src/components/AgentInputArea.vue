@@ -24,7 +24,7 @@
       @drop-files="handleDroppedFiles"
     >
       <template #top>
-        <div v-if="currentImage || previewAttachments.length" class="input-top-stack">
+        <div v-if="currentImage || previewAttachments.length || pendingReferences.length" class="input-top-stack">
           <ImagePreviewComponent
             v-if="currentImage"
             :image-data="currentImage"
@@ -52,6 +52,30 @@
                 type="button"
                 :aria-label="`移除附件 ${attachment.name}`"
                 @click.stop="handleAttachmentRemoved(attachment)"
+              >
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
+
+          <div v-if="pendingReferences.length" class="attachment-preview-list">
+            <div
+              v-for="item in pendingReferences"
+              :key="item.path"
+              class="attachment-file-card"
+            >
+              <div class="attachment-file-icon">
+                <FileTypeIcon :name="item.name" :size="18" />
+              </div>
+              <div class="attachment-file-body">
+                <div class="attachment-file-name" :title="item.name">{{ item.name }}</div>
+                <div class="attachment-file-meta">发送时引用</div>
+              </div>
+              <button
+                class="attachment-remove-btn"
+                type="button"
+                :aria-label="`移除待引用文件 ${item.name}`"
+                @click.stop="handlePendingReferenceRemoved(item)"
               >
                 <X :size="14" />
               </button>
@@ -123,6 +147,10 @@ const props = defineProps({
   attachments: {
     type: Array,
     default: () => []
+  },
+  pendingReferences: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -132,7 +160,8 @@ const emit = defineEmits([
   'keydown',
   'upload-attachment',
   'remove-attachment',
-  'select-project-file'
+  'select-project-file',
+  'remove-pending-reference'
 ])
 
 const inputRef = ref(null)
@@ -209,6 +238,10 @@ const restoreImage = (image) => {
 
 const handleAttachmentRemoved = (attachment) => {
   emit('remove-attachment', attachment.raw)
+}
+
+const handlePendingReferenceRemoved = (item) => {
+  emit('remove-pending-reference', item)
 }
 
 const handleSend = () => {

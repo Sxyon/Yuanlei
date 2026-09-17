@@ -1,7 +1,7 @@
 <template>
   <a-modal
     :open="open"
-    title="从项目空间选择文件"
+    title="从个人空间选择文件"
     ok-text="引用为附件"
     cancel-text="取消"
     :confirm-loading="confirming"
@@ -10,9 +10,9 @@
     @cancel="handleCancel"
   >
     <div class="picker-body">
-      <div v-if="loading" class="picker-state">正在加载项目文件...</div>
+      <div v-if="loading" class="picker-state">正在加载个人空间文件...</div>
       <div v-else-if="error" class="picker-state picker-error">{{ error }}</div>
-      <div v-else-if="!treeData.length" class="picker-state">项目空间为空</div>
+      <div v-else-if="!treeData.length" class="picker-state">个人空间为空</div>
       <FileTreeComponent
         v-else
         :tree-data="treeData"
@@ -48,20 +48,15 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import { message } from 'ant-design-vue'
 import FileTreeComponent from '@/components/FileTreeComponent.vue'
-import { getViewerFileSystemTree } from '@/apis/viewer_filesystem'
+import { getWorkspaceTree } from '@/apis/workspace_api'
 
 const props = defineProps({
   open: {
     type: Boolean,
     default: false
-  },
-  threadId: {
-    type: String,
-    default: ''
   },
   confirming: {
     type: Boolean,
@@ -107,23 +102,22 @@ const createTreeNode = (entry) => {
 }
 
 const loadRoot = async () => {
-  if (!props.threadId) return
   loading.value = true
   error.value = ''
   try {
-    const res = await getViewerFileSystemTree(props.threadId, '/')
+    const res = await getWorkspaceTree('/')
     treeData.value = sortEntries(res?.entries || []).map(createTreeNode)
   } catch (err) {
-    error.value = err?.message || '加载项目文件失败'
+    error.value = err?.message || '加载个人空间文件失败'
   } finally {
     loading.value = false
   }
 }
 
 const loadDirectory = async (treeNode) => {
-  if (treeNode.isLeaf || treeNode.children?.length || !props.threadId) return
+  if (treeNode.isLeaf || treeNode.children?.length) return
   const directoryPath = treeNode?.key || '/'
-  const res = await getViewerFileSystemTree(props.threadId, directoryPath)
+  const res = await getWorkspaceTree(directoryPath)
   const children = sortEntries(res?.entries || []).map(createTreeNode)
   const updateChildren = (nodes, targetKey, nextChildren) =>
     nodes.map((node) => {
@@ -168,7 +162,10 @@ const removeSelection = (file) => {
 
 const handleConfirm = () => {
   if (!selectedFiles.value.length) return
-  emit('select', selectedFiles.value.map((file) => ({ ...file })))
+  emit(
+    'select',
+    selectedFiles.value.map((file) => ({ ...file, source: 'workspace' }))
+  )
 }
 
 const handleCancel = () => {

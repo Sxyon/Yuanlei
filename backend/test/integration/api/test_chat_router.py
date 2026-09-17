@@ -372,6 +372,94 @@ async def test_legacy_direct_thread_attachment_upload_is_removed(test_client, ad
     assert response.status_code == 405
 
 
+async def test_reference_workspace_attachment_registers_runtime_path_without_copying(
+    test_client, admin_headers
+):
+    """真实 HTTP：引用个人空间文件登记 runtime 路径、可回读、不复制，删除只删元数据。"""
+    thread_id = await _create_thread_for_user(test_client, admin_headers)
+    suffix = uuid.uuid4().hex
+    file_name = f"pytest-workspace-ref-{suffix}.md"
+    workspace_path = f"/{file_name}"
+    content = b"# workspace reference\n"
+
+    try:
+        upload = await test_client.post(
+            "/api/workspace/upload",
+            data={"parent_path": "/"},
+            files={"files": (file_name, content, "text/markdown")},
+            headers=admin_headers,
+        )
+        assert upload.status_code == 200, upload.text
+
+        reference = await test_client.post(
+            f"/api/chat/thread/{thread_id}/attachments/reference",
+            json={
+                "attachments": [
+                    {"path": workspace_path, "file_name": file_name, "source": "workspace"}
+                ]
+            },
+            headers=admin_headers,
+        )
+        assert reference.status_code == 200, reference.text
+        [attachment] = reference.json()["attachments"]
+        assert attachment["status"] == "referenced"
+        assert attachment["source"] == "reference"
+        assert attachment["path"] == f"/home/gem/user-data{workspace_path}"
+
+        listed = await test_client.get(
+            f"/api/chat/thread/{thread_id}/attachments", headers=admin_headers
+        )
+        assert listed.status_code == 200, listed.text
+        stored = next(
+            item
+            for item in listed.json()["attachments"]
+            if item.get("file_id") == attachment["file_id"]
+        )
+        assert stored["path"] == f"/home/gem/user-data{workspace_path}"
+
+        preview = await test_client.get(
+            "/api/workspace/file", params={"path": workspace_path}, headers=admin_headers
+        )
+        assert preview.status_code == 200, preview.text
+        assert preview.json().get("content") == content.decode()
+
+        missing = await test_client.post(
+            f"/api/chat/thread/{thread_id}/attachments/reference",
+            json={"attachments": [{"path": "/not-exists.md", "source": "workspace"}]},
+            headers=admin_headers,
+        )
+        assert missing.status_code == 404, missing.text
+
+        directory = await test_client.post(
+            f"/api/chat/thread/{thread_id}/attachments/reference",
+            json={"attachments": [{"path": "/", "source": "workspace"}]},
+            headers=admin_headers,
+        )
+        assert directory.status_code == 400, directory.text
+
+        invalid_source = await test_client.post(
+            f"/api/chat/thread/{thread_id}/attachments/reference",
+            json={"attachments": [{"path": workspace_path, "source": "host"}]},
+            headers=admin_headers,
+        )
+        assert invalid_source.status_code in (400, 422), invalid_source.text
+
+        deleted = await test_client.delete(
+            f"/api/chat/thread/{thread_id}/attachments/{attachment['file_id']}",
+            headers=admin_headers,
+        )
+        assert deleted.status_code == 200, deleted.text
+
+        still_exists = await test_client.get(
+            "/api/workspace/file", params={"path": workspace_path}, headers=admin_headers
+        )
+        assert still_exists.status_code == 200, "删除引用后个人空间源文件必须保留"
+    finally:
+        await test_client.delete(
+            "/api/workspace/file", params={"path": workspace_path}, headers=admin_headers
+        )
+
+
 async def test_development_thread_file_browse_routes_are_removed(test_client, admin_headers):
     thread_id = await _create_thread_for_user(test_client, admin_headers)
     path = await _upload_project_file(test_client, admin_headers, thread_id, "removed-route.txt", b"content")

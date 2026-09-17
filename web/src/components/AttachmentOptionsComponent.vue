@@ -43,11 +43,11 @@
         class="config-dropdown-item"
         :class="{ disabled }"
         :disabled="disabled"
-        title="从当前项目空间选择已有文件作为附件引用"
+        title="从个人空间选择已有文件作为附件引用"
         @click="handleProjectFileClick"
       >
         <FolderOpen :size="15" class="config-dropdown-item-icon" />
-        <span class="config-dropdown-item-label">项目文件</span>
+        <span class="config-dropdown-item-label">个人空间文件</span>
       </button>
 
       <button
@@ -155,7 +155,7 @@ const handleAttachmentClick = () => {
   emit('upload')
 }
 
-// 从项目空间选择已有文件作为附件引用
+// 从个人空间选择已有文件作为附件引用
 const handleProjectFileClick = () => {
   if (props.disabled) return
   emit('select-project-file')
