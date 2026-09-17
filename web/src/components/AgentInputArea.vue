@@ -71,19 +71,6 @@
       </template>
       <template #actions-left>
         <div class="input-actions-left">
-          <button
-            type="button"
-            class="input-action-btn send-lock-btn"
-            :class="{ active: sendLocked }"
-            :title="sendLocked ? '已锁定发送（Cmd/Ctrl+L 解锁）' : '锁定发送（Cmd/Ctrl+L）'"
-            :aria-pressed="sendLocked"
-            aria-label="锁定发送"
-            @click="toggleSendLock"
-          >
-            <component :is="sendLocked ? Lock : LockOpen" :size="16" />
-            <span v-if="!sendLocked" class="hide-text">锁定</span>
-            <span v-else class="hide-text">已锁定</span>
-          </button>
           <slot name="actions-left-extra"></slot>
         </div>
       </template>
@@ -91,6 +78,19 @@
         <div class="input-actions-right">
           <slot name="actions-right-extra"></slot>
         </div>
+      </template>
+      <template #before-send>
+        <button
+          type="button"
+          class="input-action-btn send-lock-btn"
+          :class="{ active: sendLocked }"
+          :title="sendLocked ? '已锁定发送（Cmd/Ctrl+L 解锁）' : '锁定发送（Cmd/Ctrl+L）'"
+          :aria-pressed="sendLocked"
+          aria-label="锁定发送"
+          @click="toggleSendLock"
+        >
+          <component :is="sendLocked ? Lock : LockOpen" :size="16" />
+        </button>
       </template>
     </MessageInputComponent>
   </div>
@@ -301,6 +301,11 @@ defineExpose({
 
 .send-lock-btn {
   color: var(--gray-500);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  margin-right: 6px;
 
   &.active {
     color: var(--main-700);

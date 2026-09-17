@@ -250,6 +250,7 @@
 
     <div class="send-button-container">
       <slot name="actions-right"></slot>
+      <slot name="before-send"></slot>
       <a-tooltip :title="isLoading ? '停止回答' : ''">
         <a-button
           @click="handleSendOrStop"
