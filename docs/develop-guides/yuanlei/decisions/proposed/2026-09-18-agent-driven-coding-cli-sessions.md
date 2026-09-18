@@ -38,6 +38,8 @@ Owner：backend/package/yuxi/agents/backends/sandbox/provider.py
 - Git 凭据已有 AES-GCM + AAD 绑定 + write-only API + master key 缺失 fail-closed 的完整范式（`backend/package/yuxi/git/credentials.py:32-75`、`backend/server/routers/git_router.py:33-87`），但 Git token 只留在宿主侧，禁止进沙盒（`docs/agents/sandbox-architecture.md:156`）。
 - 使用前没有「所需 key 是否已配置」校验；模型供应商 key 是管理端全局明文（`models_business.py:1091`），不能当用户级第三方 CLI key 使用。
 
+- M0 契约实测（2026-09-18）已完成：版本、env 渲染、`run/exec` 事件样本、原生会话续跑、XDG/CODEX_HOME 持久化、`serve` + 端口代理、terminal-url 均有真实运行证据，详见 [编码 CLI 契约](../../../../agents/coding-cli-contract.md)。
+
 ### 上游边界
 
 - 上游现状：Yuxi 沙盒只提供一次性 `execute` 与文件操作，没有 CLI 集成、会话实体和编码凭据；HITL 审批、SubAgent、事件链路与审计均为上游能力。
@@ -102,7 +104,7 @@ Agent coding_* 工具 ─┘        │                                         
 **解析与注入**：`CodingCredentialService.resolve(uid, executor)` 返回「用户级 > 管理端全局」的结果与 `credential_fingerprint`（对解析后的非密字段 + 密文版本做哈希）。沙盒创建不直接暴露凭据给通用 `agent_envs` 路径，而是由 provider 新增 `coding_env` 参数合并进 create 请求；映射到镜像原生约定：
 
 - opencode：`OPENCODE_PROVIDER`、`OPENCODE_MODEL`、`OPENCODE_BASE_URL`、`OPENCODE_API_KEY`、`OPENCODE_PROVIDER_NPM`（Anthropic 端点自动用 `@ai-sdk/anthropic`，其他用 `@ai-sdk/openai-compatible`）；高级用户可提供 `OPENCODE_JSON`。
-- codex：`CODEX_MODEL`、`CODEX_BASE_URL`、`CODEX_API_KEY`（或 `OPENAI_API_KEY`），高级用户可提供 `CODEX_CONFIG_TOML`；审批与沙盒策略由平台按会话策略覆盖生成，不允许用户 TOML 放宽平台边界。
+- codex：`CODEX_MODEL`、`CODEX_BASE_URL`、`CODEX_API_KEY`（或 `OPENAI_API_KEY`），高级用户可提供 `CODEX_CONFIG_TOML`；审批与沙盒策略由平台按会话策略覆盖生成，不允许用户 TOML 放宽平台边界。**codex 0.139 只支持 Responses API**（`wire_api="chat"` 被拒绝，实测），凭据预检必须校验端点提供 `/v1/responses`（OpenAI 官方、DeepSeek 官方、ARK 可用；纯 chat-completions 端点不可用），不满足时返回 `executor_unavailable`，不做静默回退。M0 实测契约见 [编码 CLI 契约](../../../../agents/coding-cli-contract.md)。
 - CLI 状态持久化：`CODEX_HOME` 与 opencode 的 XDG 数据目录指向 `agents/coding/<session_id>/cli-state/`（P0 探针确认 opencode 1.4.6 生效变量；不生效则以 `opencode export/import` 作为恢复兜底）。
 
 **使用前预检**：`coding_session_start` 先解析凭据；缺失即结构化失败（`error_code=credential_missing`，附「去设置页配置」指引），不创建沙盒、不启动 CLI。
@@ -124,8 +126,8 @@ extract_result(turn)                      -> summary + session_ref + usage
 
 | 能力 | 无头一次性（P2） | 程序化会话（P4） | 终端直连（P5） |
 |---|---|---|---|
-| opencode | `opencode run --format json [-s id\|-c] -m provider/model` | `opencode serve`（HTTP+SSE，经 provisioner HTTP 代理）+ `--attach`/SDK | `get_terminal_url` + provisioner WS 代理 + xterm |
-| codex | `codex exec --json [resume id]`，prompt 走 stdin | 每轮 `codex exec --json/resume` 包在 SDK shell session 中轮询增量；`app-server` 仅 P6 探索 | 同上；codex TUI 交互 |
+| opencode | `opencode run --format json [-s id\|-c] --agent plan -m provider/model` | `opencode serve`（HTTP+SSE，经 provisioner HTTP 代理）+ `--attach`/SDK | `get_terminal_url` + provisioner WS 代理 + xterm |
+| codex | `codex exec --json [resume id]`，计划轮 `-s read-only`、执行轮按策略给 `workspace-write` | 每轮 `codex exec --json/resume` 包在 SDK shell session 中轮询增量；`app-server` 仅 P6 探索 | 同上；codex TUI 交互 |
 | 中途 steer | 不支持（turn 原子） | opencode serve 支持；codex 按轮 | 人在终端里直接操作 |
 | 命令级审批 | 平台策略预置（workspace-write + 无提权），不支持逐命令询问 | 可把 CLI 审批事件升级到平台审批流 | 原生 TUI 询问 + 平台事件镜像 |
 
@@ -253,7 +255,8 @@ pending → starting → running(turn) → idle | awaiting_plan_approval | await
 
 ## 风险
 
-- **镜像外部依赖**：opencode/codex 与渲染脚本由外部 AIO 镜像提供，`core` profile 下 opencode server 是否随入口启动、XDG/CODEX_HOME 持久化是否生效均待 P0 实测；版本升级可能改变 JSON 事件 schema。缓解：adapter 合同测试 + 版本探测 + 显式降级；必要时用 `SANDBOX_IMAGE` 构建自持镜像。
+- **镜像外部依赖**：opencode/codex 与渲染脚本由外部 AIO 镜像提供；M0 已实测版本、事件 schema、XDG/CODEX_HOME 持久化与 profile 行为（见 [编码 CLI 契约](../../../../agents/coding-cli-contract.md)），但版本升级仍可能改变 JSON 事件 schema。缓解：adapter 合同测试 + 版本探测 + 显式降级；必要时用 `SANDBOX_IMAGE` 构建自持镜像。
+- **codex 的 Responses API 依赖**：0.139 只接受 `wire_api="responses"`，chat-completions 端点不可用；可用性取决于用户/管理端配置的端点能力。缓解：凭据预检校验能力并显式 `executor_unavailable`；失败不静默切换到 opencode。
 - **上游同步冲突**：清理 fence 与审批接线会改动两个上游文件。缓解：只做最小 diff，逻辑放元垒模块；yuanlei 域版本纪律与上游同步四阶段流程。
 - **密钥暴露面**：CLI 可能把 key 打进输出/错误。缓解：只经 env 注入、值级脱敏、canary 负向测试、审计写库前统一过滤。
 - **长驻资源与成本**：跨 Run 会话会长期占用沙盒与模型 token。缓解：空闲 suspend、预算硬杀、每 scope 会话上限、用量事件与看板。

@@ -66,8 +66,9 @@
 
 ## Agent 专属沙盒、编码 CLI 协作与执行租约
 
-- 类型与状态：feature，提案（proposed），无生产代码；镜像侧 opencode/codex 原料、渲染脚本与代理链路已存在，元垒尚未接入。
+- 类型与状态：feature，提案（proposed），无生产代码；M0 契约探针已完成并出证，实现从 M1/M2 开始。
 - 与上游差异：上游沙盒是线程级身份、全局 idle TTL、根 Run 终态释放且只有一次性 `execute`；没有 `(uid, agent, project)` 专属沙盒、生命周期策略、执行租约、编码凭据通道与 opencode/codex 会话工具。
 - 语义 Owner：`backend/package/yuxi/agents/backends/sandbox/provider.py`（身份、生命周期与租约）、`docker/sandbox_provisioner/app.py`（按沙盒策略回收与终端代理）、新增 `backend/package/yuxi/agents/coding/`（适配器与会话工具）、`backend/package/yuxi/storage/postgres/manager.py`（yuanlei 域表）。
 - 决策记录：[Agent 专属沙盒与生命周期策略](../decisions/proposed/2026-09-18-agent-dedicated-sandbox-lifecycle.md)、[智能体驱动沙盒内 opencode/codex 编码执行](../decisions/proposed/2026-09-18-agent-driven-coding-cli-sessions.md)；实施顺序与共享契约见 [合并实施计划](../../planning/agent-coding-execution-plan.md)。
+- 实测契约：[编码 CLI 契约](../../../agents/coding-cli-contract.md)、[沙盒生命周期契约](../../../agents/sandbox-lifecycle-contract.md)；`scripts/probes/` 下有两个可复跑探针脚本。
 - 合并注意：上游修改 sandbox provider、run_worker 清理、provisioner 创建/回收协议、tool approval、事件映射或 deepagents 文件后端时，scope 三元校验、generation fence、默认 ephemeral 行为、密钥不进沙盒明文通道与「删除不改 Workdir 字节」不得放宽；yuanlei 迁移必须晚于 business 域收敛。

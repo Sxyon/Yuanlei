@@ -18,6 +18,8 @@ Owner：backend/package/yuxi/agents/backends/sandbox/provider.py
 - **无持久所有权记录**：沙盒存在性只存在于 provisioner（Docker 容器/记录）和 provider 进程内缓存；没有数据库实体记录「哪个 agent、哪个项目、什么策略、期望状态」，因此无法做跨进程收敛、suspend/resume、配额与审计。
 - **配置机制已具备**：`agents.config_json` 是 agent 级 JSONB，`project_agents.config_overrides` 是项目级覆盖层，manifest 加载时合并（`models_business.py:560,623`、`backend/package/yuxi/services/agent_run_manifest_service.py:167-174`）；无需新配置表。
 
+- M0 生命周期实测（2026-09-18）已完成：创建前置校验、touch 保活、静默闲置回收、容器跨 provisioner 重启存活、generation fence 409 均有真实运行证据；`GET /api/sandboxes/{id}` 自身会计入 idle 活动。详见 [沙盒生命周期契约](../../../../agents/sandbox-lifecycle-contract.md)。
+
 ### 现状造成的使用问题
 
 - 每次 Run 都可能冷启动新容器（线程级作用域），环境准备、依赖安装、服务预热重复发生。
@@ -96,7 +98,7 @@ sandbox: {
 - **worker 收敛任务**：新增 `SandboxLifecycleSupervisor`（ARQ 周期任务/durable job，复用现有 lease 与恢复范式）：
   1. 对 `active` 且有租约或近期活动的记录执行 `touch`（编码会话跨 turn 的保活归属此任务，不再由会话自己实现）；
   2. 对 `persistent` 且空闲超过 `idle_suspend_seconds` 的记录主动 suspend（释放容器、记 `suspended`）；
-  3. 用 provisioner `GET /api/sandboxes` 权威 inventory 对账：容器已消失 → 记录 `suspended`；记录 `active` 但容器缺失 → 保持 `suspended` 等待下次使用重建；
+  3. 用 provisioner `GET /api/sandboxes` 权威 inventory 对账：容器已消失 → 记录 `suspended`；记录 `active` 但容器缺失 → 保持 `suspended` 等待下次使用重建；不得用逐沙盒 `GET /api/sandboxes/{id}` 轮询对账——该读操作会计入 idle 活动（M0 实测），会让长驻策略被自己的巡检无限延长；
   4. 释放孤儿执行租约。
 - **回收兜底**：`persistent` 的 provisioner 侧 TTL 设为 `idle_suspend_seconds + 余量`，即使 supervisor 停摆也不会无限泄漏；`resident` 依赖配额与面板。
 - **重建**：使用前 `ensure_ready(scope)`：
@@ -119,7 +121,7 @@ sandbox: {
 
 ### 7. provider 与 worker 改动
 
-- `provider.py`：`_sandbox_key/sandbox_id` 泛化为 scope 派生；`SandboxConnection` 增加 `scope_kind/agent_slug/project_id`；`get` 增加专属路径的 agent/project 校验（严格于线程路径）；新增 `suspend(scope)`、`ensure_ready(scope)`、`get_lease/acquire/release` 服务入口。
+- `provider.py`：`_sandbox_key/sandbox_id` 泛化为 scope 派生；`SandboxConnection` 增加 `scope_kind/agent_slug/project_id`；`get` 增加专属路径的 agent/project 校验（严格于线程路径）；新增 `suspend(scope)`、`ensure_ready(scope)`、`get_lease/acquire/release` 服务入口。创建前置条件保持 M0 实测语义：Project Workdir 与 `<skill-projections>/<uid>` 目录须已由 resolver 准备且无 symlink，沙盒层不自行创建。
 - `run_worker._release_runtime_if_idle`：按 scope 类型分派——`thread` scope 保持现状；专属 scope 且 `lifecycle=ephemeral` 时在无活跃 Run 且无租约后释放；`persistent/resident` 不释放，交 supervisor。同一 advisory lock 与 `runtime_cleanup_pending` fence 保持。
 - Run 阶段：等待租约、等待重建确认通过 `custom` 事件与 interrupt 表达（`yuxi.sandbox_waiting`、`sandbox_rebuild_required`），前端展示为运行阶段的显式等待，不断言成功。
 - coding session 与终端接管：通过同一租约服务竞争；会话的 suspend 不再自行保活，`resume_degraded` 语义保留（原生 CLI 状态丢失时显式标记）。
@@ -172,7 +174,7 @@ sandbox: {
 ## 风险
 
 - **上游同步冲突**：改动集中在 provider、run_worker 清理谓词与 provisioner，均需最小 diff；逻辑放元垒模块，yuanlei 域版本纪律与上游同步流程照常执行。
-- **provisioner 策略扩展的兼容性**：新增字段必须可选且默认等价现状；`resident` 跳过 reaper 需要 inventory/`/health` 可观测，避免「看不见的常驻容器」。
+- **provisioner 策略扩展的兼容性**：新增字段必须可选且默认等价现状；`resident` 跳过 reaper 需要 inventory/`/health` 可观测，避免「看不见的常驻容器」；对账与巡检必须使用 list（discover 会计入 idle 活动）。
 - **supervisor 单点与重启语义**：reaper 内存种子、容器跨 provisioner 重启存活、worker 多实例并发收敛都需要真实环境验证（列入 P0 探针）；租约与 fence 是防双写的最后屏障。
 - **串行等待长尾**：同一沙盒被长任务占用会阻塞其他会话；通过等待事件、超时与面板可见性管理预期，必要时提供手动取消租约持有者。
 - **常驻成本**：resident 无自动回收，依赖配额、面板与事件告警；默认策略保持 ephemeral，避免隐性资源增长。

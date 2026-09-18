@@ -47,7 +47,7 @@ M0 契约探针与接口冻结
 
 ## 阶段
 
-### M0 契约探针与接口冻结
+### M0 契约探针与接口冻结（状态：已完成）
 
 - 交付：`docs/agents/coding-cli-contract.md`（CLI/镜像契约）、`docs/agents/sandbox-lifecycle-contract.md`（生命周期契约）、M0 共享契约记录（并入上述文档或实现说明）；可复跑探针脚本。
 - 必须关闭的未知项：
@@ -105,9 +105,13 @@ M0 契约探针与接口冻结
 - 每个阶段结束前必须证明「未配置专属、未启用 coding 的默认路径行为不变」，防止能力回退。
 - 提交前按仓库门禁执行工程信任检查、根级测试与 web 检查（见根 `AGENTS.md` 与 `docs/develop-guides/testing-guidelines.md`）。
 
-## 未决项（M0 关闭前不得进入 M1/M2 实现）
+## M0 结果（已完成，2026-09-18）
 
-- opencode/codex 事件 schema 与原生 session 持久化是否满足跨 Run 恢复。
-- provisioner 按沙盒策略回收与 resident 语义的真实可行性（本仓库可改，但需实测）。
-- 执行租约在 worker/provisioner 重启组合下的接管正确性。
-- 终端 WS 通道在 provisioner 代理层的可达性与安全性；不达标时 M7 降级为「程序化只读 + HTTP 输入」，M4/M6 不受影响。
+- 出证文档：[编码 CLI 契约](../../agents/coding-cli-contract.md)、[沙盒生命周期契约](../../agents/sandbox-lifecycle-contract.md)；可复跑脚本 `scripts/probes/coding_cli_probe.sh`、`scripts/probes/sandbox_lifecycle_probe.sh`。
+- 已关闭的未知项：
+  - opencode 原生会话续跑（`-s`）与 XDG 状态持久化成立；`plan` agent 原生存在；`run --format json` 事件含 tokens/cost/sessionID。
+  - codex 原生会话（`CODEX_HOME` + `exec resume`）成立；**codex 0.139 只支持 Responses API**，SiliconFlow 不可用、DeepSeek 官方与 OpenAI/ARK 可用 → 凭据预检必须校验端点能力。
+  - `core` profile 不自启 opencode server，程序化通道需显式启动 `serve` 并经 nginx 端口代理（`x-aio-proxy-port`）访问，provisioner HTTP 代理可直接承载。
+  - provisioner 闲置回收为全局 TTL；`GET discover/touch/proxy` 会计入活动，supervisor 对账必须用 list；容器跨 provisioner 重启存活；generation fence 删除 409 语义可用。
+  - 共享契约（scope、租约、指纹、事件命名、迁移版本）已按上文冻结。
+- 仍未关闭、转入实现阶段验证：K8s 后端与 quiesce、reaper 与长命令竞争、租约过期接管的双写防护（M3 负向测试）、终端 WS 代理可达性（M7，不达标降级为程序化只读 + HTTP 输入）。
