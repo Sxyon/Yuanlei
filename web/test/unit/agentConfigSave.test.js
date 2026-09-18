@@ -24,6 +24,7 @@ test('共享智能体保存只提交修改字段，并使用后端合并结果�
       }
     }
     store.agentDetails[agent.id] = agent
+    store.agentDetailProject[agent.id] = null
     await store.selectAgent(agent.id)
     store.updateAgentConfig({ model: 'new-model' })
     const requests = []

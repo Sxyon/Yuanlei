@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 
 from yuxi.utils.paths import open_directory_fd, open_regular_file_fd
 
-from .errors import FileTransferLimitError
+from .errors import FileTransferLimitError, WorkspaceContainsSymlinkError
 from .paths import user_workspace_dir
 
 
@@ -302,13 +302,13 @@ class Workspace:
             os.close(parent_fd)
         return self._metadata_from_stat(item_stat)
 
-    def delete_authorized_path(self, path: str, *, root: str) -> None:
+    def delete_authorized_path(self, path: str, *, root: str, unlink_symlinks: bool = False) -> None:
         """递归删除 Workdir 内的真实文件或目录，不允许删除根。"""
         self._require_within(path, root, allow_root=False)
         base, parts = self._resolve_path(path)
         parent_fd = self._open_directory(base, parts[:-1])
         try:
-            self._remove_entry(parent_fd, parts[-1])
+            self._remove_entry(parent_fd, parts[-1], unlink_symlinks=unlink_symlinks)
         finally:
             os.close(parent_fd)
 
@@ -360,10 +360,13 @@ class Workspace:
             raise
 
     @classmethod
-    def _remove_entry(cls, parent_fd: int, name: str) -> None:
+    def _remove_entry(cls, parent_fd: int, name: str, *, unlink_symlinks: bool) -> None:
         item_stat = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
         if stat.S_ISLNK(item_stat.st_mode):
-            raise PermissionError("symlink paths are not allowed")
+            if not unlink_symlinks:
+                raise WorkspaceContainsSymlinkError("delete target contains symlinks")
+            os.unlink(name, dir_fd=parent_fd)
+            return
         if not stat.S_ISDIR(item_stat.st_mode):
             if not stat.S_ISREG(item_stat.st_mode):
                 raise PermissionError("only regular files and directories can be deleted")
@@ -372,7 +375,7 @@ class Workspace:
         child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
         try:
             for child_name in os.listdir(child_fd):
-                cls._remove_entry(child_fd, child_name)
+                cls._remove_entry(child_fd, child_name, unlink_symlinks=unlink_symlinks)
         finally:
             os.close(child_fd)
         os.rmdir(name, dir_fd=parent_fd)

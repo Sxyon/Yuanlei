@@ -47,8 +47,8 @@ export const saveWorkspaceFileContent = (path, content) => {
   return apiPut('/api/workspace/file', { path, content })
 }
 
-export const deleteWorkspacePath = (path) => {
-  const query = buildQuery({ path })
+export const deleteWorkspacePath = (path, { safeUnlinkSymlinks = false } = {}) => {
+  const query = buildQuery({ path, safe_unlink_symlinks: safeUnlinkSymlinks || undefined })
   return apiDelete(`/api/workspace/file?${query}`)
 }
 

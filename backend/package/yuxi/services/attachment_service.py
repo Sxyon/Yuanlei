@@ -8,7 +8,11 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from yuxi.agents.backends.paths import runtime_path_for_workdir_scope, workdir_scope_from_runtime_path
+from yuxi.agents.backends.paths import (
+    runtime_path_for_workdir_scope,
+    runtime_user_data_path,
+    workdir_scope_from_runtime_path,
+)
 from yuxi.config.options import system_options
 from yuxi.knowledge.parser.capabilities import (
     IMAGE_FILE_EXTENSIONS,
@@ -30,6 +34,8 @@ TMP_ATTACHMENT_PREFIX = "tmp/chat_attachments"
 TMP_ATTACHMENT_PARSE_EXTENSIONS = (*PDF_FILE_EXTENSIONS, *IMAGE_FILE_EXTENSIONS)
 TMP_ATTACHMENT_IMAGE_EXTENSIONS = IMAGE_FILE_EXTENSIONS
 TMP_ATTACHMENT_TTL = timedelta(hours=24)
+REFERENCE_SOURCE_WORKDIR = "workdir"
+REFERENCE_SOURCE_WORKSPACE = "workspace"
 
 
 async def _require_user_conversation(conv_repo: ConversationRepository, thread_id: str, uid: str):
@@ -148,6 +154,7 @@ def serialize_attachment(record: dict, *, thread_id: str) -> dict:
         "file_type": record.get("file_type"),
         "file_size": record.get("file_size", 0),
         "status": record.get("status", "uploaded"),
+        "source": record.get("source", "upload"),
         "uploaded_at": record.get("uploaded_at"),
         "path": path,
         "artifact_url": _artifact_url(thread_id, path) if isinstance(path, str) else None,
@@ -348,6 +355,8 @@ async def parse_tmp_attachment_view(
         )
     except StorageError as exc:
         raise HTTPException(status_code=400, detail=f"读取临时附件失败: {exc}") from exc
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Tmp attachment parse failed for {safe_name}: {exc}")
         raise HTTPException(status_code=400, detail=f"附件解析失败: {exc}") from exc
@@ -453,6 +462,117 @@ async def confirm_tmp_thread_attachments_view(
     return {"attachments": [serialize_attachment(item, thread_id=thread_id) for item in added_records]}
 
 
+async def reference_attachments_view(
+    *,
+    thread_id: str,
+    attachments: list[dict],
+    db: AsyncSession,
+    current_uid: str,
+) -> dict:
+    """引用已有文件为附件，不复制文件内容。
+
+    每个附件项携带 ``path`` 与 ``source``（默认 ``workdir``）：
+
+    - ``workdir``：path 是当前 Project Workdir scope（如 ``/docs/需求.md``），
+      服务校验其真实存在、属于当前 Project Workdir 且为普通文件（拒绝目录、
+      符号链接和越界路径），登记其 runtime 路径。
+    - ``workspace``：path 是当前用户个人空间 scope（如 ``/docs/需求.md``），
+      服务在 uid 级 no-follow 个人空间边界内做同样的校验，登记
+      ``/home/gem/user-data/<scope>`` runtime 路径（沙盒已挂载个人空间）。
+
+    两种来源都不写入任何字节，也不落 MinIO tmp。
+    """
+    if not attachments:
+        raise HTTPException(status_code=400, detail="请选择要引用的文件")
+
+    conv_repo = ConversationRepository(db)
+    conversation = await _require_user_conversation(conv_repo, thread_id, str(current_uid))
+
+    workdir = None
+    workspace_backend = None
+    added_records: list[dict] = []
+    for item in attachments:
+        source = str(item.get("source") or REFERENCE_SOURCE_WORKDIR).strip().lower()
+        scope_path = str(item.get("path") or "").strip()
+        if not scope_path:
+            raise HTTPException(status_code=400, detail="引用文件路径不能为空")
+        if source not in {REFERENCE_SOURCE_WORKDIR, REFERENCE_SOURCE_WORKSPACE}:
+            raise HTTPException(status_code=400, detail=f"不支持的引用来源: {source}")
+
+        if source == REFERENCE_SOURCE_WORKSPACE:
+            if workspace_backend is None:
+                from yuxi.workspace.filesystem import Workspace
+
+                workspace_backend = Workspace(str(current_uid))
+            try:
+                metadata = await asyncio.to_thread(
+                    workspace_backend.stat_authorized_path,
+                    scope_path,
+                    root="/",
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"引用文件路径无效: {exc}") from exc
+            except PermissionError as exc:
+                raise HTTPException(status_code=400, detail=f"不允许引用该路径（符号链接或特殊文件）: {exc}") from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=f"引用的文件不存在: {scope_path}") from exc
+            except OSError as exc:
+                raise HTTPException(status_code=400, detail=f"无法读取引用文件: {exc}") from exc
+            try:
+                runtime_path = runtime_user_data_path(scope_path)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"引用文件路径无效: {exc}") from exc
+        else:
+            if workdir is None:
+                from yuxi.services.workdir_service import resolve_authorized_conversation_workdir
+
+                binding = await resolve_authorized_conversation_workdir(
+                    conversation=conversation,
+                    uid=str(current_uid),
+                    db=db,
+                )
+                workdir = binding.workdir
+            try:
+                metadata = await asyncio.to_thread(workdir.stat, scope_path)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"引用文件路径无效: {exc}") from exc
+            except PermissionError as exc:
+                raise HTTPException(status_code=400, detail=f"不允许引用该路径（符号链接或特殊文件）: {exc}") from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=f"引用的文件不存在: {scope_path}") from exc
+            except OSError as exc:
+                raise HTTPException(status_code=400, detail=f"无法读取引用文件: {exc}") from exc
+            runtime_path = runtime_path_for_workdir_scope(workdir.relative_path, scope_path)
+
+        if metadata.get("is_dir"):
+            raise HTTPException(status_code=400, detail=f"不能引用目录: {scope_path}")
+
+        file_name = _safe_file_name(str(item.get("file_name") or "") or scope_path.rsplit("/", 1)[-1])
+        file_id = uuid.uuid4().hex
+        added_records.append(
+            {
+                "file_id": file_id,
+                "file_name": file_name,
+                "file_type": None,
+                "file_size": int(metadata.get("size") or 0),
+                "status": "referenced",
+                "source": "reference",
+                "uploaded_at": utc_isoformat(),
+                "path": runtime_path,
+                "original_path": runtime_path,
+            }
+        )
+
+    try:
+        await conv_repo.add_attachments(conversation.id, added_records)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    return {"attachments": [serialize_attachment(item, thread_id=thread_id) for item in added_records]}
+
+
 async def list_thread_attachments_view(
     *,
     thread_id: str,
@@ -482,19 +602,24 @@ async def delete_thread_attachment_view(
     """删除指定对话线程的附件。"""
     conv_repo = ConversationRepository(db)
     conversation = await _require_user_conversation(conv_repo, thread_id, str(current_uid))
-    from yuxi.services.workdir_service import resolve_authorized_conversation_workdir
-
-    binding = await resolve_authorized_conversation_workdir(
-        conversation=conversation,
-        uid=str(current_uid),
-        db=db,
-    )
-    workdir = binding.workdir
 
     existing_attachments = await conv_repo.lock_attachments(conversation.id)
     target_attachment = next((item for item in existing_attachments if item.get("file_id") == file_id), None)
     if target_attachment is None:
         raise HTTPException(status_code=404, detail="附件不存在或已被删除")
+
+    # 引用附件（Workdir 或个人空间）只删元数据，不需要也无法保证 Workdir 绑定可解析。
+    is_reference = target_attachment.get("source") == "reference"
+    workdir = None
+    if not is_reference:
+        from yuxi.services.workdir_service import resolve_authorized_conversation_workdir
+
+        binding = await resolve_authorized_conversation_workdir(
+            conversation=conversation,
+            uid=str(current_uid),
+            db=db,
+        )
+        workdir = binding.workdir
 
     request_id = target_attachment.get("request_id")
     if isinstance(request_id, str) and request_id:
@@ -515,6 +640,10 @@ async def delete_thread_attachment_view(
         raise HTTPException(status_code=404, detail="附件不存在或已被删除")
 
     await db.commit()
+
+    if is_reference:
+        # 引用附件不拥有 Workdir 字节，删除时只移除元数据，保留原文件。
+        return {"message": "附件引用已删除"}
 
     for path in {target_attachment.get("path"), target_attachment.get("original_path")}:
         if not isinstance(path, str):

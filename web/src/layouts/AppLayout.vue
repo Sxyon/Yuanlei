@@ -30,6 +30,7 @@ import TaskCenterDrawer from '@/components/TaskCenterDrawer.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
 import ConversationNavSection from '@/components/ConversationNavSection.vue'
 import GlobalSearchModal from '@/components/GlobalSearchModal.vue'
+import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import { searchWorkspaceFiles } from '@/apis/workspace_api'
 import { projectApi } from '@/apis/project_api'
 
@@ -58,6 +59,7 @@ const settingsInitialTab = ref('')
 const { sidebarCollapsed } = storeToRefs(chatUIStore)
 const conversationSearchOpen = ref(false)
 const projectPendingId = ref(null)
+const gitProject = ref(null)
 
 // Provide settings modal methods to child components
 const openSettingsModal = (tab) => {
@@ -347,6 +349,10 @@ const handleDeleteProject = async (projectId) => {
   }
 }
 
+const handleManageProjectGit = (project) => {
+  gitProject.value = project
+}
+
 watch(
   () => [route.path, route.params.thread_id],
   () => {
@@ -476,6 +482,7 @@ provide('settingsModal', {
           @toggle-pin="handleTogglePinChat"
           @rename-project="handleRenameProject"
           @delete-project="handleDeleteProject"
+          @manage-project-git="handleManageProjectGit"
           @create-project-chat="handleCreateProjectChat"
           @retry-projects="loadProjects"
           @load-more-chats="() => chatThreadsStore.loadMoreThreads()"
@@ -542,6 +549,11 @@ provide('settingsModal', {
     />
 
     <TaskCenterDrawer v-if="userStore.isAdmin" />
+    <ProjectGitSettingsModal
+      :open="Boolean(gitProject)"
+      :project="gitProject"
+      @update:open="(open) => !open && (gitProject = null)"
+    />
     <SettingsModal
       v-model:visible="showSettingsModal"
       :initial-tab="settingsInitialTab"

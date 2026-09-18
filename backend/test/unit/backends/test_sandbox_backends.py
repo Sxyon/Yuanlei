@@ -6,6 +6,7 @@ import base64
 import gc
 import hashlib
 import threading
+import time
 import weakref
 from types import MethodType, SimpleNamespace
 
@@ -23,7 +24,7 @@ from yuxi.agents.backends.composite import (
 )
 from yuxi.agents.backends.sandbox import ProvisionerSandboxProvider, sandbox_id_for_thread
 from yuxi.agents.backends.sandbox.backend import ProvisionerSandboxBackend
-from yuxi.agents.backends.sandbox.provider import SandboxIdentityMismatchError
+from yuxi.agents.backends.sandbox.provider import SandboxIdentityMismatchError, SandboxReleaseLockTimeoutError
 from yuxi.agents.middlewares.skills import SkillsMiddleware
 from yuxi.agents.backends.paths import workdir_runtime_paths
 
@@ -92,6 +93,7 @@ def _make_provider(client) -> ProvisionerSandboxProvider:
     provider._connections = {}
     provider._last_touch_at = {}
     provider._touch_interval_seconds = 30
+    provider._release_lock_timeout_seconds = 0.05
     return provider
 
 
@@ -666,6 +668,28 @@ def test_provider_release_uses_cached_generation() -> None:
     provider.release("root-thread", uid="user-1", workdir_path="projects/11111111-1111-4111-8111-111111111111")
 
     assert deleted == [("sandbox-1", "generation-1")]
+
+
+def test_provider_release_fails_within_bound_when_scope_lock_is_busy() -> None:
+    deleted: list[str] = []
+
+    class FakeClient:
+        def delete(self, sandbox_id, *, expected_generation=None):
+            del expected_generation
+            deleted.append(sandbox_id)
+
+    provider = _make_provider(FakeClient())
+    lock = provider._thread_lock("user-1::root-thread")
+    lock.acquire()
+    started_at = time.monotonic()
+    try:
+        with pytest.raises(SandboxReleaseLockTimeoutError, match="release lock"):
+            provider.release("root-thread", uid="user-1")
+    finally:
+        lock.release()
+
+    assert time.monotonic() - started_at < 1
+    assert deleted == []
 
 
 def test_provider_uses_distinct_sandbox_scope_for_different_uid(monkeypatch) -> None:

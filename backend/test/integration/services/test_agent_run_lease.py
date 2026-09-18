@@ -19,11 +19,13 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from yuxi.agents.context import BaseContext
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.repositories.model_message_audit_repository import ModelMessageAuditRepository
 from yuxi.repositories.tool_message_audit_repository import ToolMessageAuditRepository
 from yuxi.services import chat_service, run_worker
+from yuxi.services.agent_run_manifest_service import PreparedRunExecution
 from yuxi.storage.postgres.manager import (
     AGENT_RUN_LANGFUSE_SCHEMA_STATEMENTS,
     AGENT_RUN_LEASE_SCHEMA_STATEMENTS,
@@ -228,6 +230,100 @@ async def _cleanup_runs(session_factory, thread_ids: list[str]) -> None:
         await db.commit()
 
 
+async def test_runtime_cleanup_releases_database_locks_before_sandbox_delete(
+    lease_database,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """阻塞的外部删除不得占用 Run 行锁或 runtime advisory transaction lock。"""
+
+    _, session_factory = lease_database
+    run_id, thread_id, _ = await _create_run(session_factory, status="failed")
+    release_started = threading.Event()
+    release_allowed = threading.Event()
+
+    def blocking_release(*_args, **_kwargs):
+        release_started.set()
+        assert release_allowed.wait(timeout=5)
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", lambda: _session_context(session_factory))
+    monkeypatch.setattr(run_worker, "get_sandbox_provider", lambda: SimpleNamespace(release=blocking_release))
+    monkeypatch.setattr(run_worker, "RUNTIME_CLEANUP_TIMEOUT_SECONDS", 5)
+
+    try:
+        async with session_factory() as db:
+            run = await db.get(AgentRun, run_id)
+            run.runtime_cleanup_pending = True
+            uid = str(run.uid)
+            await db.commit()
+
+        async with session_factory() as db:
+            detached_run = await db.get(AgentRun, run_id)
+
+        cleanup = asyncio.create_task(run_worker._release_runtime_if_idle(detached_run))
+        assert await asyncio.to_thread(release_started.wait, 5)
+
+        async with session_factory() as db:
+            locked_run = await db.scalar(select(AgentRun).where(AgentRun.id == run_id).with_for_update(nowait=True))
+            advisory_acquired = await db.scalar(
+                text("SELECT pg_try_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"yuxi-runtime-cleanup:{uid}:{thread_id}"},
+            )
+            assert locked_run is not None
+            assert advisory_acquired is True
+            assert locked_run.runtime_cleanup_pending is True
+            await db.rollback()
+
+        release_allowed.set()
+        assert await asyncio.wait_for(cleanup, 5) is True
+
+        async with session_factory() as db:
+            persisted = await db.get(AgentRun, run_id)
+            assert persisted.runtime_cleanup_pending is False
+    finally:
+        release_allowed.set()
+        await _cleanup_runs(session_factory, [thread_id])
+
+
+async def test_runtime_cleanup_timeout_keeps_durable_fence(
+    lease_database,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """外部删除超过上限时保留 cleanup fence，供 reconciler 安全重试。"""
+
+    _, session_factory = lease_database
+    run_id, thread_id, _ = await _create_run(session_factory, status="failed")
+    release_started = threading.Event()
+    release_allowed = threading.Event()
+
+    def blocking_release(*_args, **_kwargs):
+        release_started.set()
+        release_allowed.wait(timeout=5)
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", lambda: _session_context(session_factory))
+    monkeypatch.setattr(run_worker, "get_sandbox_provider", lambda: SimpleNamespace(release=blocking_release))
+    monkeypatch.setattr(run_worker, "RUNTIME_CLEANUP_TIMEOUT_SECONDS", 0.05)
+
+    try:
+        async with session_factory() as db:
+            run = await db.get(AgentRun, run_id)
+            run.runtime_cleanup_pending = True
+            await db.commit()
+
+        async with session_factory() as db:
+            detached_run = await db.get(AgentRun, run_id)
+
+        with pytest.raises(TimeoutError):
+            await run_worker._release_runtime_if_idle(detached_run)
+        assert release_started.is_set()
+
+        async with session_factory() as db:
+            persisted = await db.get(AgentRun, run_id)
+            assert persisted.runtime_cleanup_pending is True
+    finally:
+        release_allowed.set()
+        await _cleanup_runs(session_factory, [thread_id])
+
+
 @pytest.mark.parametrize("run_type", ["chat", "resume"])
 async def test_approval_flush_overlap_preserves_terminal_publication(lease_database, monkeypatch, run_type):
     """本 attempt 已提交审批终态时，flush 与心跳重叠仍完成清理和发布。"""
@@ -244,7 +340,25 @@ async def test_approval_flush_overlap_preserves_terminal_publication(lease_datab
     monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", lambda: _session_context(session_factory))
     monkeypatch.setattr(run_worker, "_run_owner_token", lambda _ctx: owner)
     monkeypatch.setattr(run_worker, "RUN_HEARTBEAT_SECONDS", 0)
-    monkeypatch.setattr(run_worker, "persist_run_manifest", AsyncMock(return_value={}))
+
+    async def prepare_execution(*, run, user, worker_id, workdir_binding):
+        """使用真实执行准备返回类型，保留当前 Run 的身份和路径。"""
+        return PreparedRunExecution(
+            manifest={},
+            backend_id="ChatbotAgent",
+            context=BaseContext(
+                uid=user.uid,
+                thread_id=run.conversation_thread_id,
+                run_id=run.id,
+                request_id=run.request_id,
+                worker_id=worker_id,
+                runtime_scope_id=run.runtime_scope_id,
+                workdir_relative_path=workdir_binding.workdir_path,
+                workdir_path=f"/home/gem/user-data/{workdir_binding.workdir_path}",
+            ),
+        )
+
+    monkeypatch.setattr(run_worker, "prepare_and_record_run_execution", prepare_execution)
     monkeypatch.setattr(
         run_worker,
         "_validate_run_workdir_binding",

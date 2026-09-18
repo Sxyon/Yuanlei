@@ -7,7 +7,9 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
 from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.services.run_queue_service import enqueue_project_git_operation
 from yuxi.storage.postgres.models_business import Project
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.workspace.paths import allocate_default_user_workdir_path, normalize_workdir_path
@@ -177,11 +179,22 @@ async def delete_project_view(*, uid: str, project_id: str, db) -> dict:
     if project is None:
         raise HTTPException(status_code=404, detail="Project 不存在")
 
+    git_bindings = await ProjectGitRepositoryStore(db).list_project_bindings(project_id, uid)
+    git_jobs = []
+    for binding in git_bindings:
+        if binding.status != "disabled":
+            binding.status = "deleting"
+            binding.operation_generation += 1
+            binding.last_error_code = binding.last_error_message = None
+            git_jobs.append((binding.id, binding.operation_generation))
+
     deleted_conversations = await repository.soft_delete_with_conversations(
         project,
         deleted_at=utc_now_naive(),
     )
     await db.commit()
+    for repository_id, generation in git_jobs:
+        await enqueue_project_git_operation(repository_id, generation)
     return {"message": "删除成功", "deleted_conversations": deleted_conversations}
 
 

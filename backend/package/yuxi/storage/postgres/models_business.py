@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -138,6 +139,257 @@ class Project(Base):
             "created_at": format_utc_datetime(self.created_at),
             "updated_at": format_utc_datetime(self.updated_at),
         }
+
+
+class GitCredential(Base):
+    """保存由可信 Git 服务加密的凭据。"""
+
+    __tablename__ = "git_credentials"
+    __table_args__ = (
+        UniqueConstraint("id", "uid", name="uq_git_credentials_id_uid"),
+        CheckConstraint(
+            "purpose IN ('gitea_api_token', 'deploy_private_key')",
+            name="ck_git_credentials_purpose",
+        ),
+        CheckConstraint("status IN ('active', 'destroyed')", name="ck_git_credentials_status"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    uid = Column(String(64), ForeignKey("users.uid", ondelete="CASCADE"), nullable=False, index=True)
+    purpose = Column(String(32), nullable=False)
+    ciphertext = Column(LargeBinary, nullable=False)
+    nonce = Column(LargeBinary, nullable=False)
+    key_version = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default="active", server_default="active", index=True)
+    created_at = Column(DateTime, default=utc_now_naive, server_default=func.now(), nullable=False)
+    destroyed_at = Column(DateTime, nullable=True)
+
+
+class GitConnection(Base):
+    """用户级 Git 托管连接及其非敏感信任锚。"""
+
+    __tablename__ = "git_connections"
+    __table_args__ = (
+        UniqueConstraint("id", "uid", name="uq_git_connections_id_uid"),
+        UniqueConstraint("uid", "idempotency_key", name="uq_git_connections_uid_idempotency_key"),
+        ForeignKeyConstraint(
+            ["api_token_credential_id", "uid"],
+            ["git_credentials.id", "git_credentials.uid"],
+            name="fk_git_connections_credential_uid",
+        ),
+        CheckConstraint("provider IN ('gitea')", name="ck_git_connections_provider"),
+        CheckConstraint("status IN ('active', 'disabled')", name="ck_git_connections_status"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    uid = Column(String(64), ForeignKey("users.uid", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    provider = Column(String(20), nullable=False)
+    api_origin = Column(String(512), nullable=False)
+    ssh_host = Column(String(255), nullable=False)
+    ssh_port = Column(Integer, nullable=False)
+    ssh_known_host_key = Column(Text, nullable=False)
+    api_token_credential_id = Column(String(64), nullable=False)
+    status = Column(String(20), nullable=False, default="active", server_default="active", index=True)
+    idempotency_key = Column(String(128), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive, server_default=func.now(), nullable=False
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化连接公开字段，不暴露凭据或完整 known-host 内容。"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "provider": self.provider,
+            "api_origin": self.api_origin,
+            "ssh_host": self.ssh_host,
+            "ssh_port": self.ssh_port,
+            "credential_status": "stored" if self.status == "active" else "destroyed",
+            "status": self.status,
+            "created_at": format_utc_datetime(self.created_at),
+            "updated_at": format_utc_datetime(self.updated_at),
+        }
+
+
+class ProjectGitRepository(Base):
+    """Project 绑定的远端 Git 仓库及持久化操作状态。"""
+
+    __tablename__ = "project_git_repositories"
+    __table_args__ = (
+        UniqueConstraint("id", "uid", name="uq_project_git_repositories_id_uid"),
+        UniqueConstraint("id", "project_id", "uid", name="uq_project_git_repositories_identity"),
+        UniqueConstraint("uid", "idempotency_key", name="uq_project_git_repositories_uid_idempotency_key"),
+        ForeignKeyConstraint(
+            ["project_id", "uid"], ["projects.id", "projects.uid"], name="fk_project_git_repositories_project_uid"
+        ),
+        ForeignKeyConstraint(
+            ["connection_id", "uid"],
+            ["git_connections.id", "git_connections.uid"],
+            name="fk_project_git_repositories_connection_uid",
+        ),
+        ForeignKeyConstraint(
+            ["deploy_private_credential_id", "uid"],
+            ["git_credentials.id", "git_credentials.uid"],
+            name="fk_project_git_repositories_credential_uid",
+        ),
+        CheckConstraint(
+            "status IN ('provisioning', 'active', 'provision_failed', 'deleting', 'delete_failed', 'disabled')",
+            name="ck_project_git_repositories_status",
+        ),
+    )
+
+    id = Column(String(64), primary_key=True)
+    project_id = Column(String(64), nullable=False, index=True)
+    uid = Column(String(64), nullable=False, index=True)
+    connection_id = Column(String(64), nullable=False, index=True)
+    alias = Column(String(80), nullable=False)
+    directory_name = Column(String(128), nullable=False)
+    remote_repository_id = Column(String(128), nullable=True)
+    repository_owner = Column(String(255), nullable=False)
+    repository_name = Column(String(255), nullable=False)
+    purpose = Column(Text, nullable=False, default="项目仓库", server_default="项目仓库")
+    canonical_ssh_url = Column(String(1024), nullable=True)
+    default_branch = Column(String(255), nullable=True)
+    configured_base_branch = Column(String(255), nullable=True)
+    allowed_base_branches = Column(JSON_VALUE, nullable=False, default=list)
+    deploy_public_key = Column(Text, nullable=False)
+    deploy_public_key_fingerprint = Column(String(128), nullable=False)
+    deploy_private_credential_id = Column(String(64), nullable=False)
+    remote_deploy_key_id = Column(String(128), nullable=True)
+    status = Column(String(24), nullable=False, default="provisioning", server_default="provisioning", index=True)
+    last_error_code = Column(String(80), nullable=True)
+    last_error_message = Column(String(512), nullable=True)
+    operation_generation = Column(Integer, nullable=False, default=1, server_default="1")
+    idempotency_key = Column(String(128), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive, server_default=func.now(), nullable=False
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化仓库绑定的非敏感业务状态。"""
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "connection_id": self.connection_id,
+            "alias": self.alias,
+            "directory_name": self.directory_name,
+            "repository_owner": self.repository_owner,
+            "repository_name": self.repository_name,
+            "purpose": self.purpose,
+            "default_branch": self.default_branch,
+            "configured_base_branch": self.configured_base_branch,
+            "allowed_base_branches": self.allowed_base_branches or [],
+            "status": self.status,
+            "last_error_code": self.last_error_code,
+            "last_error_message": self.last_error_message,
+            "created_at": format_utc_datetime(self.created_at),
+            "updated_at": format_utc_datetime(self.updated_at),
+        }
+
+
+class ProjectGitWorktree(Base):
+    """根任务在一个仓库中的分支和 worktree 状态。"""
+
+    __tablename__ = "project_git_worktrees"
+    __table_args__ = (
+        UniqueConstraint("repository_id", "runtime_scope_id", name="uq_project_git_worktrees_repository_scope"),
+        UniqueConstraint("uid", "selection_request_id", name="uq_project_git_worktrees_uid_selection_request"),
+        ForeignKeyConstraint(
+            ["repository_id", "project_id", "uid"],
+            ["project_git_repositories.id", "project_git_repositories.project_id", "project_git_repositories.uid"],
+            name="fk_project_git_worktrees_repository_identity",
+        ),
+        CheckConstraint(
+            "status IN ('requested', 'preparing', 'ready', 'prepare_failed', "
+            "'cleanup_pending', 'cleanup_failed', 'removed')",
+            name="ck_project_git_worktrees_status",
+        ),
+        CheckConstraint(
+            "selection_source IN ('user', 'agent', 'legacy')",
+            name="ck_project_git_worktrees_selection_source",
+        ),
+        CheckConstraint(
+            "branch_kind IN ('feature', 'fix', 'docs', 'refactor', 'chore', 'test', 'legacy')",
+            name="ck_project_git_worktrees_branch_kind",
+        ),
+        CheckConstraint(
+            "(branch_kind = 'legacy' AND branch_slug IS NULL) OR (branch_kind <> 'legacy' AND branch_slug IS NOT NULL)",
+            name="ck_project_git_worktrees_branch_slug",
+        ),
+    )
+
+    id = Column(String(64), primary_key=True)
+    repository_id = Column(String(64), nullable=False, index=True)
+    project_id = Column(String(64), nullable=False, index=True)
+    uid = Column(String(64), nullable=False, index=True)
+    runtime_scope_id = Column(String(64), nullable=False, index=True)
+    task_key = Column(String(64), nullable=False)
+    selection_source = Column(String(16), nullable=False)
+    task_purpose = Column(Text, nullable=False)
+    branch_kind = Column(String(16), nullable=False)
+    branch_slug = Column(String(48), nullable=True)
+    requested_by_run_id = Column(String(64), nullable=True, index=True)
+    allocation_generation = Column(Integer, nullable=False, default=1, server_default="1")
+    selection_request_id = Column(String(128), nullable=True)
+    branch_name = Column(String(255), nullable=False)
+    base_branch = Column(String(255), nullable=False)
+    base_sha = Column(String(64), nullable=True)
+    last_observed_head_sha = Column(String(64), nullable=True)
+    last_pushed_sha = Column(String(64), nullable=True)
+    relative_path = Column(String(512), nullable=False)
+    status = Column(String(24), nullable=False, default="preparing", server_default="preparing", index=True)
+    lease_owner = Column(String(128), nullable=True)
+    lease_expires_at = Column(DateTime, nullable=True, index=True)
+    last_error_code = Column(String(80), nullable=True)
+    last_error_message = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive, server_default=func.now(), nullable=False
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化 worktree 可观察状态。"""
+        return {
+            "id": self.id,
+            "repository_id": self.repository_id,
+            "project_id": self.project_id,
+            "runtime_scope_id": self.runtime_scope_id,
+            "task_key": self.task_key,
+            "selection_source": self.selection_source,
+            "task_purpose": self.task_purpose,
+            "branch_kind": self.branch_kind,
+            "branch_slug": self.branch_slug,
+            "requested_by_run_id": self.requested_by_run_id,
+            "allocation_generation": self.allocation_generation,
+            "branch": self.branch_name,
+            "base_branch": self.base_branch,
+            "base_sha": self.base_sha,
+            "head_sha": self.last_observed_head_sha,
+            "last_pushed_sha": self.last_pushed_sha,
+            "relative_path": self.relative_path,
+            "status": self.status,
+            "last_error_code": self.last_error_code,
+            "last_error_message": self.last_error_message,
+            "created_at": format_utc_datetime(self.created_at),
+            "updated_at": format_utc_datetime(self.updated_at),
+        }
+
+
+Index(
+    "uq_git_connections_uid_lower_name",
+    GitConnection.uid,
+    func.lower(GitConnection.name),
+    unique=True,
+)
+Index(
+    "uq_project_git_repositories_project_lower_alias",
+    ProjectGitRepository.project_id,
+    func.lower(ProjectGitRepository.alias),
+    unique=True,
+)
 
 
 class Department(Base):
@@ -340,6 +592,46 @@ class Agent(Base):
             "share_config": self.share_config or {},
             "is_default": bool(self.is_default),
             "is_subagent": bool(self.is_subagent),
+            "created_by": self.created_by,
+            "updated_by": self.updated_by,
+            "created_at": format_utc_datetime(self.created_at),
+            "updated_at": format_utc_datetime(self.updated_at),
+        }
+
+
+class ProjectAgent(Base):
+    """项目数字员工：Agent 在某个 Project 内的归属与配置覆盖层（yuanlei 域）。"""
+
+    __tablename__ = "project_agents"
+    __table_args__ = (UniqueConstraint("project_id", "agent_slug", name="uq_project_agents_project_agent"),)
+
+    id = Column(String(64), primary_key=True, comment="ProjectAgent UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_project_agents_project_id"),
+        nullable=False,
+        index=True,
+        comment="所属 Project ID",
+    )
+    agent_slug = Column(
+        String(80),
+        ForeignKey("agents.slug", ondelete="CASCADE", name="fk_project_agents_agent_slug"),
+        nullable=False,
+        index=True,
+        comment="Agent slug",
+    )
+    config_overrides = Column(JSON_VALUE, nullable=False, default=dict, comment="项目级配置覆盖层")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    updated_by = Column(String(64), nullable=True, comment="最近更新者 uid")
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "agent_slug": self.agent_slug,
+            "config_overrides": self.config_overrides or {},
             "created_by": self.created_by,
             "updated_by": self.updated_by,
             "created_at": format_utc_datetime(self.created_at),
@@ -701,9 +993,10 @@ class MCPServer(Base):
     description = Column(String(500), nullable=True, comment="描述")
 
     # 连接配置
-    transport = Column(String(20), nullable=False, comment="传输类型：sse/streamable_http/stdio")
+    transport = Column(String(20), nullable=False, comment="传输类型：sse/streamable_http")
     url = Column(String(500), nullable=True, comment="服务器 URL（sse/streamable_http）")
-    command = Column(String(500), nullable=True, comment="命令（stdio）")
+    # 历史 stdio 字段仅供管理员迁移旧配置，不参与运行时连接。
+    command = Column(String(500), nullable=True, comment="历史 stdio 命令")
     args = Column(JSON, nullable=True, comment="命令参数数组（stdio）")
     env = Column(JSON, nullable=True, comment="环境变量（stdio）")
     headers = Column(JSON, nullable=True, comment="HTTP 请求头")
@@ -751,30 +1044,14 @@ class MCPServer(Base):
         }
 
     def to_mcp_config(self) -> dict[str, Any]:
-        """转换为 MCP 配置格式（用于加载到 MCP_SERVERS 缓存）"""
+        """生成远程 MCP 连接配置。"""
         import json
 
+        if self.transport not in ("sse", "streamable_http"):
+            raise ValueError("MCP 仅支持 sse 或 streamable_http，不支持 stdio 等其他 transport")
         config = {"transport": self.transport}
         if self.transport in ("sse", "streamable_http") and self.url:
             config["url"] = self.url
-        if self.transport == "stdio":
-            if self.command:
-                config["command"] = self.command
-            if self.args:
-                if isinstance(self.args, list):
-                    config["args"] = self.args
-                elif isinstance(self.args, str):
-                    try:
-                        config["args"] = json.loads(self.args)
-                    except json.JSONDecodeError:
-                        pass
-            if self.env and isinstance(self.env, dict):
-                config["env"] = self.env
-            elif isinstance(self.env, str):
-                try:
-                    config["env"] = json.loads(self.env)
-                except json.JSONDecodeError:
-                    pass
         # headers 只用于 sse/streamable_http 传输类型
         if self.transport in ("sse", "streamable_http") and self.headers:
             if isinstance(self.headers, dict):
@@ -1354,7 +1631,9 @@ class AgentRunRequest(Base):
     )
     input_message_id = Column(Integer, ForeignKey("messages.id"), nullable=False, comment="关联输入消息 ID")
     dispatched_run_id = Column(String(64), ForeignKey("agent_runs.id"), nullable=True, comment="已派发的 AgentRun ID")
-    input_payload = Column(JSON, nullable=False, default=dict, comment="原始输入载荷快照")
+    input_payload = Column(
+        JSON, nullable=False, default=dict, comment="接入时解析的模型与审批配置；消息由 input_message_id 关联"
+    )
     error_message = Column(Text, nullable=True, comment="rejected/failed 时的错误信息")
     created_at = Column(DateTime, nullable=False, default=utc_now_naive, comment="创建时间")
     dispatched_at = Column(DateTime, nullable=True, comment="派发时间")

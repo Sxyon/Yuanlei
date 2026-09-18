@@ -11,7 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DECISIONS_PATH = Path("docs/develop-guides/decisions")
+DECISIONS_ROOTS = (
+    (
+        Path("docs/develop-guides/decisions"),
+        ("implemented", "proposed", "rejected", "archived"),
+    ),
+    (Path("docs/develop-guides/yuanlei/decisions"), ("implemented", "proposed")),
+)
 POSTMORTEMS_PATH = Path("docs/develop-guides/postmortems")
 FORBIDDEN_CENTRAL_INVENTORIES = (Path("docs/develop-guides/engineering-claims.json"),)
 DECISION_FILE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*\.md$")
@@ -695,90 +701,94 @@ def _evidence_rows(lines: list[str]) -> list[list[str]]:
 
 
 def _validate_decisions(root: Path, errors: list[str]) -> list[dict[str, str]]:
-    decisions_root = root / DECISIONS_PATH
     projection: list[dict[str, str]] = []
-    if not decisions_root.is_dir():
-        errors.append(f"缺少决策记录目录：{DECISIONS_PATH}")
-        return projection
 
-    for lifecycle, headings in DECISION_REQUIRED_HEADINGS.items():
-        lifecycle_dir = decisions_root / lifecycle
-        if not lifecycle_dir.is_dir():
-            errors.append(f"缺少决策 lifecycle 目录：{lifecycle_dir.relative_to(root)}")
+    for decisions_path, required_lifecycles in DECISIONS_ROOTS:
+        decisions_root = root / decisions_path
+        if not decisions_root.is_dir():
+            errors.append(f"缺少决策记录目录：{decisions_path}")
             continue
-        for path in sorted(lifecycle_dir.glob("*.md")):
-            relative = path.relative_to(root)
-            if not DECISION_FILE_PATTERN.fullmatch(path.name):
-                errors.append(f"决策记录文件名必须是 YYYY-MM-DD-topic.md：{relative}")
-            lines = _visible_markdown_lines(path.read_text(encoding="utf-8"))
-            sections = _decision_sections(lines)
-            status = _metadata(lines, "状态：")
-            if status != lifecycle:
-                errors.append(f"{relative} 状态必须是 {lifecycle}，实际为 {status!r}")
-            decision_type = _metadata(lines, "类型：")
-            if decision_type not in DECISION_TYPES:
-                errors.append(
-                    f"{relative} 类型必须是 {sorted(DECISION_TYPES)} 之一，实际为 {decision_type!r}"
+        for lifecycle, headings in DECISION_REQUIRED_HEADINGS.items():
+            lifecycle_dir = decisions_root / lifecycle
+            if not lifecycle_dir.is_dir():
+                if lifecycle in required_lifecycles:
+                    errors.append(
+                        f"缺少决策 lifecycle 目录：{lifecycle_dir.relative_to(root)}"
+                    )
+                continue
+            for path in sorted(lifecycle_dir.glob("*.md")):
+                relative = path.relative_to(root)
+                if not DECISION_FILE_PATTERN.fullmatch(path.name):
+                    errors.append(f"决策记录文件名必须是 YYYY-MM-DD-topic.md：{relative}")
+                lines = _visible_markdown_lines(path.read_text(encoding="utf-8"))
+                sections = _decision_sections(lines)
+                status = _metadata(lines, "状态：")
+                if status != lifecycle:
+                    errors.append(f"{relative} 状态必须是 {lifecycle}，实际为 {status!r}")
+                decision_type = _metadata(lines, "类型：")
+                if decision_type not in DECISION_TYPES:
+                    errors.append(
+                        f"{relative} 类型必须是 {sorted(DECISION_TYPES)} 之一，实际为 {decision_type!r}"
+                    )
+                owner = _metadata(lines, "Owner：")
+                _require_repository_path(
+                    root, owner, f"{relative} Owner", errors, file_only=True
                 )
-            owner = _metadata(lines, "Owner：")
-            _require_repository_path(
-                root, owner, f"{relative} Owner", errors, file_only=True
-            )
-            for heading in headings:
-                if heading not in sections:
-                    errors.append(f"{relative} 缺少标题：{heading}")
-                elif not any(
-                    line.strip() and not line.lstrip().startswith("<!--")
-                    for line in sections[heading]
-                ):
-                    errors.append(f"{relative} 标题下没有内容：{heading}")
-            if lifecycle in {"implemented", "archived"}:
-                for heading in IMPLEMENTED_BANNED_HEADINGS:
-                    if heading in sections:
-                        errors.append(
-                            f"当前/归档记录不能保留提案或进度标题：{relative} -> {heading}"
-                        )
-            if lifecycle == "proposed" and "## 验收标准" in sections:
-                acceptance_lines = sections["## 验收标准"]
-                has_header = any(
-                    _normalized(line) == PROPOSED_EVIDENCE_HEADER
-                    for line in acceptance_lines
+                for heading in headings:
+                    if heading not in sections:
+                        errors.append(f"{relative} 缺少标题：{heading}")
+                    elif not any(
+                        line.strip() and not line.lstrip().startswith("<!--")
+                        for line in sections[heading]
+                    ):
+                        errors.append(f"{relative} 标题下没有内容：{heading}")
+                if lifecycle in {"implemented", "archived"}:
+                    for heading in IMPLEMENTED_BANNED_HEADINGS:
+                        if heading in sections:
+                            errors.append(
+                                f"当前/归档记录不能保留提案或进度标题：{relative} -> {heading}"
+                            )
+                if lifecycle == "proposed" and "## 验收标准" in sections:
+                    acceptance_lines = sections["## 验收标准"]
+                    has_header = any(
+                        _normalized(line) == PROPOSED_EVIDENCE_HEADER
+                        for line in acceptance_lines
+                    )
+                    if not has_header:
+                        errors.append(f"{relative} proposed 验收标准缺少证据矩阵表头")
+                    else:
+                        rows = _evidence_rows(acceptance_lines)
+                        if not rows:
+                            errors.append(f"{relative} proposed 验收标准缺少证据矩阵数据行")
+                        for row in rows:
+                            if len(row) != 6 or not all(row):
+                                errors.append(
+                                    f"{relative} proposed 证据矩阵必须填写全部六列"
+                                )
+                                continue
+                            if row[-1] not in EVIDENCE_RESULTS:
+                                errors.append(
+                                    f"{relative} proposed 证据结果必须是 {sorted(EVIDENCE_RESULTS)} 之一，实际为 {row[-1]!r}"
+                                )
+                if decision_type == "simplification" and lifecycle in {
+                    "proposed",
+                    "implemented",
+                }:
+                    target_heading = "## 验收标准" if lifecycle == "proposed" else "## 验证"
+                    target_text = "\n".join(sections.get(target_heading, []))
+                    for label in SIMPLIFICATION_REQUIRED_LABELS:
+                        if label not in target_text:
+                            errors.append(
+                                f"{relative} simplification {target_heading} 缺少：{label}"
+                            )
+                projection.append(
+                    {
+                        "path": relative.as_posix(),
+                        "status": status or "missing",
+                        "type": decision_type or "missing",
+                        "owner": owner or "missing",
+                    }
                 )
-                if not has_header:
-                    errors.append(f"{relative} proposed 验收标准缺少证据矩阵表头")
-                else:
-                    rows = _evidence_rows(acceptance_lines)
-                    if not rows:
-                        errors.append(f"{relative} proposed 验收标准缺少证据矩阵数据行")
-                    for row in rows:
-                        if len(row) != 6 or not all(row):
-                            errors.append(
-                                f"{relative} proposed 证据矩阵必须填写全部六列"
-                            )
-                            continue
-                        if row[-1] not in EVIDENCE_RESULTS:
-                            errors.append(
-                                f"{relative} proposed 证据结果必须是 {sorted(EVIDENCE_RESULTS)} 之一，实际为 {row[-1]!r}"
-                            )
-            if decision_type == "simplification" and lifecycle in {
-                "proposed",
-                "implemented",
-            }:
-                target_heading = "## 验收标准" if lifecycle == "proposed" else "## 验证"
-                target_text = "\n".join(sections.get(target_heading, []))
-                for label in SIMPLIFICATION_REQUIRED_LABELS:
-                    if label not in target_text:
-                        errors.append(
-                            f"{relative} simplification {target_heading} 缺少：{label}"
-                        )
-            projection.append(
-                {
-                    "path": str(relative),
-                    "status": status or "missing",
-                    "type": decision_type or "missing",
-                    "owner": owner or "missing",
-                }
-            )
     if not projection:
         errors.append("至少需要一份 tracked decision record")
     return projection
@@ -794,7 +804,7 @@ def _validate_postmortems(root: Path, errors: list[str]) -> list[str]:
         if not path.is_file():
             errors.append(f"缺少 postmortem 入口或模板：{path.relative_to(root)}")
             continue
-        checked.append(str(path.relative_to(root)))
+        checked.append(path.relative_to(root).as_posix())
 
     if template.is_file():
         sections = _decision_sections(

@@ -11,9 +11,9 @@ from yuxi.agents.backends import (
 from yuxi.agents.backends.paths import runtime_workdir_path
 from yuxi.agents.context import (
     DEFAULT_TOOL_RESULT_EVICTION_K_TOKENS,
-    prepare_agent_runtime_context,
 )
 from yuxi.agents.middlewares import (
+    GitToolErrorMiddleware,
     ImageInputCompatibilityMiddleware,
     NetworkRetryMiddleware,
     SteerMiddleware,
@@ -69,6 +69,9 @@ async def _build_middlewares(context, backend):
     )
     if approval_middleware:
         middlewares.append(approval_middleware)
+    # Git 工具的业务校验失败（如 branch_slug 格式）收敛为 error ToolMessage 交给
+    # 模型修正或报告阻塞，避免可自愈错误 panic 整个 Run；放在最内层靠近工具执行。
+    middlewares.append(GitToolErrorMiddleware())
     return middlewares
 
 
@@ -78,14 +81,10 @@ class ChatbotAgent(BaseAgent):
     capabilities = ["file_upload", "files", "context_compression"]
     context_schema = ChatBotContext
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    async def get_graph(self, context=None, **kwargs):
-        context = await prepare_agent_runtime_context(
-            context or self.context_schema(),
-            context_schema=self.context_schema,
-        )
+    async def get_graph(self, *, context, **kwargs):
+        """从显式准备的 Context 构建执行图。"""
+        if not getattr(context, "_runtime_prepared", False):
+            raise ValueError("构图需要已准备的 Context")
         await sync_agent_context_skills(context)
 
         # DeepAgents 0.7 移除 backend factory：每次 graph 构造创建本 Run 独享的

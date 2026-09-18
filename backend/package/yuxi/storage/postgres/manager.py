@@ -25,6 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
+YUANLEI_SCHEMA_VERSION = 3
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -94,6 +95,246 @@ AGENT_RUN_FACT_SCHEMA_STATEMENTS = (
         "ON agent_run_attempts(run_id, attempt_no)"
     ),
     "CREATE INDEX IF NOT EXISTS ix_agent_run_attempts_open ON agent_run_attempts(run_id, finished_at)",
+)
+PROJECT_GIT_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS git_credentials (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+        purpose VARCHAR(32) NOT NULL,
+        ciphertext BYTEA NOT NULL,
+        nonce BYTEA NOT NULL,
+        key_version INTEGER NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        destroyed_at TIMESTAMP WITHOUT TIME ZONE,
+        CONSTRAINT uq_git_credentials_id_uid UNIQUE (id, uid),
+        CONSTRAINT ck_git_credentials_purpose CHECK (purpose IN ('gitea_api_token', 'deploy_private_key')),
+        CONSTRAINT ck_git_credentials_status CHECK (status IN ('active', 'destroyed'))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_git_credentials_uid ON git_credentials(uid)",
+    "CREATE INDEX IF NOT EXISTS ix_git_credentials_status ON git_credentials(status)",
+    """
+    CREATE TABLE IF NOT EXISTS git_connections (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL,
+        provider VARCHAR(20) NOT NULL,
+        api_origin VARCHAR(512) NOT NULL,
+        ssh_host VARCHAR(255) NOT NULL,
+        ssh_port INTEGER NOT NULL,
+        ssh_known_host_key TEXT NOT NULL,
+        api_token_credential_id VARCHAR(64) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        idempotency_key VARCHAR(128) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_git_connections_id_uid UNIQUE (id, uid),
+        CONSTRAINT uq_git_connections_uid_idempotency_key UNIQUE (uid, idempotency_key),
+        CONSTRAINT fk_git_connections_credential_uid FOREIGN KEY (api_token_credential_id, uid)
+            REFERENCES git_credentials(id, uid),
+        CONSTRAINT ck_git_connections_provider CHECK (provider IN ('gitea')),
+        CONSTRAINT ck_git_connections_status CHECK (status IN ('active', 'disabled'))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_git_connections_uid ON git_connections(uid)",
+    "CREATE INDEX IF NOT EXISTS ix_git_connections_status ON git_connections(status)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_git_connections_uid_lower_name ON git_connections(uid, lower(name))",
+    """
+    CREATE TABLE IF NOT EXISTS project_git_repositories (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL,
+        uid VARCHAR(64) NOT NULL,
+        connection_id VARCHAR(64) NOT NULL,
+        alias VARCHAR(80) NOT NULL,
+        directory_name VARCHAR(128) NOT NULL,
+        remote_repository_id VARCHAR(128),
+        repository_owner VARCHAR(255) NOT NULL,
+        repository_name VARCHAR(255) NOT NULL,
+        purpose TEXT NOT NULL DEFAULT '项目仓库',
+        canonical_ssh_url VARCHAR(1024),
+        default_branch VARCHAR(255),
+        configured_base_branch VARCHAR(255),
+        allowed_base_branches JSONB NOT NULL DEFAULT '[]'::jsonb,
+        deploy_public_key TEXT NOT NULL,
+        deploy_public_key_fingerprint VARCHAR(128) NOT NULL,
+        deploy_private_credential_id VARCHAR(64) NOT NULL,
+        remote_deploy_key_id VARCHAR(128),
+        status VARCHAR(24) NOT NULL DEFAULT 'provisioning',
+        last_error_code VARCHAR(80),
+        last_error_message VARCHAR(512),
+        operation_generation INTEGER NOT NULL DEFAULT 1,
+        idempotency_key VARCHAR(128) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_project_git_repositories_id_uid UNIQUE (id, uid),
+        CONSTRAINT uq_project_git_repositories_identity UNIQUE (id, project_id, uid),
+        CONSTRAINT uq_project_git_repositories_uid_idempotency_key UNIQUE (uid, idempotency_key),
+        CONSTRAINT fk_project_git_repositories_project_uid FOREIGN KEY (project_id, uid)
+            REFERENCES projects(id, uid),
+        CONSTRAINT fk_project_git_repositories_connection_uid FOREIGN KEY (connection_id, uid)
+            REFERENCES git_connections(id, uid),
+        CONSTRAINT fk_project_git_repositories_credential_uid FOREIGN KEY (deploy_private_credential_id, uid)
+            REFERENCES git_credentials(id, uid),
+        CONSTRAINT ck_project_git_repositories_status CHECK (
+            status IN ('provisioning', 'active', 'provision_failed', 'deleting', 'delete_failed', 'disabled')
+        )
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_project_git_repositories_project_id ON project_git_repositories(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_repositories_uid ON project_git_repositories(uid)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_repositories_connection_id ON project_git_repositories(connection_id)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_repositories_status ON project_git_repositories(status)",
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_project_git_repositories_project_lower_alias "
+        "ON project_git_repositories(project_id, lower(alias))"
+    ),
+    """
+    CREATE TABLE IF NOT EXISTS project_git_worktrees (
+        id VARCHAR(64) PRIMARY KEY,
+        repository_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL,
+        uid VARCHAR(64) NOT NULL,
+        runtime_scope_id VARCHAR(64) NOT NULL,
+        task_key VARCHAR(64) NOT NULL,
+        selection_source VARCHAR(16) NOT NULL,
+        task_purpose TEXT NOT NULL,
+        branch_kind VARCHAR(16) NOT NULL,
+        branch_slug VARCHAR(48),
+        requested_by_run_id VARCHAR(64),
+        allocation_generation INTEGER NOT NULL DEFAULT 1,
+        selection_request_id VARCHAR(128),
+        branch_name VARCHAR(255) NOT NULL,
+        base_branch VARCHAR(255) NOT NULL,
+        base_sha VARCHAR(64),
+        last_observed_head_sha VARCHAR(64),
+        last_pushed_sha VARCHAR(64),
+        relative_path VARCHAR(512) NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'preparing',
+        lease_owner VARCHAR(128),
+        lease_expires_at TIMESTAMP WITHOUT TIME ZONE,
+        last_error_code VARCHAR(80),
+        last_error_message VARCHAR(512),
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_project_git_worktrees_repository_scope UNIQUE (repository_id, runtime_scope_id),
+        CONSTRAINT uq_project_git_worktrees_uid_selection_request UNIQUE (uid, selection_request_id),
+        CONSTRAINT fk_project_git_worktrees_repository_identity FOREIGN KEY (repository_id, project_id, uid)
+            REFERENCES project_git_repositories(id, project_id, uid),
+        CONSTRAINT ck_project_git_worktrees_status CHECK (
+            status IN (
+                'requested', 'preparing', 'ready', 'prepare_failed',
+                'cleanup_pending', 'cleanup_failed', 'removed'
+            )
+        ),
+        CONSTRAINT ck_project_git_worktrees_selection_source CHECK (
+            selection_source IN ('user', 'agent', 'legacy')
+        ),
+        CONSTRAINT ck_project_git_worktrees_branch_kind CHECK (
+            branch_kind IN ('feature', 'fix', 'docs', 'refactor', 'chore', 'test', 'legacy')
+        ),
+        CONSTRAINT ck_project_git_worktrees_branch_slug CHECK (
+            (branch_kind = 'legacy' AND branch_slug IS NULL)
+            OR (branch_kind <> 'legacy' AND branch_slug IS NOT NULL)
+        )
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_repository_id ON project_git_worktrees(repository_id)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_project_id ON project_git_worktrees(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_uid ON project_git_worktrees(uid)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_runtime_scope_id ON project_git_worktrees(runtime_scope_id)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_requested_by_run_id "
+        "ON project_git_worktrees(requested_by_run_id)"
+    ),
+    "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_status ON project_git_worktrees(status)",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_lease_expires_at ON project_git_worktrees(lease_expires_at)",
+)
+PROJECT_GIT_V1_TO_V2_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS purpose TEXT",
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS configured_base_branch VARCHAR(255)",
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS allowed_base_branches JSONB",
+    "UPDATE project_git_repositories SET purpose = COALESCE(NULLIF(alias, ''), '项目仓库') WHERE purpose IS NULL",
+    (
+        "UPDATE project_git_repositories SET configured_base_branch = default_branch "
+        "WHERE configured_base_branch IS NULL AND default_branch IS NOT NULL"
+    ),
+    (
+        "UPDATE project_git_repositories SET allowed_base_branches = "
+        "CASE WHEN configured_base_branch IS NULL THEN '[]'::jsonb "
+        "ELSE jsonb_build_array(configured_base_branch) END WHERE allowed_base_branches IS NULL"
+    ),
+    "ALTER TABLE project_git_repositories ALTER COLUMN purpose SET DEFAULT '项目仓库'",
+    "ALTER TABLE project_git_repositories ALTER COLUMN purpose SET NOT NULL",
+    "ALTER TABLE project_git_repositories ALTER COLUMN allowed_base_branches SET DEFAULT '[]'::jsonb",
+    "ALTER TABLE project_git_repositories ALTER COLUMN allowed_base_branches SET NOT NULL",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS selection_source VARCHAR(16)",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS task_purpose TEXT",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS branch_kind VARCHAR(16)",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(48)",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS requested_by_run_id VARCHAR(64)",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS allocation_generation INTEGER",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS selection_request_id VARCHAR(128)",
+    "UPDATE project_git_worktrees SET selection_source = 'legacy' WHERE selection_source IS NULL",
+    "UPDATE project_git_worktrees SET task_purpose = '历史自动分配' WHERE task_purpose IS NULL",
+    "UPDATE project_git_worktrees SET branch_kind = 'legacy' WHERE branch_kind IS NULL",
+    "UPDATE project_git_worktrees SET allocation_generation = 1 WHERE allocation_generation IS NULL",
+    "ALTER TABLE project_git_worktrees ALTER COLUMN selection_source SET NOT NULL",
+    "ALTER TABLE project_git_worktrees ALTER COLUMN task_purpose SET NOT NULL",
+    "ALTER TABLE project_git_worktrees ALTER COLUMN branch_kind SET NOT NULL",
+    "ALTER TABLE project_git_worktrees ALTER COLUMN allocation_generation SET DEFAULT 1",
+    "ALTER TABLE project_git_worktrees ALTER COLUMN allocation_generation SET NOT NULL",
+    "ALTER TABLE project_git_worktrees ALTER COLUMN base_sha DROP NOT NULL",
+    "ALTER TABLE project_git_worktrees DROP CONSTRAINT IF EXISTS ck_project_git_worktrees_status",
+    "ALTER TABLE project_git_worktrees DROP CONSTRAINT IF EXISTS ck_project_git_worktrees_selection_source",
+    "ALTER TABLE project_git_worktrees DROP CONSTRAINT IF EXISTS ck_project_git_worktrees_branch_kind",
+    "ALTER TABLE project_git_worktrees DROP CONSTRAINT IF EXISTS ck_project_git_worktrees_branch_slug",
+    (
+        "ALTER TABLE project_git_worktrees ADD CONSTRAINT ck_project_git_worktrees_status CHECK "
+        "(status IN ('requested', 'preparing', 'ready', 'prepare_failed', "
+        "'cleanup_pending', 'cleanup_failed', 'removed'))"
+    ),
+    (
+        "ALTER TABLE project_git_worktrees ADD CONSTRAINT ck_project_git_worktrees_selection_source CHECK "
+        "(selection_source IN ('user', 'agent', 'legacy'))"
+    ),
+    (
+        "ALTER TABLE project_git_worktrees ADD CONSTRAINT ck_project_git_worktrees_branch_kind CHECK "
+        "(branch_kind IN ('feature', 'fix', 'docs', 'refactor', 'chore', 'test', 'legacy'))"
+    ),
+    (
+        "ALTER TABLE project_git_worktrees ADD CONSTRAINT ck_project_git_worktrees_branch_slug CHECK "
+        "((branch_kind = 'legacy' AND branch_slug IS NULL) OR "
+        "(branch_kind <> 'legacy' AND branch_slug IS NOT NULL))"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_project_git_worktrees_uid_selection_request "
+        "ON project_git_worktrees(uid, selection_request_id) WHERE selection_request_id IS NOT NULL"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_requested_by_run_id "
+        "ON project_git_worktrees(requested_by_run_id)"
+    ),
+)
+PROJECT_AGENT_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS project_agents (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_project_agents_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        agent_slug VARCHAR(80) NOT NULL CONSTRAINT fk_project_agents_agent_slug
+            REFERENCES agents(slug) ON DELETE CASCADE,
+        config_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by VARCHAR(64),
+        updated_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_project_agents_project_agent UNIQUE (project_id, agent_slug)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id ON project_agents(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug ON project_agents(agent_slug)",
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -503,6 +744,7 @@ class PostgresManager(metaclass=SingletonMeta):
         required = {
             "business": BUSINESS_SCHEMA_VERSION,
             "knowledge": KNOWLEDGE_SCHEMA_VERSION,
+            "yuanlei": YUANLEI_SCHEMA_VERSION,
         }
         mismatches = [
             f"{domain}={versions.get(domain, 'missing')} (required {version})"
@@ -532,6 +774,20 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in KNOWLEDGE_FILE_TASK_OWNER_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v1_to_v2(self) -> None:
+        """为 Project Git 增加仓库策略与按根任务显式 allocation。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_GIT_V1_TO_V2_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v2_to_v3(self) -> None:
+        """为项目数字员工增加 ProjectAgent 归属与覆盖表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_AGENT_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

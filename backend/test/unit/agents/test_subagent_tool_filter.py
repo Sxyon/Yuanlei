@@ -36,6 +36,9 @@ def test_filter_disabled_tools_removes_sensitive_backend_tools_only_in_default_m
         SimpleNamespace(name="write_file"),
         SimpleNamespace(name="edit_file"),
         SimpleNamespace(name="execute"),
+        SimpleNamespace(name="git_list_project_repositories"),
+        SimpleNamespace(name="git_prepare_worktree"),
+        SimpleNamespace(name="git_push_branch"),
     ]
 
     default_mode_filtered = subagent_graph._filter_disabled_tools(tools, subagent_graph._disabled_tools_for("default"))
@@ -153,6 +156,27 @@ async def test_subagent_tool_filter_middleware_denies_disabled_tool_execution(us
     assert result.status == "error"
     assert result.tool_call_id == "call_1"
     assert "write_file" in result.content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool_name",
+    ["git_list_project_repositories", "git_prepare_worktree", "git_push_branch"],
+)
+async def test_subagent_execution_denies_every_project_git_management_tool(tool_name: str):
+    """模型可见性之外，执行拦截必须拒绝全部 Project Git 管理能力。"""
+    middleware = subagent_graph._SubAgentToolFilterMiddleware("always_trust")
+    executed = []
+
+    async def handler(request):
+        executed.append(request.tool_call["name"])
+        return "executed"
+
+    result = await middleware.awrap_tool_call(_ToolCallRequest(tool_name), handler)
+
+    assert executed == []
+    assert result.status == "error"
+    assert tool_name in result.content
 
 
 @pytest.mark.asyncio

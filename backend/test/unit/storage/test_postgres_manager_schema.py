@@ -7,6 +7,7 @@ import pytest
 from yuxi.storage.postgres.manager import (
     BUSINESS_SCHEMA_VERSION,
     KNOWLEDGE_SCHEMA_VERSION,
+    YUANLEI_SCHEMA_VERSION,
     BusinessBase,
     KnowledgeBase,
     PostgresManager,
@@ -41,7 +42,13 @@ async def test_require_current_schema_rejects_missing_or_incompatible_domains(mo
     monkeypatch.setattr(
         manager,
         "get_schema_versions",
-        lambda: _async_value({"business": BUSINESS_SCHEMA_VERSION, "knowledge": KNOWLEDGE_SCHEMA_VERSION}),
+        lambda: _async_value(
+            {
+                "business": BUSINESS_SCHEMA_VERSION,
+                "knowledge": KNOWLEDGE_SCHEMA_VERSION,
+                "yuanlei": YUANLEI_SCHEMA_VERSION,
+            }
+        ),
     )
     await manager.require_current_schema()
 
@@ -64,6 +71,25 @@ def test_project_lifecycle_columns_and_constraint_are_in_fresh_schema():
     assert projects.c.status.nullable is False
     assert "deleted_at" in projects.c
     assert "ck_projects_status" in {constraint.name for constraint in projects.constraints}
+
+
+def test_project_git_schema_owns_user_bound_foreign_keys_and_alias_index():
+    """Fresh schema 在数据库层拒绝跨用户绑定并约束大小写 alias。"""
+    assert {
+        "git_credentials",
+        "git_connections",
+        "project_git_repositories",
+        "project_git_worktrees",
+    }.issubset(BusinessBase.metadata.tables)
+    repositories = BusinessBase.metadata.tables["project_git_repositories"]
+    assert {
+        "fk_project_git_repositories_project_uid",
+        "fk_project_git_repositories_connection_uid",
+        "fk_project_git_repositories_credential_uid",
+    }.issubset({constraint.name for constraint in repositories.foreign_key_constraints})
+    assert "uq_project_git_repositories_project_lower_alias" in {
+        index.name for index in repositories.indexes
+    }
 
 
 def test_agent_run_serialization_does_not_project_removed_redis_cursor():
@@ -166,6 +192,50 @@ async def test_release_upgrade_converges_run_timing_and_removes_cursor():
             in connection.statements
         )
     assert "ALTER TABLE IF EXISTS agent_runs DROP COLUMN IF EXISTS last_event_id" in connection.statements
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v1_to_v2_upgrade_backfills_legacy_allocations_before_constraints():
+    """Project Git v1 行必须保留并回填 legacy 语义后才收紧约束。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v1_to_v2()
+
+    statements = "\n".join(connection.statements)
+    assert "SET selection_source = 'legacy'" in statements
+    assert "SET branch_kind = 'legacy'" in statements
+    assert "ALTER COLUMN base_sha DROP NOT NULL" in statements
+    assert "'requested', 'preparing', 'ready'" in statements
+    assert statements.index("SET branch_kind = 'legacy'") < statements.index(
+        "ALTER COLUMN branch_kind SET NOT NULL"
+    )
+
+
+def test_project_agent_schema_owns_project_and_agent_foreign_keys():
+    """Fresh schema 在数据库层拒绝悬空的项目/智能体绑定并保证单项目单绑定。"""
+    assert "project_agents" in BusinessBase.metadata.tables
+    table = BusinessBase.metadata.tables["project_agents"]
+    foreign_keys = {constraint.name for constraint in table.foreign_key_constraints}
+    assert foreign_keys == {"fk_project_agents_project_id", "fk_project_agents_agent_slug"}
+    assert "uq_project_agents_project_agent" in {constraint.name for constraint in table.constraints}
+    assert {"ix_project_agents_project_id", "ix_project_agents_agent_slug"}.issubset(
+        {index.name for index in table.indexes}
+    )
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v2_to_v3_upgrade_creates_project_agents_idempotently():
+    """项目数字员工表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v2_to_v3()
+        await manager.upgrade_yuanlei_schema_v2_to_v3()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS project_agents" in statements
+    assert "REFERENCES projects(id) ON DELETE CASCADE" in statements
+    assert "REFERENCES agents(slug) ON DELETE CASCADE" in statements
+    assert "UNIQUE (project_id, agent_slug)" in statements
+    assert "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id" in statements
+    assert "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug" in statements
 
 
 @pytest.mark.asyncio

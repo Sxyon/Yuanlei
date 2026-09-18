@@ -14,7 +14,6 @@ from datetime import datetime
 from arq.worker import RetryJob, func
 from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
-from yuxi.agents.backends.paths import runtime_workdir_path
 from yuxi.agents.backends.sandbox.provider import get_sandbox_provider
 from yuxi.agents.callbacks.model_request_timing import FirstModelRequestRecorder
 from yuxi.agents.mcp.service import ensure_builtin_mcp_servers_in_db
@@ -25,9 +24,22 @@ from yuxi.services.agent_request_queue_service import (
     dispatch_next_request,
     recover_pending_dispatches,
 )
-from yuxi.services.agent_run_manifest_service import build_run_manifest_result, compute_manifest_fingerprint
+from yuxi.services.agent_run_manifest_service import (
+    PreparedRunExecution,
+    compute_manifest_fingerprint,
+    prepare_run_execution,
+)
 from yuxi.services.chat_service import get_agent_state_view, stream_agent_chat, stream_agent_resume
 from yuxi.services.input_message_service import restore_chat_input_message
+from yuxi.services.project_git_service import (
+    ProjectGitBusyError,
+    ProjectGitSelectionError,
+    prepare_selected_project_git_worktrees,
+    process_project_git_operation,
+    process_project_git_worktree_cleanup,
+    project_git_enabled_for_project,
+    reconcile_project_git_operations,
+)
 from yuxi.services.run_queue_service import (
     RUN_RECONCILIATION_SECONDS,
     WORKER_HEALTH_INTERVAL_SECONDS,
@@ -70,6 +82,7 @@ RUN_CANCEL_POLL_SECONDS = 0.2
 RUN_DURABLE_CANCEL_POLL_SECONDS = 1.0
 RUN_LEASE_SECONDS = 120
 RUN_HEARTBEAT_SECONDS = 30
+RUNTIME_CLEANUP_TIMEOUT_SECONDS = get_int_env("SANDBOX_RUNTIME_CLEANUP_TIMEOUT_SECONDS", 155)
 SUPPORTED_RUN_TYPES = {"chat", "resume", "subagent"}
 WORKER_ID = f"worker-{uuid.uuid4().hex}"
 _RECONCILIATION_TASK_KEY = "agent_run_reconciliation_task"
@@ -91,6 +104,15 @@ class RuntimeCleanupPendingError(RetryJob):
 
 class NonRetryableRunError(Exception):
     """Error type that should not trigger ARQ retry."""
+
+
+@dataclass(frozen=True, slots=True)
+class _RuntimeCleanupTarget:
+    """两段 cleanup 事务之间传递的持久身份快照。"""
+
+    uid: str
+    runtime_scope_id: str
+    workdir_path: str
 
 
 async def _validate_run_workdir_binding(run: AgentRun) -> AuthorizedWorkdir:
@@ -283,18 +305,22 @@ class ChunkedEventWriter:
 
 
 async def _release_runtime_if_idle(run: AgentRun) -> bool:
-    """在 PostgreSQL cleanup fence 内串行销毁根 execution runtime。"""
+    """保留持久 cleanup fence，并在数据库事务外销毁根 runtime。"""
     if run.run_type == "subagent":
         return False
     runtime_scope_id = str(getattr(run, "runtime_scope_id", None) or run.conversation_thread_id)
+    lock_key = f"yuxi-runtime-cleanup:{run.uid}:{runtime_scope_id}"
     async with pg_manager.get_async_session_context() as db:
         await db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-            {"lock_key": f"yuxi-runtime-cleanup:{run.uid}:{runtime_scope_id}"},
+            {"lock_key": lock_key},
         )
         current = await db.scalar(select(AgentRun).where(AgentRun.id == run.id).with_for_update())
         if current is None:
             raise RuntimeError(f"Run {run.id} 不存在，不能确认 runtime cleanup Owner")
+        current_scope_id = str(current.runtime_scope_id or current.conversation_thread_id)
+        if str(current.uid) != str(run.uid) or current_scope_id != runtime_scope_id:
+            raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
         if not current.runtime_cleanup_pending:
             return True
         result = await db.execute(
@@ -316,13 +342,54 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
             uid=str(current.uid),
             db=db,
         )
-        await asyncio.to_thread(
-            get_sandbox_provider().release,
-            runtime_scope_id,
+        target = _RuntimeCleanupTarget(
             uid=str(current.uid),
-            clear_cache_on_delete_failure=True,
+            runtime_scope_id=runtime_scope_id,
             workdir_path=workdir_path,
         )
+
+    await asyncio.wait_for(
+        asyncio.to_thread(
+            get_sandbox_provider().release,
+            target.runtime_scope_id,
+            uid=target.uid,
+            clear_cache_on_delete_failure=True,
+            workdir_path=target.workdir_path,
+        ),
+        timeout=RUNTIME_CLEANUP_TIMEOUT_SECONDS,
+    )
+
+    async with pg_manager.get_async_session_context() as db:
+        await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": lock_key})
+        current = await db.scalar(select(AgentRun).where(AgentRun.id == run.id).with_for_update())
+        if current is None:
+            raise RuntimeError(f"Run {run.id} 不存在，不能确认 runtime cleanup Owner")
+        current_scope_id = str(current.runtime_scope_id or current.conversation_thread_id)
+        if str(current.uid) != target.uid or current_scope_id != target.runtime_scope_id:
+            raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
+        if not current.runtime_cleanup_pending:
+            return True
+        result = await db.execute(
+            select(AgentRun.id)
+            .where(
+                AgentRun.runtime_scope_id == target.runtime_scope_id,
+                AgentRun.id != current.id,
+                AgentRun.status.notin_(TERMINAL_RUN_STATUSES),
+            )
+            .limit(1)
+        )
+        if result.scalar_one_or_none() is not None:
+            return False
+        conversation = await db.scalar(select(Conversation).where(Conversation.id == current.conversation_id))
+        if conversation is None or conversation.uid != target.uid:
+            raise RuntimeError(f"Run {run.id} 的 Conversation 身份不一致")
+        current_workdir_path = await resolve_conversation_workdir_path(
+            conversation=conversation,
+            uid=target.uid,
+            db=db,
+        )
+        if current_workdir_path != target.workdir_path:
+            raise RuntimeError(f"Run {run.id} 的 Workdir 在 runtime cleanup 期间发生变化")
         current.runtime_cleanup_pending = False
         await db.flush()
     return True
@@ -514,10 +581,26 @@ def _require_persisted_manifest_match(persisted_run: AgentRun | None, *, recorde
         raise RuntimeError("运行资产已在重试前变化，与已固化 manifest 不一致")
 
 
-async def persist_run_manifest(*, run: AgentRun, user, worker_id: str) -> dict:
-    """在执行上下文构造前固化运行清单与指纹；固化失败由调用方显式失败。"""
+async def prepare_and_record_run_execution(
+    *,
+    run: AgentRun,
+    user: User,
+    worker_id: str,
+    workdir_binding: AuthorizedWorkdir,
+    git_repositories: list[dict] | None = None,
+    project_git_enabled: bool = False,
+) -> PreparedRunExecution:
+    """在构图执行前固化运行清单与指纹；准备和固化失败由调用方收尾。"""
     async with pg_manager.get_async_session_context() as db:
-        result = await build_run_manifest_result(run=run, user=user, db=db)
+        result = await prepare_run_execution(
+            run=run,
+            user=user,
+            db=db,
+            worker_id=worker_id,
+            workdir_binding=workdir_binding,
+            git_repositories=git_repositories,
+            project_git_enabled=project_git_enabled,
+        )
         fingerprint = compute_manifest_fingerprint(result.manifest)
         persisted_run, recorded = await AgentRunRepository(db).record_run_manifest(
             run.id,
@@ -526,10 +609,7 @@ async def persist_run_manifest(*, run: AgentRun, user, worker_id: str) -> dict:
             worker_id=worker_id,
         )
         _require_persisted_manifest_match(persisted_run, recorded=recorded, fingerprint=fingerprint)
-        return {
-            "normalized_context": result.normalized_context,
-            "skill_runtime_snapshot": result.skill_runtime_snapshot,
-        }
+        return result
 
 
 async def _record_run_timing_best_effort(
@@ -612,7 +692,7 @@ def _is_last_try(ctx) -> bool:
 def _is_retryable_exception(exc: Exception) -> bool:
     if isinstance(exc, NonRetryableRunError):
         return False
-    return isinstance(exc, (RetryableRunError, OperationalError, ConnectionError, TimeoutError, asyncio.TimeoutError))
+    return isinstance(exc, RetryableRunError | OperationalError | ConnectionError | TimeoutError | asyncio.TimeoutError)
 
 
 def _worker_identity(ctx) -> str:
@@ -831,10 +911,11 @@ async def _consume_stream_with_cancel(agen, run_ctx: RunContext):
 async def process_agent_run(ctx, run_id: str):
     """执行队列中的 AgentRun，并只从 run 列和输入消息恢复运行参数。"""
     run = await _get_run(run_id)
+    # 异常态兜底处理
     if not run:
         logger.warning(f"Run not found: {run_id}")
         return
-
+    # 非运行状态清理
     if run.status in TERMINAL_RUN_STATUSES:
         await _finish_execution_tree_children(run)
         cleanup_was_pending = bool(getattr(run, "runtime_cleanup_pending", False))
@@ -849,7 +930,7 @@ async def process_agent_run(ctx, run_id: str):
             )
         logger.info(f"Run already terminal, skip: {run_id}, status={run.status}")
         return
-
+    # 检测runtime_cleanup_pending 状态  todo 疑似agent run 对于  provisioner/并发清理失败 的状态
     if bool(getattr(run, "runtime_cleanup_pending", False)):
         await _require_runtime_cleanup(run, f"Run {run_id} 尚未完成 retry runtime cleanup")
         run = await _get_run(run_id)
@@ -957,6 +1038,28 @@ async def process_agent_run(ctx, run_id: str):
             )
             return
 
+        await run_ctx.start()
+        try:
+            git_repositories = await prepare_selected_project_git_worktrees(
+                uid=str(uid),
+                project_id=workdir_binding.project_id,
+                workdir_path=workdir_binding.workdir_path,
+                runtime_scope_id=str(run.runtime_scope_id),
+                worker_id=worker_id,
+            )
+        except ProjectGitBusyError as exc:
+            raise RetryableRunError(str(exc)) from exc
+        except ProjectGitSelectionError as exc:
+            await mark_run_terminal(
+                run_id,
+                "failed",
+                "selected_project_git_invalid",
+                str(exc),
+                worker_id=worker_id,
+            )
+            return
+        project_git_enabled = await project_git_enabled_for_project(uid=str(uid), project_id=workdir_binding.project_id)
+
         resume_input = None
         if run_type == "resume":
             resume_input = input_metadata.get("resume")
@@ -986,10 +1089,20 @@ async def process_agent_run(ctx, run_id: str):
                 )
                 return
 
-        # 运行清单必须在真正构造执行上下文前固化；固化失败时执行不得开始。
+        await run_ctx.start()
+        # 准备配置期间也续租；manifest 提交成功前不得开始构图执行。
         try:
-            execution_snapshot = await persist_run_manifest(run=run, user=user, worker_id=worker_id)
+            prepared_execution = await prepare_and_record_run_execution(
+                run=run,
+                user=user,
+                worker_id=worker_id,
+                workdir_binding=workdir_binding,
+                git_repositories=git_repositories,
+                project_git_enabled=project_git_enabled,
+            )
         except Exception as manifest_error:
+            if await _is_cancel_requested(run_id):
+                raise asyncio.CancelledError(f"run {run_id} cancelled during preparation")
             logger.error(f"Failed to persist AgentRun manifest: run={run_id}", exc_info=True)
             await mark_run_terminal(
                 run_id,
@@ -1004,6 +1117,7 @@ async def process_agent_run(ctx, run_id: str):
         if await _is_cancel_requested(run_id):
             raise asyncio.CancelledError(f"run {run_id} cancelled after manifest recorded")
 
+        context = prepared_execution.context
         meta = {
             "run_id": run_id,
             "request_id": request_id,
@@ -1012,23 +1126,24 @@ async def process_agent_run(ctx, run_id: str):
             "uid": user.uid,
             "has_image": bool(image_content),
             "attachment_file_ids": input_metadata.get("attachment_file_ids") or [],
-            "model_spec": payload.get("model_spec"),
-            "tool_approval_mode": payload.get("tool_approval_mode"),
+            "model_spec": context.model,
+            "tool_approval_mode": context.tool_approval_mode,
             "run_type": run_type,
             "created_by_run_id": run.created_by_run_id,
             "worker_id": worker_id,
-            "runtime_scope_id": str(getattr(run, "runtime_scope_id", None) or thread_id),
-            "workdir_relative_path": workdir_binding.workdir_path,
-            "workdir_path": runtime_workdir_path(workdir_binding.workdir_path),
+            "runtime_scope_id": context.runtime_scope_id,
+            "workdir_relative_path": context.workdir_relative_path,
+            "workdir_path": context.workdir_path,
+            "git_repositories": git_repositories,
+            "project_git_enabled": project_git_enabled,
         }
         if run_type == "subagent":
-            meta["parent_thread_id"] = runtime.get("parent_thread_id")
+            meta["parent_thread_id"] = context.parent_thread_id
         if input_metadata.get("source"):
             meta["source"] = input_metadata.get("source")
         if isinstance(input_metadata.get("agent_invocation_meta"), dict):
             meta["agent_invocation_meta"] = input_metadata.get("agent_invocation_meta") or {}
 
-        await run_ctx.start()
         metadata_event = {
             "request_id": request_id,
             "agent_slug": agent_slug,
@@ -1067,7 +1182,7 @@ async def process_agent_run(ctx, run_id: str):
                     meta=meta,
                     current_user=user,
                     db=db,
-                    execution_snapshot=execution_snapshot,
+                    prepared_execution=prepared_execution,
                     on_prepared=record_prepared,
                     model_request_recorder=model_request_recorder,
                 )
@@ -1079,8 +1194,7 @@ async def process_agent_run(ctx, run_id: str):
                     input_message=normalized_input_message,
                     current_user=user,
                     db=db,
-                    save_user_message=False,
-                    execution_snapshot=execution_snapshot,
+                    prepared_execution=prepared_execution,
                     on_prepared=record_prepared,
                     model_request_recorder=model_request_recorder,
                 )
@@ -1489,6 +1603,7 @@ async def _reconcile_agent_run_leases_forever() -> None:
             if cleaned_ids:
                 logger.warning(f"Reconciled pending runtime cleanups: count={len(cleaned_ids)}")
             await recover_pending_dispatches()
+            await reconcile_project_git_operations()
             await recover_scheduled_dispatches()
             await claim_and_dispatch_due_jobs()
             await _publish_reconciliation_health()
@@ -1567,6 +1682,7 @@ async def _worker_startup(ctx):
         logger.warning(f"Reconciled expired AgentRun leases at startup: count={len(reconciled_ids)}")
     await reconcile_pending_runtime_cleanups()
     await recover_pending_dispatches()
+    await reconcile_project_git_operations()
     await reconcile_and_publish_tasks()
     await _publish_task_reconciliation_health()
     await recover_scheduled_dispatches()
@@ -1598,6 +1714,8 @@ async def _worker_shutdown(ctx):
 class WorkerSettings:
     functions = [
         process_agent_run,
+        process_project_git_operation,
+        process_project_git_worktree_cleanup,
         func(process_task, timeout=TASKER_DEFAULT_TIMEOUT_SECONDS + 30),
     ]
     max_jobs = worker_max_jobs()

@@ -1,5 +1,6 @@
 from copy import deepcopy
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -76,7 +77,8 @@ def _volume_target(volume: object) -> str:
     if not isinstance(volume, str):
         return ""
 
-    parts = volume.split(":")
+    # 未插值的环境变量默认值含冒号，不属于挂载分隔符。
+    parts = re.sub(r"\$\{[^}]*\}", "_env_", volume).split(":")
     return parts[1] if len(parts) >= 2 else parts[0]
 
 
@@ -207,6 +209,26 @@ def test_api_image_applies_owner_only_umask_before_dropping_to_runtime_identity(
     assert 'ENTRYPOINT ["/usr/local/bin/yuxi-entrypoint"]' in dockerfile
     assert "umask 077" in entrypoint
     assert 'exec "$@"' in entrypoint
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_git_credential_key_is_exposed_only_to_api_and_worker(filename: str) -> None:
+    """Git master key 不得进入 migrator、provisioner 或共享环境 anchor。"""
+    compose = _load_compose(filename)
+    key = "YUXI_GIT_CREDENTIAL_KEY"
+
+    assert key not in (compose.get("x-api-worker-env") or {})
+    assert key in compose["services"]["api"]["environment"]
+    assert key in compose["services"]["worker"]["environment"]
+    assert key not in compose["services"]["storage-migrator"]["environment"]
+    assert key not in compose["services"]["sandbox-provisioner"]["environment"]
+
+
+def test_api_image_installs_trusted_ssh_client() -> None:
+    """可信 Git executor 的镜像必须显式包含 OpenSSH client。"""
+    dockerfile = (_project_root() / "docker/api.Dockerfile").read_text()
+
+    assert "openssh-client" in dockerfile
 
 
 def test_workspace_owners_do_not_reintroduce_cross_uid_permission_patches() -> None:
@@ -389,6 +411,7 @@ def test_integration_cleanup_does_not_bypass_sandbox_provisioner():
     [
         ("api", "./docker/volumes/models:/app/models", "/app/models"),
         ("worker", "/var/run/docker.sock:/var/run/docker.sock", "/var/run/docker.sock"),
+        ("api", "${YUXI_STATE_DIR:-./docker/volumes}/models:/app/models:ro", "/app/models"),
     ],
 )
 def test_mount_guard_detects_reintroduced_api_worker_host_dependencies(

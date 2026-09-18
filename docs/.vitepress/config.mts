@@ -54,6 +54,7 @@ export default defineConfig({
         items: [
           { text: '认识 Yuxi', link: '/intro/project-overview' },
           { text: '快速开始', link: '/intro/quick-start' },
+          { text: 'Project Git 仓库', link: '/intro/project-git' },
           { text: '命令行工具', link: '/intro/cli' },
           { text: '模型配置', link: '/intro/model-config' },
           { text: '知识库与知识图谱', link: '/intro/knowledge-base' },
@@ -89,6 +90,7 @@ export default defineConfig({
         text: '高级配置',
         items: [
           { text: '配置系统详解', link: '/advanced/configuration' },
+          { text: 'Project Git 配置与分支', link: '/advanced/project-git-reference' },
           { text: 'Agent 并发容量', link: '/advanced/agent-concurrency-capacity' },
           { text: 'Langfuse 集成', link: '/advanced/langfuse-integration' },
           { text: '文档解析', link: '/advanced/document-processing' },
@@ -119,6 +121,16 @@ export default defineConfig({
           { text: '工程信任系统', link: '/develop-guides/engineering-trust' },
           { text: '工程决策记录', link: '/develop-guides/decisions/README' },
           { text: '工程事故复盘', link: '/develop-guides/postmortems/README' },
+          {
+            text: 'Project 规划归档',
+            collapsed: true,
+            items: [
+              { text: '归档说明', link: '/develop-guides/planning/project-opc/README' },
+              { text: 'V0.1 整体规划', link: '/develop-guides/planning/project-opc/v0.1-overview' },
+              { text: 'V0.1 场景详解', link: '/develop-guides/planning/project-opc/v0.1-scenarios' },
+              { text: 'V0.2 方向修正', link: '/develop-guides/planning/project-opc/v0.2-direction' }
+            ]
+          },
         ]
       }
     ],

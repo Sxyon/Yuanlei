@@ -21,6 +21,8 @@ x-api-worker-env: &api-worker-env
   SANDBOX_PROVISIONER_URL: ${SANDBOX_PROVISIONER_URL:-http://sandbox-provisioner:8002}
   SANDBOX_PROVISIONER_TOKEN: ${SANDBOX_PROVISIONER_TOKEN:?Set SANDBOX_PROVISIONER_TOKEN in .env [v0.7.1+], or rerun `bash scripts/init.sh`.}
   SANDBOX_PROVISIONER_DELETE_TIMEOUT_SECONDS: ${SANDBOX_PROVISIONER_DELETE_TIMEOUT_SECONDS:-120}
+  SANDBOX_PROVIDER_RELEASE_LOCK_TIMEOUT_SECONDS: ${SANDBOX_PROVIDER_RELEASE_LOCK_TIMEOUT_SECONDS:-30}
+  SANDBOX_RUNTIME_CLEANUP_TIMEOUT_SECONDS: ${SANDBOX_RUNTIME_CLEANUP_TIMEOUT_SECONDS:-155}
   SANDBOX_VIRTUAL_PATH_PREFIX: ${SANDBOX_VIRTUAL_PATH_PREFIX:-/home/gem/user-data}
   SANDBOX_EXEC_TIMEOUT_SECONDS: ${SANDBOX_EXEC_TIMEOUT_SECONDS:-180}
   SANDBOX_MAX_OUTPUT_BYTES: ${SANDBOX_MAX_OUTPUT_BYTES:-262144}
@@ -68,12 +70,15 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
-      - .env
+      - ${YUXI_ENV_FILE:-.env}
     # region api_envs
     environment:
       <<: *api-worker-env
       YUXI_RUNTIME_DIR: /app/runtime/api
       YUXI_USER_DATA_DIR: /app/user-data
+      YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-http://gitea:3000}
       POSTGRES_POOL_SIZE: ${API_POSTGRES_POOL_SIZE:-120}
       POSTGRES_MAX_OVERFLOW: ${API_POSTGRES_MAX_OVERFLOW:-40}
       POSTGRES_POOL_TIMEOUT_SECONDS: ${API_POSTGRES_POOL_TIMEOUT_SECONDS:-30}
@@ -130,11 +135,14 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
-      - .env
+      - ${YUXI_ENV_FILE:-.env}
     environment:
       <<: *api-worker-env
       YUXI_RUNTIME_DIR: /app/runtime/worker
       YUXI_USER_DATA_DIR: /app/user-data
+      YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-http://gitea:3000}
       ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-140}
       REDIS_MAX_CONNECTIONS: ${WORKER_REDIS_MAX_CONNECTIONS:-256}
       POSTGRES_POOL_SIZE: ${WORKER_POSTGRES_POOL_SIZE:-120}
@@ -186,7 +194,7 @@ services:
     networks:
       - app-network
     env_file:
-      - .env
+      - ${YUXI_ENV_FILE:-.env}
     environment:
       <<: *api-worker-env
       YUXI_RUNTIME_DIR: /app/runtime/storage-migrator
@@ -211,12 +219,14 @@ services:
         source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/skill-projections
         target: /app/skill-projections
       - ./docker/sandbox_provisioner/app.py:/app/app.py:ro
-      - ./docker/sandbox_provisioner/sandbox.env:/app/sandbox.env:ro
+      - ${SANDBOX_ENV_FILE:-./docker/sandbox_provisioner/sandbox.env}:/app/sandbox.env:ro
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:${YUXI_SANDBOX_PORT:-8002}:8002"
     networks:
-      - app-network
+      app-network:
+        # 动态接入沙盒网络时保留管理端口的默认路由。
+        gw_priority: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -301,7 +311,7 @@ services:
         target: /data
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/neo4j/logs
-        target: /var/lib/neo4j/logs
+        target: /logs
     healthcheck:
       test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u ${NEO4J_USERNAME:-neo4j} -p ${NEO4J_PASSWORD:-0123456789} 'RETURN 1;' >/dev/null || exit 1"]
       interval: 20s
@@ -348,11 +358,11 @@ services:
     volumes:
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/milvus/minio
-        target: /minio_data
+        target: /data
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/milvus/minio_config
         target: /root/.minio
-    command: minio server /minio_data --address 0.0.0.0:9000 --console-address 0.0.0.0:9001
+    command: minio server /data --address 0.0.0.0:9000 --console-address 0.0.0.0:9001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 60s
@@ -413,7 +423,7 @@ services:
     volumes:
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/postgresql
-        target: /var/lib/postgresql/data
+        target: /var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yuxi} || exit 1"]
       interval: 5s
@@ -441,6 +451,35 @@ services:
       - app-network
     restart: unless-stopped
 
+  gitea:
+    image: gitea/gitea:1.24-rootless
+    profiles:
+      - git-integration
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__database__PATH: /var/lib/gitea/data/gitea.db
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__DOMAIN: gitea
+      GITEA__server__ROOT_URL: http://gitea:3000/
+      GITEA__server__START_SSH_SERVER: "true"
+      GITEA__server__SSH_DOMAIN: gitea
+      GITEA__server__SSH_PORT: "2222"
+      GITEA__server__SSH_LISTEN_PORT: "2222"
+    volumes:
+      - type: bind
+        source: ${YUXI_STATE_DIR:-./docker/volumes}/gitea-git-integration
+        target: /var/lib/gitea
+    ports:
+      - "127.0.0.1:${YUXI_GITEA_HTTP_PORT:-3300}:3000"
+      - "127.0.0.1:${YUXI_GITEA_SSH_PORT:-2222}:2222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/api/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - app-network
+
   # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   mineru-api:
     build:
@@ -450,7 +489,7 @@ services:
     profiles:
       - all
     env_file:
-      - .env
+      - ${YUXI_ENV_FILE:-.env}
     ports:
       - "127.0.0.1:${YUXI_MINERU_PORT:-30001}:30001"
     environment:

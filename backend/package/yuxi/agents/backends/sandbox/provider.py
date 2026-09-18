@@ -94,6 +94,10 @@ class SandboxIdentityMismatchError(RuntimeError):
     """Sandbox runtime 的持久挂载身份与请求不一致。"""
 
 
+class SandboxReleaseLockTimeoutError(RuntimeError):
+    """Sandbox release 等待同作用域 provider 锁超时。"""
+
+
 class ProvisionerSandboxProvider:
     def __init__(self):
         provider_name = (os.getenv("SANDBOX_PROVIDER") or "provisioner").strip().lower()
@@ -112,6 +116,7 @@ class ProvisionerSandboxProvider:
         self._connections: dict[str, SandboxConnection] = {}
         self._last_touch_at: dict[str, float] = {}
         self._touch_interval_seconds = int(os.getenv("SANDBOX_KEEPALIVE_INTERVAL_SECONDS") or 30)
+        self._release_lock_timeout_seconds = get_int_env("SANDBOX_PROVIDER_RELEASE_LOCK_TIMEOUT_SECONDS", 30)
 
     def _thread_lock(self, cache_key: str) -> threading.Lock:
         with self._lock:
@@ -233,7 +238,10 @@ class ProvisionerSandboxProvider:
         normalized_workdir_path = normalize_workdir_path(workdir_path) if workdir_path else None
         cache_key = _sandbox_key(uid, thread_id)
         lock = self._thread_lock(cache_key)
-        with lock:
+        acquired = lock.acquire(timeout=getattr(self, "_release_lock_timeout_seconds", 30))
+        if not acquired:
+            raise SandboxReleaseLockTimeoutError(f"sandbox release lock timed out for runtime scope {thread_id}")
+        try:
             connection = self._connections.get(cache_key)
             if connection and connection.workdir_path != normalized_workdir_path:
                 raise SandboxIdentityMismatchError("sandbox Workdir does not match the existing runtime scope")
@@ -257,6 +265,8 @@ class ProvisionerSandboxProvider:
                 raise
             self._connections.pop(cache_key, None)
             self._last_touch_at.pop(cache_key, None)
+        finally:
+            lock.release()
 
     def shutdown(self) -> None:
         with self._lock:

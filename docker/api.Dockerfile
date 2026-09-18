@@ -34,6 +34,7 @@ RUN set -ex \
         fonts-liberation \
         fonts-noto-cjk \
         git \
+        openssh-client \
         libpq5 \
         libsm6 \
         libxext6 \

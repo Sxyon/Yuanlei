@@ -61,6 +61,7 @@
             :is-file-panel-open="isFilePanelOpen"
             :is-state-panel-open="statePanelOpen"
             :has-active-thread="!!currentChatId"
+            :current-thread="currentThread"
             :toggle-agent-panel="toggleAgentPanel"
           ></slot>
         </div>
@@ -262,10 +263,14 @@
                     :thread-id="currentChatId"
                     :show-extra="!currentChatId"
                     :supports-file-upload="supportsFileUpload"
+                    :supports-project-file-pick="supportsFileUpload"
                     :attachments="currentPendingThreadAttachments"
+                    :pending-references="pendingWorkspaceReferences"
                     @send="handleSendOrStop"
                     @upload-attachment="handleAttachmentUpload"
                     @remove-attachment="handleAttachmentRemove"
+                    @select-project-file="handleProjectFileSelect"
+                    @remove-pending-reference="handleRemovePendingReference"
                   >
                     <template #extra>
                       <ProjectSelectionSection
@@ -328,6 +333,13 @@
                 :initial-files="attachmentInitialFiles"
                 :initial-files-key="attachmentInitialFilesKey"
                 @added="handleTmpAttachmentsAdded"
+              />
+
+              <ProjectFilePickerModal
+                v-model:open="projectFilePickerOpen"
+                :confirming="projectFileReferenceInFlight"
+                @select="handleProjectFilesSelected"
+                @cancel="handleProjectFilePickerCancel"
               />
 
               <div class="bottom-actions" v-if="conversations.length > 0">
@@ -766,6 +778,13 @@
                               />
                             </div>
                             <div class="state-list-item-meta">{{ run.description }}</div>
+                            <div
+                              v-if="run.observation_error"
+                              class="state-list-item-meta"
+                              role="status"
+                            >
+                              状态暂不可用，正在重连
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -797,7 +816,7 @@
           :thread-id="currentChatId"
           :active-run-id="currentThreadState?.activeRunId || null"
           :run-active="Boolean(currentThreadState?.activeRunId && currentThreadState?.isStreaming)"
-          :visible="isFilePanelOpen"
+          :visible="isFilePanelOpen && subagentObservationEnabled"
           :messages="currentDebugMessages"
           :runs="currentThreadRuns"
           :panel-ratio="panelRatio"
@@ -863,6 +882,7 @@ import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import AgentMessageComponent from '@/components/AgentMessageComponent.vue'
 import {
   formatEmptyRunStatus,
+  groupConversationContinuations,
   isConversationSettled as isRunConversationSettled
 } from '@/utils/conversationProcessGrouping'
 import RefsComponent from '@/components/RefsComponent.vue'
@@ -880,7 +900,7 @@ import {
   shouldSuggestContextCompression as isContextCompressionSuggested
 } from '@/utils/contextUsage'
 import { AgentValidator } from '@/utils/agentValidator'
-import { useAgentStore } from '@/stores/agent'
+import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import { useChatThreadsStore } from '@/stores/chatThreads'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useConfigStore } from '@/stores/config'
@@ -900,13 +920,16 @@ import HumanApprovalModal from '@/components/HumanApprovalModal.vue'
 import { extractPendingInterrupt, useApproval } from '@/composables/useApproval'
 import { useAgentThreadState, IDLE_QUEUE_SNAPSHOT } from '@/composables/useAgentThreadState'
 import { useAgentRunStream } from '@/composables/useAgentRunStream'
+import { useSubagentRuns } from '@/composables/useSubagentRuns'
 import { useAgentStreamHandler } from '@/composables/useAgentStreamHandler'
 import { useStreamSmoother } from '@/composables/useStreamSmoother'
 import { useAgentRequestQueue } from '@/composables/useAgentRequestQueue'
 import { useAgentMentionConfig } from '@/composables/useAgentMentionConfig'
+import { formatMentionToken } from '@/utils/mention_token'
 import AgentArtifactsCard from '@/components/AgentArtifactsCard.vue'
 import AgentPanel from '@/components/AgentPanel.vue'
 import AttachmentTmpUploadModal from '@/components/AttachmentTmpUploadModal.vue'
+import ProjectFilePickerModal from '@/components/ProjectFilePickerModal.vue'
 import ProjectSelectionSection from '@/components/ProjectSelectionSection.vue'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
 import { enrichTaskToolCalls, parseToolCallArgs } from '@/components/ToolCallingResult/toolRegistry'
@@ -1017,6 +1040,10 @@ const threadAttachmentsMap = ref({})
 const attachmentUploadModalOpen = ref(false)
 const attachmentInitialFiles = ref([])
 const attachmentInitialFilesKey = ref(0)
+const projectFilePickerOpen = ref(false)
+const projectFileReferenceInFlight = ref(false)
+// 首次发送前缓存的个人空间待引用文件；发送首条消息时随附件一起落库。
+const pendingWorkspaceReferences = ref([])
 const selectedProjectId = ref(AUTO_PROJECT_ID)
 const threadCreationRequestId = ref('')
 const isRefreshingState = ref(false)
@@ -1361,8 +1388,12 @@ const currentAgentName = computed(() => {
 })
 
 const currentAgent = computed(() => {
-  if (!currentAgentId.value || !agents.value || !agents.value.length) return null
-  return agents.value.find((a) => a.id === currentAgentId.value) || null
+  if (!currentAgentId.value) return null
+  const fromList = (agents.value || []).find((a) => a.id === currentAgentId.value)
+  if (fromList) return fromList
+  // 项目数字员工可能不在当前项目的可选列表中（例如正在查看已绑定线程），回退到已加载的详情。
+  const detail = agentStore.selectedAgent
+  return detail?.id === currentAgentId.value ? detail : null
 })
 const currentChatId = computed(() => currentThreadId.value)
 
@@ -1370,6 +1401,45 @@ watch(
   [currentChatId, () => props.initialProjectId],
   ([threadId, initialProjectId]) => {
     if (!threadId) selectedProjectId.value = initialProjectId || AUTO_PROJECT_ID
+  },
+  { immediate: true }
+)
+
+// 项目上下文决定可选智能体列表：项目数字员工只在其绑定项目内出现。
+let lastAgentsProjectId = null
+const refreshAgentsForProject = async (projectId, { force = false } = {}) => {
+  const normalizedProjectId = !projectId || projectId === AUTO_PROJECT_ID ? null : projectId
+  if (!force && normalizedProjectId === lastAgentsProjectId) return
+  lastAgentsProjectId = normalizedProjectId
+  try {
+    await agentStore.fetchAgents({ projectId: normalizedProjectId })
+  } catch {
+    return
+  }
+  const availableIds = new Set(
+    (agents.value || []).filter((agent) => !agent.is_subagent).map((agent) => agent.id)
+  )
+  if (selectedAgentId.value && availableIds.has(selectedAgentId.value)) {
+    // 同一 Agents 在不同项目的覆盖可能不同，切换项目后重载有效配置。
+    await agentStore.selectAgent(selectedAgentId.value, { projectId: normalizedProjectId })
+    return
+  }
+  const fallback =
+    (agents.value || []).find(isBuiltinAgent) ||
+    (agents.value || []).find((agent) => !agent.is_subagent)
+  if (fallback) {
+    await agentStore.selectAgent(fallback.id, { projectId: normalizedProjectId })
+  }
+}
+
+const getSelectedProjectId = () =>
+  selectedProjectId.value === AUTO_PROJECT_ID ? null : selectedProjectId.value
+
+watch(
+  [selectedProjectId, () => agentStore.isInitialized],
+  ([projectId, initialized]) => {
+    if (!initialized) return
+    refreshAgentsForProject(projectId)
   },
   { immediate: true }
 )
@@ -1791,9 +1861,18 @@ const currentTodos = computed(() => {
     }
   })
 })
-const currentSubagentRuns = computed(() => {
-  const runs = currentAgentState.value?.subagent_runs
-  return Array.isArray(runs) ? runs : []
+const subagentObservationEnabled = ref(true)
+const currentSubagentRuns = useSubagentRuns({
+  scope: computed(() =>
+    userStore.isLoggedIn && userStore.uid && currentChatId.value
+      ? `${userStore.uid}:${currentChatId.value}`
+      : ''
+  ),
+  enabled: subagentObservationEnabled,
+  runs: computed(() => {
+    const runs = currentAgentState.value?.subagent_runs
+    return Array.isArray(runs) ? runs : []
+  })
 })
 const currentSubagentRunById = computed(() => {
   const runById = new Map()
@@ -1821,10 +1900,11 @@ const currentSubagentOptionBySlug = computed(() => {
 const openSubagentThread = (run) => {
   if (!run?.child_thread_id) return
   const threadId = String(run.child_thread_id)
-  const key = `subagent:${threadId}`
+  const key = `subagent:${run.run_id || threadId}`
   const section = {
     key,
     type: 'subagent',
+    runId: run.run_id || '',
     title: getSubagentRunName(run),
     threadId,
     avatar: getSubagentIconSrc(run),
@@ -1836,6 +1916,8 @@ const openSubagentThread = (run) => {
   statePanelOpen.value = false
   panelRatio.value = clampPanelRatio(previewPanelRatio)
 }
+
+provide('openSubagentThread', openSubagentThread)
 
 const toggleMessageDebugPanel = () => {
   if (isFilePanelOpen.value && agentPanelActiveSectionKey.value === MESSAGE_DEBUG_SECTION.key) {
@@ -2275,9 +2357,9 @@ const conversations = computed(() => {
       messages: activeRunOngoingMessages,
       status: 'streaming'
     }
-    return [...activeRunHistoryConvs, onGoingConv]
+    return groupConversationContinuations([...activeRunHistoryConvs, onGoingConv])
   }
-  return activeRunHistoryConvs
+  return groupConversationContinuations(activeRunHistoryConvs)
 })
 
 /** 间隔超过一小时时，在新用户消息上方显示发送时间。 */
@@ -2306,7 +2388,10 @@ const getConversationTimeLabel = (conv, previousConv) => {
 const conversationRows = computed(() => {
   const rows = conversations.value.map((conv, index) => ({
     type: 'conversation',
-    key: conv.status === 'streaming' ? 'ongoing-conversation' : `history-${index}`,
+    key:
+      conv.displayKey ||
+      conv.run?.run_id ||
+      (conv.status === 'streaming' ? 'ongoing-conversation' : `history-${index}`),
     conv,
     timeLabel: getConversationTimeLabel(conv, conversations.value[index - 1]),
     displayItems: getDisplayItems(conv),
@@ -2772,6 +2857,7 @@ onMounted(() => {
 })
 
 onActivated(() => {
+  subagentObservationEnabled.value = true
   nextTick(() => {
     startChatMainResizeObserver()
   })
@@ -2781,6 +2867,7 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
+  subagentObservationEnabled.value = false
   stopChatMainResizeObserver()
   stopStreamingStateRefresh()
   stopReplyElapsedTimer()
@@ -2993,7 +3080,7 @@ const handleAttachmentUpload = async (files = []) => {
 
 const ensureAttachmentThread = async () => {
   if (currentChatId.value) return currentChatId.value
-  // 无线程状态上传附件会先创建线程：保留输入框已有文本并迁移到新线程草稿
+  // 无线程状态确认附件（上传或引用个人空间文件）时先创建线程：保留输入框已有文本并迁移到新线程草稿
   const inputText = userInput.value
   const threadId = await ensureActiveThread('新的对话')
   if (threadId && inputText) {
@@ -3034,6 +3121,73 @@ const handleAttachmentRemove = async (attachment) => {
     threadAttachmentsMap.value[threadId] = previousAttachments
     handleChatError(error, 'delete')
   }
+}
+
+// ==================== 个人空间文件引用 ====================
+const handleProjectFileSelect = () => {
+  // 打开选择器不创建线程：个人空间树不依赖线程，用户首次发送前仍可自由切换智能体。
+  projectFilePickerOpen.value = true
+}
+
+const handleProjectFilePickerCancel = () => {
+  projectFileReferenceInFlight.value = false
+}
+
+// 首次发送前只在前端缓存待引用文件；发送时随首条消息一起引用到真实线程。
+const handleProjectFilesSelected = async (files) => {
+  if (!Array.isArray(files) || !files.length) return
+
+  if (!currentChatId.value) {
+    const seen = new Set(pendingWorkspaceReferences.value.map((file) => file.path))
+    pendingWorkspaceReferences.value = [
+      ...pendingWorkspaceReferences.value,
+      ...files
+        .filter((file) => file?.path && !seen.has(file.path))
+        .map((file) => ({ path: file.path, name: file.name }))
+    ]
+    projectFilePickerOpen.value = false
+    return
+  }
+
+  // 已有线程：引用立即落库，保持既有交互。
+  projectFileReferenceInFlight.value = true
+  try {
+    const threadId = await ensureAttachmentThread()
+    const payload = files.map((file) => ({
+      path: file.path,
+      file_name: file.name,
+      source: file.source || 'workspace'
+    }))
+    const response = await threadApi.referenceThreadAttachments(threadId, payload)
+    const referenced = Array.isArray(response?.attachments) ? response.attachments : []
+
+    // 引用成功后，同时以 @file token 引入对话框（复用 mention 的 runtime 路径）。
+    const tokens = referenced
+      .map((attachment) => attachment?.path)
+      .filter(Boolean)
+      .map((path) => formatMentionToken('file', path))
+    if (tokens.length) {
+      const suffix = tokens.join(' ')
+      userInput.value = [String(userInput.value || '').trimEnd(), suffix].filter(Boolean).join(' ')
+    }
+
+    await Promise.all([
+      fetchAgentState(currentAgentId.value, threadId),
+      fetchThreadAttachments(threadId)
+    ])
+    showFileTreePanel()
+  } catch (error) {
+    handleChatError(error, 'reference')
+  } finally {
+    projectFileReferenceInFlight.value = false
+    projectFilePickerOpen.value = false
+  }
+}
+
+const handleRemovePendingReference = (item) => {
+  pendingWorkspaceReferences.value = pendingWorkspaceReferences.value.filter(
+    (file) => file.path !== item?.path
+  )
 }
 
 // ==================== 审批功能管理 ====================
@@ -3206,7 +3360,9 @@ const selectChat = async (chatId) => {
         targetChat?.agent_id &&
         targetChat.agent_id !== currentAgentId.value
       ) {
-        await agentStore.selectAgent(targetChat.agent_id)
+        await agentStore.selectAgent(targetChat.agent_id, {
+          projectId: targetChat.project_id || null
+        })
       }
 
       syncThreadConfigSnapshot(chatId)
@@ -3271,7 +3427,8 @@ const selectThreadFromRoute = async (threadId) => {
 }
 
 const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
-  const text = userInput.value.trim()
+  let text = userInput.value.trim()
+  let titleBase = text
   const imageContent = image?.imageContent || null
   if (
     (!text && !image) ||
@@ -3298,6 +3455,37 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
     // 该线程由草稿发送创建，清理新建对话草稿，避免已发送文本再次还原
     threadDraftSession.clearDraftThread()
   }
+
+  // 首次发送：把选择器确认的待引用个人空间文件落库到真实线程，失败则中止发送并保留缓存。
+  if (pendingWorkspaceReferences.value.length) {
+    try {
+      const sendTextBase = text
+      const payload = pendingWorkspaceReferences.value.map((file) => ({
+        path: file.path,
+        file_name: file.name,
+        source: 'workspace'
+      }))
+      const response = await threadApi.referenceThreadAttachments(threadId, payload)
+      const referenced = Array.isArray(response?.attachments) ? response.attachments : []
+      const tokens = referenced
+        .map((attachment) => attachment?.path)
+        .filter(Boolean)
+        .map((path) => formatMentionToken('file', path))
+      if (tokens.length) {
+        text = [text, tokens.join(' ')].filter(Boolean).join(' ')
+      }
+      await fetchThreadAttachments(threadId)
+      pendingWorkspaceReferences.value = []
+      // 标题只基于用户原始输入，不包含 @file token。
+      titleBase = sendTextBase
+    } catch (error) {
+      handleChatError(error, 'reference')
+      // 引用失败中止发送：恢复输入区的图片，避免静默丢失粘贴内容。
+      agentInputAreaRef.value?.restoreImage?.(image)
+      return
+    }
+  }
+
   // 每次请求都下发输入框展示的模型，后端在同一事务内绑定到 Conversation。
   const modelSpec = currentModelSpec.value || null
   const toolApprovalMode = currentToolApprovalMode.value
@@ -3321,7 +3509,7 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
     .filter(Boolean)
 
   if ((threadMessages.value[threadId] || []).length === 0) {
-    const autoTitle = text.replace(/\s+/g, ' ').trim().slice(0, 2000)
+    const autoTitle = titleBase.replace(/\s+/g, ' ').trim().slice(0, 2000)
     if (autoTitle) {
       void (async () => {
         try {
@@ -3565,6 +3753,12 @@ const handleApprovalWithStream = async (answer) => {
     if (!runId) {
       throw new Error('创建 resume run 失败：缺少 run_id')
     }
+    // 首个流事件前读取已持久化的续跑关系；读取失败不能把已创建的 Run 当成创建失败。
+    try {
+      await fetchThreadMessages({ agentId: currentAgentId.value, threadId })
+    } catch (error) {
+      console.warn('Failed to refresh history before resume stream:', error)
+    }
     await startRunStream(threadId, runId, '0-0')
   } catch (error) {
     if (pendingInterrupt) {
@@ -3608,7 +3802,9 @@ const buildExportPayload = () => {
 
 defineExpose({
   getExportPayload: buildExportPayload,
-  selectThreadFromRoute
+  selectThreadFromRoute,
+  getSelectedProjectId,
+  refreshAgentsForProjectContext: () => refreshAgentsForProject(selectedProjectId.value, { force: true })
 })
 
 const handleAgentStateRefresh = async (threadId = null) => {
@@ -3721,7 +3917,7 @@ const getMessageToolCalls = (message) => {
 const getDisplayItems = (conv) =>
   getConversationDisplayItems(conv, {
     enrichToolCalls: getMessageToolCalls,
-    runTiming: getMessageRun(getLastMessage(conv))?.timing,
+    runTiming: conv.processTiming || getMessageRun(getLastMessage(conv))?.timing,
     collapseIntermediate: conv?.status !== 'streaming' && isConversationSettled(conv)
   })
 

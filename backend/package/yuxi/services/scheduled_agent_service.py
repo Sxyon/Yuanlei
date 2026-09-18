@@ -14,13 +14,14 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from yuxi.agents.buildin import agent_manager
+from yuxi.agents.buildin import AgentBackendNotFoundError, get_agent_backend
 from yuxi.agents.tool_approval import normalize_tool_approval_mode
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.scheduled_agent_repository import ScheduledAgentRepository
+from yuxi.services.agent_request_service import AgentRequestInput, RunOrigin, submit_agent_request
 from yuxi.services.input_message_service import build_chat_input_message
-from yuxi.services.run_submission_service import RunOrigin, RunSubmissionCommand, submit_run_command
+from yuxi.services.project_agent_service import AgentProjectScopeDenied, ensure_agent_project_scope
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import ScheduledAgentJob, ScheduledAgentRun, User
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
@@ -98,13 +99,19 @@ async def _validate_project(project_id: str, user: User, db: AsyncSession):
     return project
 
 
-async def _validate_agent(agent_slug: str, user: User, db: AsyncSession):
+async def _validate_agent(agent_slug: str, user: User, db: AsyncSession, project_id: str | None = None):
     repo = AgentRepository(db)
     agent = await repo.get_visible_by_slug(slug=agent_slug, user=user, kind="main")
     if not agent:
         raise HTTPException(status_code=404, detail="智能体不存在或不可访问")
-    if not agent_manager.get_agent(agent.backend_id):
-        raise HTTPException(status_code=404, detail="智能体后端不存在")
+    try:
+        get_agent_backend(agent.backend_id)
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        await ensure_agent_project_scope(db=db, agent_slug=agent.slug, project_id=project_id)
+    except AgentProjectScopeDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return agent
 
 
@@ -228,7 +235,7 @@ async def create_scheduled_job(*, user: User, db: AsyncSession, data: dict) -> d
         return existing.to_dict()
 
     await _validate_project(project_id, user, db)
-    await _validate_agent(agent_slug, user, db)
+    await _validate_agent(agent_slug, user, db, project_id)
     now = utc_now_naive()
     job = ScheduledAgentJob(
         id=str(uuid.uuid4()),
@@ -268,14 +275,17 @@ async def update_scheduled_job(*, job_id: str, user: User, db: AsyncSession, dat
     job = await repo.get_job(job_id, str(user.uid), lock=True)
     if not job:
         return None
+    target_project_id = getattr(job, "project_id", None)
     if "project_id" in data:
-        project_id = _normalize_text(data["project_id"], "project_id", 64)
-        await _validate_project(project_id, user, db)
-        job.project_id = project_id
+        target_project_id = _normalize_text(data["project_id"], "project_id", 64)
+        await _validate_project(target_project_id, user, db)
+        job.project_id = target_project_id
     if "agent_slug" in data:
         agent_slug = _normalize_text(data["agent_slug"], "agent_slug", 64)
-        await _validate_agent(agent_slug, user, db)
+        await _validate_agent(agent_slug, user, db, target_project_id)
         job.agent_slug = agent_slug
+    elif "project_id" in data:
+        await _validate_agent(job.agent_slug, user, db, target_project_id)
     if "name" in data:
         job.name = _normalize_text(data["name"], "name", MAX_NAME_LENGTH)
     if "prompt" in data:
@@ -338,7 +348,7 @@ async def run_scheduled_job_now(
         raise HTTPException(status_code=409, detail="request_id 已用于其他立即运行意图")
     if run is None:
         await _validate_project(job.project_id, user, db)
-        await _validate_agent(job.agent_slug, user, db)
+        await _validate_agent(job.agent_slug, user, db, job.project_id)
         now = utc_now_naive()
         run = _new_scheduled_run(
             job=job,
@@ -419,9 +429,9 @@ async def dispatch_scheduled_run(*, scheduled_run_id: str) -> dict | None:
                 await db.commit()
                 return scheduled_run.to_dict()
             await _validate_project(scheduled_run.project_id, user, db)
-            await _validate_agent(scheduled_run.agent_slug, user, db)
-            await submit_run_command(
-                command=RunSubmissionCommand(
+            await _validate_agent(scheduled_run.agent_slug, user, db, scheduled_run.project_id)
+            await submit_agent_request(
+                request_input=AgentRequestInput(
                     agent_slug=scheduled_run.agent_slug,
                     thread_id=scheduled_run.thread_id,
                     request_id=scheduled_run.request_id,

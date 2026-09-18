@@ -95,6 +95,29 @@ def test_workspace_root_rejects_symlink_root(tmp_path: Path, monkeypatch) -> Non
     assert exc_info.value.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_delete_workspace_path_returns_structured_symlink_conflict(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path / "threads"))
+    user = _user()
+    root = _workspace_root(user)
+    directory = root / "repository"
+    outside = tmp_path / "outside"
+    directory.mkdir()
+    outside.mkdir()
+    (directory / "linked").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.delete_workspace_path(path="/repository", current_user=user)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == {
+        "code": "workspace_contains_symlinks",
+        "message": "目录包含符号链接，可确认后安全清理链接本身",
+    }
+    assert directory.exists()
+    assert outside.exists()
+
+
 @pytest.mark.parametrize(
     ("filename", "content"),
     [

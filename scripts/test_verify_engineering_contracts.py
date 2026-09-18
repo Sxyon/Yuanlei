@@ -28,6 +28,10 @@ class EngineeringContractVerifierTest(unittest.TestCase):
             (self.root / "docs/develop-guides/decisions" / lifecycle).mkdir(
                 parents=True
             )
+        for lifecycle in ("implemented", "proposed"):
+            (self.root / "docs/develop-guides/yuanlei/decisions" / lifecycle).mkdir(
+                parents=True
+            )
         self._write(
             "docs/develop-guides/decisions/implemented/2026-08-15-valid-decision.md",
             """# 有效决策
@@ -1042,6 +1046,36 @@ Owner：owner.md
 
         self.assertTrue(
             any("状态必须是 implemented" in error for error in self._errors())
+        )
+
+    def test_yuanlei_decision_root_is_validated(self) -> None:
+        path = self.root / (
+            "docs/develop-guides/yuanlei/decisions/implemented/"
+            "2026-08-15-yuanlei-decision.md"
+        )
+        self._write(
+            "docs/develop-guides/yuanlei/decisions/implemented/"
+            "2026-08-15-yuanlei-decision.md",
+            "# 元垒决策\n\n状态：implemented\n类型：process\nOwner：owner.md\n\n"
+            "## 问题\n问题。\n\n## 决策\n决策。\n\n## 替代方案\n替代。\n\n"
+            "## 后果\n后果。\n\n## 验证\n验证。\n",
+        )
+        self.assertEqual(self._errors(), [])
+
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("## 验证", "## 收尾"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("缺少标题：## 验证" in error for error in self._errors()))
+
+    def test_yuanlei_decision_missing_lifecycle_dir_is_rejected(self) -> None:
+        (self.root / "docs/develop-guides/yuanlei/decisions/proposed").rmdir()
+
+        self.assertTrue(
+            any(
+                "yuanlei" in error and "缺少决策 lifecycle 目录" in error
+                for error in self._errors()
+            )
         )
 
     def test_projection_is_derived_from_current_owners(self) -> None:

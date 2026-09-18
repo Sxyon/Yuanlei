@@ -10,6 +10,7 @@ from server.routers.chat_router import chat
 from server.routers.dashboard_router import dashboard
 from server.routers.external_kb_router import external_kb
 from server.routers.filesystem_router import filesystem_router
+from server.routers.git_router import git
 from server.routers.graph_router import graph
 from server.routers.knowledge_dashboard_router import knowledge_dashboard
 from server.routers.knowledge_eval_router import evaluation
@@ -17,6 +18,7 @@ from server.routers.knowledge_router import knowledge
 from server.routers.mcp_router import mcp
 from server.routers.mention_router import mention_router
 from server.routers.model_provider_router import model_providers
+from server.routers.project_agent_router import project_agents
 from server.routers.project_router import projects
 from server.routers.scheduled_agent_router import scheduled_agents
 from server.routers.skill_router import skills, user_skills
@@ -37,6 +39,8 @@ router.include_router(agent_invocation_channel_router)  # /api/agent-invocation/
 router.include_router(agent_invocation_eval_router)  # /api/agent-invocation/eval/*
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
 router.include_router(projects)  # /api/projects* 项目创建与选择
+router.include_router(project_agents)  # /api/projects/{id}/agents* 项目数字员工归属与覆盖配置
+router.include_router(git)  # /api/git/* 用户级 Git connection
 router.include_router(scheduled_agents)  # /api/scheduled-tasks* 用户自建 Agent 定时任务
 
 # 管理与工作台接口：后台任务、权限域以及工具体系配置。

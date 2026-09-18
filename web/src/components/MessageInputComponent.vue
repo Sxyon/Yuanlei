@@ -250,6 +250,7 @@
 
     <div class="send-button-container">
       <slot name="actions-right"></slot>
+      <slot name="before-send"></slot>
       <a-tooltip :title="isLoading ? '停止回答' : ''">
         <a-button
           @click="handleSendOrStop"
@@ -366,10 +367,21 @@ const props = defineProps({
   showOptionsLeft: {
     type: Boolean,
     default: true
+  },
+  enterToNewline: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'send', 'keydown', 'paste-image', 'drop-files'])
+const emit = defineEmits([
+  'update:modelValue',
+  'send',
+  'keydown',
+  'paste-image',
+  'drop-files',
+  'composition-change'
+])
 const slots = useSlots()
 
 // @ 提及功能是否启用
@@ -1093,6 +1105,13 @@ const handleMentionDeletion = (e) => {
 
 // 处理键盘事件
 const handleKeyPress = (e) => {
+  // 输入法组合态（中文拼音选词等）下，回车等按键只用于确认候选词，不应触发发送或换行。
+  // isComposing 覆盖 compositionstart→compositionend 区间；keyCode 229 兜底部分浏览器/输入法
+  // 在 compositionend 后仍会派发一次「确认」回车（key 仍为 Enter），同样需要拦截。
+  if (isComposing.value || e.keyCode === 229) {
+    return
+  }
+
   // @ 提及键盘导航
   if (mentionPopupVisible.value) {
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
@@ -1105,7 +1124,7 @@ const handleKeyPress = (e) => {
     return
   }
 
-  if (e.key === 'Enter' && e.shiftKey) {
+  if (e.key === 'Enter' && (e.shiftKey || props.enterToNewline)) {
     e.preventDefault()
     replaceCurrentRawSelection('\n')
     return
@@ -1201,10 +1220,12 @@ const handleDrop = (e) => {
 
 const handleCompositionStart = () => {
   isComposing.value = true
+  emit('composition-change', true)
 }
 
 const handleCompositionEnd = () => {
   isComposing.value = false
+  emit('composition-change', false)
   handleInput()
 }
 

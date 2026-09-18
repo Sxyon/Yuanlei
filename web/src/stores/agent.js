@@ -24,6 +24,10 @@ function getPreferredAgentId(agents, persistedId) {
 }
 
 function extractContext(agent) {
+  const effectiveContext = agent?.effective_context
+  if (effectiveContext && typeof effectiveContext === 'object' && Object.keys(effectiveContext).length) {
+    return { ...effectiveContext }
+  }
   const configJson = agent?.config_json || {}
   return { ...(configJson.context || configJson || {}) }
 }
@@ -43,6 +47,8 @@ export const useAgentStore = defineStore(
     const agentConfig = ref({})
     const originalAgentConfig = ref({})
     const agentDetails = ref({})
+    // 记录 agentDetails 缓存对应的项目上下文；null 表示无项目上下文。
+    const agentDetailProject = ref({})
 
     const isLoadingAgents = ref(false)
     const isLoadingConfig = ref(false)
@@ -127,11 +133,11 @@ export const useAgentStore = defineStore(
       }
     }
 
-    async function fetchAgents({ includeSubagents = false } = {}) {
+    async function fetchAgents({ includeSubagents = false, projectId = null } = {}) {
       isLoadingAgents.value = true
       error.value = null
       try {
-        const response = await agentApi.getAgents({ includeSubagents })
+        const response = await agentApi.getAgents({ includeSubagents, projectId })
         agents.value = sortAgents((response.agents || []).map(normalizeAgent))
       } catch (err) {
         console.error('Failed to fetch agents:', err)
@@ -168,16 +174,24 @@ export const useAgentStore = defineStore(
       return loadedConfig
     }
 
-    async function fetchAgentDetail(agentId, forceRefresh = false) {
+    async function fetchAgentDetail(agentId, forceRefresh = false, projectId = null) {
       if (!agentId) return null
-      if (!forceRefresh && agentDetails.value[agentId]) return agentDetails.value[agentId]
+      const contextKey = projectId || null
+      if (
+        !forceRefresh &&
+        agentDetails.value[agentId] &&
+        agentDetailProject.value[agentId] === contextKey
+      ) {
+        return agentDetails.value[agentId]
+      }
 
       isLoadingAgentDetail.value = true
       error.value = null
       try {
-        const response = await agentApi.getAgentDetail(agentId)
+        const response = await agentApi.getAgentDetail(agentId, { projectId: contextKey })
         const agent = normalizeAgent(response.agent || response)
         agentDetails.value[agent.id] = agent
+        agentDetailProject.value[agent.id] = contextKey
         return agent
       } catch (err) {
         console.error(`Failed to fetch agent detail for ${agentId}:`, err)
@@ -189,16 +203,20 @@ export const useAgentStore = defineStore(
       }
     }
 
-    async function selectAgent(agentId, { allowSubagent = false } = {}) {
+    async function selectAgent(agentId, { allowSubagent = false, projectId = null } = {}) {
       if (!agentId) return
+      const contextKey = projectId || null
       let knownAgent = agentDetails.value[agentId] || agents.value.find((a) => a.id === agentId)
       if (!knownAgent) {
-        knownAgent = await fetchAgentDetail(agentId)
+        knownAgent = await fetchAgentDetail(agentId, false, contextKey)
       }
       if (knownAgent?.is_subagent && !allowSubagent) return
       isLoadingConfig.value = true
       try {
-        const detail = agentDetails.value[agentId] || (await fetchAgentDetail(agentId))
+        const detail =
+          agentDetails.value[agentId] && agentDetailProject.value[agentId] === contextKey
+            ? agentDetails.value[agentId]
+            : await fetchAgentDetail(agentId, false, contextKey)
         const loadedConfig = applyConfigDefaults(
           extractContext(detail),
           detail?.configurable_items || {}
@@ -261,6 +279,7 @@ export const useAgentStore = defineStore(
       await agentApi.deleteAgent(agentId)
       agents.value = agents.value.filter((item) => item.id !== agentId)
       delete agentDetails.value[agentId]
+      delete agentDetailProject.value[agentId]
       if (selectedAgentId.value === agentId) {
         selectedAgentId.value = null
         agentConfig.value = {}
@@ -288,6 +307,7 @@ export const useAgentStore = defineStore(
       agentConfig.value = {}
       originalAgentConfig.value = {}
       agentDetails.value = {}
+      agentDetailProject.value = {}
       isLoadingAgents.value = false
       isLoadingConfig.value = false
       isLoadingAgentDetail.value = false
@@ -306,6 +326,7 @@ export const useAgentStore = defineStore(
       agentConfig,
       originalAgentConfig,
       agentDetails,
+      agentDetailProject,
       isLoadingAgents,
       isLoadingConfig,
       isLoadingAgentDetail,

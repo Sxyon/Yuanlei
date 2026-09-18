@@ -46,23 +46,39 @@ export const agentApi = {
 
   /**
    * 获取智能体列表
+   * @param {Object} options
+   * @param {boolean} options.includeSubagents - 是否包含子智能体定义
+   * @param {string|null} options.projectId - 项目上下文；返回该项目数字员工与无归属智能体
    * @returns {Promise} - 智能体列表
    */
-  getAgents: ({ includeSubagents = false } = {}) => {
+  getAgents: ({ includeSubagents = false, projectId = null } = {}) => {
     const params = new URLSearchParams()
     if (includeSubagents) params.set('include_subagents', 'true')
+    if (projectId) params.set('project_id', projectId)
     const query = params.toString()
     return apiGet(query ? `/api/agent?${query}` : '/api/agent')
   },
 
   getAgentBackends: () => apiGet('/api/agent/backends'),
 
+  getAgentBackendDetail: (backendId, { includeConfigurableItems = false } = {}) => {
+    const params = new URLSearchParams()
+    if (includeConfigurableItems) params.set('include_configurable_items', 'true')
+    const query = params.toString()
+    return apiGet(
+      query ? `/api/agent/backends/${backendId}?${query}` : `/api/agent/backends/${backendId}`
+    )
+  },
+
   /**
    * 获取单个智能体详情
    * @param {string} agentId - 智能体ID
+   * @param {Object} options
+   * @param {string|null} options.projectId - 项目上下文；返回项目覆盖后的有效配置
    * @returns {Promise} - 智能体详情
    */
-  getAgentDetail: (agentId) => apiGet(`/api/agent/${agentId}`),
+  getAgentDetail: (agentId, { projectId = null } = {}) =>
+    apiGet(projectId ? `/api/agent/${agentId}?project_id=${encodeURIComponent(projectId)}` : `/api/agent/${agentId}`),
 
   /**
    * 获取智能体历史消息
@@ -71,7 +87,8 @@ export const agentApi = {
    * @returns {Promise} - 历史消息
    */
   // 线程阅读快照：{ thread, runs, history }，消息通过 run_id 关联运行。
-  getAgentHistory: (threadId) => apiGet(`/api/chat/thread/${threadId}/history`),
+  getAgentHistory: (threadId, options = {}) =>
+    apiGet(`/api/chat/thread/${threadId}/history`, options),
 
   /**
    * 获取会话内持久化的 Model/Tool 生命周期审计
@@ -92,8 +109,7 @@ export const agentApi = {
   /**
    * 提交线程级主动上下文压缩
    */
-  compressThreadContext: (threadId) =>
-    apiPost(`/api/chat/thread/${threadId}/compress`, {}),
+  compressThreadContext: (threadId) => apiPost(`/api/chat/thread/${threadId}/compress`, {}),
 
   /**
    * Submit feedback for a message
@@ -186,7 +202,7 @@ export const agentApi = {
    * @param {string} runId - run ID
    * @returns {Promise<Object>}
    */
-  getAgentRun: (runId) => apiGet(`/api/agent/runs/${runId}`),
+  getAgentRun: (runId, options = {}) => apiGet(`/api/agent/runs/${runId}`, options),
 
   /**
    * 获取 Run 对应的 Langfuse 精确跳转地址
@@ -264,6 +280,15 @@ export const multimodalApi = {
 // =============================================================================
 
 export const threadApi = {
+  getGitRepositories: (threadId) =>
+    apiGet(`/api/chat/thread/${threadId}/git-repositories`),
+
+  selectGitRepository: (threadId, payload) =>
+    apiPost(`/api/chat/thread/${threadId}/git-repositories`, payload),
+
+  retryGitRepository: (threadId, repositoryId) =>
+    apiPost(`/api/chat/thread/${threadId}/git-repositories/${repositoryId}/retry`, {}),
+
   /**
    * 获取对话线程列表
    * @param {string | null | undefined} agentId - 智能体ID，可选；不传时返回全部智能体对话
@@ -433,6 +458,15 @@ export const threadApi = {
    */
   confirmTmpThreadAttachments: (threadId, attachments) =>
     apiPost(`/api/chat/thread/${threadId}/attachments/confirm`, { attachments }),
+
+  /**
+   * 引用已有文件为附件（不复制文件内容）
+   * @param {string} threadId
+   * @param {Array} attachments - [{ path, file_name, source: 'workdir' | 'workspace' }]
+   * @returns {Promise}
+   */
+  referenceThreadAttachments: (threadId, attachments) =>
+    apiPost(`/api/chat/thread/${threadId}/attachments/reference`, { attachments }),
 
   /**
    * 删除附件

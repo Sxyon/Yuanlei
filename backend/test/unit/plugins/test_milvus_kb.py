@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import types
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pymilvus import CollectionSchema, DataType, FieldSchema, Function, FunctionType
@@ -28,12 +29,12 @@ def make_query_config() -> KnowledgeBaseConfig:
 
 
 class FakeHit:
-    def __init__(self, content: str, distance: float):
+    def __init__(self, content: str, distance: float, file_id: str = "file-1"):
         self.distance = distance
         self.entity = {
             "content": content,
             "chunk_id": "chunk-1",
-            "file_id": "file-1",
+            "file_id": file_id,
             "chunk_index": 0,
         }
 
@@ -65,9 +66,10 @@ def make_kb(collection: FakeCollection) -> MilvusKB:
         del kb_id, embedding_model_spec
         return collection
 
-    async def hydrate_chunk_sources(kb_id: str, chunks: list[dict]) -> None:
+    async def hydrate_chunk_sources(kb_id: str, chunks: list[dict]) -> list[dict]:
         for chunk in chunks:
             chunk["metadata"]["source"] = "demo.md"
+        return chunks
 
     kb._get_or_create_milvus_collection = get_collection
     kb._hydrate_chunk_sources = hydrate_chunk_sources
@@ -480,6 +482,57 @@ async def test_delete_file_chunks_only_resets_file_stats(monkeypatch):
     assert file_repo.update_calls == [("file-1", "db", {"chunk_count": 0, "token_count": 0})]
 
 
+@pytest.mark.parametrize("failure", ["graph", "vector"])
+async def test_delete_file_keeps_metadata_when_external_deletion_fails(monkeypatch, failure):
+    """外部删除失败必须显式失败，并保留文件与 chunk 的重试依据。"""
+    error = RuntimeError("external storage unavailable")
+    chunk_repo = types.SimpleNamespace(
+        count_graph_indexed_by_file_id=AsyncMock(return_value=1 if failure == "graph" else 0),
+        delete_by_file_id=AsyncMock(),
+    )
+    monkeypatch.setattr(milvus_module, "KnowledgeChunkRepository", lambda: chunk_repo)
+    file_repo = FakeKnowledgeFileRepository({"file-1": make_file_record(chunk_count=2, token_count=10)})
+    patch_file_repository(monkeypatch, file_repo)
+    monkeypatch.setattr(
+        "yuxi.knowledge.graphs.milvus_graph_service.MilvusGraphService.delete_file_graph", AsyncMock(side_effect=error)
+    )
+    kb = make_kb(FakeCollection())
+    kb._get_existing_milvus_collection = AsyncMock(return_value=FakeCollection())
+    kb._delete_file_chunks_from_milvus = AsyncMock(side_effect=error)
+
+    with pytest.raises(RuntimeError) as caught:
+        await kb.delete_file("db", "file-1")
+
+    assert caught.value is error
+    assert "file-1" in file_repo.records
+    assert file_repo.records["file-1"].chunk_count == 2
+    assert file_repo.records["file-1"].token_count == 10
+    chunk_repo.delete_by_file_id.assert_not_awaited()
+
+
+async def test_database_cleanup_stops_when_collection_drop_fails(monkeypatch):
+    """集合删除失败时不能继续清理并报告知识库已删除。"""
+    error = RuntimeError("Milvus unavailable")
+    monkeypatch.setattr(milvus_module.utility, "has_collection", lambda *args, **kwargs: True)
+    monkeypatch.setattr(milvus_module.utility, "drop_collection", Mock(side_effect=error))
+    graph_cleanup = Mock()
+    monkeypatch.setattr(
+        "yuxi.knowledge.graphs.milvus_graph_vector_store.MilvusGraphVectorStore",
+        lambda: types.SimpleNamespace(drop_graph_collections=graph_cleanup),
+    )
+    base_cleanup = AsyncMock(return_value={"message": "success"})
+    monkeypatch.setattr(KnowledgeBase, "cleanup_database_resources", base_cleanup)
+    kb = make_kb(FakeCollection())
+    kb.connection_alias = "test-connection"
+
+    with pytest.raises(RuntimeError) as caught:
+        await kb.cleanup_database_resources("db")
+
+    assert caught.value is error
+    graph_cleanup.assert_not_called()
+    base_cleanup.assert_not_awaited()
+
+
 async def test_collection_lifecycle_calls_are_offloaded_from_event_loop(monkeypatch):
     kb = MilvusKB.__new__(MilvusKB)
     kb.collections = {}
@@ -629,6 +682,35 @@ async def test_keyword_mode_uses_milvus_bm25_search():
     assert search_call["limit"] == 7
 
 
+@pytest.mark.parametrize("search_mode", ["vector", "keyword", "hybrid"])
+async def test_query_failure_is_not_an_empty_result(search_mode):
+    """主检索失败必须传给调用方，不能伪装成没有命中。"""
+    error = RuntimeError("Milvus unavailable")
+
+    class FailingCollection(FakeCollection):
+        """返回确定性的检索故障。"""
+
+        def search(self, **kwargs):
+            """拒绝单路检索。"""
+            raise error
+
+        def hybrid_search(self, **kwargs):
+            """拒绝混合检索。"""
+            raise error
+
+    with pytest.raises(RuntimeError) as caught:
+        await make_kb(FailingCollection()).aquery("query", "db", config=make_query_config(), search_mode=search_mode)
+
+    assert caught.value is error
+
+
+async def test_query_without_matches_still_returns_empty_list():
+    """成功检索但低于阈值仍属于正常空结果。"""
+    result = await make_kb(FakeCollection(distance=0.1)).aquery("query", "db", config=make_query_config())
+
+    assert result == []
+
+
 async def test_vector_mode_ignores_metric_type_override():
     collection = FakeCollection()
     kb = make_kb(collection)
@@ -745,3 +827,84 @@ def test_collection_supports_bm25_requires_analyzed_content_sparse_field_and_fun
     collection = type("Collection", (), {"schema": schema})()
 
     assert kb._collection_supports_bm25(collection)
+
+
+async def test_hydrate_chunk_sources_filters_orphaned_file_chunks(monkeypatch):
+    """已从 PG 删除的文件（孤儿向量）不能出现在检索结果中。"""
+    file_repo = FakeKnowledgeFileRepository(
+        {
+            "file-live": make_file_record(file_id="file-live", filename="live.md"),
+        }
+    )
+    patch_file_repository(monkeypatch, file_repo)
+    kb = MilvusKB.__new__(MilvusKB)
+
+    chunks = [
+        {"metadata": {"file_id": "file-live"}, "content": "live content", "score": 0.9},
+        {"metadata": {"file_id": "file-deleted"}, "content": "orphan content", "score": 0.8},
+    ]
+
+    result = await kb._hydrate_chunk_sources("db", chunks)
+
+    assert len(result) == 1
+    assert result[0]["metadata"]["file_id"] == "file-live"
+    assert result[0]["metadata"]["source"] == "live.md"
+
+
+async def test_hydrate_chunk_sources_returns_all_chunks_when_no_orphans(monkeypatch):
+    """所有 file_id 都在 PG 中时行为不变，只补充 source 字段。"""
+    file_repo = FakeKnowledgeFileRepository(
+        {
+            "file-a": make_file_record(file_id="file-a", filename="a.md"),
+            "file-b": make_file_record(file_id="file-b", filename="b.md"),
+        }
+    )
+    patch_file_repository(monkeypatch, file_repo)
+    kb = MilvusKB.__new__(MilvusKB)
+
+    chunks = [
+        {"metadata": {"file_id": "file-a"}, "content": "a", "score": 0.9},
+        {"metadata": {"file_id": "file-b"}, "content": "b", "score": 0.8},
+    ]
+
+    result = await kb._hydrate_chunk_sources("db", chunks)
+
+    assert len(result) == 2
+    assert result[0]["metadata"]["source"] == "a.md"
+    assert result[1]["metadata"]["source"] == "b.md"
+
+
+async def test_query_filters_orphaned_chunks_from_search_results(monkeypatch):
+    """端到端：Milvus 返回孤儿向量时，aquery 最终结果不包含已删除文件的内容。"""
+    file_repo = FakeKnowledgeFileRepository(
+        {
+            "file-live": make_file_record(file_id="file-live", filename="live.md"),
+        }
+    )
+    patch_file_repository(monkeypatch, file_repo)
+
+    class OrphanCollection(FakeCollection):
+        """模拟 Milvus 中残留已删除文件的向量。"""
+
+        def search(self, **kwargs):
+            self.search_calls.append(kwargs)
+            return [
+                [
+                    FakeHit("live content", 0.9, file_id="file-live"),
+                    FakeHit("orphan content", 0.85, file_id="file-deleted"),
+                ]
+            ]
+
+    kb = MilvusKB.__new__(MilvusKB)
+    kb._get_embedding_function = lambda embedding_model_spec, **kwargs: lambda texts: [[0.1, 0.2] for _ in texts]
+
+    async def get_collection(kb_id: str, embedding_model_spec: str | None):
+        del kb_id, embedding_model_spec
+        return OrphanCollection()
+
+    kb._get_or_create_milvus_collection = get_collection
+
+    chunks = await kb.aquery("query", "db", config=make_query_config())
+
+    assert len(chunks) == 1
+    assert chunks[0]["content"] == "live content"

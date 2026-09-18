@@ -10,19 +10,21 @@
       @update:modelValue="updateValue"
       :is-loading="isLoading"
       :disabled="disabled"
-      :send-button-disabled="sendButtonDisabled"
+      :send-button-disabled="sendButtonDisabled || sendLocked"
       :placeholder="placeholder"
       :mention="mention"
       :thread-id="threadId"
       :file-upload-enabled="supportsFileUpload"
       :show-options-left="showInputOptions"
+      :enter-to-newline="sendLocked"
       @send="handleSend"
       @keydown="handleKeyDown"
+      @composition-change="handleCompositionChange"
       @paste-image="handlePastedImage"
       @drop-files="handleDroppedFiles"
     >
       <template #top>
-        <div v-if="currentImage || previewAttachments.length" class="input-top-stack">
+        <div v-if="currentImage || previewAttachments.length || pendingReferences.length" class="input-top-stack">
           <ImagePreviewComponent
             v-if="currentImage"
             :image-data="currentImage"
@@ -55,17 +57,43 @@
               </button>
             </div>
           </div>
+
+          <div v-if="pendingReferences.length" class="attachment-preview-list">
+            <div
+              v-for="item in pendingReferences"
+              :key="item.path"
+              class="attachment-file-card"
+            >
+              <div class="attachment-file-icon">
+                <FileTypeIcon :name="item.name" :size="18" />
+              </div>
+              <div class="attachment-file-body">
+                <div class="attachment-file-name" :title="item.name">{{ item.name }}</div>
+                <div class="attachment-file-meta">发送时引用</div>
+              </div>
+              <button
+                class="attachment-remove-btn"
+                type="button"
+                :aria-label="`移除待引用文件 ${item.name}`"
+                @click.stop="handlePendingReferenceRemoved(item)"
+              >
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
         </div>
       </template>
       <template #options-left>
         <AttachmentOptionsComponent
           :disabled="disabled"
           :file-upload-enabled="supportsFileUpload"
+          :project-file-pick-enabled="supportsProjectFilePick"
           :mention="mention"
           @upload="handleAttachmentUpload"
           @upload-image="handleImageUpload"
           @upload-image-success="handleImageUploadSuccess"
           @select-mention="handleMentionSelect"
+          @select-project-file="handleProjectFileSelect"
         />
       </template>
       <template #actions-left>
@@ -78,18 +106,32 @@
           <slot name="actions-right-extra"></slot>
         </div>
       </template>
+      <template #before-send>
+        <button
+          type="button"
+          class="input-action-btn send-lock-btn"
+          :class="{ active: sendLocked }"
+          :title="sendLocked ? '已锁定发送（Cmd/Ctrl+L 解锁）' : '锁定发送（Cmd/Ctrl+L）'"
+          :aria-pressed="sendLocked"
+          aria-label="锁定发送"
+          @click="toggleSendLock"
+        >
+          <component :is="sendLocked ? Lock : LockOpen" :size="16" />
+        </button>
+      </template>
     </MessageInputComponent>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import MessageInputComponent from '@/components/MessageInputComponent.vue'
 import ImagePreviewComponent from '@/components/ImagePreviewComponent.vue'
 import AttachmentOptionsComponent from '@/components/AttachmentOptionsComponent.vue'
-import { X } from '@lucide/vue'
+import { Lock, LockOpen, X } from '@lucide/vue'
 import { normalizeAttachmentPreviews } from '@/utils/file_utils'
 import { uploadMultimodalImage } from '@/utils/multimodal_image_upload'
+import { readSendLockPreference, writeSendLockPreference } from '@/utils/sendLock'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 
 const props = defineProps({
@@ -101,7 +143,12 @@ const props = defineProps({
   threadId: { type: String, default: '' },
   showExtra: { type: Boolean, default: false },
   supportsFileUpload: { type: Boolean, default: false },
+  supportsProjectFilePick: { type: Boolean, default: false },
   attachments: {
+    type: Array,
+    default: () => []
+  },
+  pendingReferences: {
     type: Array,
     default: () => []
   }
@@ -112,11 +159,18 @@ const emit = defineEmits([
   'send',
   'keydown',
   'upload-attachment',
-  'remove-attachment'
+  'remove-attachment',
+  'select-project-file',
+  'remove-pending-reference'
 ])
 
 const inputRef = ref(null)
 const currentImage = ref(null)
+// 输入法组合态：中文输入法确认候选词时会派发 key 为 Enter 但 keyCode 为 229 的回车，
+// 需要与真正的发送回车区分，避免误提交。
+const isComposing = ref(false)
+// 发送锁：长文本编辑时手动锁定，锁定期间回车与发送按钮均被拦截，编辑完成后手动解锁。
+const sendLocked = ref(readSendLockPreference())
 const placeholder = '问点什么？使用 @ 可以选择文件、知识库或技能进行引用。'
 
 const previewAttachments = computed(() => normalizeAttachmentPreviews(props.attachments))
@@ -168,6 +222,10 @@ const handleMentionSelect = (item) => {
   inputRef.value?.closeOptions()
 }
 
+const handleProjectFileSelect = () => {
+  emit('select-project-file')
+}
+
 const handleImageRemoved = () => {
   currentImage.value = null
 }
@@ -182,13 +240,32 @@ const handleAttachmentRemoved = (attachment) => {
   emit('remove-attachment', attachment.raw)
 }
 
+const handlePendingReferenceRemoved = (item) => {
+  emit('remove-pending-reference', item)
+}
+
 const handleSend = () => {
+  if (sendLocked.value) return
   emit('send', { image: currentImage.value })
   currentImage.value = null
 }
 
+const toggleSendLock = () => {
+  sendLocked.value = !sendLocked.value
+  writeSendLockPreference(sendLocked.value)
+}
+
+const handleCompositionChange = (composing) => {
+  isComposing.value = composing
+}
+
 const handleKeyDown = (e) => {
   if (props.sendButtonDisabled) {
+    return
+  }
+
+  // 输入法组合态回车（keyCode 229）只用于确认候选词，不触发发送。
+  if (isComposing.value || e.keyCode === 229) {
     return
   }
 
@@ -200,10 +277,28 @@ const handleKeyDown = (e) => {
   }
 }
 
+// 全局快捷键切换发送锁：Cmd/Ctrl + L（浏览器聚焦输入框时仍可触发）。
+const handleGlobalKeyDown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'l' || e.key === 'L')) {
+    e.preventDefault()
+    toggleSendLock()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleGlobalKeyDown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleGlobalKeyDown)
+})
+
 defineExpose({
   focus: () => inputRef.value?.focus(),
   closeOptions: () => inputRef.value?.closeOptions(),
-  restoreImage
+  restoreImage,
+  toggleSendLock,
+  sendLocked
 })
 </script>
 
@@ -240,6 +335,21 @@ defineExpose({
   align-items: center;
   margin-right: 8px;
   gap: 2px;
+}
+
+.send-lock-btn {
+  color: var(--gray-500);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  margin-right: 6px;
+
+  &.active {
+    color: var(--main-700);
+    background: var(--main-30);
+    font-weight: 500;
+  }
 }
 
 .input-top-stack {

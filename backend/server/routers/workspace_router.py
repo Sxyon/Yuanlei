@@ -247,9 +247,14 @@ async def update_workspace_file(
 @workspace.delete("/file", response_model=dict)
 async def delete_workspace_file_route(
     path: str = Query(..., description="工作区文件或目录路径"),
+    safe_unlink_symlinks: bool = Query(False, description="仅 unlink 删除树内的符号链接目录项"),
     current_user: User = Depends(get_required_user),
 ):
-    return await delete_workspace_path(path=path, current_user=current_user)
+    return await delete_workspace_path(
+        path=path,
+        current_user=current_user,
+        safe_unlink_symlinks=safe_unlink_symlinks,
+    )
 
 
 @workspace.post("/directory", response_model=dict)

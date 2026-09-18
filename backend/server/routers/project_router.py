@@ -1,6 +1,6 @@
 """Project HTTP 适配层。"""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,19 @@ from yuxi.services.project_service import (
     list_history_candidates_view,
     list_projects_view,
     rename_project_view,
+)
+from yuxi.services.project_git_service import (
+    cleanup_project_worktree_view,
+    create_project_repository_view,
+    deactivate_project_repository_view,
+    list_project_repositories_view,
+    list_project_worktrees_view,
+    retry_project_repository_view,
+    update_project_repository_policy_view,
+)
+from yuxi.services.run_queue_service import (
+    enqueue_project_git_operation,
+    enqueue_project_git_worktree_cleanup,
 )
 from yuxi.storage.postgres.models_business import User
 
@@ -42,6 +55,29 @@ class ProjectUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
+
+
+class ProjectRepositoryCreate(BaseModel):
+    """Project 仓库绑定创建请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=128)
+    connection_id: str = Field(min_length=1, max_length=64)
+    alias: str = Field(min_length=1, max_length=80)
+    repository_owner: str = Field(min_length=1, max_length=255)
+    repository_name: str = Field(min_length=1, max_length=255)
+    purpose: str = Field(default="项目仓库", min_length=1, max_length=500)
+    configured_base_branch: str | None = Field(default=None, max_length=255)
+    allowed_base_branches: list[str] = Field(default_factory=list, max_length=100)
+
+
+class ProjectRepositoryPolicyUpdate(BaseModel):
+    """Project 仓库任务基线策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+    purpose: str = Field(min_length=1, max_length=500)
+    configured_base_branch: str | None = Field(default=None, max_length=255)
+    allowed_base_branches: list[str] = Field(default_factory=list, max_length=100)
 
 
 @projects.get("")
@@ -101,3 +137,104 @@ async def delete_project(
 ):
     """软删除当前用户的 Project 及其中对话。"""
     return await delete_project_view(uid=str(current_user.uid), project_id=project_id, db=db)
+
+
+@projects.get("/{project_id}/repositories")
+async def list_project_repositories(
+    project_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出 Project 仓库绑定。"""
+    return await list_project_repositories_view(uid=str(current_user.uid), project_id=project_id, db=db)
+
+
+@projects.post("/{project_id}/repositories", status_code=status.HTTP_202_ACCEPTED)
+async def create_project_repository(
+    project_id: str,
+    payload: ProjectRepositoryCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建仓库绑定并在事务提交后发布 provision job。"""
+    result, job = await create_project_repository_view(
+        uid=str(current_user.uid), project_id=project_id, db=db, **payload.model_dump()
+    )
+    if job:
+        await enqueue_project_git_operation(*job)
+    return result
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_project_repository(
+    project_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """重试失败的仓库操作。"""
+    result, job = await retry_project_repository_view(
+        uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db
+    )
+    await enqueue_project_git_operation(*job)
+    return result
+
+
+@projects.put("/{project_id}/repositories/{repository_id}/policy")
+async def update_project_repository_policy(
+    project_id: str,
+    repository_id: str,
+    payload: ProjectRepositoryPolicyUpdate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """验证远端分支并更新未来任务使用的仓库策略。"""
+    return await update_project_repository_policy_view(
+        uid=str(current_user.uid),
+        project_id=project_id,
+        repository_id=repository_id,
+        db=db,
+        **payload.model_dump(),
+    )
+
+
+@projects.delete("/{project_id}/repositories/{repository_id}", status_code=status.HTTP_202_ACCEPTED)
+async def deactivate_project_repository(
+    project_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """停用仓库并在提交后发布撤权 job。"""
+    result, job = await deactivate_project_repository_view(
+        uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db
+    )
+    if job:
+        await enqueue_project_git_operation(*job)
+    return result
+
+
+@projects.get("/{project_id}/git-worktrees")
+async def list_project_worktrees(
+    project_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出 Project 根任务 worktree。"""
+    return await list_project_worktrees_view(uid=str(current_user.uid), project_id=project_id, db=db)
+
+
+@projects.delete("/{project_id}/git-worktrees/{worktree_id}", status_code=status.HTTP_202_ACCEPTED)
+async def cleanup_project_worktree(
+    project_id: str,
+    worktree_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """显式安全清理已推送 worktree。"""
+    result, cleanup_worktree_id = await cleanup_project_worktree_view(
+        uid=str(current_user.uid), project_id=project_id, worktree_id=worktree_id, db=db
+    )
+    if cleanup_worktree_id:
+        await enqueue_project_git_worktree_cleanup(cleanup_worktree_id)
+    return result

@@ -94,6 +94,27 @@ async def get_arq_pool():
     return _arq_pool
 
 
+async def enqueue_project_git_operation(repository_id: str, operation_generation: int) -> None:
+    """在 owning transaction 提交后发布可幂等的 Project Git 操作。"""
+    pool = await get_arq_pool()
+    await pool.enqueue_job(
+        "process_project_git_operation",
+        repository_id,
+        int(operation_generation),
+        _job_id=f"project-git:{repository_id}:{int(operation_generation)}",
+    )
+
+
+async def enqueue_project_git_worktree_cleanup(worktree_id: str) -> None:
+    """在 owning transaction 提交后发布可幂等的 worktree 清理。"""
+    pool = await get_arq_pool()
+    await pool.enqueue_job(
+        "process_project_git_worktree_cleanup",
+        worktree_id,
+        _job_id=f"project-git-worktree-cleanup:{worktree_id}",
+    )
+
+
 async def publish_cancel_signal(run_id: str) -> None:
     try:
         redis = await get_redis_client()

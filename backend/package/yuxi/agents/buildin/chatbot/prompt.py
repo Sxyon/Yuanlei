@@ -52,7 +52,42 @@ def build_prompt_with_context(context):
 - 未经用户明确要求，不得在当前 Project Workdir 之外创建、修改、移动或删除文件
 - 父子智能体共享同一个 Project Workdir 与执行树 runtime；并发写同一路径遵循真实 POSIX 结果
 """
-    system_prompt = (
-        f"{current_date}\n\n{PROMPT.strip()}\n\n{filesystem_prompt.strip()}\n\n{context.system_prompt or ''}"
-    )
+    git_repositories = getattr(context, "git_repositories", None) or []
+    project_git_enabled = bool(getattr(context, "project_git_enabled", False))
+    git_prompt = ""
+    if git_repositories:
+        rows = "\n".join(
+            (
+                f"- {item['alias']}: purpose={item['purpose']}, task_purpose={item['task_purpose']}, "
+                f"path={item['path']}, branch={item['branch']}, base={item['base_branch']}, "
+                f"base_sha={item['base_sha']}"
+            )
+            for item in git_repositories
+        )
+        git_prompt = f"""
+<| Project Git 工作区 |>
+以下 worktree 已按根任务分配，Root Agent 与 SubAgent 共享，同一 Project 的其他根任务使用不同目录：
+{rows}
+- 使用 execute 与 `git -C <path>` 完成 status、diff、add、commit
+- 不要执行 clone、fetch、push、remote add/set-url、worktree add/remove/prune 或 branch -D
+- 只在已分配分支提交，不切换、创建或删除其他分支，不操作 bare repository.git
+- 推送时先确认 worktree clean，读取完整 HEAD SHA，再由 Root Agent 调用 git_push_branch
+"""
+    elif project_git_enabled:
+        git_prompt = """
+<| Project Git 工作区 |>
+当前 Project 配置了 Git 仓库，但本任务尚未分配 worktree。
+- 需要仓库时先调用 git_list_project_repositories，再调用 git_prepare_worktree
+- git_prepare_worktree 的 branch_slug 必须是 ASCII kebab-case（仅小写字母、数字、连字符，如 project-git-extend），
+  最长 48 字符；branch_kind 仅支持 feature/fix/docs/refactor/chore/test
+- git_prepare_worktree 与 git_push_branch 需要用户逐次批准
+- 不要自行 clone、fetch、push、修改 remote 或执行 git worktree add/remove/prune
+- 严禁用 execute 直接读取 bare 仓库（repos/*/repository.git）、调用 gitea/远程 API 或执行
+  `git branch`/`git log` 来旁路查询仓库与分支状态；仓库与分支的查看、申请、推送只能通过上述三个 git 工具完成
+"""
+    sections = [current_date, PROMPT.strip(), filesystem_prompt.strip()]
+    if git_prompt:
+        sections.append(git_prompt.strip())
+    sections.append(context.system_prompt or "")
+    system_prompt = "\n\n".join(sections)
     return system_prompt.strip()

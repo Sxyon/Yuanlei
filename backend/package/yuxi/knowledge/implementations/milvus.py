@@ -627,19 +627,30 @@ class MilvusKB(KnowledgeBase):
         else:
             logger.info(f"File {file_id} not found in Milvus, skipping delete operation")
 
-    async def _hydrate_chunk_sources(self, kb_id: str, chunks: list[dict]) -> None:
+    async def _hydrate_chunk_sources(self, kb_id: str, chunks: list[dict]) -> list[dict]:
+        """补充 chunk 来源文件名，并过滤已从 PG 删除的孤儿 chunk。
+
+        Milvus 中可能残留已删除文件的向量（如删除流程中途失败），
+        检索侧依据 PG 中 file_id 是否存在进行过滤，防止已删除内容被返回。
+        """
         file_ids = sorted(
             {str(file_id) for chunk in chunks if (file_id := (chunk.get("metadata") or {}).get("file_id"))}
         )
         if not file_ids:
-            return
+            return chunks
 
         filenames = await KnowledgeFileRepository().get_filenames_by_file_ids(kb_id=kb_id, file_ids=file_ids)
+        live_chunks: list[dict] = []
         for chunk in chunks:
             metadata = chunk.get("metadata")
             if not isinstance(metadata, dict):
                 continue
-            metadata["source"] = filenames.get(str(metadata.get("file_id") or ""), "") or "未知来源"
+            file_id = str(metadata.get("file_id") or "")
+            if file_id not in filenames:
+                continue
+            metadata["source"] = filenames[file_id]
+            live_chunks.append(chunk)
+        return live_chunks
 
     async def _build_file_name_expr(self, kb_id: str, file_name: str | None) -> str | None:
         if not file_name:
@@ -1008,7 +1019,7 @@ class MilvusKB(KnowledgeBase):
             if not retrieved_chunks:
                 return []
 
-            await self._hydrate_chunk_sources(kb_id, retrieved_chunks)
+            retrieved_chunks = await self._hydrate_chunk_sources(kb_id, retrieved_chunks)
 
             if not use_reranker:
                 return retrieved_chunks[:final_top_k]
@@ -1049,7 +1060,7 @@ class MilvusKB(KnowledgeBase):
 
         except Exception as e:
             logger.error(f"Milvus query error: {e}, {traceback.format_exc()}")
-            return []
+            raise
 
     async def _retrieve_graph_chunks(
         self,
@@ -1202,7 +1213,7 @@ class MilvusKB(KnowledgeBase):
                 await MilvusGraphService().delete_file_graph(kb_id, file_id)
             except Exception as e:
                 logger.error(f"Failed to delete graph data for file {file_id}: {e}")
-        await chunk_repo.delete_by_file_id(file_id)
+                raise
         collection = await self._get_existing_milvus_collection(kb_id)
 
         if collection:
@@ -1211,6 +1222,9 @@ class MilvusKB(KnowledgeBase):
                 await self._delete_file_chunks_from_milvus(collection, file_id)
             except Exception as e:
                 logger.error(f"Error checking file existence in Milvus: {e}")
+                raise
+        # 外部删除成功后再移除 chunk 事实，失败时保留可重试的元数据。
+        await chunk_repo.delete_by_file_id(file_id)
         await KnowledgeFileRepository().update_fields(
             file_id=file_id,
             kb_id=kb_id,
@@ -1287,6 +1301,7 @@ class MilvusKB(KnowledgeBase):
                     logger.info(f"Milvus collection {kb_id} does not exist, skipping")
             except Exception as e:
                 logger.error(f"Failed to drop Milvus collection {kb_id}: {e}")
+                raise
 
             from yuxi.knowledge.graphs.milvus_graph_vector_store import MilvusGraphVectorStore
 

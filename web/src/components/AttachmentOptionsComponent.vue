@@ -37,6 +37,20 @@
       <div v-if="fileUploadEnabled && hasMentionResources" class="config-dropdown-divider"></div>
 
       <button
+        v-if="projectFilePickEnabled"
+        type="button"
+        role="menuitem"
+        class="config-dropdown-item"
+        :class="{ disabled }"
+        :disabled="disabled"
+        title="从个人空间选择已有文件作为附件引用"
+        @click="handleProjectFileClick"
+      >
+        <FolderOpen :size="15" class="config-dropdown-item-icon" />
+        <span class="config-dropdown-item-label">个人空间文件</span>
+      </button>
+
+      <button
         v-for="group in visibleResourceGroups"
         :key="group.key"
         type="button"
@@ -94,7 +108,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { ArrowLeft, ChevronRight, Database, FileText, Image, WandSparkles } from '@lucide/vue'
+import { ArrowLeft, ChevronRight, Database, FileText, FolderOpen, Image, WandSparkles } from '@lucide/vue'
 import { message } from 'ant-design-vue'
 import { uploadMultimodalImage } from '@/utils/multimodal_image_upload'
 import { getMentionIconComponent } from '@/utils/mention_icon_utils'
@@ -114,13 +128,17 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  projectFilePickEnabled: {
+    type: Boolean,
+    default: false
+  },
   mention: {
     type: Object,
     default: () => null
   }
 })
 
-const emit = defineEmits(['upload', 'upload-image', 'upload-image-success', 'select-mention'])
+const emit = defineEmits(['upload', 'upload-image', 'upload-image-success', 'select-mention', 'select-project-file'])
 const activeResourceType = ref('')
 const resourceItems = computed(() => buildMentionResourceItems(props.mention || {}))
 const visibleResourceGroups = computed(() =>
@@ -135,6 +153,12 @@ const activeResourceLabel = computed(
 const handleAttachmentClick = () => {
   if (props.disabled) return
   emit('upload')
+}
+
+// 从个人空间选择已有文件作为附件引用
+const handleProjectFileClick = () => {
+  if (props.disabled) return
+  emit('select-project-file')
 }
 
 // 处理图片上传

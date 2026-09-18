@@ -83,3 +83,6 @@ docs/vibe
 .taskr/
 .workbuddy/
 web/src/utils/__tests__/
+
+
+.obsidian/
