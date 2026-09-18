@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 import weakref
 from dataclasses import dataclass
+from typing import Literal
 
 from yuxi.config import get_int_env
 from yuxi.utils.logging_config import logger
@@ -34,11 +36,88 @@ def sandbox_id_for_thread(
     return digest[:12]
 
 
-def _sandbox_key(
-    uid: str,
-    runtime_thread_id: str,
-) -> str:
-    return f"{uid}::{runtime_thread_id}"
+@dataclass(frozen=True, slots=True)
+class SandboxScope:
+    """Sandbox runtime 作用域：线程级（兼容存量）或 Agent+Project 专属。"""
+
+    kind: Literal["thread", "agent_project"]
+    uid: str
+    thread_id: str | None = None
+    agent_slug: str | None = None
+    project_id: str | None = None
+
+    @classmethod
+    def thread(cls, *, uid: str, thread_id: str) -> "SandboxScope":
+        scope = cls(kind="thread", uid=str(uid or "").strip(), thread_id=str(thread_id or "").strip())
+        scope.validate()
+        return scope
+
+    @classmethod
+    def agent_project(cls, *, uid: str, agent_slug: str, project_id: str) -> "SandboxScope":
+        scope = cls(
+            kind="agent_project",
+            uid=str(uid or "").strip(),
+            agent_slug=str(agent_slug or "").strip(),
+            project_id=str(project_id or "").strip(),
+        )
+        scope.validate()
+        return scope
+
+    @classmethod
+    def from_cache_key(cls, cache_key: str) -> "SandboxScope":
+        """从缓存键恢复作用域；agent-project 与遗留 uid::thread 两种格式。"""
+        raw = str(cache_key or "")
+        if raw.startswith("agent-project:"):
+            parts = raw.split(":", 3)
+            if len(parts) != 4:
+                raise ValueError(f"invalid agent-project scope key: {cache_key!r}")
+            return cls.agent_project(uid=parts[1], agent_slug=parts[2], project_id=parts[3])
+        uid, separator, thread_id = raw.partition("::")
+        if not separator:
+            raise ValueError(f"invalid thread scope key: {cache_key!r}")
+        return cls.thread(uid=uid, thread_id=thread_id)
+
+    @classmethod
+    def from_runtime_scope(cls, *, uid: str, runtime_scope_id: str) -> "SandboxScope":
+        """把 Run 的 runtime_scope_id 解析为作用域；线程形态兼容裸 thread_id。"""
+        runtime_id = str(runtime_scope_id or "").strip()
+        if runtime_id.startswith("agent-project:"):
+            return cls.from_cache_key(runtime_id)
+        return cls.thread(uid=uid, thread_id=runtime_id)
+
+    def validate(self) -> None:
+        if not self.uid:
+            raise ValueError("sandbox scope uid is required")
+        if self.kind == "thread":
+            if not self.thread_id:
+                raise ValueError("sandbox thread scope requires thread_id")
+            return
+        if self.kind == "agent_project":
+            if not self.agent_slug or not self.project_id:
+                raise ValueError("sandbox agent_project scope requires agent_slug and project_id")
+            return
+        raise ValueError(f"unsupported sandbox scope kind: {self.kind}")
+
+    @property
+    def cache_key(self) -> str:
+        if self.kind == "thread":
+            # 沿用 uid::thread 派生，兼容存量容器与既有缓存语义。
+            return f"{self.uid}::{self.thread_id}"
+        return f"agent-project:{self.uid}:{self.agent_slug}:{self.project_id}"
+
+    @property
+    def sandbox_id(self) -> str:
+        if self.kind == "thread":
+            return sandbox_id_for_thread(self.thread_id or "", uid=self.uid)
+        return hashlib.sha256(self.cache_key.encode("utf-8")).hexdigest()[:12]
+
+    @property
+    def provisioner_identity(self) -> str:
+        """提供给 provisioner 的身份段，只含字母数字与 -_。"""
+        if self.kind == "thread":
+            return self.thread_id or ""
+        raw = f"agent-project-{self.uid}-{self.agent_slug}-{self.project_id}"
+        return re.sub(r"[^A-Za-z0-9_-]", "-", raw)
 
 
 def normalize_env(env: dict | None) -> dict[str, str]:
@@ -82,12 +161,17 @@ def load_user_agent_env(uid: str) -> dict[str, str]:
 @dataclass(slots=True)
 class SandboxConnection:
     cache_key: str
-    thread_id: str
+    thread_id: str | None
     uid: str
     sandbox_id: str
     sandbox_url: str
     generation: str | None = None
     workdir_path: str | None = None
+    scope_kind: str = "thread"
+    agent_slug: str | None = None
+    project_id: str | None = None
+    lifecycle: str | None = None
+    idle_timeout_seconds: int | None = None
 
 
 class SandboxIdentityMismatchError(RuntimeError):
@@ -129,22 +213,25 @@ class ProvisionerSandboxProvider:
     def _record_to_connection(
         self,
         *,
-        cache_key: str,
-        thread_id: str,
-        uid: str,
+        scope: SandboxScope,
         record: SandboxRecord,
     ) -> SandboxConnection:
         connection = SandboxConnection(
-            cache_key=cache_key,
-            thread_id=thread_id,
-            uid=uid,
+            cache_key=scope.cache_key,
+            thread_id=scope.thread_id,
+            uid=scope.uid,
             sandbox_id=record.sandbox_id,
             sandbox_url=record.sandbox_url,
             generation=record.generation,
             workdir_path=record.workdir_path,
+            scope_kind=scope.kind,
+            agent_slug=scope.agent_slug,
+            project_id=scope.project_id,
+            lifecycle=getattr(record, "lifecycle", None),
+            idle_timeout_seconds=getattr(record, "idle_timeout_seconds", None),
         )
-        self._connections[cache_key] = connection
-        self._last_touch_at[cache_key] = time.time()
+        self._connections[scope.cache_key] = connection
+        self._last_touch_at[scope.cache_key] = time.time()
         return connection
 
     def _should_touch(self, cache_key: str) -> bool:
@@ -179,16 +266,59 @@ class ProvisionerSandboxProvider:
         inherit_env: bool = True,
         workdir_path: str | None = None,
     ) -> SandboxConnection | None:
+        """按线程作用域获取 Sandbox（兼容入口）。"""
+        return self.get_scope(
+            SandboxScope.thread(uid=uid, thread_id=thread_id),
+            create_if_missing=create_if_missing,
+            inherit_env=inherit_env,
+            workdir_path=workdir_path,
+        )
+
+    @staticmethod
+    def _validate_connection_identity(
+        connection: SandboxConnection,
+        scope: SandboxScope,
+        normalized_workdir_path: str | None,
+    ) -> None:
+        if connection.uid != scope.uid:
+            raise RuntimeError(
+                f"sandbox scope {connection.cache_key} belongs to uid {connection.uid}, not {scope.uid}"
+            )
+        if connection.scope_kind != scope.kind:
+            raise SandboxIdentityMismatchError(
+                "sandbox scope kind does not match the existing runtime scope"
+            )
+        if scope.kind == "agent_project" and (
+            connection.agent_slug != scope.agent_slug
+            or connection.project_id != scope.project_id
+        ):
+            raise SandboxIdentityMismatchError(
+                "sandbox Agent/Project does not match the existing runtime scope"
+            )
+        if connection.workdir_path != normalized_workdir_path:
+            raise SandboxIdentityMismatchError(
+                "sandbox Workdir does not match the existing runtime scope"
+            )
+
+    def get_scope(
+        self,
+        scope: SandboxScope,
+        *,
+        create_if_missing: bool = False,
+        inherit_env: bool = True,
+        workdir_path: str | None = None,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
+    ) -> SandboxConnection | None:
+        """按作用域获取 Sandbox；命中缓存失败时按需创建或发现。"""
+        scope.validate()
         normalized_workdir_path = normalize_workdir_path(workdir_path) if workdir_path else None
-        cache_key = _sandbox_key(uid, thread_id)
+        cache_key = scope.cache_key
         lock = self._thread_lock(cache_key)
         with lock:
             current = self._connections.get(cache_key)
             if current:
-                if current.uid != uid:
-                    raise RuntimeError(f"sandbox scope {cache_key} belongs to uid {current.uid}, not {uid}")
-                if current.workdir_path != normalized_workdir_path:
-                    raise SandboxIdentityMismatchError("sandbox Workdir does not match the existing runtime scope")
+                self._validate_connection_identity(current, scope, normalized_workdir_path)
                 try:
                     if self._touch_if_needed(current):
                         return current
@@ -200,31 +330,31 @@ class ProvisionerSandboxProvider:
                     logger.warning(f"Failed to touch sandbox {current.sandbox_id} for {cache_key}: {exc}")
                     return current
 
-            sandbox_id = sandbox_id_for_thread(thread_id, uid=uid)
             if create_if_missing:
                 record = self._client.create(
-                    sandbox_id,
-                    thread_id,
-                    workspace_uid_dirname(uid),
-                    load_user_agent_env(uid) if inherit_env else {},
+                    scope.sandbox_id,
+                    scope.provisioner_identity,
+                    workspace_uid_dirname(scope.uid),
+                    load_user_agent_env(scope.uid) if inherit_env else {},
                     workdir_path=normalized_workdir_path,
                     inherit_env=inherit_env,
+                    lifecycle=lifecycle,
+                    idle_timeout_seconds=idle_timeout_seconds,
                 )
                 if record.workdir_path != normalized_workdir_path:
                     raise RuntimeError("created sandbox Workdir does not match requested scope")
             else:
-                record = self._client.discover(sandbox_id)
+                record = self._client.discover(scope.sandbox_id)
                 if record is None:
                     return None
                 if record.workdir_path != normalized_workdir_path:
                     raise RuntimeError("discovered sandbox Workdir does not match requested scope")
 
-            return self._record_to_connection(
-                cache_key=cache_key,
-                thread_id=thread_id,
-                uid=uid,
-                record=record,
-            )
+            return self._record_to_connection(scope=scope, record=record)
+
+    def list_sandboxes(self) -> list[SandboxRecord]:
+        """读取 provisioner 权威 inventory（不刷新 idle 活动）。"""
+        return self._client.list()
 
     def release(
         self,
@@ -234,25 +364,42 @@ class ProvisionerSandboxProvider:
         clear_cache_on_delete_failure: bool = False,
         workdir_path: str | None = None,
     ) -> None:
-        """释放一个指定作用域的 Sandbox，并清理本地连接缓存。"""
+        """释放指定线程作用域的 Sandbox（兼容入口）。"""
+        self.release_scope(
+            SandboxScope.thread(uid=uid, thread_id=thread_id),
+            clear_cache_on_delete_failure=clear_cache_on_delete_failure,
+            workdir_path=workdir_path,
+        )
+
+    def release_scope(
+        self,
+        scope: SandboxScope,
+        *,
+        clear_cache_on_delete_failure: bool = False,
+        workdir_path: str | None = None,
+    ) -> None:
+        """释放指定作用域的 Sandbox，并清理本地连接缓存。"""
+        scope.validate()
         normalized_workdir_path = normalize_workdir_path(workdir_path) if workdir_path else None
-        cache_key = _sandbox_key(uid, thread_id)
+        cache_key = scope.cache_key
         lock = self._thread_lock(cache_key)
         acquired = lock.acquire(timeout=getattr(self, "_release_lock_timeout_seconds", 30))
         if not acquired:
-            raise SandboxReleaseLockTimeoutError(f"sandbox release lock timed out for runtime scope {thread_id}")
+            raise SandboxReleaseLockTimeoutError(
+                f"sandbox release lock timed out for runtime scope {cache_key}"
+            )
         try:
             connection = self._connections.get(cache_key)
             if connection and connection.workdir_path != normalized_workdir_path:
                 raise SandboxIdentityMismatchError("sandbox Workdir does not match the existing runtime scope")
             if connection is None:
-                sandbox_id = sandbox_id_for_thread(thread_id, uid=uid)
-                record = self._client.discover(sandbox_id)
+                record = self._client.discover(scope.sandbox_id)
                 if record is None:
                     return
                 if record.workdir_path != normalized_workdir_path:
                     raise SandboxIdentityMismatchError("sandbox Workdir does not match the requested release scope")
                 generation = record.generation
+                sandbox_id = scope.sandbox_id
             else:
                 sandbox_id = connection.sandbox_id
                 generation = connection.generation

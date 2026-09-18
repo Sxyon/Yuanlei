@@ -639,6 +639,74 @@ class ProjectAgent(Base):
         }
 
 
+class AgentSandbox(Base):
+    """Agent 专属沙盒：绑定 (uid, agent, project) 的 runtime 所有权与生命周期（yuanlei 域）。"""
+
+    __tablename__ = "agent_sandboxes"
+    __table_args__ = (
+        UniqueConstraint("uid", "agent_slug", "project_id", name="uq_agent_sandboxes_owner"),
+        UniqueConstraint("scope_key", name="uq_agent_sandboxes_scope_key"),
+        UniqueConstraint("sandbox_id", name="uq_agent_sandboxes_sandbox_id"),
+        Index("ix_agent_sandboxes_status", "status"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="记录 UUID")
+    uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE", name="fk_agent_sandboxes_uid_users"),
+        nullable=False,
+        comment="所有者 uid",
+    )
+    agent_slug = Column(
+        String(80),
+        ForeignKey("agents.slug", ondelete="CASCADE", name="fk_agent_sandboxes_agent_slug"),
+        nullable=False,
+        comment="专属 Agent slug",
+    )
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_agent_sandboxes_project_id"),
+        nullable=False,
+        comment="绑定 Project ID",
+    )
+    scope_key = Column(String(191), nullable=False, comment="provider scope key")
+    sandbox_id = Column(String(64), nullable=False, comment="确定性沙盒 id")
+    generation = Column(String(128), nullable=True, comment="最近一次已知 runtime generation")
+    lifecycle = Column(String(20), nullable=False, default="persistent", comment="ephemeral/persistent/resident")
+    resume_policy = Column(String(20), nullable=False, default="auto", comment="auto/confirm")
+    status = Column(String(20), nullable=False, default="active", comment="active/reaping/suspended/error")
+    idle_timeout_seconds = Column(Integer, nullable=True, comment="按沙盒空闲阈值，0 表示不回收")
+    credential_fingerprint = Column(String(128), nullable=True, comment="最近注入凭据/环境指纹")
+    lease_owner_kind = Column(String(32), nullable=True, comment="run/coding_session/terminal")
+    lease_owner_id = Column(String(64), nullable=True, comment="租约持有者标识")
+    lease_expires_at = Column(DateTime, nullable=True, comment="租约到期时间")
+    lease_heartbeat_at = Column(DateTime, nullable=True, comment="租约最近心跳时间")
+    last_activity_at = Column(DateTime, nullable=True, comment="最近活动时间")
+    last_keepalive_at = Column(DateTime, nullable=True, comment="最近保活时间")
+    suspended_at = Column(DateTime, nullable=True, comment="最近 suspend 时间")
+    error_code = Column(String(64), nullable=True, comment="结构化错误码")
+    error_message = Column(Text, nullable=True, comment="错误详情（脱敏后）")
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class AgentSandboxEvent(Base):
+    """专属沙盒生命周期事件（yuanlei 域），供管理面板时间线与审计。"""
+
+    __tablename__ = "agent_sandbox_events"
+    __table_args__ = (
+        Index("ix_agent_sandbox_events_sandbox_created", "sandbox_id", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="事件 UUID")
+    sandbox_id = Column(String(64), nullable=False, comment="确定性沙盒 id")
+    kind = Column(String(32), nullable=False, comment="created/keepalive/suspend/rebuilt/released/error 等")
+    actor_kind = Column(String(32), nullable=True, comment="agent/user/supervisor")
+    actor_id = Column(String(64), nullable=True, comment="触发者标识")
+    payload_json = Column(JSON_VALUE, nullable=False, default=dict, comment="事件负载（脱敏）")
+    created_at = Column(DateTime, default=utc_now_naive)
+
+
 class Skill(Base):
     """Skill 元数据模型（内容存文件系统，索引存数据库）"""
 

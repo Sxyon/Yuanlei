@@ -241,6 +241,51 @@ async def test_validate_run_workdir_binding_rejects_top_level_foreign_runtime_sc
 
 
 @pytest.mark.asyncio
+async def test_validate_run_workdir_binding_accepts_dedicated_scope(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    run = _build_run()
+    run.agent_slug = "coder"
+    run.runtime_scope_id = "agent-project:user-1:coder:project-1"
+
+    @asynccontextmanager
+    async def fake_session():
+        yield object()
+
+    async def fake_resolve(**_kwargs):
+        return SimpleNamespace(conversation_id=run.conversation_id, project_id="project-1")
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session)
+    monkeypatch.setattr(run_worker, "resolve_authorized_workdir", fake_resolve)
+
+    binding = await run_worker._validate_run_workdir_binding(run)
+
+    assert binding.project_id == "project-1"
+
+
+@pytest.mark.asyncio
+async def test_validate_run_workdir_binding_rejects_dedicated_scope_project_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    run = _build_run()
+    run.agent_slug = "coder"
+    run.runtime_scope_id = "agent-project:user-1:coder:other-project"
+
+    @asynccontextmanager
+    async def fake_session():
+        yield object()
+
+    async def fake_resolve(**_kwargs):
+        return SimpleNamespace(conversation_id=run.conversation_id, project_id="project-1")
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session)
+    monkeypatch.setattr(run_worker, "resolve_authorized_workdir", fake_resolve)
+
+    with pytest.raises(run_worker.NonRetryableRunError, match="专属沙盒"):
+        await run_worker._validate_run_workdir_binding(run)
+
+
+@pytest.mark.asyncio
 async def test_validate_run_workdir_binding_requires_subagent_creator_tree(
     monkeypatch: pytest.MonkeyPatch,
 ):

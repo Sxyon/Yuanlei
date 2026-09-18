@@ -476,6 +476,7 @@ async def create_resume_run_view(
     run, created = await persist_agent_run_record(
         agent_slug=agent_slug,
         conversation_thread_id=thread_id,
+        runtime_scope_id=getattr(parent_run, "runtime_scope_id", None) or thread_id,
         current_uid=current_uid,
         db=db,
         request_id=request_id,

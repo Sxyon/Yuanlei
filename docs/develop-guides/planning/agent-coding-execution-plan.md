@@ -63,7 +63,7 @@ M0 契约探针与接口冻结
 
 ### M2 沙盒身份与生命周期核心（进行中）
 
-- 进度：M2.1 provisioner 按沙盒生命周期字段已落地并出证（2026-09-18）——`CreateSandboxRequest.lifecycle/idle_timeout_seconds`、Docker 标签与 K8s 注解持久化、reaper 按记录判定（0=永不回收）、响应携带策略字段，向后兼容；`test_sandbox_provisioner_config.py` 74 passed 与生命周期探针实测通过。剩余：M2.2 表与迁移、M2.3 scope 泛化、M2.4 ensure_ready/suspend、M2.5 supervisor、M2.6 清理谓词。
+- 进度：M2.1–M2.5 与 M2.6a 已落地（provisioner 生命周期字段、yuanlei v4 表与迁移、`SandboxScope`、策略/repository/lifecycle service、生命周期 supervisor、清理谓词分派）。M2.6b 运行接线已完成：FIFO 派发创建 Run 时按策略固化 `runtime_scope_id`（`resolve_dispatch_runtime_scope`），resume 继承父 Run 的 runtime scope（与 SubAgent 一致），`_validate_run_workdir_binding` 接受 agent-project scope 并校验 Agent/Project，`_BackendScope`/`ProvisionerSandboxBackend` 按 scope 取连接（专属走 `get_scope`），Run 准备阶段对 dedicated 策略执行 `ensure_ready`（confirm 暂以结构化失败阻断）。证据：affected 全量 1228 passed；M2 实现完成，专属沙盒真实链路（矩阵第 2/3/5 行）的集成验证随 M3/M4 一并补齐。下一阶段 M3 执行租约与串行。
 - 交付：scope 泛化与 provider 身份校验；`agent_sandboxes` + `agent_sandbox_events`；provisioner 按沙盒 TTL/resident；`ensure_ready`/`suspend`/自动重建；生命周期 supervisor（保活、空闲 suspend、inventory 对账、孤儿租约清理）；ephemeral 默认路径回归。
 - 退出证据：沙盒提案矩阵第 1、2、3、5、8、12 行；第 4 行的 auto 路径。
 - 风险护栏：默认路径零行为变化；resident 与 persistent 受配额与面板约束。

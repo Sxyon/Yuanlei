@@ -16,6 +16,17 @@ from yuxi.services.agent_run_manifest_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_shared_sandbox_policy(monkeypatch):
+    """默认共享沙盒策略；专属策略路径由专项用例覆盖。"""
+    from yuxi.agents.backends.sandbox.policy import SandboxPolicy
+
+    async def _shared_policy(**_kwargs):
+        return SandboxPolicy()
+
+    monkeypatch.setattr(manifest_service, "resolve_agent_sandbox_policy", _shared_policy)
+
+
 @pytest.mark.asyncio
 async def test_prepare_run_execution_uses_project_scope_and_override(monkeypatch):
     """执行边界校验项目范围，并使用项目覆盖后的有效配置与 git 快照。"""

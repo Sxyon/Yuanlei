@@ -14,7 +14,7 @@ from datetime import datetime
 from arq.worker import RetryJob, func
 from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
-from yuxi.agents.backends.sandbox.provider import get_sandbox_provider
+from yuxi.agents.backends.sandbox.provider import SandboxScope, get_sandbox_provider
 from yuxi.agents.callbacks.model_request_timing import FirstModelRequestRecorder
 from yuxi.agents.mcp.service import ensure_builtin_mcp_servers_in_db
 from yuxi.agents.skills.service import init_builtin_skills
@@ -56,6 +56,10 @@ from yuxi.services.scheduled_agent_service import (
     claim_and_dispatch_due_jobs,
     recover_scheduled_dispatches,
 )
+from yuxi.services.sandbox_lifecycle_supervisor_service import (
+    run_sandbox_lifecycle_tick,
+    sandbox_lifecycle_interval_seconds,
+)
 from yuxi.services.task_queue_service import (
     TASK_RECONCILIATION_HEALTH_KEY,
     TASK_RECONCILIATION_HEALTH_TTL_SECONDS,
@@ -69,7 +73,7 @@ from yuxi.services.workdir_service import (
     resolve_conversation_workdir_path,
 )
 from yuxi.storage.postgres.manager import pg_manager
-from yuxi.storage.postgres.models_business import AgentRun, Conversation, Message, User
+from yuxi.storage.postgres.models_business import AgentRun, AgentSandbox, Conversation, Message, User
 from yuxi.storage.redis import get_arq_redis_settings
 from yuxi.utils.auth_utils import AuthUtils
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -87,6 +91,7 @@ SUPPORTED_RUN_TYPES = {"chat", "resume", "subagent"}
 WORKER_ID = f"worker-{uuid.uuid4().hex}"
 _RECONCILIATION_TASK_KEY = "agent_run_reconciliation_task"
 _TASK_RECONCILIATION_TASK_KEY = "durable_task_reconciliation_task"
+_SANDBOX_LIFECYCLE_TASK_KEY = "sandbox_lifecycle_task"
 
 
 def worker_max_jobs() -> int:
@@ -129,8 +134,15 @@ async def _validate_run_workdir_binding(run: AgentRun) -> AuthorizedWorkdir:
         persisted_scope = str(run.runtime_scope_id or "").strip()
         if not persisted_scope:
             raise NonRetryableRunError("AgentRun 缺少 runtime scope")
-        if run.run_type in {"chat", "resume"} and persisted_scope != str(run.conversation_thread_id):
-            raise NonRetryableRunError(f"{str(run.run_type).capitalize()} AgentRun 的 runtime scope 非法")
+        if run.run_type in {"chat", "resume"}:
+            scope = SandboxScope.from_runtime_scope(uid=str(run.uid), runtime_scope_id=persisted_scope)
+            if scope.kind == "thread":
+                if persisted_scope != str(run.conversation_thread_id):
+                    raise NonRetryableRunError(f"{str(run.run_type).capitalize()} AgentRun 的 runtime scope 非法")
+            elif scope.agent_slug != str(run.agent_slug) or scope.project_id != str(binding.project_id):
+                raise NonRetryableRunError(
+                    f"{str(run.run_type).capitalize()} AgentRun 的专属沙盒 scope 与 Agent/Project 不一致"
+                )
 
         if run.run_type == "subagent":
             creator_id = str(run.created_by_run_id or "").strip()
@@ -323,6 +335,14 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
             raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
         if not current.runtime_cleanup_pending:
             return True
+        sandbox_row = await db.scalar(
+            select(AgentSandbox).where(AgentSandbox.scope_key == runtime_scope_id)
+        )
+        if sandbox_row is not None and sandbox_row.lifecycle in {"persistent", "resident"}:
+            # 专属长驻沙盒的 runtime 归生命周期 supervisor 管理，Run 终态只清 fence。
+            current.runtime_cleanup_pending = False
+            await db.flush()
+            return True
         result = await db.execute(
             select(AgentRun.id)
             .where(
@@ -350,9 +370,8 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
 
     await asyncio.wait_for(
         asyncio.to_thread(
-            get_sandbox_provider().release,
-            target.runtime_scope_id,
-            uid=target.uid,
+            get_sandbox_provider().release_scope,
+            SandboxScope.from_runtime_scope(uid=target.uid, runtime_scope_id=target.runtime_scope_id),
             clear_cache_on_delete_failure=True,
             workdir_path=target.workdir_path,
         ),
@@ -1628,6 +1647,20 @@ async def _reconcile_durable_tasks_forever() -> None:
             logger.error("Failed to reconcile durable tasks", exc_info=True)
 
 
+async def _reconcile_sandbox_lifecycle_forever() -> None:
+    """周期收敛专属沙盒：保活、空闲 suspend 与 inventory 对账。"""
+    while True:
+        await asyncio.sleep(sandbox_lifecycle_interval_seconds())
+        try:
+            counts = await run_sandbox_lifecycle_tick()
+            if counts["suspended"] or counts["generation_changed"]:
+                logger.info("Sandbox lifecycle tick: %s", counts)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.error("Failed to reconcile sandbox lifecycle", exc_info=True)
+
+
 async def _publish_task_reconciliation_health() -> None:
     """续租 worker 的 Durable Task 收敛与 pending 补发能力。"""
     redis = await get_redis_client()
@@ -1688,8 +1721,13 @@ async def _worker_startup(ctx):
     await recover_scheduled_dispatches()
     await claim_and_dispatch_due_jobs()
     await _publish_reconciliation_health()
+    try:
+        await run_sandbox_lifecycle_tick()
+    except Exception:
+        logger.error("Failed to run initial sandbox lifecycle tick", exc_info=True)
     ctx[_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_agent_run_leases_forever())
     ctx[_TASK_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_durable_tasks_forever())
+    ctx[_SANDBOX_LIFECYCLE_TASK_KEY] = asyncio.create_task(_reconcile_sandbox_lifecycle_forever())
 
 
 async def _worker_shutdown(ctx):
@@ -1699,6 +1737,7 @@ async def _worker_shutdown(ctx):
         reconciliation_tasks = [
             ctx.pop(_RECONCILIATION_TASK_KEY, None),
             ctx.pop(_TASK_RECONCILIATION_TASK_KEY, None),
+            ctx.pop(_SANDBOX_LIFECYCLE_TASK_KEY, None),
         ]
         reconciliation_tasks = [task for task in reconciliation_tasks if task is not None]
         for task in reconciliation_tasks:

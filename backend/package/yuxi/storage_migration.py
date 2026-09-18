@@ -13,6 +13,7 @@ from yuxi.config import get_legacy_storage_dir
 from yuxi.config.options import ensure_options_in_db
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.storage.postgres.manager import (
+    AGENT_SANDBOX_SCHEMA_STATEMENTS,
     BUSINESS_SCHEMA_VERSION,
     KNOWLEDGE_SCHEMA_VERSION,
     PROJECT_AGENT_SCHEMA_STATEMENTS,
@@ -109,7 +110,11 @@ async def _ensure_yuanlei_schema() -> None:
     # 不可独立的扩展内容：Project Git 与 ProjectAgent 外键依赖上游 business 域的
     # users/projects/agents，因此 yuanlei domain 必须在 business schema 收敛后执行。
     async with pg_manager.async_engine.begin() as connection:
-        for statement in (*PROJECT_GIT_SCHEMA_STATEMENTS, *PROJECT_AGENT_SCHEMA_STATEMENTS):
+        for statement in (
+            *PROJECT_GIT_SCHEMA_STATEMENTS,
+            *PROJECT_AGENT_SCHEMA_STATEMENTS,
+            *AGENT_SANDBOX_SCHEMA_STATEMENTS,
+        ):
             await connection.execute(text(statement))
 
 
@@ -151,7 +156,7 @@ async def main() -> None:
                 "yuanlei",
                 yuanlei_version,
                 YUANLEI_SCHEMA_VERSION,
-                upgrade_from=(1, 2),
+                upgrade_from=(1, 2, 3),
             )
 
             if business_version is None:
@@ -173,10 +178,12 @@ async def main() -> None:
             if yuanlei_version is None:
                 await _ensure_yuanlei_schema()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
-            elif yuanlei_version in {1, 2}:
+            elif yuanlei_version in {1, 2, 3}:
                 if yuanlei_version == 1:
                     await pg_manager.upgrade_yuanlei_schema_v1_to_v2()
-                await pg_manager.upgrade_yuanlei_schema_v2_to_v3()
+                if yuanlei_version in {1, 2}:
+                    await pg_manager.upgrade_yuanlei_schema_v2_to_v3()
+                await pg_manager.upgrade_yuanlei_schema_v3_to_v4()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             if knowledge_version is None:

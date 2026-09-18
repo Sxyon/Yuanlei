@@ -56,7 +56,7 @@ Owner：backend/package/yuxi/agents/backends/sandbox/provider.py
 
 新增作用域概念 `SandboxScope`：
 
-- `thread`：现状，`scope_key = f"thread:{uid}:{thread_id}"`，`sandbox_id = sha256(scope_key)[:12]`，用于未开启专属的 agent。
+- `thread`：现状，缓存键沿用 `{uid}::{thread_id}` 与既有 `sandbox_id` 派生（M2.3 决定不改变旧派生，避免存量容器失联），用于未开启专属的 agent。
 - `agent_project`：`scope_key = f"agent-project:{uid}:{agent_slug}:{project_id}"`，`sandbox_id = sha256(scope_key)[:12]`，用于开启专属的 agent；一个容器只服务一个 Project Workdir，`workdir_path` 校验保持现有一致性语义。
 
 Run 的 `runtime_scope_id` 按 agent 策略解析为对应 scope：专属时为 `agent:<agent_slug>:project:<project_id>`，否则保持会话线程。子 Agent 继承根 Run 的 scope（现状不变）。同一线程切换 agent 时，不同 agent 可分别命中各自 scope。
@@ -105,6 +105,7 @@ sandbox: {
   - 记录 `active` 且 generation 匹配、凭证指纹一致 → 直接复用；
   - `suspended` 或指纹不一致 → `resume_policy=auto` 时重建（重新解析凭据注入 env、generation 更新、事件 `yuxi.sandbox_rebuilt`）；`confirm` 时先产生 `sandbox_rebuild_required` 中断，用户确认后重建；
   - 容器存在但 generation 不匹配（例如被 reaper 回收后重建过）→ 按 suspend 语义处理，不静默接管旧容器。
+- **创建时机**：专属策略（dedicated）在 Run 准备阶段调用 `ensure_ready` 预创建 runtime；`runtime_scope_id` 在 FIFO 派发创建 Run 时按策略固化为 `agent-project:` scope key，resume 与 SubAgent 继承父 Run 的 runtime scope。这是对「首次沙盒操作才惰性创建」的显式偏离，仅限 dedicated，shared 路径保持惰性不变。`confirm` 策略在确认 UI 落地前以结构化运行失败显式阻断，不静默降级为 auto。
 - **凭证指纹**：`agent_sandboxes.credential_fingerprint` 保存最近一次注入解析结果的哈希；凭据轮换、`agent_envs` 变更、镜像/策略变更都使指纹变化并在下次使用触发重建。
 
 ### 5. 配置、权限与配额
@@ -117,7 +118,7 @@ sandbox: {
 
 - `agent_sandboxes`：`id、uid、agent_slug、project_id、scope_key(unique)、sandbox_id(unique)、generation、mode、lifecycle、resume_policy、status、idle_timeout_seconds、credential_fingerprint、lease_owner_kind、lease_owner_id、lease_expires_at、lease_heartbeat_at、last_activity_at、last_keepalive_at、suspended_at、error_code、error_message、created_at、updated_at`；唯一约束 `(uid, agent_slug, project_id)`。
 - `agent_sandbox_events`：`id、sandbox_id、kind(created|keepalive|suspend|rebuilt|rebuilt_confirmed|released|manual_suspend|manual_rebuild|error)、actor_kind、actor_id、payload_json、created_at`；有界保留，供管理面板时间线与审计。
-- 版本：与《智能体驱动沙盒内 opencode/codex 编码执行》同期落地时共用一次 yuanlei 升级（新增表一起进 v4）；分开落地则按落地顺序递增，后者顺延。迁移幂等、FK 指向 business 域 users/projects、在 business 收敛之后执行。
+- 版本：专属沙盒表已随 M2.2 进入 yuanlei v4（`upgrade_yuanlei_schema_v3_to_v4`）；编码会话表在后续阶段顺延 v5。迁移幂等、FK 指向 business 域 users/agents/projects、在 business 收敛之后执行。
 
 ### 7. provider 与 worker 改动
 

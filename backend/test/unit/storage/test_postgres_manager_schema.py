@@ -238,6 +238,48 @@ async def test_yuanlei_v2_to_v3_upgrade_creates_project_agents_idempotently():
     assert "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug" in statements
 
 
+def test_agent_sandbox_schema_owns_owner_foreign_keys_and_uniques():
+    """专属沙盒表在数据库层拒绝悬空归属并保证每 (uid, agent, project) 单条记录。"""
+    assert "agent_sandboxes" in BusinessBase.metadata.tables
+    table = BusinessBase.metadata.tables["agent_sandboxes"]
+    foreign_keys = {constraint.name for constraint in table.foreign_key_constraints}
+    assert foreign_keys == {
+        "fk_agent_sandboxes_uid_users",
+        "fk_agent_sandboxes_agent_slug",
+        "fk_agent_sandboxes_project_id",
+    }
+    constraint_names = {constraint.name for constraint in table.constraints}
+    assert {
+        "uq_agent_sandboxes_owner",
+        "uq_agent_sandboxes_scope_key",
+        "uq_agent_sandboxes_sandbox_id",
+    }.issubset(constraint_names)
+    assert "ix_agent_sandboxes_status" in {index.name for index in table.indexes}
+
+    events = BusinessBase.metadata.tables["agent_sandbox_events"]
+    assert "ix_agent_sandbox_events_sandbox_created" in {index.name for index in events.indexes}
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v3_to_v4_upgrade_creates_agent_sandboxes_idempotently():
+    """专属沙盒表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v3_to_v4()
+        await manager.upgrade_yuanlei_schema_v3_to_v4()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS agent_sandboxes" in statements
+    assert "REFERENCES users(uid) ON DELETE CASCADE" in statements
+    assert "REFERENCES agents(slug) ON DELETE CASCADE" in statements
+    assert "REFERENCES projects(id) ON DELETE CASCADE" in statements
+    assert "UNIQUE (uid, agent_slug, project_id)" in statements
+    assert "UNIQUE (scope_key)" in statements
+    assert "UNIQUE (sandbox_id)" in statements
+    assert "CREATE INDEX IF NOT EXISTS ix_agent_sandboxes_status" in statements
+    assert "CREATE TABLE IF NOT EXISTS agent_sandbox_events" in statements
+    assert "ix_agent_sandbox_events_sandbox_created" in statements
+
+
 @pytest.mark.asyncio
 async def test_ensure_business_schema_cleans_duplicate_active_agent_runs_before_unique_index():
     async with _recording_manager() as (manager, connection):

@@ -21,6 +21,7 @@ from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.agent_run_request_repository import AgentRunRequestRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.services.agent_run_service import enqueue_agent_run
+from yuxi.services.sandbox_lifecycle_service import resolve_dispatch_runtime_scope
 from yuxi.services.workdir_service import (
     WorkdirBinding,
     resolve_conversation_workdir_binding,
@@ -595,12 +596,19 @@ async def _dispatch_locked_head(
     repo = AgentRunRequestRepository(db)
     run_repo = AgentRunRepository(db)
     run_id = str(uuid.uuid4())
+    runtime_scope_id = await resolve_dispatch_runtime_scope(
+        db=db,
+        uid=str(head.uid),
+        agent_slug=head.agent_slug,
+        project_id=workdir_binding.project_id,
+        conversation_thread_id=head.conversation_thread_id,
+    )
     try:
         async with db.begin_nested():
             await run_repo.create_run(
                 run_id=run_id,
                 conversation_thread_id=head.conversation_thread_id,
-                runtime_scope_id=head.conversation_thread_id,
+                runtime_scope_id=runtime_scope_id,
                 agent_slug=head.agent_slug,
                 uid=head.uid,
                 request_id=head.request_id,

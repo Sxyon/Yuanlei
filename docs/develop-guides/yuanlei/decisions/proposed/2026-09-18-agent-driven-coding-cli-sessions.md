@@ -180,7 +180,7 @@ pending → starting → running(turn) → idle | awaiting_plan_approval | await
 - **跨 Run 恢复**：`resume` 由该提案的 `ensure_ready` 决策复用或重建 runtime（workdir 字节保留，generation 更新）→ 用原生 session ref 恢复 CLI 会话；原生状态丢失（tmpfs/版本变化）时降级为「新 CLI 会话 + 平台侧上下文摘要」，并在事件中标明 `resume_degraded`，不伪装连续。
 - **并发**：同一沙盒允许多会话存在，但通过执行租约串行；每会话单 active turn，scope 级活跃会话上限由该提案的配额配置控制，超出显式拒绝。
 
-### 8. 数据模型（yuanlei 域 v3 → v4）
+### 8. 数据模型（yuanlei 域 v4 → v5）
 
 新增四表（`manager.py` yuanlei 域语句 + `storage_migration.py` 幂等升级链 + `_require_supported_version` 的 `upgrade_from` 扩展）：
 
@@ -249,7 +249,7 @@ pending → starting → running(turn) → idle | awaiting_plan_approval | await
 | 终端接管期间 agent 工具返回 busy，交还后恢复 | 双源同时输入 | 终端服务 + 会话状态机 | P5 浏览器 E2E + `pytest test/integration/coding/test_terminal_ticket.py` | 接管中 `coding_session_send` 返回 `session_attached_by_user`；过期 ticket 被拒 | Not run |
 | 沙盒保活与清理 fence：活跃会话不被 reaper 回收，会话终止后 runtime 收敛 | 长驻容器泄漏或 Run 清理误删活跃会话沙盒 | `provider` + `_release_runtime_if_idle` 扩展 | `pytest test/integration/coding/test_runtime_lifecycle.py` | 无会话时保持现有清理行为；会话活跃时清理请求返回不释放 | Not run |
 | CLI 事件归一化稳定，未知事件不静默丢弃 | CLI 升级后事件丢失无告警 | 适配器 `parse_stream` | 录制 fixtures 的合同测试 `pytest test/unit/coding/test_adapter_events.py` | 注入未知 kind 断言产生 `warning` 事件而非丢弃 | Not run |
-| yuanlei v3→v4 迁移幂等且不触碰 business/knowledge 域 | 迁移重复执行报错或越域 | `storage_migration.py` + `manager.py` | `pytest test/integration/services/test_schema_migration_version.py` | 连续两次迁移；断言 business/knowledge 版本与表结构不变 | Not run |
+| yuanlei v4→v5 迁移幂等且不触碰 business/knowledge 域 | 迁移重复执行报错或越域 | `storage_migration.py` + `manager.py` | `pytest test/integration/services/test_schema_migration_version.py` | 连续两次迁移；断言 business/knowledge 版本与表结构不变 | Not run |
 | 越权隔离：他人会话/终端/凭据不可读 | 跨 uid 读取或接管 | 路由层 + repository 可见性 | `pytest test/integration/coding/test_coding_authz.py` | 跨 uid 请求返回 404/403，且无侧信道差异 | Not run |
 | 自主选择：不可用执行器显式失败，无隐藏回退 | 静默换执行器导致用户失去控制 | `coding_*` 工具 + allowlist | 单测 + E2E | 只有 opencode 有凭据时以 codex 启动必须失败并提示 | Not run |
 

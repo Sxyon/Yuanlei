@@ -626,6 +626,69 @@ async def test_yuanlei_v2_to_v3_converges_project_agents_idempotently() -> None:
         await admin_engine.dispose()
 
 
+async def test_yuanlei_v3_to_v4_converges_agent_sandboxes_idempotently() -> None:
+    """真实 PostgreSQL 从缺少专属沙盒表的 yuanlei v3 形态幂等收敛到 v4。"""
+    schema = f"pytest_agent_sandboxes_{uuid.uuid4().hex[:16]}"
+    admin_engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    scoped_engine = None
+    try:
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        scoped_engine = create_async_engine(
+            os.environ["POSTGRES_URL"],
+            pool_pre_ping=True,
+            connect_args={"server_settings": {"search_path": schema}},
+        )
+        manager = _scoped_manager(scoped_engine)
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE IF EXISTS agent_sandbox_events"))
+            await connection.execute(text("DROP TABLE IF EXISTS agent_sandboxes"))
+
+        await manager.upgrade_yuanlei_schema_v3_to_v4()
+        await manager.upgrade_yuanlei_schema_v3_to_v4()
+
+        async with scoped_engine.connect() as connection:
+            table_count = await connection.scalar(
+                text(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() "
+                    "AND table_name IN ('agent_sandboxes', 'agent_sandbox_events')"
+                )
+            )
+            assert table_count == 2
+            constraint_names = {
+                row.conname
+                for row in (
+                    await connection.execute(
+                        text(
+                            """
+                            SELECT con.conname
+                            FROM pg_constraint AS con
+                            JOIN pg_namespace AS ns ON ns.oid = con.connamespace
+                            WHERE ns.nspname = current_schema()
+                              AND con.conrelid = 'agent_sandboxes'::regclass
+                            """
+                        )
+                    )
+                )
+            }
+            assert {
+                "fk_agent_sandboxes_uid_users",
+                "fk_agent_sandboxes_agent_slug",
+                "fk_agent_sandboxes_project_id",
+                "uq_agent_sandboxes_owner",
+                "uq_agent_sandboxes_scope_key",
+                "uq_agent_sandboxes_sandbox_id",
+            }.issubset(constraint_names)
+    finally:
+        if scoped_engine is not None:
+            await scoped_engine.dispose()
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await admin_engine.dispose()
+
+
 async def test_project_agents_enforce_project_agent_boundaries() -> None:
     """真实 PostgreSQL 拒绝悬空绑定与重复绑定。"""
     schema = f"pytest_project_agent_bounds_{uuid.uuid4().hex[:16]}"

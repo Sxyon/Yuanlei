@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 3
+YUANLEI_SCHEMA_VERSION = 4
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -335,6 +335,57 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id ON project_agents(project_id)",
     "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug ON project_agents(agent_slug)",
+)
+AGENT_SANDBOX_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS agent_sandboxes (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL CONSTRAINT fk_agent_sandboxes_uid_users
+            REFERENCES users(uid) ON DELETE CASCADE,
+        agent_slug VARCHAR(80) NOT NULL CONSTRAINT fk_agent_sandboxes_agent_slug
+            REFERENCES agents(slug) ON DELETE CASCADE,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_agent_sandboxes_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        scope_key VARCHAR(191) NOT NULL,
+        sandbox_id VARCHAR(64) NOT NULL,
+        generation VARCHAR(128),
+        lifecycle VARCHAR(20) NOT NULL DEFAULT 'persistent',
+        resume_policy VARCHAR(20) NOT NULL DEFAULT 'auto',
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        idle_timeout_seconds INTEGER,
+        credential_fingerprint VARCHAR(128),
+        lease_owner_kind VARCHAR(32),
+        lease_owner_id VARCHAR(64),
+        lease_expires_at TIMESTAMP WITHOUT TIME ZONE,
+        lease_heartbeat_at TIMESTAMP WITHOUT TIME ZONE,
+        last_activity_at TIMESTAMP WITHOUT TIME ZONE,
+        last_keepalive_at TIMESTAMP WITHOUT TIME ZONE,
+        suspended_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        error_message TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_agent_sandboxes_owner UNIQUE (uid, agent_slug, project_id),
+        CONSTRAINT uq_agent_sandboxes_scope_key UNIQUE (scope_key),
+        CONSTRAINT uq_agent_sandboxes_sandbox_id UNIQUE (sandbox_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_agent_sandboxes_status ON agent_sandboxes(status)",
+    """
+    CREATE TABLE IF NOT EXISTS agent_sandbox_events (
+        id VARCHAR(64) PRIMARY KEY,
+        sandbox_id VARCHAR(64) NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        actor_kind VARCHAR(32),
+        actor_id VARCHAR(64),
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    (
+        "CREATE INDEX IF NOT EXISTS ix_agent_sandbox_events_sandbox_created "
+        "ON agent_sandbox_events(sandbox_id, created_at)"
+    ),
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -788,6 +839,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_AGENT_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v3_to_v4(self) -> None:
+        """为 Agent 专属沙盒增加所有权、生命周期与事件表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in AGENT_SANDBOX_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

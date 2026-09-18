@@ -45,7 +45,7 @@
 
 以下为两份提案的公共接口，M1/M2 实现不得各自解释：
 
-1. **scope 与 id**：`thread:{uid}:{thread_id}` 或 `agent-project:{uid}:{agent_slug}:{project_id}`；`sandbox_id = sha256(scope_key)[:12]`；Run 的 `runtime_scope_id` 保持不透明字符串，校验同时接受两种形态。
+1. **scope 与 id**：线程 scope 沿用既有的 `{uid}::{thread_id}` 缓存键与 `sha256("{uid}:{thread_id}")[:12]` 派生，避免存量容器失联（M2.3 落地决策）；agent-project scope 使用 `agent-project:{uid}:{agent_slug}:{project_id}` 且 `sandbox_id = sha256(scope_key)[:12]`；Run 的 `runtime_scope_id` 保持不透明字符串，校验同时接受两种形态。
 2. **执行租约**：`sandbox_busy(owner_kind, owner_id, expires_at)`；TTL 120s、心跳 30s（与 Run lease 对齐）；获取失败进入等待并产生 `yuxi.sandbox_waiting`，超时（默认 600s）返回结构化错误；接管前必须校验 generation。
 3. **凭证/环境指纹**：`credential_fingerprint = hash(解析后的非密配置 + 密文版本 + 相关沙盒 env 贡献)`；由凭据解析输出，沙盒层只存储与比较。
 4. **事件命名**：`yuxi.sandbox_waiting`、`yuxi.sandbox_rebuilt`、`yuxi.sandbox_rebuild_required`、`yuxi.coding_session_event`；未知事件记 `warning`，禁止静默丢弃。

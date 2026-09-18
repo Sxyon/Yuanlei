@@ -45,7 +45,9 @@ class _OwnedAsyncHttpClient:
 
 
 def _install_async_file_client(monkeypatch, backend, file_client):
-    backend._provider = SimpleNamespace(get=lambda *_args, **_kwargs: SimpleNamespace(sandbox_url="http://sandbox"))
+    backend._provider = SimpleNamespace(
+        get_scope=lambda *_args, **_kwargs: SimpleNamespace(sandbox_url="http://sandbox")
+    )
     http_client = _OwnedAsyncHttpClient()
     monkeypatch.setattr(sandbox_backend_module.httpx, "AsyncClient", lambda **_kwargs: http_client)
 
@@ -106,6 +108,35 @@ def test_create_agent_composite_backend_uses_sandbox_filesystem(monkeypatch):
     assert backend.default._create_if_missing is True
     assert backend.routes == {}
     assert backend.artifacts_root == f"{WORKDIR_PATH}/outputs"
+
+
+def test_create_agent_composite_backend_uses_dedicated_sandbox_scope(monkeypatch):
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+    context = SimpleNamespace(
+        uid="user-1",
+        thread_id="thread-1",
+        runtime_scope_id="agent-project:user-1:coder:project-1",
+        workdir_relative_path=WORKDIR_RELATIVE_PATH,
+    )
+
+    backend = create_agent_composite_backend(context)
+
+    assert isinstance(backend.default, ProvisionerSandboxBackend)
+    assert backend.default._scope.kind == "agent_project"
+    assert backend.default._scope.cache_key == "agent-project:user-1:coder:project-1"
+
+
+def test_create_agent_composite_backend_rejects_scope_uid_mismatch(monkeypatch):
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+    context = SimpleNamespace(
+        uid="user-2",
+        thread_id="thread-1",
+        runtime_scope_id="agent-project:user-1:coder:project-1",
+        workdir_relative_path=WORKDIR_RELATIVE_PATH,
+    )
+
+    with pytest.raises(ValueError, match="uid"):
+        create_agent_composite_backend(context)
 
 
 def test_create_agent_composite_backend_derives_virtual_workdir_from_relative_path(monkeypatch):
@@ -821,8 +852,8 @@ def test_provisioner_uses_runtime_scope_directly(monkeypatch) -> None:
     provider_calls = []
 
     class FakeProvider:
-        def get(self, thread_id, **kwargs):
-            provider_calls.append((thread_id, kwargs))
+        def get_scope(self, scope, **kwargs):
+            provider_calls.append((scope, kwargs))
             return SimpleNamespace(sandbox_url="http://sandbox")
 
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: FakeProvider())
@@ -836,17 +867,14 @@ def test_provisioner_uses_runtime_scope_directly(monkeypatch) -> None:
     client = backend._get_client()
 
     assert client.url == "http://sandbox"
-    assert provider_calls == [
-        (
-            "child-thread",
-            {
-                "uid": "user-1",
-                "create_if_missing": True,
-                "inherit_env": True,
-                "workdir_path": None,
-            },
-        )
-    ]
+    assert len(provider_calls) == 1
+    scope, kwargs = provider_calls[0]
+    assert scope.cache_key == "user-1::child-thread"
+    assert kwargs == {
+        "create_if_missing": True,
+        "inherit_env": True,
+        "workdir_path": None,
+    }
 
 
 def test_provisioner_denies_reads_outside_allowed_roots(monkeypatch) -> None:
