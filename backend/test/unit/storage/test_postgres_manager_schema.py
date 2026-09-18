@@ -304,6 +304,34 @@ async def test_yuanlei_v4_to_v5_upgrade_creates_coding_credentials_idempotently(
     assert "uq_coding_credentials_global" in statements
 
 
+def test_coding_session_schema_owns_identity_and_seq_uniques():
+    """会话表拥有用户/项目归属与 turn/事件 seq 唯一约束。"""
+    assert {"coding_sessions", "coding_session_turns", "coding_session_events"}.issubset(
+        BusinessBase.metadata.tables
+    )
+    sessions = BusinessBase.metadata.tables["coding_sessions"]
+    foreign_keys = {constraint.name for constraint in sessions.foreign_key_constraints}
+    assert foreign_keys == {"fk_coding_sessions_uid_users", "fk_coding_sessions_project_id"}
+    turns = BusinessBase.metadata.tables["coding_session_turns"]
+    assert "uq_coding_session_turns_seq" in {constraint.name for constraint in turns.constraints}
+    events = BusinessBase.metadata.tables["coding_session_events"]
+    assert "uq_coding_session_events_seq" in {constraint.name for constraint in events.constraints}
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v5_to_v6_upgrade_creates_coding_sessions_idempotently():
+    """编码会话三表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v5_to_v6()
+        await manager.upgrade_yuanlei_schema_v5_to_v6()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS coding_sessions" in statements
+    assert "CREATE TABLE IF NOT EXISTS coding_session_turns" in statements
+    assert "CREATE TABLE IF NOT EXISTS coding_session_events" in statements
+    assert "UNIQUE (session_id, seq)" in statements
+
+
 @pytest.mark.asyncio
 async def test_ensure_business_schema_cleans_duplicate_active_agent_runs_before_unique_index():
     async with _recording_manager() as (manager, connection):

@@ -87,8 +87,11 @@ M0 契约探针与接口冻结
 - 退出证据：编码提案矩阵第 1、3 行以单测覆盖（凭据缺失/环境映射/指纹触发重建）；第 5、7、10 行随 M5 工具与事件一起验证。
 - 依赖：M1（凭据与指纹）、M3（专属 scope 下的串行）。
 
-### M5 持久编码会话
+### M5 持久编码会话（M5a 完成，M5b 待做）
 
+- 进度（M5a，2026-09-18）：`coding_sessions/coding_session_turns/coding_session_events` 三表随 yuanlei v5→v6 落地（ORM + DDL + 迁移链 + 真实 PG 幂等测试）；`CodingSessionRepository`（会话/ turn /事件，seq 会话内递增、after_seq 回放）；`CodingSessionService` 显式状态机（pending/starting/idle/running/awaiting_plan_approval/suspended/终态）、`create_session`/`start_turn`/`finish_turn`/`record_events`，归一事件直接持久化。工具面 `coding_*` 与计划审批随 M5b 落地（复用 M4 适配器）。
+- 证据：会话服务 4 用例 + 迁移单元/集成（v5→v6 幂等）+ 模型约束测试；全量单测 2390 passed（仅 3 个既有 xlrd 环境失败）。
+- 待做（M5b）：`coding_*` 工具（start/send/status/await/control/list）与计划审批 interrupt；会话 supervisor（turn 泵送、预算硬执行）；跨 Run 恢复与 `resume_degraded`；Run SSE `yuxi.coding_session_event` 投影与前端最小会话卡片。
 - 交付：`coding_sessions/turns/events`；会话 supervisor（与 M2 同一 worker 基础设施）；跨 Run 恢复与 `resume_degraded`；`resume_policy=confirm` 重建确认路径；预算硬执行。
 - 退出证据：编码提案矩阵第 4、6、8 行；沙盒提案矩阵第 4 行的 confirm 路径。
 

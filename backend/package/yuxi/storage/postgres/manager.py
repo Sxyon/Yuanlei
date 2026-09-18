@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 5
+YUANLEI_SCHEMA_VERSION = 6
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -418,6 +418,74 @@ CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_coding_credentials_global "
         "ON coding_credentials(executor, provider) WHERE scope = 'global'"
     ),
+)
+CODING_SESSION_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS coding_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL CONSTRAINT fk_coding_sessions_uid_users
+            REFERENCES users(uid) ON DELETE CASCADE,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_coding_sessions_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        conversation_id INTEGER,
+        parent_run_id VARCHAR(64),
+        runtime_scope_id VARCHAR(191) NOT NULL,
+        executor VARCHAR(16) NOT NULL,
+        mode VARCHAR(16) NOT NULL DEFAULT 'headless',
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        title VARCHAR(255),
+        workdir_path VARCHAR(512) NOT NULL,
+        worktree_ref VARCHAR(255),
+        sandbox_id VARCHAR(64),
+        sandbox_generation VARCHAR(128),
+        credential_fingerprint VARCHAR(128),
+        cli_session_ref VARCHAR(191),
+        policy_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        budget_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        usage_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        last_activity_at TIMESTAMP WITHOUT TIME ZONE,
+        suspended_at TIMESTAMP WITHOUT TIME ZONE,
+        terminal_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        error_message TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_coding_sessions_uid_status ON coding_sessions(uid, status)",
+    "CREATE INDEX IF NOT EXISTS ix_coding_sessions_conversation ON coding_sessions(conversation_id)",
+    """
+    CREATE TABLE IF NOT EXISTS coding_session_turns (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) NOT NULL CONSTRAINT fk_coding_session_turns_session_id
+            REFERENCES coding_sessions(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        request_text TEXT NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        result_summary TEXT,
+        usage_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        started_at TIMESTAMP WITHOUT TIME ZONE,
+        ended_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        error_message TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_coding_session_turns_seq UNIQUE (session_id, seq)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS coding_session_events (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) NOT NULL CONSTRAINT fk_coding_session_events_session_id
+            REFERENCES coding_sessions(id) ON DELETE CASCADE,
+        turn_id VARCHAR(64),
+        seq INTEGER NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_coding_session_events_seq UNIQUE (session_id, seq)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_coding_session_events_session_created ON coding_session_events(session_id, created_at)",
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -885,6 +953,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in CODING_CREDENTIAL_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v5_to_v6(self) -> None:
+        """为编码执行器增加会话、turn 与归一事件表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CODING_SESSION_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

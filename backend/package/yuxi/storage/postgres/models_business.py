@@ -755,6 +755,100 @@ class CodingCredential(Base):
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
 
+class CodingSession(Base):
+    """编码执行器会话：跨 Run 的多轮协作与产物所有权（yuanlei 域）。"""
+
+    __tablename__ = "coding_sessions"
+    __table_args__ = (
+        Index("ix_coding_sessions_uid_status", "uid", "status"),
+        Index("ix_coding_sessions_conversation", "conversation_id"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="会话 UUID")
+    uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE", name="fk_coding_sessions_uid_users"),
+        nullable=False,
+        comment="所有者 uid",
+    )
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_coding_sessions_project_id"),
+        nullable=False,
+        comment="绑定 Project ID",
+    )
+    conversation_id = Column(Integer, nullable=True, comment="创建会话的 Conversation（可空）")
+    parent_run_id = Column(String(64), nullable=True, comment="创建会话的根 Run id")
+    runtime_scope_id = Column(String(191), nullable=False, comment="沙盒 runtime scope key")
+    executor = Column(String(16), nullable=False, comment="opencode/codex")
+    mode = Column(String(16), nullable=False, default="headless", comment="headless/session/terminal")
+    status = Column(String(32), nullable=False, default="pending", comment="会话状态机")
+    title = Column(String(255), nullable=True)
+    workdir_path = Column(String(512), nullable=False, comment="UserWorkspace 相对 Workdir")
+    worktree_ref = Column(String(255), nullable=True, comment="可选 Git worktree 引用")
+    sandbox_id = Column(String(64), nullable=True)
+    sandbox_generation = Column(String(128), nullable=True)
+    credential_fingerprint = Column(String(128), nullable=True)
+    cli_session_ref = Column(String(191), nullable=True, comment="CLI 原生会话引用")
+    policy_json = Column(JSON_VALUE, nullable=False, default=dict)
+    budget_json = Column(JSON_VALUE, nullable=False, default=dict)
+    usage_json = Column(JSON_VALUE, nullable=False, default=dict)
+    last_activity_at = Column(DateTime, nullable=True)
+    suspended_at = Column(DateTime, nullable=True)
+    terminal_at = Column(DateTime, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class CodingSessionTurn(Base):
+    """编码会话内的一次「发消息 → CLI 执行到停止」（yuanlei 域）。"""
+
+    __tablename__ = "coding_session_turns"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_coding_session_turns_seq"),)
+
+    id = Column(String(64), primary_key=True, comment="turn UUID")
+    session_id = Column(
+        String(64),
+        ForeignKey("coding_sessions.id", ondelete="CASCADE", name="fk_coding_session_turns_session_id"),
+        nullable=False,
+        comment="所属会话",
+    )
+    seq = Column(Integer, nullable=False, comment="会话内递增序号")
+    request_text = Column(Text, nullable=False, comment="本轮输入")
+    status = Column(String(16), nullable=False, default="pending", comment="pending/running/completed/failed/cancelled")
+    result_summary = Column(Text, nullable=True)
+    usage_json = Column(JSON_VALUE, nullable=False, default=dict)
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+
+
+class CodingSessionEvent(Base):
+    """编码会话归一化事件（yuanlei 域）；seq 在会话内递增，供 SSE 回放。"""
+
+    __tablename__ = "coding_session_events"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_coding_session_events_seq"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="事件 UUID")
+    session_id = Column(
+        String(64),
+        ForeignKey("coding_sessions.id", ondelete="CASCADE", name="fk_coding_session_events_session_id"),
+        nullable=False,
+        comment="所属会话",
+    )
+    turn_id = Column(String(64), nullable=True, comment="所属 turn（可空）")
+    seq = Column(Integer, nullable=False, comment="会话内递增序号")
+    kind = Column(String(32), nullable=False, comment="session_status/output_delta/tool_call/usage/error 等")
+    payload_json = Column(JSON_VALUE, nullable=False, default=dict)
+    created_at = Column(DateTime, default=utc_now_naive)
+
+
 class Skill(Base):
     """Skill 元数据模型（内容存文件系统，索引存数据库）"""
 

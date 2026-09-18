@@ -16,6 +16,7 @@ from yuxi.storage.postgres.manager import (
     AGENT_SANDBOX_SCHEMA_STATEMENTS,
     BUSINESS_SCHEMA_VERSION,
     CODING_CREDENTIAL_SCHEMA_STATEMENTS,
+    CODING_SESSION_SCHEMA_STATEMENTS,
     KNOWLEDGE_SCHEMA_VERSION,
     PROJECT_AGENT_SCHEMA_STATEMENTS,
     PROJECT_GIT_SCHEMA_STATEMENTS,
@@ -116,6 +117,7 @@ async def _ensure_yuanlei_schema() -> None:
             *PROJECT_AGENT_SCHEMA_STATEMENTS,
             *AGENT_SANDBOX_SCHEMA_STATEMENTS,
             *CODING_CREDENTIAL_SCHEMA_STATEMENTS,
+            *CODING_SESSION_SCHEMA_STATEMENTS,
         ):
             await connection.execute(text(statement))
 
@@ -158,7 +160,7 @@ async def main() -> None:
                 "yuanlei",
                 yuanlei_version,
                 YUANLEI_SCHEMA_VERSION,
-                upgrade_from=(1, 2, 3, 4),
+                upgrade_from=(1, 2, 3, 4, 5),
             )
 
             if business_version is None:
@@ -180,14 +182,16 @@ async def main() -> None:
             if yuanlei_version is None:
                 await _ensure_yuanlei_schema()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
-            elif yuanlei_version in {1, 2, 3, 4}:
+            elif yuanlei_version in {1, 2, 3, 4, 5}:
                 if yuanlei_version == 1:
                     await pg_manager.upgrade_yuanlei_schema_v1_to_v2()
                 if yuanlei_version in {1, 2}:
                     await pg_manager.upgrade_yuanlei_schema_v2_to_v3()
                 if yuanlei_version in {1, 2, 3}:
                     await pg_manager.upgrade_yuanlei_schema_v3_to_v4()
-                await pg_manager.upgrade_yuanlei_schema_v4_to_v5()
+                if yuanlei_version in {1, 2, 3, 4}:
+                    await pg_manager.upgrade_yuanlei_schema_v4_to_v5()
+                await pg_manager.upgrade_yuanlei_schema_v5_to_v6()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             if knowledge_version is None:

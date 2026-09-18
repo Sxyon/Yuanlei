@@ -739,6 +739,66 @@ async def test_yuanlei_v4_to_v5_converges_coding_credentials_idempotently() -> N
         await admin_engine.dispose()
 
 
+async def test_yuanlei_v5_to_v6_converges_coding_sessions_idempotently() -> None:
+    """真实 PostgreSQL 从缺少会话三表的 yuanlei v5 形态幂等收敛到 v6。"""
+    schema = f"pytest_coding_sessions_{uuid.uuid4().hex[:16]}"
+    admin_engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    scoped_engine = None
+    try:
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        scoped_engine = create_async_engine(
+            os.environ["POSTGRES_URL"],
+            pool_pre_ping=True,
+            connect_args={"server_settings": {"search_path": schema}},
+        )
+        manager = _scoped_manager(scoped_engine)
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE IF EXISTS coding_session_events"))
+            await connection.execute(text("DROP TABLE IF EXISTS coding_session_turns"))
+            await connection.execute(text("DROP TABLE IF EXISTS coding_sessions"))
+
+        await manager.upgrade_yuanlei_schema_v5_to_v6()
+        await manager.upgrade_yuanlei_schema_v5_to_v6()
+
+        async with scoped_engine.connect() as connection:
+            table_count = await connection.scalar(
+                text(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() "
+                    "AND table_name IN ('coding_sessions', 'coding_session_turns', 'coding_session_events')"
+                )
+            )
+            assert table_count == 3
+            constraint_names = {
+                row.conname
+                for row in (
+                    await connection.execute(
+                        text(
+                            "SELECT con.conname FROM pg_constraint AS con "
+                            "JOIN pg_namespace AS ns ON ns.oid = con.connamespace "
+                            "WHERE ns.nspname = current_schema() "
+                            "AND con.conname IN ('uq_coding_session_turns_seq', 'uq_coding_session_events_seq', "
+                            "'fk_coding_sessions_uid_users', 'fk_coding_sessions_project_id')"
+                        )
+                    )
+                )
+            }
+            assert constraint_names == {
+                "uq_coding_session_turns_seq",
+                "uq_coding_session_events_seq",
+                "fk_coding_sessions_uid_users",
+                "fk_coding_sessions_project_id",
+            }
+    finally:
+        if scoped_engine is not None:
+            await scoped_engine.dispose()
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await admin_engine.dispose()
+
+
 async def test_project_agents_enforce_project_agent_boundaries() -> None:
     """真实 PostgreSQL 拒绝悬空绑定与重复绑定。"""
     schema = f"pytest_project_agent_bounds_{uuid.uuid4().hex[:16]}"
