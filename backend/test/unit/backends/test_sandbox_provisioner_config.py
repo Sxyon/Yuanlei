@@ -4,6 +4,7 @@ import importlib.util
 import os
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -454,6 +455,195 @@ def test_idle_reaper_does_not_delete_or_forget_new_generation(monkeypatch):
 
     assert backend.deleted == []
     assert reaper._last_activity_at["sandbox-1"][0] == "generation-2"
+
+
+def test_create_request_validates_lifecycle_policy_fields(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+
+    request = module.CreateSandboxRequest(
+        sandbox_id="sandbox-1",
+        thread_id="thread-1",
+        uid="user-1",
+        lifecycle="persistent",
+        idle_timeout_seconds=0,
+    )
+    assert request.lifecycle == "persistent"
+    assert request.idle_timeout_seconds == 0
+
+    with pytest.raises(ValueError):
+        module.CreateSandboxRequest(
+            sandbox_id="sandbox-1",
+            thread_id="thread-1",
+            uid="user-1",
+            lifecycle="forever",
+        )
+    with pytest.raises(ValueError):
+        module.CreateSandboxRequest(
+            sandbox_id="sandbox-1",
+            thread_id="thread-1",
+            uid="user-1",
+            idle_timeout_seconds=-1,
+        )
+
+
+def test_create_sandbox_forwards_lifecycle_policy(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+    calls = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        return module.SandboxRecord(
+            sandbox_id="sandbox-1", sandbox_url="http://sandbox", status="Running"
+        )
+
+    remembered = []
+    monkeypatch.setattr(module, "backend_impl", SimpleNamespace(create=create))
+    monkeypatch.setattr(module.idle_reaper, "touch", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module.idle_reaper, "remember", remembered.append)
+
+    module.create_sandbox(
+        module.CreateSandboxRequest(
+            sandbox_id="sandbox-1",
+            thread_id="thread-1",
+            uid="user-1",
+            lifecycle="persistent",
+            idle_timeout_seconds=1800,
+        )
+    )
+
+    assert calls[0]["lifecycle"] == "persistent"
+    assert calls[0]["idle_timeout_seconds"] == 1800
+    assert [record.sandbox_id for record in remembered] == ["sandbox-1"]
+
+
+def test_memory_backend_record_carries_lifecycle_policy(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+    backend = module.MemoryProvisionerBackend()
+
+    record = backend.create(
+        "sandbox-1", "thread-1", "user-1", lifecycle="resident", idle_timeout_seconds=0
+    )
+    assert record.lifecycle == "resident"
+    assert record.idle_timeout_seconds == 0
+
+    legacy = backend.create("sandbox-2", "thread-1", "user-1")
+    assert legacy.lifecycle is None
+    assert legacy.idle_timeout_seconds is None
+
+
+def test_idle_reaper_respects_per_sandbox_policy(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_IDLE_TIMEOUT_SECONDS", "60")
+    monkeypatch.setenv("SANDBOX_EXEC_TIMEOUT_SECONDS", "1")
+    module = _load_module()
+    deleted = []
+
+    def delete(sandbox_id, *, expected_generation=None):
+        deleted.append(sandbox_id)
+
+    reaper = module.SandboxIdleReaper(SimpleNamespace(delete=delete))
+    reaper.remember(
+        module.SandboxRecord(
+            sandbox_id="resident", sandbox_url="", generation="g1", lifecycle="resident"
+        )
+    )
+    reaper.remember(
+        module.SandboxRecord(
+            sandbox_id="short",
+            sandbox_url="",
+            generation="g2",
+            lifecycle="persistent",
+            idle_timeout_seconds=5,
+        )
+    )
+    reaper.remember(
+        module.SandboxRecord(sandbox_id="default", sandbox_url="", generation="g3")
+    )
+    reaper.touch("resident", generation="g1")
+    reaper.touch("short", generation="g2")
+    reaper.touch("default", generation="g3")
+
+    stale_at = time.time() - 10
+    for sandbox_id in ("resident", "short", "default"):
+        generation = reaper._last_activity_at[sandbox_id][0]
+        reaper._last_activity_at[sandbox_id] = (generation, stale_at)
+
+    expired = {sandbox_id for sandbox_id, _ in reaper._collect_expired_sandboxes()}
+    assert expired == {"short"}
+
+    for sandbox_id, generation in (
+        ("short", "g2"),
+        ("resident", "g1"),
+        ("default", "g3"),
+    ):
+        reaper._delete_expired_sandbox(sandbox_id, generation)
+    assert deleted == ["short"]
+
+
+def test_idle_reaper_seeds_policy_from_backend_records(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+
+    class FakeBackend:
+        def list(self):
+            return [
+                module.SandboxRecord(
+                    sandbox_id="resident",
+                    sandbox_url="",
+                    generation="g1",
+                    lifecycle="resident",
+                ),
+                module.SandboxRecord(
+                    sandbox_id="short", sandbox_url="", generation="g2", idle_timeout_seconds=3
+                ),
+            ]
+
+        def delete(self, sandbox_id, *, expected_generation=None):
+            raise AssertionError("seed 不应触发删除")
+
+    reaper = module.SandboxIdleReaper(FakeBackend())
+    reaper._seed_existing()
+
+    assert reaper._idle_timeouts == {"resident": 0, "short": 3}
+
+
+def test_authenticated_management_api_exposes_lifecycle_policy(monkeypatch):
+    token = "test-provisioner-token-that-is-long-enough"
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_PROVISIONER_TOKEN", token)
+    module = _load_module()
+    headers = {"Authorization": f"Bearer {token}"}
+    sandbox_id = "sandbox-policy-test"
+
+    with TestClient(module.app) as client:
+        create_response = client.post(
+            "/api/sandboxes",
+            headers=headers,
+            json={
+                "sandbox_id": sandbox_id,
+                "thread_id": "thread-1",
+                "uid": "user-1",
+                "lifecycle": "resident",
+                "idle_timeout_seconds": 0,
+            },
+        )
+        get_response = client.get(f"/api/sandboxes/{sandbox_id}", headers=headers)
+        delete_response = client.delete(
+            f"/api/sandboxes/{sandbox_id}",
+            headers=headers,
+            params={"expected_generation": create_response.json()["generation"]},
+        )
+
+    assert create_response.status_code == 200
+    assert create_response.json()["lifecycle"] == "resident"
+    assert create_response.json()["idle_timeout_seconds"] == 0
+    assert get_response.status_code == 200
+    assert get_response.json()["lifecycle"] == "resident"
+    assert get_response.json()["idle_timeout_seconds"] == 0
+    assert delete_response.status_code == 200
 
 
 def test_operation_pins_drain_started_requests_and_block_new_requests_during_delete(monkeypatch):

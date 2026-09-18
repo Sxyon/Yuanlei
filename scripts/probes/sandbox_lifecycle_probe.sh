@@ -116,4 +116,27 @@ CODE=$(api -X POST "http://127.0.0.1:$PORT/api/sandboxes" -H 'content-type: appl
   --max-time 240)
 echo "recreate http=$CODE; delete with stale generation -> http=$(api -X DELETE "http://127.0.0.1:$PORT/api/sandboxes/$SANDBOX_ID?expected_generation=stale-gen") (expect 409)"
 
+say "per-sandbox policy: resident(idle=0) survives beyond global 12s"
+api "http://127.0.0.1:$PORT/api/sandboxes/$SANDBOX_ID" >/dev/null
+GEN=$(json 'd.get("generation")')
+echo "prior delete http=$(api -X DELETE "http://127.0.0.1:$PORT/api/sandboxes/$SANDBOX_ID?expected_generation=$GEN")"
+CODE=$(api -X POST "http://127.0.0.1:$PORT/api/sandboxes" -H 'content-type: application/json' \
+  -d "{\"sandbox_id\":\"$SANDBOX_ID\",\"thread_id\":\"$THREAD_ID\",\"uid\":\"$THREAD_ID\",\"workdir_path\":\"projects/probe\",\"inherit_env\":false,\"lifecycle\":\"resident\",\"idle_timeout_seconds\":0}" \
+  --max-time 240)
+echo "create http=$CODE lifecycle=$(json 'd.get("lifecycle")') idle=$(json 'd.get("idle_timeout_seconds")')"
+sleep 16
+CODE=$(api "http://127.0.0.1:$PORT/api/sandboxes/$SANDBOX_ID")
+echo "discover after silent 16s: http=$CODE (expect 200, resident 永不回收)"
+GEN=$(json 'd.get("generation")')
+echo "cleanup delete http=$(api -X DELETE "http://127.0.0.1:$PORT/api/sandboxes/$SANDBOX_ID?expected_generation=$GEN")"
+
+say "per-sandbox policy: persistent idle=4 reaps before global 12"
+CODE=$(api -X POST "http://127.0.0.1:$PORT/api/sandboxes" -H 'content-type: application/json' \
+  -d "{\"sandbox_id\":\"$SANDBOX_ID\",\"thread_id\":\"$THREAD_ID\",\"uid\":\"$THREAD_ID\",\"workdir_path\":\"projects/probe\",\"inherit_env\":false,\"lifecycle\":\"persistent\",\"idle_timeout_seconds\":4}" \
+  --max-time 240)
+echo "create http=$CODE lifecycle=$(json 'd.get("lifecycle")') idle=$(json 'd.get("idle_timeout_seconds")')"
+sleep 8
+CODE=$(api "http://127.0.0.1:$PORT/api/sandboxes/$SANDBOX_ID")
+echo "discover after silent 8s: http=$CODE (expect 404, 短 TTL 提前回收)"
+
 say "done"

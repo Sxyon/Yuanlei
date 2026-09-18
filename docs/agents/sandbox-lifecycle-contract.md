@@ -33,7 +33,7 @@
 
 ## 关键语义与设计结论
 
-1. **reaper 只读全局 TTL，不支持按沙盒策略**（`app.py:1768-1778`）。`persistent` 的闲置 suspend 与 `resident` 的永不回收需要扩展 `CreateSandboxRequest`（`lifecycle`/`idle_timeout_seconds`，0=永不）与 record，并让 reaper 按记录判定；扩展必须可选且旧请求行为不变。
+1. **reaper 只读全局 TTL，不支持按沙盒策略**（`app.py:1768-1778`）。`persistent` 的闲置 suspend 与 `resident` 的永不回收需要扩展 `CreateSandboxRequest`（`lifecycle`/`idle_timeout_seconds`，0=永不）与 record，并让 reaper 按记录判定；扩展必须可选且旧请求行为不变。**M2.1 已实现**：Docker 标签/K8s 注解持久化策略，reaper 按 `idle_timeout_seconds`（0=跳过）判定，未携带字段的旧请求沿用全局阈值；实测 resident 静默 16s 存活、`idle=4` 在全局 12s 前回收。
 2. **任何 discover/touch/proxy 流量都会续命**。生命周期 supervisor 的 inventory 对账必须使用 `GET /api/sandboxes`（列表，不 touch），不能逐沙盒 discover；否则长驻策略会被自己的巡检无限延长。
 3. **容器跨 provisioner 进程重启存活**，权威事实在 Docker/K8s 侧；provisioner 的重启种子来自 backend list（`SandboxIdleReaper._seed_existing`），重启会刷新所有沙盒的 idle 起点。supervisor 必须容忍「记录 active 但容器被外部删除」与「容器存在但记录缺失」两种情况并显式收敛。
 4. **执行租约不存在于现状**：provider 只有进程内 `threading.Lock` 与 provisioner 侧操作 pin（创建/删除互斥），跨进程/跨 Run 无所有权。串行语义必须由新增的 PostgreSQL 行级租约承担（设计见提案，M3 实现）。
@@ -58,8 +58,8 @@
 | Kubernetes 后端生命周期 | 未测（本轮 Docker） | 有 K8s 环境时复跑同一脚本；generation=Pod uid 语义一致 |
 | quiesce 停机静默 | 未测 | 实现 supervisor 前补测 |
 | Docker 守护进程重启（非 provisioner） | 未测 | 生产运维场景，记录为已知未验证 |
+| 按沙盒 TTL/resident 扩展 | **M2.1 已实现并实测**（resident 存活、短 TTL 提前回收、响应携带策略字段） | 后续 M2 supervisor 的 suspend 主动回收用例继续复用 |
 | reaper 与长命令执行的竞争 | 未测 | M2/M3 用 idle < exec 的极端配置验证「不误杀运行中命令」的保护 |
-| 按沙盒 TTL/resident 扩展 | 代码事实确认当前不支持 | M2 实现并用本脚本扩展用例验证 |
 | 租约过期接管双写防护 | 设计已定 | M3 负向测试：旧 owner 在 generation 变化后写入必须失败 |
 
 ## 设计含义（结论 → 动作）

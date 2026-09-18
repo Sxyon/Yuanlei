@@ -61,8 +61,9 @@ M0 契约探针与接口冻结
 - 退出证据：编码提案矩阵第 1、2 行；沙盒提案矩阵第 9 行；指纹契约单测。
 - 迁移：若与 M2 同窗口，两批表一次进 v4；否则本阶段先升一次版本。
 
-### M2 沙盒身份与生命周期核心
+### M2 沙盒身份与生命周期核心（进行中）
 
+- 进度：M2.1 provisioner 按沙盒生命周期字段已落地并出证（2026-09-18）——`CreateSandboxRequest.lifecycle/idle_timeout_seconds`、Docker 标签与 K8s 注解持久化、reaper 按记录判定（0=永不回收）、响应携带策略字段，向后兼容；`test_sandbox_provisioner_config.py` 74 passed 与生命周期探针实测通过。剩余：M2.2 表与迁移、M2.3 scope 泛化、M2.4 ensure_ready/suspend、M2.5 supervisor、M2.6 清理谓词。
 - 交付：scope 泛化与 provider 身份校验；`agent_sandboxes` + `agent_sandbox_events`；provisioner 按沙盒 TTL/resident；`ensure_ready`/`suspend`/自动重建；生命周期 supervisor（保活、空闲 suspend、inventory 对账、孤儿租约清理）；ephemeral 默认路径回归。
 - 退出证据：沙盒提案矩阵第 1、2、3、5、8、12 行；第 4 行的 auto 路径。
 - 风险护栏：默认路径零行为变化；resident 与 persistent 受配额与面板约束。

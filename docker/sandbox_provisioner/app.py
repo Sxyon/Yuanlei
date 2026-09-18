@@ -15,7 +15,7 @@ from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib import request
 
 import httpx
@@ -327,6 +327,10 @@ class CreateSandboxRequest(BaseModel):
     uid: str
     env: dict[str, str] = Field(default_factory=dict)
     inherit_env: bool = True
+    # 按沙盒生命周期策略：None 表示沿用全局 idle TTL（兼容旧客户端）。
+    lifecycle: Literal["ephemeral", "persistent", "resident"] | None = None
+    # None=全局默认；0=永不回收（resident）；>0=该沙盒的空闲阈值。
+    idle_timeout_seconds: int | None = Field(default=None, ge=0)
 
 
 class SandboxResponse(BaseModel):
@@ -335,6 +339,8 @@ class SandboxResponse(BaseModel):
     status: str | None = None
     generation: str | None = None
     workdir_path: str | None = None
+    lifecycle: str | None = None
+    idle_timeout_seconds: int | None = None
 
 
 class DeleteSandboxResponse(BaseModel):
@@ -365,6 +371,8 @@ class SandboxRecord:
     status: str | None = None
     generation: str | None = None
     workdir_path: str | None = None
+    lifecycle: str | None = None
+    idle_timeout_seconds: int | None = None
 
 
 class SandboxGenerationMismatchError(RuntimeError):
@@ -466,6 +474,8 @@ class MemoryProvisionerBackend:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
         _ = thread_id
         _ = uid
@@ -481,6 +491,11 @@ class MemoryProvisionerBackend:
                     raise ValueError(
                         "sandbox workdir identity does not match existing generation"
                     )
+                if lifecycle is not None and existing.lifecycle != lifecycle:
+                    logger.warning(
+                        "sandbox %s lifecycle policy differs from request; keep existing",
+                        sandbox_id,
+                    )
                 return existing
             record = SandboxRecord(
                 sandbox_id=sandbox_id,
@@ -488,6 +503,8 @@ class MemoryProvisionerBackend:
                 status="Running",
                 generation=secrets.token_hex(16),
                 workdir_path=normalized_workdir_path,
+                lifecycle=lifecycle,
+                idle_timeout_seconds=idle_timeout_seconds,
             )
             self._records[sandbox_id] = record
             return record
@@ -912,12 +929,17 @@ class LocalContainerProvisionerBackend:
     def _to_record(self, container, sandbox_id: str) -> SandboxRecord:
         state = (container.attrs.get("State") or {}).get("Status")
         labels = getattr(container, "labels", None) or {}
+        raw_idle_timeout = str(labels.get("idle-timeout-seconds") or "").strip()
         return SandboxRecord(
             sandbox_id=sandbox_id,
             sandbox_url=self._sandbox_url(container),
             status=state or "unknown",
             generation=str(getattr(container, "id", "") or "") or None,
             workdir_path=str(labels.get("workdir-path") or "").strip() or None,
+            lifecycle=str(labels.get("lifecycle") or "").strip() or None,
+            idle_timeout_seconds=int(raw_idle_timeout)
+            if raw_idle_timeout.isdigit()
+            else None,
         )
 
     def _get_container(self, sandbox_id: str):
@@ -938,6 +960,8 @@ class LocalContainerProvisionerBackend:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
         with self._sandbox_lock(sandbox_id):
             safe_thread_id = self._validate_thread_id(thread_id)
@@ -965,6 +989,14 @@ class LocalContainerProvisionerBackend:
                 if existing_ephemeral != ephemeral_storage:
                     raise ValueError(
                         "sandbox storage identity does not match existing generation"
+                    )
+                existing_lifecycle = (
+                    str(labels.get("lifecycle") or "").strip() or None
+                )
+                if lifecycle is not None and existing_lifecycle != lifecycle:
+                    logger.warning(
+                        "sandbox %s lifecycle policy differs from request; keep existing",
+                        sandbox_id,
                     )
                 if ephemeral_storage and not self._has_no_persistent_file_mounts(
                     existing
@@ -1050,18 +1082,23 @@ class LocalContainerProvisionerBackend:
             network_name = self._ensure_network(sandbox_id)
 
             container_name = self._container_name(sandbox_id)
+            container_labels = {
+                "app": "yuxi-sandbox",
+                "sandbox-id": sandbox_id,
+                "thread-id": safe_thread_id,
+                "uid": safe_uid,
+                "workdir-path": safe_workdir_path or "",
+                "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
+                "managed-by": "yuxi-sandbox-provisioner",
+            }
+            if lifecycle is not None:
+                container_labels["lifecycle"] = lifecycle
+            if idle_timeout_seconds is not None:
+                container_labels["idle-timeout-seconds"] = str(idle_timeout_seconds)
             run_kwargs = {
                 "name": container_name,
                 "detach": True,
-                "labels": {
-                    "app": "yuxi-sandbox",
-                    "sandbox-id": sandbox_id,
-                    "thread-id": safe_thread_id,
-                    "uid": safe_uid,
-                    "workdir-path": safe_workdir_path or "",
-                    "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
-                    "managed-by": "yuxi-sandbox-provisioner",
-                },
+                "labels": container_labels,
                 "volumes": {},
                 "network": network_name,
                 "security_opt": ["seccomp=unconfined"],
@@ -1280,6 +1317,8 @@ class KubernetesProvisionerBackend:
         *,
         inherit_env: bool,
         workdir_path: str | None = None,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ):
         pod_name = self._pod_name(sandbox_id)
         sandbox_env = merged_sandbox_env(self._sandbox_env, env) if inherit_env else {}
@@ -1319,6 +1358,16 @@ class KubernetesProvisionerBackend:
                     "uid": uid,
                     "workdir-path": workdir_path or "",
                     "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
+                    **(
+                        {"lifecycle": lifecycle}
+                        if lifecycle is not None
+                        else {}
+                    ),
+                    **(
+                        {"idle-timeout-seconds": str(idle_timeout_seconds)}
+                        if idle_timeout_seconds is not None
+                        else {}
+                    ),
                 },
             ),
             spec=self._client.V1PodSpec(
@@ -1539,6 +1588,8 @@ class KubernetesProvisionerBackend:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
         from kubernetes.client.rest import ApiException
 
@@ -1560,6 +1611,11 @@ class KubernetesProvisionerBackend:
                     workdir_path=safe_workdir_path,
                     ephemeral_storage=ephemeral_storage,
                 ):
+                    if lifecycle is not None and discovered.lifecycle != lifecycle:
+                        logger.warning(
+                            "sandbox %s lifecycle policy differs from request; keep existing",
+                            sandbox_id,
+                        )
                     return discovered
                 raise ValueError("sandbox identity does not match existing generation")
 
@@ -1573,6 +1629,8 @@ class KubernetesProvisionerBackend:
                         env or {},
                         inherit_env=inherit_env,
                         workdir_path=safe_workdir_path,
+                        lifecycle=lifecycle,
+                        idle_timeout_seconds=idle_timeout_seconds,
                     ),
                 )
             except ApiException as exc:
@@ -1685,12 +1743,17 @@ class KubernetesProvisionerBackend:
         else:
             sandbox_url = f"http://{self._node_host}:{node_port}"
 
+        raw_idle_timeout = str(annotations.get("idle-timeout-seconds") or "").strip()
         return SandboxRecord(
             sandbox_id=sandbox_id,
             sandbox_url=sandbox_url,
             status=(pod.status.phase if pod and pod.status else "Unknown"),
             generation=str(getattr(pod.metadata, "uid", "") or "") or None,
             workdir_path=safe_workdir_path,
+            lifecycle=str(annotations.get("lifecycle") or "").strip() or None,
+            idle_timeout_seconds=int(raw_idle_timeout)
+            if raw_idle_timeout.isdigit()
+            else None,
         )
 
     def list(self) -> list[SandboxRecord]:
@@ -1707,6 +1770,7 @@ class KubernetesProvisionerBackend:
                 continue
             annotations = pod.metadata.annotations or {}
             workdir_path = str(annotations.get("workdir-path") or "").strip() or None
+            raw_idle_timeout = str(annotations.get("idle-timeout-seconds") or "").strip()
             records.append(
                 SandboxRecord(
                     sandbox_id=sandbox_id,
@@ -1714,6 +1778,10 @@ class KubernetesProvisionerBackend:
                     status=(pod.status.phase if pod.status else "Unknown"),
                     generation=str(getattr(pod.metadata, "uid", "") or "") or None,
                     workdir_path=workdir_path,
+                    lifecycle=str(annotations.get("lifecycle") or "").strip() or None,
+                    idle_timeout_seconds=int(raw_idle_timeout)
+                    if raw_idle_timeout.isdigit()
+                    else None,
                 )
             )
         return records
@@ -1760,6 +1828,7 @@ class SandboxIdleReaper:
         self._operation_pins = operation_pins or SandboxOperationPins()
         self._lock = threading.Lock()
         self._last_activity_at: dict[str, tuple[str | None, float]] = {}
+        self._idle_timeouts: dict[str, int | None] = {}
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._exec_timeout_seconds = int(
@@ -1790,6 +1859,20 @@ class SandboxIdleReaper:
             )
             self._last_activity_at[sandbox_id] = (observed_generation, time.time())
 
+    @staticmethod
+    def _record_timeout(record: SandboxRecord) -> int | None:
+        """从记录解析空闲阈值；None 表示沿用全局阈值，0 表示永不回收。"""
+        if record.idle_timeout_seconds is not None:
+            return record.idle_timeout_seconds
+        if record.lifecycle == "resident":
+            return 0
+        return None
+
+    def remember(self, record: SandboxRecord) -> None:
+        """登记沙盒的生命周期策略，供回收判定使用。"""
+        with self._lock:
+            self._idle_timeouts[record.sandbox_id] = self._record_timeout(record)
+
     def forget(
         self, sandbox_id: str, *, expected_generation: str | None = None
     ) -> None:
@@ -1800,6 +1883,7 @@ class SandboxIdleReaper:
             if expected_generation is not None and current[0] != expected_generation:
                 return
             self._last_activity_at.pop(sandbox_id, None)
+            self._idle_timeouts.pop(sandbox_id, None)
 
     def _seed_existing(self) -> None:
         try:
@@ -1814,25 +1898,39 @@ class SandboxIdleReaper:
                 self._last_activity_at.setdefault(
                     record.sandbox_id, (record.generation, now)
                 )
+                self._idle_timeouts.setdefault(
+                    record.sandbox_id, self._record_timeout(record)
+                )
 
     def _collect_expired_sandboxes(self) -> list[tuple[str, str | None]]:
         if self._idle_timeout_seconds <= 0:
             return []
-        cutoff = time.time() - self._idle_timeout_seconds
+        now = time.time()
+        expired: list[tuple[str, str | None]] = []
         with self._lock:
-            return [
-                (sandbox_id, generation)
-                for sandbox_id, (generation, last_at) in self._last_activity_at.items()
-                if last_at <= cutoff
-            ]
+            for sandbox_id, (generation, last_at) in self._last_activity_at.items():
+                timeout = self._timeouts_or_global(sandbox_id)
+                if timeout <= 0:
+                    continue
+                if last_at <= now - timeout:
+                    expired.append((sandbox_id, generation))
+        return expired
+
+    def _timeouts_or_global(self, sandbox_id: str) -> int:
+        timeout = self._idle_timeouts.get(sandbox_id)
+        if timeout is None:
+            return self._idle_timeout_seconds
+        return timeout
 
     def _delete_expired_sandbox(self, sandbox_id: str, generation: str | None) -> None:
         self._operation_pins.begin_delete(sandbox_id)
         try:
-            cutoff = time.time() - self._idle_timeout_seconds
             with self._lock:
                 current = self._last_activity_at.get(sandbox_id)
-                if current is None or current[0] != generation or current[1] > cutoff:
+                if current is None or current[0] != generation:
+                    return
+                timeout = self._timeouts_or_global(sandbox_id)
+                if timeout <= 0 or current[1] > time.time() - timeout:
                     return
             self._backend.delete(sandbox_id, expected_generation=generation)
             logger.info(f"Deleted idle sandbox: {sandbox_id}")
@@ -1911,6 +2009,8 @@ def sandbox_response(record: SandboxRecord) -> SandboxResponse:
         status=record.status,
         generation=record.generation,
         workdir_path=record.workdir_path,
+        lifecycle=record.lifecycle,
+        idle_timeout_seconds=record.idle_timeout_seconds,
     )
 
 
@@ -1949,6 +2049,8 @@ def create_sandbox(payload: CreateSandboxRequest):
                     payload.env,
                     workdir_path=payload.workdir_path,
                     inherit_env=payload.inherit_env,
+                    lifecycle=payload.lifecycle,
+                    idle_timeout_seconds=payload.idle_timeout_seconds,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1960,6 +2062,7 @@ def create_sandbox(payload: CreateSandboxRequest):
             sandbox_operation_pins.release(payload.sandbox_id)
     finally:
         sandbox_quiescence_gate.release_create()
+    idle_reaper.remember(record)
     idle_reaper.touch(record.sandbox_id, generation=record.generation)
     return sandbox_response(record)
 
@@ -1979,6 +2082,7 @@ def get_sandbox(sandbox_id: str):
 
         if record is None:
             raise HTTPException(status_code=404, detail="sandbox not found")
+        idle_reaper.remember(record)
         idle_reaper.touch(record.sandbox_id, generation=record.generation)
     finally:
         sandbox_operation_pins.release(sandbox_id)
@@ -2000,6 +2104,7 @@ def touch_sandbox(sandbox_id: str):
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         if record is None:
             raise HTTPException(status_code=404, detail="sandbox not found")
+        idle_reaper.remember(record)
         idle_reaper.touch(sandbox_id, generation=record.generation)
     finally:
         sandbox_operation_pins.release(sandbox_id)
@@ -2207,6 +2312,7 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
         for key, value in upstream_response.headers.items()
         if key.lower() in PROXY_RESPONSE_HEADERS
     }
+    idle_reaper.remember(record)
     idle_reaper.touch(sandbox_id, generation=record.generation)
     return StreamingResponse(
         response_body(),
