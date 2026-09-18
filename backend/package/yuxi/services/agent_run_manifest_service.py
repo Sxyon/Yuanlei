@@ -21,6 +21,7 @@ from yuxi.agents.buildin import get_agent_backend
 from yuxi.agents.context import BaseContext, prepare_agent_runtime_context
 from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
+from yuxi.services.coding_credential_service import CodingCredentialService
 from yuxi.services.project_agent_service import ensure_agent_project_scope, load_project_agent_override
 from yuxi.services.sandbox_lifecycle_service import (
     SandboxLifecycleService,
@@ -184,12 +185,19 @@ async def prepare_run_execution(
         persisted_scope = str(run.runtime_scope_id or run.conversation_thread_id)
         if persisted_scope != expected_scope:
             raise RuntimeError("Run runtime scope 与 Agent 专属沙盒策略不一致，请重新发起请求")
+        credential_service = CodingCredentialService(db)
+        coding_env, coding_fingerprint = await credential_service.build_coding_environment(
+            uid=str(user.uid),
+            executors=credential_service.declared_executors(agent_item.config_json),
+        )
         await SandboxLifecycleService(db).ensure_ready(
             uid=str(user.uid),
             agent_slug=run.agent_slug,
             project_id=project_id,
             policy=policy,
             workdir_path=workdir_binding.workdir_path,
+            credential_fingerprint=coding_fingerprint,
+            env_overrides=coding_env,
         )
 
     context = backend.context_schema()

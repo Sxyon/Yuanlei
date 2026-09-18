@@ -80,10 +80,11 @@ M0 契约探针与接口冻结
 - 交付：租约字段与获取/心跳/释放服务；等待事件与超时；generation fencing 与过期收敛；Run、编码 turn、终端三类持有者的接入点（后两者在 M5/M7 使用）。
 - 退出证据：沙盒提案矩阵第 6、7 行。
 
-### M4 无头编码执行（opencode + codex）
+### M4 无头编码执行：适配器与执行环境（完成；工具面调整到 M5）
 
-- 交付：适配器协议与两个实现；`coding_*` 工具；计划审批 interrupt；turn 状态与审计；最小会话卡片；在共享与专属 scope 都可运行。
-- 退出证据：编码提案矩阵第 1、3、5、7、10 行；第 8 行的首层脱敏。
+- 进度（2026-09-18）：`coding/adapters.py` 提供 `OpenCodeAdapter`（`run --format json [--agent plan] [-m] [-s]`，step_start/text/tool/step_finish/error→归一事件）与 `CodexAdapter`（`exec [resume] --json --skip-git-repo-check -s read-only|workspace-write`，thread.started/item.completed/turn.completed/turn.failed→归一事件），未知事件记 `warning` 不丢帧；`coding_executor_environment` 按 M0 契约映射 `OPENCODE_*`/`CODEX_*`；`CodingCredentialService.build_coding_environment` 按 Agent `coding.executors` 白名单解析凭据并聚合指纹；`provider.get_scope(env_overrides=...)` 在创建时合并 user env；`ensure_ready` 透传 env/指纹，指纹从无到有时触发重建；Run 准备阶段对 dedicated 沙盒构建 coding env 并注入。
+- 调整说明：会话化 `coding_*` 工具、计划审批、turn 持久状态与最小会话卡片需要 M5 的 `coding_sessions/turns/events` 实体；先做工具会在 M5 二次改写，因此工具面随 M5 一起落地。
+- 退出证据：编码提案矩阵第 1、3 行以单测覆盖（凭据缺失/环境映射/指纹触发重建）；第 5、7、10 行随 M5 工具与事件一起验证。
 - 依赖：M1（凭据与指纹）、M3（专属 scope 下的串行）。
 
 ### M5 持久编码会话

@@ -309,6 +309,7 @@ class ProvisionerSandboxProvider:
         workdir_path: str | None = None,
         lifecycle: str | None = None,
         idle_timeout_seconds: int | None = None,
+        env_overrides: dict[str, str] | None = None,
     ) -> SandboxConnection | None:
         """按作用域获取 Sandbox；命中缓存失败时按需创建或发现。"""
         scope.validate()
@@ -331,11 +332,14 @@ class ProvisionerSandboxProvider:
                     return current
 
             if create_if_missing:
+                env: dict[str, str] = load_user_agent_env(scope.uid) if inherit_env else {}
+                if env_overrides and inherit_env:
+                    env.update(env_overrides)
                 record = self._client.create(
                     scope.sandbox_id,
                     scope.provisioner_identity,
                     workspace_uid_dirname(scope.uid),
-                    load_user_agent_env(scope.uid) if inherit_env else {},
+                    env,
                     workdir_path=normalized_workdir_path,
                     inherit_env=inherit_env,
                     lifecycle=lifecycle,

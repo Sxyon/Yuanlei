@@ -6,6 +6,7 @@ from .credentials import (
     CodingCredentialOwner,
     CodingNotConfiguredError,
     EncryptedCodingCredential,
+    coding_executor_environment,
     credential_fingerprint,
     redact_credential_values,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "CodingCredentialOwner",
     "CodingNotConfiguredError",
     "EncryptedCodingCredential",
+    "coding_executor_environment",
     "credential_fingerprint",
     "redact_credential_values",
 ]

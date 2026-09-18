@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.coding.credentials import (
     VALID_EXECUTORS,
     CodingCredentialOwner,
+    coding_executor_environment,
     credential_fingerprint,
     redact_credential_values,
 )
@@ -192,6 +194,49 @@ class CodingCredentialService:
                 source=source,
             )
         raise CodingCredentialMissingError(normalized_executor)
+
+    @staticmethod
+    def declared_executors(agent_config: dict | None) -> list[str]:
+        """读取 Agent 配置声明的编码执行器白名单。"""
+        coding = (agent_config or {}).get("coding")
+        raw = coding.get("executors") if isinstance(coding, dict) else None
+        if not isinstance(raw, list):
+            return []
+        return [
+            str(item).strip().lower()
+            for item in raw
+            if str(item).strip().lower() in VALID_EXECUTORS
+        ]
+
+    async def build_coding_environment(
+        self,
+        *,
+        uid: str,
+        executors: list[str],
+    ) -> tuple[dict[str, str], str | None]:
+        """按执行器白名单解析凭据并生成沙盒 env 与聚合指纹；缺失的执行器跳过。"""
+        env: dict[str, str] = {}
+        fingerprints: list[str] = []
+        for executor in executors:
+            try:
+                resolved = await self.resolve(uid=uid, executor=executor)
+            except CodingCredentialMissingError:
+                continue
+            env.update(
+                coding_executor_environment(
+                    executor=resolved.executor,
+                    provider=resolved.provider,
+                    api_key=resolved.api_key,
+                    base_url=resolved.base_url,
+                    model=resolved.model,
+                    extra=resolved.extra,
+                )
+            )
+            fingerprints.append(resolved.fingerprint)
+        if not env:
+            return {}, None
+        fingerprint = hashlib.sha256("|".join(sorted(fingerprints)).encode("utf-8")).hexdigest()[:64]
+        return env, fingerprint
 
     @staticmethod
     def redact(text: str, secrets: list[str]) -> str:

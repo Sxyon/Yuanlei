@@ -159,6 +159,7 @@ class SandboxLifecycleService:
         policy: SandboxPolicy,
         workdir_path: str | None,
         credential_fingerprint: str | None = None,
+        env_overrides: dict[str, str] | None = None,
     ) -> SandboxConnection:
         """确保专属沙盒可用：复用、按策略重建，或抛出需要确认的异常。"""
         if not policy.is_dedicated:
@@ -183,6 +184,7 @@ class SandboxLifecycleService:
                 policy=policy,
                 workdir_path=workdir_path,
                 credential_fingerprint=credential_fingerprint,
+                env_overrides=env_overrides,
                 event_kind="created",
             )
 
@@ -194,6 +196,7 @@ class SandboxLifecycleService:
                 policy=policy,
                 workdir_path=workdir_path,
                 credential_fingerprint=credential_fingerprint,
+                env_overrides=env_overrides,
             )
 
         connection = self.provider.get_scope(scope, create_if_missing=False, workdir_path=workdir_path)
@@ -205,10 +208,10 @@ class SandboxLifecycleService:
                 policy=policy,
                 workdir_path=workdir_path,
                 credential_fingerprint=credential_fingerprint,
+                env_overrides=env_overrides,
             )
         if (
             credential_fingerprint is not None
-            and row.credential_fingerprint is not None
             and row.credential_fingerprint != credential_fingerprint
         ):
             await self.suspend(
@@ -225,6 +228,7 @@ class SandboxLifecycleService:
                 policy=policy,
                 workdir_path=workdir_path,
                 credential_fingerprint=credential_fingerprint,
+                env_overrides=env_overrides,
             )
         self._touch_row(row, connection)
         return connection
@@ -257,6 +261,7 @@ class SandboxLifecycleService:
         policy: SandboxPolicy,
         workdir_path: str | None,
         credential_fingerprint: str | None,
+        env_overrides: dict[str, str] | None = None,
     ) -> SandboxConnection:
         if policy.resume_policy == "confirm":
             raise SandboxRebuildConfirmationRequired(
@@ -270,6 +275,7 @@ class SandboxLifecycleService:
             policy=policy,
             workdir_path=workdir_path,
             credential_fingerprint=credential_fingerprint,
+            env_overrides=env_overrides,
             event_kind="rebuilt",
         )
 
@@ -281,6 +287,7 @@ class SandboxLifecycleService:
         policy: SandboxPolicy,
         workdir_path: str | None,
         credential_fingerprint: str | None,
+        env_overrides: dict[str, str] | None = None,
         event_kind: str,
     ) -> SandboxConnection:
         connection = self.provider.get_scope(
@@ -289,6 +296,7 @@ class SandboxLifecycleService:
             workdir_path=workdir_path,
             lifecycle=policy.lifecycle,
             idle_timeout_seconds=policy.provisioner_idle_timeout,
+            env_overrides=env_overrides,
         )
         if connection is None:
             raise RuntimeError("sandbox provider failed to create a dedicated sandbox")

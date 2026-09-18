@@ -38,6 +38,7 @@ class _RecordingClient:
                 "inherit_env": inherit_env,
                 "lifecycle": lifecycle,
                 "idle_timeout_seconds": idle_timeout_seconds,
+                "env": dict(_env or {}),
             }
         )
         record = type(
@@ -216,6 +217,25 @@ def test_thread_scope_keepalive_omits_policy_fields(monkeypatch):
 
     assert client.created[0]["lifecycle"] is None
     assert client.created[0]["idle_timeout_seconds"] is None
+
+
+def test_provider_merges_env_overrides_on_dedicated_create(monkeypatch):
+    client = _RecordingClient()
+    provider = _make_provider(client)
+    monkeypatch.setattr(
+        "yuxi.agents.backends.sandbox.provider.load_user_agent_env",
+        lambda _uid: {"EXISTING_ENV": "1", "OPENCODE_API_KEY": "old"},
+    )
+    scope = SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1")
+
+    provider.get_scope(
+        scope,
+        create_if_missing=True,
+        workdir_path=WORKDIR,
+        env_overrides={"OPENCODE_API_KEY": "sk-new"},
+    )
+
+    assert client.created[0]["env"] == {"EXISTING_ENV": "1", "OPENCODE_API_KEY": "sk-new"}
 
 
 def test_provider_release_scope_deletes_by_scope_sandbox_id(monkeypatch):

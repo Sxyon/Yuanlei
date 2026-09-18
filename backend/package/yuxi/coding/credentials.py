@@ -122,6 +122,43 @@ def redact_credential_values(text: str, secrets: Iterable[str]) -> str:
     return redacted
 
 
+def coding_executor_environment(
+    *,
+    executor: str,
+    provider: str,
+    api_key: str,
+    base_url: str | None = None,
+    model: str | None = None,
+    extra: dict | None = None,
+) -> dict[str, str]:
+    """把解析后的凭据映射为镜像原生 CLI 环境变量（M0 契约）。"""
+    normalized = str(executor or "").strip().lower()
+    extra = extra or {}
+    if normalized == "opencode":
+        env = {
+            "OPENCODE_PROVIDER": str(provider),
+            "OPENCODE_API_KEY": str(api_key),
+            "OPENCODE_PROVIDER_NPM": str(
+                extra.get("provider_npm") or "@ai-sdk/openai-compatible"
+            ),
+        }
+        if base_url:
+            env["OPENCODE_BASE_URL"] = str(base_url)
+        if model:
+            env["OPENCODE_MODEL"] = str(model)
+        return env
+    if normalized == "codex":
+        env = {"CODEX_API_KEY": str(api_key)}
+        if base_url:
+            env["CODEX_BASE_URL"] = str(base_url)
+        if model:
+            env["CODEX_MODEL"] = str(model)
+        if extra.get("config_toml"):
+            env["CODEX_CONFIG_TOML"] = str(extra["config_toml"])
+        return env
+    raise ValueError(f"unsupported coding executor: {executor!r}")
+
+
 def _configured_key() -> bytes:
     """解析 base64url master key，缺失时 fail-closed。"""
     raw = os.getenv("YUXI_CODING_CREDENTIAL_KEY", "").strip()

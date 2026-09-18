@@ -46,6 +46,7 @@ class _FakeProvider:
         workdir_path: str | None = None,
         lifecycle: str | None = None,
         idle_timeout_seconds: int | None = None,
+        env_overrides: dict | None = None,
     ):
         if scope.cache_key in self.connections:
             return self.connections[scope.cache_key]
@@ -57,6 +58,7 @@ class _FakeProvider:
                 "lifecycle": lifecycle,
                 "idle_timeout_seconds": idle_timeout_seconds,
                 "workdir_path": workdir_path,
+                "env_overrides": env_overrides,
             }
         )
         connection = SimpleNamespace(
@@ -343,6 +345,53 @@ async def test_ensure_ready_enforces_resident_quota(session):
         policy=_dedicated_policy(lifecycle="persistent"),
         workdir_path=WORKDIR,
     )
+
+
+async def test_ensure_ready_forwards_coding_env_and_fingerprint(session):
+    provider = _FakeProvider()
+    service = SandboxLifecycleService(session, provider=provider)
+
+    await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        policy=_dedicated_policy(),
+        workdir_path=WORKDIR,
+        credential_fingerprint="fp-1",
+        env_overrides={"OPENCODE_API_KEY": "sk-x"},
+    )
+
+    row = await _get_row(session)
+    assert provider.create_calls[0]["env_overrides"] == {"OPENCODE_API_KEY": "sk-x"}
+    assert row.credential_fingerprint == "fp-1"
+
+
+async def test_ensure_ready_rebuilds_when_fingerprint_appears(session):
+    provider = _FakeProvider()
+    service = SandboxLifecycleService(session, provider=provider)
+    await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        policy=_dedicated_policy(),
+        workdir_path=WORKDIR,
+    )
+
+    connection = await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        policy=_dedicated_policy(),
+        workdir_path=WORKDIR,
+        credential_fingerprint="fp-2",
+        env_overrides={"OPENCODE_API_KEY": "sk-2"},
+    )
+
+    row = await _get_row(session)
+    assert len(provider.create_calls) == 2
+    assert connection.generation == "gen-2"
+    assert row.credential_fingerprint == "fp-2"
+    assert provider.create_calls[1]["env_overrides"] == {"OPENCODE_API_KEY": "sk-2"}
 
 
 async def test_ensure_ready_rejects_shared_policy(session):

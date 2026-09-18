@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from yuxi.coding.credentials import (
     CodingCredentialOwner,
     CodingNotConfiguredError,
+    coding_executor_environment,
     credential_fingerprint,
     redact_credential_values,
 )
@@ -227,3 +228,59 @@ async def test_upsert_rejects_unknown_executor(session):
             payload=CodingCredentialWrite(executor="aider", provider="sf", api_key="sk-x"),
             actor="user-1",
         )
+
+
+async def test_executor_environment_maps_image_contract():
+    opencode_env = coding_executor_environment(
+        executor="opencode",
+        provider="sf",
+        api_key="sk-1",
+        base_url="https://api.siliconflow.cn/v1",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+    )
+    assert opencode_env == {
+        "OPENCODE_PROVIDER": "sf",
+        "OPENCODE_API_KEY": "sk-1",
+        "OPENCODE_PROVIDER_NPM": "@ai-sdk/openai-compatible",
+        "OPENCODE_BASE_URL": "https://api.siliconflow.cn/v1",
+        "OPENCODE_MODEL": "deepseek-ai/DeepSeek-V4-Flash",
+    }
+
+    codex_env = coding_executor_environment(
+        executor="codex",
+        provider="deepseek",
+        api_key="sk-2",
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-flash",
+    )
+    assert codex_env == {
+        "CODEX_API_KEY": "sk-2",
+        "CODEX_BASE_URL": "https://api.deepseek.com/v1",
+        "CODEX_MODEL": "deepseek-flash",
+    }
+
+    with pytest.raises(ValueError, match="unsupported coding executor"):
+        coding_executor_environment(executor="aider", provider="sf", api_key="sk-x")
+
+
+async def test_build_coding_environment_uses_declared_executors(session):
+    await _upsert_user(session)
+    service = CodingCredentialService(session, owner=_owner())
+
+    env, fingerprint = await service.build_coding_environment(
+        uid="user-1", executors=["opencode", "codex"]
+    )
+
+    assert env["OPENCODE_API_KEY"] == "sk-user-secret"
+    assert "CODEX_API_KEY" not in env
+    assert fingerprint is not None and len(fingerprint) == 64
+
+    empty_env, empty_fingerprint = await service.build_coding_environment(
+        uid="user-2", executors=["opencode"]
+    )
+    assert empty_env == {}
+    assert empty_fingerprint is None
+
+    assert service.declared_executors({"coding": {"executors": ["opencode", "AIDER"]}}) == ["opencode"]
+    assert service.declared_executors({}) == []
+    assert service.declared_executors({"coding": {"executors": "opencode"}}) == []
