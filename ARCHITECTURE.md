@@ -1,8 +1,12 @@
 # ARCHITECTURE.md
 
-本文档是 Yuxi 的代码地图，只描述相对稳定的系统边界、目录职责、核心运行链路和架构不变量。它用于帮助贡献者判断“一个改动应该落在哪里”，不替代具体模块文档、测试规范或源码注释。
+本文档是元垒的代码地图，只描述相对稳定的系统边界、目录职责、核心运行链路和架构不变量。它用于帮助贡献者判断“一个改动应该落在哪里”，不替代具体模块文档、测试规范或源码注释。
 
 修改不熟悉的模块前，先阅读对应章节，再使用符号搜索定位具体类型、函数和路由。开发与运行拓扑始终以 `docker-compose.yml` 为准。
+
+## 与上游 Yuxi 的关系
+
+元垒是本仓库的产品名，代码基线来自 Yuxi。上游 `business`、`knowledge` 两个 Schema 域和 `docs/develop-guides/decisions/` 归上游所有；元垒新增持久化结构全部进入 `yuanlei` 域，由 `storage-migrator` 在 business 域收敛后升级 `YUANLEI_SCHEMA_VERSION`。上游同步、改动归属和冲突取舍规则见[元垒与上游 Yuxi](docs/develop-guides/yuanlei/README.md)。
 
 ## 鸟瞰
 
@@ -103,7 +107,7 @@ Yuxi 只交付完整知识能力路径。API 始终注册 `external_kb`、`knowl
 - `pending` Run 是持久化投递意图；`running` / `cancel_requested` Run 必须由唯一 attempt lease 拥有。Heartbeat 只能由当前 owner 续租，终态或 retry publication 清除 lease，过期 ownership 不能被另一个执行者静默接管。
 - Run 结果以 `output_message_id` 指向的同 Run assistant 消息为权威；只有历史 `completed` Run 可在缺少指针时兼容读取同 conversation、相同 `run_id` 的 assistant 消息，禁止从未完成或相邻 Run 猜测输出。
 - `/api/system/health` 只表达 API 进程 liveness；Compose 以 `/api/system/ready` 判断启动完成、PostgreSQL/Redis 可用且存在完成启动的兼容 worker。worker 同时续租短 TTL ARQ 消费健康、AgentRun lease reconciliation 与 Durable Task reconciliation 成功事实；持久 key、超长 TTL、错误 Redis DSN 或持续无法收敛失联执行都不能维持 readiness。业务正确性仍由真实链路测试证明。
-- Yuxi 数据库 Schema 只由 `storage-migrator` 在 PostgreSQL advisory lock 内修改并记录 business/knowledge 域版本；API 与 worker 不建表或执行收敛 DDL，并在任一域版本缺失、过旧或过新时拒绝启动。
+- 数据库 Schema 只由 `storage-migrator` 在 PostgreSQL advisory lock 内修改并记录 business/knowledge/yuanlei 域版本；API 与 worker 不建表或执行收敛 DDL，并在任一域版本缺失、过旧或过新时拒绝启动。上游域归上游维护，元垒新增表只进 yuanlei 域。
 - 内置 Skills 是默认 Agent shipping contract 的 required 组成，API/worker 通过 PostgreSQL advisory lock 串行同步；内置 MCP 定义是 optional，但失败必须形成可观测 degraded 而非被组件内部吞掉。
 - 跨 repository 的身份管理用例只有一个 service 事务 Owner；Department、User 与强制 OperationLog 同一提交。API Key 由独立服务端主密钥和客户端幂等 ID 确定性派生，只保存 hash；原始创建意图使用不可变指纹校验，撤销保留 request-id tombstone，同一请求可恢复响应但不能复活已撤销凭据。
 - 前端 API 调用集中在 `web/src/apis`，组件不要散落拼接普通 HTTP 接口。

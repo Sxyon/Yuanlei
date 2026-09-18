@@ -16,7 +16,7 @@ Owner：backend/package/yuxi/services/run_worker.py
 
 Sandbox provider 的 release keyed lock 使用有界等待。等待超过 `SANDBOX_PROVIDER_RELEASE_LOCK_TIMEOUT_SECONDS` 时显式失败；默认 30 秒。worker 对完整外部 release 使用 `SANDBOX_RUNTIME_CLEANUP_TIMEOUT_SECONDS`，默认 155 秒，覆盖默认 30 秒锁等待和 120 秒 provisioner 删除超时。两个值都必须是正整数。
 
-本决定修正 [Agent 并发容量、流式协议与时延观测](../implemented/2026-09-04-agent-concurrency-capacity.md) 中“删除位于 PostgreSQL runtime cleanup fence 内”的实现含义：持久 fence 覆盖删除全过程，数据库事务不覆盖外部删除等待。
+本决定修正 [Agent 并发容量、流式协议与时延观测](../../../decisions/implemented/2026-09-04-agent-concurrency-capacity.md) 中“删除位于 PostgreSQL runtime cleanup fence 内”的实现含义：持久 fence 覆盖删除全过程，数据库事务不覆盖外部删除等待。
 
 ## 替代方案
 
