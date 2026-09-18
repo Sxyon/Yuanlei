@@ -21,6 +21,7 @@ from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.agent_request_queue_service import finalize_intake, intake_request
 from yuxi.services.input_message_service import AgentRunInputMessage
+from yuxi.services.project_agent_service import AgentProjectScopeDenied, ensure_agent_project_scope
 from yuxi.services.project_service import create_implicit_project
 from yuxi.services.workdir_service import resolve_conversation_workdir_binding
 from yuxi.storage.postgres.models_business import User
@@ -158,6 +159,15 @@ async def submit_run_command(
             conversation = await conversation_repo.get_conversation_by_thread_id(command.thread_id)
             if not conversation:
                 raise
+
+    try:
+        await ensure_agent_project_scope(
+            db=db,
+            agent_slug=agent_item.slug,
+            project_id=conversation.project_id,
+        )
+    except AgentProjectScopeDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     request_metadata = dict(command.request_metadata or {})
     request_metadata["channel"] = origin.channel

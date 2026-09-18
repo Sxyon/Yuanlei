@@ -39,6 +39,7 @@ async def test_compress_thread_context_uses_locked_idle_thread(monkeypatch: pyte
         uid="user-1",
         status="active",
         agent_id="assistant",
+        project_id="project-1",
         extra_metadata={"model_spec": "provider:model"},
     )
     agent = SimpleNamespace(capabilities=["context_compression"], context_schema=_Context)
@@ -65,7 +66,12 @@ async def test_compress_thread_context_uses_locked_idle_thread(monkeypatch: pyte
     async def idle(**_kwargs):
         events.append("idle")
 
-    async def normalize(*_args, **_kwargs):
+    async def scope(**_kwargs):
+        events.append("scope")
+
+    async def effective(*, agent_item, project_id, db, user, context_schema):
+        del agent_item, db, user, context_schema
+        events.append(("effective", project_id))
         return {}
 
     async def resolve_model(*_args, **_kwargs):
@@ -90,7 +96,8 @@ async def test_compress_thread_context_uses_locked_idle_thread(monkeypatch: pyte
     monkeypatch.setattr(service, "ConversationRepository", ConversationRepo)
     monkeypatch.setattr(service, "AgentRepository", AgentRepo)
     monkeypatch.setattr(service, "_ensure_thread_idle", idle)
-    monkeypatch.setattr(service, "normalize_agent_context_config", normalize)
+    monkeypatch.setattr(service, "ensure_agent_project_scope", scope)
+    monkeypatch.setattr(service, "resolve_effective_agent_context", effective)
     monkeypatch.setattr(service, "resolve_agent_run_model_spec", resolve_model)
     monkeypatch.setattr(service, "ensure_conversation_workdir_available", workdir)
     monkeypatch.setattr(service, "_ensure_runtime_available", runtime)
@@ -109,6 +116,8 @@ async def test_compress_thread_context_uses_locked_idle_thread(monkeypatch: pyte
     assert events == [
         ("lock", "thread-1"),
         "idle",
+        "scope",
+        ("effective", "project-1"),
         "runtime",
         ("compress", "provider:model"),
         "release",

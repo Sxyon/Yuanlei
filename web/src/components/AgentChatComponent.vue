@@ -892,7 +892,7 @@ import {
   shouldSuggestContextCompression as isContextCompressionSuggested
 } from '@/utils/contextUsage'
 import { AgentValidator } from '@/utils/agentValidator'
-import { useAgentStore } from '@/stores/agent'
+import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import { useChatThreadsStore } from '@/stores/chatThreads'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useConfigStore } from '@/stores/config'
@@ -1379,8 +1379,12 @@ const currentAgentName = computed(() => {
 })
 
 const currentAgent = computed(() => {
-  if (!currentAgentId.value || !agents.value || !agents.value.length) return null
-  return agents.value.find((a) => a.id === currentAgentId.value) || null
+  if (!currentAgentId.value) return null
+  const fromList = (agents.value || []).find((a) => a.id === currentAgentId.value)
+  if (fromList) return fromList
+  // 项目数字员工可能不在当前项目的可选列表中（例如正在查看已绑定线程），回退到已加载的详情。
+  const detail = agentStore.selectedAgent
+  return detail?.id === currentAgentId.value ? detail : null
 })
 const currentChatId = computed(() => currentThreadId.value)
 
@@ -1388,6 +1392,45 @@ watch(
   [currentChatId, () => props.initialProjectId],
   ([threadId, initialProjectId]) => {
     if (!threadId) selectedProjectId.value = initialProjectId || AUTO_PROJECT_ID
+  },
+  { immediate: true }
+)
+
+// 项目上下文决定可选智能体列表：项目数字员工只在其绑定项目内出现。
+let lastAgentsProjectId = null
+const refreshAgentsForProject = async (projectId, { force = false } = {}) => {
+  const normalizedProjectId = !projectId || projectId === AUTO_PROJECT_ID ? null : projectId
+  if (!force && normalizedProjectId === lastAgentsProjectId) return
+  lastAgentsProjectId = normalizedProjectId
+  try {
+    await agentStore.fetchAgents({ projectId: normalizedProjectId })
+  } catch {
+    return
+  }
+  const availableIds = new Set(
+    (agents.value || []).filter((agent) => !agent.is_subagent).map((agent) => agent.id)
+  )
+  if (selectedAgentId.value && availableIds.has(selectedAgentId.value)) {
+    // 同一 Agents 在不同项目的覆盖可能不同，切换项目后重载有效配置。
+    await agentStore.selectAgent(selectedAgentId.value, { projectId: normalizedProjectId })
+    return
+  }
+  const fallback =
+    (agents.value || []).find(isBuiltinAgent) ||
+    (agents.value || []).find((agent) => !agent.is_subagent)
+  if (fallback) {
+    await agentStore.selectAgent(fallback.id, { projectId: normalizedProjectId })
+  }
+}
+
+const getSelectedProjectId = () =>
+  selectedProjectId.value === AUTO_PROJECT_ID ? null : selectedProjectId.value
+
+watch(
+  [selectedProjectId, () => agentStore.isInitialized],
+  ([projectId, initialized]) => {
+    if (!initialized) return
+    refreshAgentsForProject(projectId)
   },
   { immediate: true }
 )
@@ -3291,7 +3334,9 @@ const selectChat = async (chatId) => {
         targetChat?.agent_id &&
         targetChat.agent_id !== currentAgentId.value
       ) {
-        await agentStore.selectAgent(targetChat.agent_id)
+        await agentStore.selectAgent(targetChat.agent_id, {
+          projectId: targetChat.project_id || null
+        })
       }
 
       syncThreadConfigSnapshot(chatId)
@@ -3725,7 +3770,9 @@ const buildExportPayload = () => {
 
 defineExpose({
   getExportPayload: buildExportPayload,
-  selectThreadFromRoute
+  selectThreadFromRoute,
+  getSelectedProjectId,
+  refreshAgentsForProjectContext: () => refreshAgentsForProject(selectedProjectId.value, { force: true })
 })
 
 const handleAgentStateRefresh = async (threadId = null) => {

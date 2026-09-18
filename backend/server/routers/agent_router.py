@@ -15,6 +15,8 @@ from yuxi.repositories.agent_repository import (
     user_can_access_agent,
     user_can_manage_agent,
 )
+from yuxi.repositories.project_agent_repository import ProjectAgentRepository
+from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.agent_request_queue_service import (
     cancel_queued_request as cancel_queued_request_svc,
     continue_thread_queue,
@@ -35,6 +37,11 @@ from yuxi.services.agent_run_service import (
     stream_agent_run_events,
 )
 from yuxi.services.input_message_service import build_chat_input_message
+from yuxi.services.project_agent_service import (
+    AgentProjectScopeDenied,
+    ensure_agent_project_scope,
+    resolve_effective_agent_context,
+)
 from yuxi.services.run_submission_service import RunOrigin, RunSubmissionCommand, submit_run_command
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import User
@@ -123,26 +130,50 @@ async def list_agent_backends(current_user: User = Depends(get_required_user)):
 @agent_router.get("/backends/{backend_id}")
 async def get_agent_backend(
     backend_id: str,
+    include_configurable_items: bool = Query(True),
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
     backend = agent_manager.get_agent(backend_id)
     if not backend:
         raise HTTPException(status_code=404, detail=f"智能体后端 {backend_id} 不存在")
-    return _backend_info(await backend.get_info(user_role=current_user.role, db=db, user=current_user))
+    return _backend_info(
+        await backend.get_info(
+            user_role=current_user.role,
+            db=db,
+            user=current_user,
+            include_configurable_items=include_configurable_items,
+        )
+    )
 
 
 @agent_router.get("")
 async def list_agents(
     include_subagents: bool = Query(False),
+    project_id: str | None = Query(None, description="项目上下文；返回该项目数字员工与无归属智能体"),
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
     repo = AgentRepository(db)
     await repo.ensure_default_agent()
-    items = await repo.list_visible(user=current_user, include_subagent_definitions=include_subagents)
+    bound_slugs: set[str] = set()
+    if project_id is not None:
+        project = await ProjectRepository(db).get_for_user(project_id, str(current_user.uid))
+        if project is None or project.status != "active":
+            raise HTTPException(status_code=404, detail="Project 不存在或不可访问")
+        bound_slugs = set(await ProjectAgentRepository(db).list_agent_slugs_for_project(project_id))
+    items = await repo.list_visible(
+        user=current_user,
+        include_subagent_definitions=include_subagents,
+        project_id=project_id,
+    )
     backend_info_cache: dict[tuple[str, bool, str], dict] = {}
-    agents = [await _serialize_agent(repo, item, current_user, backend_info_cache=backend_info_cache) for item in items]
+    agents = []
+    for item in items:
+        data = await _serialize_agent(repo, item, current_user, backend_info_cache=backend_info_cache)
+        if project_id is not None:
+            data["is_project_agent"] = item.slug in bound_slugs
+        agents.append(data)
     return {"agents": agents}
 
 
@@ -194,13 +225,39 @@ async def create_agent(
 
 
 @agent_router.get("/{agent_id}")
-async def get_agent(agent_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)):
+async def get_agent(
+    agent_id: str,
+    project_id: str | None = Query(None, description="项目上下文；返回项目覆盖后的有效配置"),
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
     repo = AgentRepository(db)
     agent_slug = agent_id  # 兼容既有路径参数名；这里实际是 Agent.slug。
     item = await repo.get_visible_by_slug(slug=agent_slug, user=current_user, kind="any")
     if not item:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    return {"agent": await _serialize_agent(repo, item, current_user, include_configurable_items=True)}
+    data = await _serialize_agent(repo, item, current_user, include_configurable_items=True)
+    if project_id:
+        project = await ProjectRepository(db).get_for_user(project_id, str(current_user.uid))
+        if project is None or project.status != "active":
+            raise HTTPException(status_code=404, detail="Project 不存在或不可访问")
+        try:
+            await ensure_agent_project_scope(db=db, agent_slug=item.slug, project_id=project.id)
+        except AgentProjectScopeDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        data["is_project_agent"] = bool(
+            await ProjectAgentRepository(db).list_project_ids_for_agent(item.slug)
+        )
+        backend = agent_manager.get_agent(item.backend_id)
+        if backend is not None:
+            data["effective_context"] = await resolve_effective_agent_context(
+                agent_item=item,
+                project_id=project.id,
+                db=db,
+                user=current_user,
+                context_schema=backend.context_schema,
+            )
+    return {"agent": data}
 
 
 @agent_router.put("/{agent_id}")

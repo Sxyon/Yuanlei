@@ -148,6 +148,10 @@ async def test_submit_run_command_shares_conversation_intake_and_finalize(monkey
             directory_mode="managed",
         )
 
+    async def _noop_scope(**_kwargs):
+        return None
+
+    monkeypatch.setattr(svc, "ensure_agent_project_scope", _noop_scope)
     monkeypatch.setattr(svc, "create_implicit_project", fake_create_implicit_project)
     monkeypatch.setattr(svc, "resolve_conversation_workdir_binding", fake_resolve_binding)
     monkeypatch.setattr(svc.agent_manager, "get_agent", lambda backend_id: object())

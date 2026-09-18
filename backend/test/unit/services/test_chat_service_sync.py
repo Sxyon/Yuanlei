@@ -90,6 +90,16 @@ async def test_resolve_agent_runtime_includes_subagents_only_when_requested(
         return await _fake_normalize_agent_context_config(context, **kwargs)
 
     monkeypatch.setattr(svc, "normalize_agent_context_config", normalize)
+
+    async def _noop_scope(**_kwargs):
+        return None
+
+    async def effective_context(*, agent_item, project_id, db, user, context_schema):
+        del project_id, db, user, context_schema
+        return await normalize((agent_item.config_json or {}).get("context", {}))
+
+    monkeypatch.setattr(svc, "ensure_agent_project_scope", _noop_scope)
+    monkeypatch.setattr(svc, "resolve_effective_agent_context", effective_context)
     monkeypatch.setattr(
         svc.agent_manager,
         "get_agent",

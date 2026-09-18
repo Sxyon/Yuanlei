@@ -82,6 +82,7 @@
                   agent.label
                 }}</span>
                 <span v-if="agent.isBuiltin" class="config-dropdown-item-badge">内置</span>
+                <span v-else-if="agent.isProjectAgent" class="config-dropdown-item-badge is-project">项目</span>
                 <Check
                   v-if="agent.value === selectedAgentId"
                   :size="14"
@@ -223,7 +224,9 @@ const consumeRouteAgentSelection = async () => {
     await nextTick()
     const canSwitch = await chatComponentRef.value?.selectThreadFromRoute?.('')
     if (canSwitch === null) return
-    await agentStore.selectAgent(targetAgentId)
+    await agentStore.selectAgent(targetAgentId, {
+      projectId: chatComponentRef.value?.getSelectedProjectId?.() || routeDraftProjectId.value || null
+    })
   } catch (error) {
     handleChatError(error, 'load')
   } finally {
@@ -267,17 +270,24 @@ const handleThreadChange = (threadId) => {
   }
 }
 
-const agentQuickSwitchOptions = computed(() =>
-  (agents.value || [])
-    .filter((agent) => !agent.is_subagent)
-    .map((agent) => ({
-      label: agent.name || agent.id,
-      value: agent.id,
-      icon: agent.icon || '',
-      defaultIcon: agent.id ? generatePixelAvatar(agent.id) : '',
-      isBuiltin: isBuiltinAgent(agent)
-    }))
-)
+const toAgentOption = (agent) => ({
+  label: agent.name || agent.id,
+  value: agent.id,
+  icon: agent.icon || '',
+  defaultIcon: agent.id ? generatePixelAvatar(agent.id) : '',
+  isBuiltin: isBuiltinAgent(agent),
+  isProjectAgent: !!agent.is_project_agent
+})
+
+const agentQuickSwitchOptions = computed(() => {
+  const options = (agents.value || []).filter((agent) => !agent.is_subagent).map(toAgentOption)
+  // 项目数字员工可能不在当前可选列表中（例如正在查看已绑定线程），保留当前选中项用于展示。
+  const selected = agentStore.selectedAgent
+  if (selected && !selected.is_subagent && !options.some((option) => option.value === selected.id)) {
+    options.unshift(toAgentOption(selected))
+  }
+  return options
+})
 
 const currentAgentOption = computed(() =>
   agentQuickSwitchOptions.value.find((agent) => agent.value === selectedAgentId.value)
@@ -318,7 +328,9 @@ const handleAgentSwitch = async (agentId, hasActiveThread, isCreatingThread) => 
     return
   }
   try {
-    await agentStore.selectAgent(agentId)
+    await agentStore.selectAgent(agentId, {
+      projectId: chatComponentRef.value?.getSelectedProjectId?.() || null
+    })
     agentDropdownOpen.value = false
   } catch (error) {
     console.error('切换智能体出错:', error)
@@ -331,9 +343,14 @@ const handleAgentSaved = async ({ mode, agent } = {}) => {
     await chatComponentRef.value?.selectThreadFromRoute?.('')
   }
 
-  await agentStore.fetchAgents()
+  const projectId = chatComponentRef.value?.getSelectedProjectId?.() || null
+  if (chatComponentRef.value?.refreshAgentsForProjectContext) {
+    await chatComponentRef.value.refreshAgentsForProjectContext()
+  } else {
+    await agentStore.fetchAgents({ projectId })
+  }
   if (selectedAgentId.value) {
-    await agentStore.fetchAgentDetail(selectedAgentId.value, true)
+    await agentStore.fetchAgentDetail(selectedAgentId.value, true, projectId)
   }
 }
 

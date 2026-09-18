@@ -26,6 +26,7 @@ from yuxi.services.agent_run_service import (
     resolve_agent_run_config,
 )
 from yuxi.services.input_message_service import AgentRunInputMessage
+from yuxi.services.project_agent_service import load_project_agent_override
 from yuxi.services.workdir_service import (
     WorkdirBinding,
     resolve_conversation_workdir_binding,
@@ -213,8 +214,18 @@ async def intake_request(
         requested_model_spec = (
             model_spec if isinstance(model_spec, str) and model_spec.strip() else conversation_model_spec
         )
+        project_override = await load_project_agent_override(
+            db=db,
+            agent_slug=agent_item.slug,
+            project_id=conversation.project_id,
+        )
         resolved_model_spec, resolved_tool_approval_mode = await resolve_agent_run_config(
-            requested_model_spec, tool_approval_mode, agent_item, agent_backend, db
+            requested_model_spec,
+            tool_approval_mode,
+            agent_item,
+            agent_backend,
+            db,
+            project_override,  # 位置参数保持既有测试替身兼容
         )
         input_payload = {
             "model_spec": resolved_model_spec,

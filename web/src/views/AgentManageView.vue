@@ -5,6 +5,7 @@ import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import AgentManagePanel from '@/components/model-management/AgentManagePanel.vue'
 import ModelProviderManagePanel from '@/components/model-management/ModelProviderManagePanel.vue'
+import ProjectAgentManagePanel from '@/components/model-management/ProjectAgentManagePanel.vue'
 import ScheduledAgentsView from '@/views/ScheduledAgentsView.vue'
 import { useUserStore } from '@/stores/user'
 
@@ -16,10 +17,12 @@ const activeTab = ref('agents')
 const agentPanelRef = ref(null)
 const providerPanelRef = ref(null)
 const schedulePanelRef = ref(null)
+const projectAgentPanelRef = ref(null)
 
 const modelManageTabs = computed(() => {
   const tabs = [
     { key: 'agents', label: '智能体' },
+    { key: 'projects', label: '项目智能体' },
     { key: 'schedules', label: '定时任务 (beta)' }
   ]
   if (userStore.isAdmin) tabs.push({ key: 'providers', label: '模型供应商' })
@@ -29,6 +32,7 @@ const modelManageTabs = computed(() => {
 const activePanel = computed(() => {
   if (activeTab.value === 'schedules') return schedulePanelRef.value
   if (activeTab.value === 'providers') return providerPanelRef.value
+  if (activeTab.value === 'projects') return projectAgentPanelRef.value
   return agentPanelRef.value
 })
 
@@ -38,6 +42,7 @@ const activeStats = computed(() => activePanel.value?.stats || {})
 const normalizeTab = (tab) => {
   if (tab === 'providers' && userStore.isAdmin) return 'providers'
   if (tab === 'schedules') return 'schedules'
+  if (tab === 'projects') return 'projects'
   return 'agents'
 }
 
@@ -96,6 +101,9 @@ onBeforeRouteUpdate((to) => canChangeTab(normalizeTab(to.query.tab)))
     <div class="agent-manage-content">
       <div v-show="activeTab === 'agents'" class="tab-panel">
         <AgentManagePanel ref="agentPanelRef" />
+      </div>
+      <div v-if="activeTab === 'projects'" class="tab-panel">
+        <ProjectAgentManagePanel ref="projectAgentPanelRef" />
       </div>
       <div v-if="userStore.isAdmin && activeTab === 'providers'" class="tab-panel">
         <ModelProviderManagePanel ref="providerPanelRef" />

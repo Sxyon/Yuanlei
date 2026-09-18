@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+from yuxi.services import agent_run_manifest_service as manifest_service
 from yuxi.services.agent_run_manifest_service import (
     _manifest_skill_scope,
     build_manifest_payload,
@@ -12,6 +15,79 @@ from yuxi.services.agent_run_manifest_service import (
     compute_manifest_fingerprint,
     resolve_skill_entries,
 )
+
+
+class _FakeContext:
+    """build_run_manifest_result 只要求可实例化、可更新字段。"""
+
+    def update_from_dict(self, data: dict):
+        for key, value in data.items():
+            setattr(self, key, value)
+
+
+@pytest.mark.asyncio
+async def test_build_run_manifest_result_uses_project_scope_and_effective_context(monkeypatch):
+    """执行边界必须带上项目范围校验，并使用项目覆盖后的有效配置。"""
+    agent = SimpleNamespace(
+        slug="employee",
+        backend_id="ChatbotAgent",
+        config_json={"context": {"model": "base-model"}},
+    )
+    run = SimpleNamespace(
+        run_type="chat",
+        agent_slug="employee",
+        conversation_thread_id="thread-1",
+        input_payload={},
+    )
+
+    class _AgentRepository:
+        def __init__(self, _db):
+            pass
+
+        async def get_visible_by_slug(self, **_kwargs):
+            return agent
+
+    class _ConversationRepository:
+        def __init__(self, _db):
+            pass
+
+        async def get_conversation_by_thread_id(self, _thread_id):
+            return SimpleNamespace(project_id="project-1")
+
+    class _Backend:
+        context_schema = _FakeContext
+
+    scope_calls: list[dict] = []
+
+    async def _record_scope(**kwargs):
+        scope_calls.append(kwargs)
+
+    async def _effective_context(**_kwargs):
+        return {"model": "project-model"}
+
+    async def _runtime_skills(_context, *, db, user):
+        return {}
+
+    async def _skill_entries(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(manifest_service, "AgentRepository", _AgentRepository)
+    monkeypatch.setattr(manifest_service, "ConversationRepository", _ConversationRepository)
+    monkeypatch.setattr(manifest_service, "ensure_agent_project_scope", _record_scope)
+    monkeypatch.setattr(manifest_service, "resolve_effective_agent_context", _effective_context)
+    monkeypatch.setattr(manifest_service.agent_manager, "get_agent", lambda _backend_id: _Backend())
+    monkeypatch.setattr(manifest_service, "resolve_runtime_skills_for_context", _runtime_skills)
+    monkeypatch.setattr(manifest_service, "resolve_skill_entries", _skill_entries)
+
+    result = await manifest_service.build_run_manifest_result(
+        run=run,
+        user=SimpleNamespace(uid="user-1"),
+        db=object(),
+    )
+
+    assert scope_calls[0]["agent_slug"] == "employee"
+    assert scope_calls[0]["project_id"] == "project-1"
+    assert result.normalized_context == {"model": "project-model"}
 
 
 def _manifest(**overrides):

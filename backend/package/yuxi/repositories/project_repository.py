@@ -102,7 +102,10 @@ class ProjectRepository:
         return list(result.all())
 
     async def soft_delete_with_conversations(self, project: Project, *, deleted_at: datetime) -> int:
-        """在调用方事务内软删除 Project 及其全部 Conversation。"""
+        """在调用方事务内软删除 Project、其全部 Conversation 与项目智能体绑定。"""
+        from yuxi.repositories.project_agent_repository import ProjectAgentRepository
+
+        await ProjectAgentRepository(self.db).delete_project_bindings(project.id)
         result = await self.db.execute(
             update(Conversation)
             .where(Conversation.uid == project.uid, Conversation.project_id == project.id)

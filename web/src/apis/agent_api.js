@@ -46,23 +46,39 @@ export const agentApi = {
 
   /**
    * 获取智能体列表
+   * @param {Object} options
+   * @param {boolean} options.includeSubagents - 是否包含子智能体定义
+   * @param {string|null} options.projectId - 项目上下文；返回该项目数字员工与无归属智能体
    * @returns {Promise} - 智能体列表
    */
-  getAgents: ({ includeSubagents = false } = {}) => {
+  getAgents: ({ includeSubagents = false, projectId = null } = {}) => {
     const params = new URLSearchParams()
     if (includeSubagents) params.set('include_subagents', 'true')
+    if (projectId) params.set('project_id', projectId)
     const query = params.toString()
     return apiGet(query ? `/api/agent?${query}` : '/api/agent')
   },
 
   getAgentBackends: () => apiGet('/api/agent/backends'),
 
+  getAgentBackendDetail: (backendId, { includeConfigurableItems = false } = {}) => {
+    const params = new URLSearchParams()
+    if (includeConfigurableItems) params.set('include_configurable_items', 'true')
+    const query = params.toString()
+    return apiGet(
+      query ? `/api/agent/backends/${backendId}?${query}` : `/api/agent/backends/${backendId}`
+    )
+  },
+
   /**
    * 获取单个智能体详情
    * @param {string} agentId - 智能体ID
+   * @param {Object} options
+   * @param {string|null} options.projectId - 项目上下文；返回项目覆盖后的有效配置
    * @returns {Promise} - 智能体详情
    */
-  getAgentDetail: (agentId) => apiGet(`/api/agent/${agentId}`),
+  getAgentDetail: (agentId, { projectId = null } = {}) =>
+    apiGet(projectId ? `/api/agent/${agentId}?project_id=${encodeURIComponent(projectId)}` : `/api/agent/${agentId}`),
 
   /**
    * 获取智能体历史消息

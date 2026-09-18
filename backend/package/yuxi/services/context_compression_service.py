@@ -14,7 +14,6 @@ from yuxi.agents.buildin import agent_manager
 from yuxi.agents.context import (
     DEFAULT_SUMMARY_THRESHOLD_K,
     build_agent_input_context,
-    normalize_agent_context_config,
 )
 from yuxi.agents.middlewares import create_summary_middleware_from_context
 from yuxi.agents.middlewares.token_usage import TOKEN_USAGE_CONTEXT_FIELDS
@@ -25,6 +24,7 @@ from yuxi.repositories.agent_run_request_repository import AgentRunRequestReposi
 from yuxi.repositories.agent_state_repository import AgentStateRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.services.agent_run_service import resolve_agent_run_model_spec
+from yuxi.services.project_agent_service import AgentProjectScopeDenied, ensure_agent_project_scope, resolve_effective_agent_context
 from yuxi.services.workdir_service import ensure_conversation_workdir_available
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils.logging_config import logger
@@ -58,8 +58,17 @@ async def compress_thread_context(
     if "context_compression" not in getattr(agent, "capabilities", []):
         raise HTTPException(status_code=422, detail="当前智能体不支持主动上下文压缩")
 
-    agent_config = await normalize_agent_context_config(
-        (agent_item.config_json or {}).get("context", {}),
+    try:
+        await ensure_agent_project_scope(
+            db=db,
+            agent_slug=agent_slug,
+            project_id=conversation.project_id,
+        )
+    except AgentProjectScopeDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    agent_config = await resolve_effective_agent_context(
+        agent_item=agent_item,
+        project_id=conversation.project_id,
         db=db,
         user=current_user,
         context_schema=agent.context_schema,

@@ -227,6 +227,11 @@ body {
   line-height: 1.4;
 }
 
+.config-dropdown-overlay .config-dropdown-item-badge.is-project {
+  background: var(--main-50);
+  color: var(--main-700);
+}
+
 .config-dropdown-overlay .config-dropdown-item-check {
   flex-shrink: 0;
   color: var(--main-600);

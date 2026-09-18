@@ -17,10 +17,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.buildin import agent_manager
-from yuxi.agents.context import normalize_agent_context_config
 from yuxi.agents.skills.runtime import resolve_runtime_skills_for_context
 from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
+from yuxi.repositories.conversation_repository import ConversationRepository
+from yuxi.services.project_agent_service import ensure_agent_project_scope, resolve_effective_agent_context
 from yuxi.storage.postgres.models_business import AgentRun, Skill, User
 
 MANIFEST_SCHEMA_VERSION = 3
@@ -189,10 +190,14 @@ async def build_run_manifest_result(
         kind="subagent" if run.run_type == "subagent" else "main",
     )
     backend = agent_manager.get_agent(agent_item.backend_id) if agent_item else None
+    conversation = await ConversationRepository(db).get_conversation_by_thread_id(run.conversation_thread_id)
+    project_id = conversation.project_id if conversation is not None else None
     normalized_context: dict = {}
     if agent_item and backend:
-        normalized_context = await normalize_agent_context_config(
-            (agent_item.config_json or {}).get("context", {}),
+        await ensure_agent_project_scope(db=db, agent_slug=agent_item.slug, project_id=project_id)
+        normalized_context = await resolve_effective_agent_context(
+            agent_item=agent_item,
+            project_id=project_id,
             db=db,
             user=user,
             context_schema=backend.context_schema,

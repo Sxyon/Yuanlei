@@ -40,6 +40,11 @@ from yuxi.services.input_message_service import (
     build_resume_input_message,
 )
 from yuxi.services.langfuse_service import get_trace_url_by_id_async
+from yuxi.services.project_agent_service import (
+    AgentProjectScopeDenied,
+    ensure_agent_project_scope,
+    load_project_agent_override,
+)
 from yuxi.services.run_queue_service import (
     build_run_event_envelope,
     get_arq_pool,
@@ -98,13 +103,16 @@ class AgentRunWaitTimeout(Exception):
         super().__init__(f"agent run {run_id} is still {status} after waiting")
 
 
-def load_agent_run_context(agent_item, agent_backend):
-    """用 Agent 配置的 context 片段实例化并填充运行上下文，供 run 解析器读取配置字段。"""
+def load_agent_run_context(agent_item, agent_backend, *, project_override: dict | None = None):
+    """用 Agent 配置与项目覆盖实例化并填充运行上下文，供 run 解析器读取配置字段。"""
     context = agent_backend.context_schema()
     config_json = getattr(agent_item, "config_json", None) or {}
     config_context = config_json.get("context") if isinstance(config_json, dict) else {}
-    if isinstance(config_context, dict):
-        context.update_from_dict(config_context)
+    merged = dict(config_context) if isinstance(config_context, dict) else {}
+    if isinstance(project_override, dict):
+        merged.update(project_override)
+    if merged:
+        context.update_from_dict(merged)
     return context
 
 
@@ -146,9 +154,10 @@ async def resolve_agent_run_config(
     agent_item,
     agent_backend,
     db: AsyncSession | None = None,
+    project_override: dict | None = None,
 ) -> tuple[str, str]:
     """一次性解析 model_spec 与 tool_approval_mode，共享同一份运行上下文。"""
-    context = load_agent_run_context(agent_item, agent_backend)
+    context = load_agent_run_context(agent_item, agent_backend, project_override=project_override)
     resolved_model_spec = await resolve_agent_run_model_spec(
         model_spec,
         getattr(context, "model", None),
@@ -470,8 +479,18 @@ async def create_agent_run_view(
             "tool_approval_mode", DEFAULT_TOOL_APPROVAL_MODE
         )
     else:
+        project_override = await load_project_agent_override(
+            db=db,
+            agent_slug=scope.agent_item.slug,
+            project_id=scope.conversation.project_id,
+        )
         resolved_model_spec, resolved_tool_approval_mode = await resolve_agent_run_config(
-            model_spec, tool_approval_mode, scope.agent_item, scope.agent_backend, db
+            model_spec,
+            tool_approval_mode,
+            scope.agent_item,
+            scope.agent_backend,
+            db,
+            project_override,  # 位置参数保持既有测试替身兼容
         )
 
     run_input_message = _prepare_run_input_message(
@@ -741,6 +760,11 @@ async def prepare_agent_run_creation_scope(
     agent_item = await agent_repo.get_visible_by_slug(slug=agent_slug, user=current_user, kind=agent_kind)
     if not agent_item:
         raise HTTPException(status_code=404, detail="智能体不存在")
+
+    try:
+        await ensure_agent_project_scope(db=db, agent_slug=agent_item.slug, project_id=conversation.project_id)
+    except AgentProjectScopeDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     agent_backend = agent_manager.get_agent(agent_item.backend_id)
     if not agent_backend:

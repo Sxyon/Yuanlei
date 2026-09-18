@@ -54,7 +54,8 @@ class _ListRepo:
     async def ensure_default_agent(self):
         return self.items[0]
 
-    async def list_visible(self, *, user, include_subagent_definitions: bool = False):
+    async def list_visible(self, *, user, include_subagent_definitions: bool = False, project_id: str | None = None):
+        del project_id
         del user
         self.include_subagent_definition_calls.append(include_subagent_definitions)
         if include_subagent_definitions:

@@ -270,6 +270,11 @@ def _patch_run_record_creation(
         lambda _spec: SimpleNamespace(model_type="chat"),
     )
 
+    async def _noop_scope(**_kwargs):
+        return None
+
+    monkeypatch.setattr(agent_run_service, "ensure_agent_project_scope", _noop_scope)
+
     class _FakeContext:
         def __init__(self):
             self.model = "agent-default-model"
@@ -288,7 +293,13 @@ def _patch_run_record_creation(
 
         async def get_conversation_by_thread_id(self, thread_id: str):
             del thread_id
-            return SimpleNamespace(id=20, uid="user-1", status="subagent", agent_id="worker")
+            return SimpleNamespace(
+                id=20,
+                uid="user-1",
+                status="subagent",
+                agent_id="worker",
+                project_id="project-1",
+            )
 
         async def lock_conversation_by_thread_id(self, thread_id: str):
             return await self.get_conversation_by_thread_id(thread_id)

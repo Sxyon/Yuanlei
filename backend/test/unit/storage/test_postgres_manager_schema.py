@@ -210,6 +210,34 @@ async def test_yuanlei_v1_to_v2_upgrade_backfills_legacy_allocations_before_cons
     )
 
 
+def test_project_agent_schema_owns_project_and_agent_foreign_keys():
+    """Fresh schema 在数据库层拒绝悬空的项目/智能体绑定并保证单项目单绑定。"""
+    assert "project_agents" in BusinessBase.metadata.tables
+    table = BusinessBase.metadata.tables["project_agents"]
+    foreign_keys = {constraint.name for constraint in table.foreign_key_constraints}
+    assert foreign_keys == {"fk_project_agents_project_id", "fk_project_agents_agent_slug"}
+    assert "uq_project_agents_project_agent" in {constraint.name for constraint in table.constraints}
+    assert {"ix_project_agents_project_id", "ix_project_agents_agent_slug"}.issubset(
+        {index.name for index in table.indexes}
+    )
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v2_to_v3_upgrade_creates_project_agents_idempotently():
+    """项目数字员工表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v2_to_v3()
+        await manager.upgrade_yuanlei_schema_v2_to_v3()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS project_agents" in statements
+    assert "REFERENCES projects(id) ON DELETE CASCADE" in statements
+    assert "REFERENCES agents(slug) ON DELETE CASCADE" in statements
+    assert "UNIQUE (project_id, agent_slug)" in statements
+    assert "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id" in statements
+    assert "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug" in statements
+
+
 @pytest.mark.asyncio
 async def test_ensure_business_schema_cleans_duplicate_active_agent_runs_before_unique_index():
     async with _recording_manager() as (manager, connection):

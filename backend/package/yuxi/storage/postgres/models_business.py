@@ -600,6 +600,48 @@ class Agent(Base):
         }
 
 
+class ProjectAgent(Base):
+    """项目数字员工：Agent 在某个 Project 内的归属与配置覆盖层（yuanlei 域）。"""
+
+    __tablename__ = "project_agents"
+    __table_args__ = (
+        UniqueConstraint("project_id", "agent_slug", name="uq_project_agents_project_agent"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="ProjectAgent UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_project_agents_project_id"),
+        nullable=False,
+        index=True,
+        comment="所属 Project ID",
+    )
+    agent_slug = Column(
+        String(80),
+        ForeignKey("agents.slug", ondelete="CASCADE", name="fk_project_agents_agent_slug"),
+        nullable=False,
+        index=True,
+        comment="Agent slug",
+    )
+    config_overrides = Column(JSON_VALUE, nullable=False, default=dict, comment="项目级配置覆盖层")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    updated_by = Column(String(64), nullable=True, comment="最近更新者 uid")
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "agent_slug": self.agent_slug,
+            "config_overrides": self.config_overrides or {},
+            "created_by": self.created_by,
+            "updated_by": self.updated_by,
+            "created_at": format_utc_datetime(self.created_at),
+            "updated_at": format_utc_datetime(self.updated_at),
+        }
+
+
 class Skill(Base):
     """Skill 元数据模型（内容存文件系统，索引存数据库）"""
 

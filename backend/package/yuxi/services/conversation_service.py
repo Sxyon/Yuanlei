@@ -11,6 +11,7 @@ from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.conversation_repository import INVOCATION_CONVERSATION_SOURCES, ConversationRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.attachment_service import serialize_attachment
+from yuxi.services.project_agent_service import AgentProjectScopeDenied, ensure_agent_project_scope
 from yuxi.services.project_service import create_implicit_project
 from yuxi.services.workdir_service import (
     ensure_conversation_workdir_available,
@@ -107,6 +108,14 @@ async def create_thread_view(
                 agent_slug=agent_item.slug,
                 project_id=project_id,
             )
+            try:
+                await ensure_agent_project_scope(
+                    db=db,
+                    agent_slug=agent_item.slug,
+                    project_id=existing.project_id,
+                )
+            except AgentProjectScopeDenied as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
             workdir_binding = workdir_binding_from_project(
                 conversation=existing,
                 uid=str(current_uid),
@@ -153,6 +162,14 @@ async def create_thread_view(
             project = await project_repo.get_by_idempotency_key(f"thread:{normalized_request_id}", str(current_uid))
             if project is None or project.selection_status != "implicit":
                 raise HTTPException(status_code=409, detail="request_id 已用于其他 Conversation 创建意图")
+    try:
+        await ensure_agent_project_scope(
+            db=db,
+            agent_slug=agent_item.slug,
+            project_id=project.id,
+        )
+    except AgentProjectScopeDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     try:
         conversation = await conv_repo.add_conversation(
             uid=str(current_uid),

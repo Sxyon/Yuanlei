@@ -281,6 +281,10 @@ async def test_explicit_project_creation_locks_project_until_commit(monkeypatch)
     async def serialize_thread(*_args, **_kwargs):
         return {"id": "thread-1"}
 
+    async def _noop_scope(**_kwargs):
+        return None
+
+    monkeypatch.setattr(svc, "ensure_agent_project_scope", _noop_scope)
     monkeypatch.setattr(svc, "AgentRepository", _AgentRepository)
     monkeypatch.setattr(svc, "ProjectRepository", _ProjectRepository)
     monkeypatch.setattr(svc, "ConversationRepository", _ConversationRepository)
@@ -358,6 +362,10 @@ async def test_create_thread_replay_restores_managed_workdir(monkeypatch):
     async def serialize_thread(_conversation, **_kwargs):
         return {"id": _conversation.thread_id}
 
+    async def _noop_scope(**_kwargs):
+        return None
+
+    monkeypatch.setattr(svc, "ensure_agent_project_scope", _noop_scope)
     monkeypatch.setattr(svc, "AgentRepository", _AgentRepository)
     monkeypatch.setattr(svc, "ConversationRepository", _ConversationRepository)
     monkeypatch.setattr(svc, "ProjectRepository", _ProjectRepository)

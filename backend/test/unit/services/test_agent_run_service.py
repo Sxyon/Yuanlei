@@ -1912,6 +1912,7 @@ def _patch_agent_run_creation(
     parent_run: SimpleNamespace | None = None,
     latest_run: SimpleNamespace | None = None,
     raise_create_integrity_error: bool = False,
+    project_override: dict | None = None,
 ):
     runs_by_id = {
         "parent-agent-run": SimpleNamespace(
@@ -1940,7 +1941,7 @@ def _patch_agent_run_creation(
 
         async def get_conversation_by_thread_id(self, thread_id: str):
             del thread_id
-            return SimpleNamespace(id=1, uid="user-1", status="active", agent_id="default")
+            return SimpleNamespace(id=1, uid="user-1", status="active", agent_id="default", project_id="project-1")
 
         async def lock_conversation_by_thread_id(self, thread_id: str):
             return await self.get_conversation_by_thread_id(thread_id)
@@ -1969,6 +1970,15 @@ def _patch_agent_run_creation(
     async def fake_get_arq_pool():
         return Queue()
 
+    async def _noop_scope(**_kwargs):
+        return None
+
+    async def fake_project_override(*, db, agent_slug, project_id):
+        del db, agent_slug, project_id
+        return project_override
+
+    monkeypatch.setattr(agent_run_service, "ensure_agent_project_scope", _noop_scope)
+    monkeypatch.setattr(agent_run_service, "load_project_agent_override", fake_project_override)
     monkeypatch.setattr(agent_run_service.agent_manager, "get_agent", lambda backend_id: _FakeBackend())
     monkeypatch.setattr(agent_run_service, "AgentRepository", AgentRepo)
     monkeypatch.setattr(agent_run_service, "ConversationRepository", ConvRepo)
@@ -2007,6 +2017,28 @@ async def test_create_chat_run_persists_validated_model_spec(monkeypatch: pytest
     )
 
     assert db.created_run_kwargs["input_payload"]["model_spec"] == "claude-x"
+
+
+@pytest.mark.asyncio
+async def test_create_chat_run_snapshots_project_override_model(monkeypatch: pytest.MonkeyPatch):
+    """Run 创建时项目覆盖的 model 进入 run 快照。"""
+    monkeypatch.setattr(
+        agent_run_service.model_cache,
+        "get_model_info",
+        lambda spec: SimpleNamespace(model_type="chat"),
+    )
+    db = _patch_agent_run_creation(monkeypatch, project_override={"model": "project-model"})
+
+    await agent_run_service.create_agent_run_view(
+        input_message=_chat_input("hello"),
+        agent_slug="default",
+        thread_id="thread-1",
+        meta={"request_id": "req-project-override"},
+        current_uid="user-1",
+        db=db,
+    )
+
+    assert db.created_run_kwargs["input_payload"]["model_spec"] == "project-model"
 
 
 @pytest.mark.asyncio

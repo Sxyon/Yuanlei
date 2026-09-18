@@ -310,16 +310,32 @@ class AgentRepository:
             created_by=created_by,
         )
 
-    async def list_visible(self, *, user: User, include_subagent_definitions: bool = False) -> list[Agent]:
-        """列出用户可见的主智能体，只有显式请求时才包含子智能体定义。"""
+    async def list_visible(
+        self,
+        *,
+        user: User,
+        include_subagent_definitions: bool = False,
+        project_id: str | None = None,
+    ) -> list[Agent]:
+        """列出用户可见的主智能体；项目数字员工只在其绑定项目的上下文中出现。"""
+        from yuxi.repositories.project_agent_repository import ProjectAgentRepository
+
         stmt = select(Agent)
         if not include_subagent_definitions:
             stmt = stmt.where(Agent.is_subagent.is_(False))
         result = await self.db.execute(stmt.order_by(Agent.is_default.desc(), Agent.id.asc()))
         agents = list(result.scalars().all())
         if user.role == "superadmin":
-            return agents
-        return [agent for agent in agents if user_can_access_agent(user, agent)]
+            allowed = agents
+        else:
+            allowed = [agent for agent in agents if user_can_access_agent(user, agent)]
+
+        project_agents = ProjectAgentRepository(self.db)
+        bound_slugs = set(await project_agents.list_all_agent_slugs())
+        if project_id is None:
+            return [agent for agent in allowed if agent.slug not in bound_slugs]
+        project_bound_slugs = set(await project_agents.list_agent_slugs_for_project(str(project_id)))
+        return [agent for agent in allowed if agent.slug in project_bound_slugs or agent.slug not in bound_slugs]
 
     async def list_visible_subagents(self, *, user: User) -> list[Agent]:
         result = await self.db.execute(
@@ -408,6 +424,7 @@ class AgentRepository:
         is_subagent: bool | None = None,
         created_by: str | None = None,
         creator: User | None = None,
+        commit: bool = True,
     ) -> Agent:
         resolved_is_subagent = resolve_agent_is_subagent(backend_id, is_subagent)
         if resolved_is_subagent and is_default:
@@ -451,7 +468,10 @@ class AgentRepository:
             updated_at=utc_now_naive(),
         )
         self.db.add(agent)
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         await self.db.refresh(agent)
         if is_default:
             return await self.set_default(agent=agent, updated_by=created_by)

@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 2
+YUANLEI_SCHEMA_VERSION = 3
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -316,6 +316,25 @@ PROJECT_GIT_V1_TO_V2_SCHEMA_STATEMENTS = (
         "CREATE INDEX IF NOT EXISTS ix_project_git_worktrees_requested_by_run_id "
         "ON project_git_worktrees(requested_by_run_id)"
     ),
+)
+PROJECT_AGENT_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS project_agents (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_project_agents_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        agent_slug VARCHAR(80) NOT NULL CONSTRAINT fk_project_agents_agent_slug
+            REFERENCES agents(slug) ON DELETE CASCADE,
+        config_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by VARCHAR(64),
+        updated_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_project_agents_project_agent UNIQUE (project_id, agent_slug)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id ON project_agents(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug ON project_agents(agent_slug)",
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -762,6 +781,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_GIT_V1_TO_V2_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v2_to_v3(self) -> None:
+        """为项目数字员工增加 ProjectAgent 归属与覆盖表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_AGENT_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

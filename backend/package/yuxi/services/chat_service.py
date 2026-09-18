@@ -43,6 +43,7 @@ from yuxi.services.langfuse_service import (
     get_trace_info,
 )
 from yuxi.services.model_message_audit_service import ModelMessageAuditCollector
+from yuxi.services.project_agent_service import ensure_agent_project_scope, resolve_effective_agent_context
 from yuxi.services.project_service import create_implicit_project
 from yuxi.services.run_queue_service import publish_cancel_signals
 from yuxi.services.subagent_run_service import serialize_subagent_run_state
@@ -1024,13 +1025,17 @@ async def _resolve_agent_runtime(
     if not backend:
         raise ValueError(f"智能体后端 {agent_item.backend_id} 不存在")
 
+    project_id = conversation.project_id if conversation is not None else None
+    await ensure_agent_project_scope(db=db, agent_slug=agent_item.slug, project_id=project_id)
+
     snapshot_context = execution_snapshot.get("normalized_context") if isinstance(execution_snapshot, dict) else None
     if isinstance(snapshot_context, dict):
         # manifest 已固化本次执行配置；Graph 准备和 executor 仍执行各自的实时授权检查。
         agent_config = snapshot_context
     else:
-        agent_config = await normalize_agent_context_config(
-            (agent_item.config_json or {}).get("context", {}),
+        agent_config = await resolve_effective_agent_context(
+            agent_item=agent_item,
+            project_id=project_id,
             db=db,
             user=user,
             context_schema=backend.context_schema,
