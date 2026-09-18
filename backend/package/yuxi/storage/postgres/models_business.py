@@ -316,8 +316,7 @@ class ProjectGitWorktree(Base):
             name="ck_project_git_worktrees_branch_kind",
         ),
         CheckConstraint(
-            "(branch_kind = 'legacy' AND branch_slug IS NULL) OR "
-            "(branch_kind <> 'legacy' AND branch_slug IS NOT NULL)",
+            "(branch_kind = 'legacy' AND branch_slug IS NULL) OR (branch_kind <> 'legacy' AND branch_slug IS NOT NULL)",
             name="ck_project_git_worktrees_branch_slug",
         ),
     )
@@ -604,9 +603,7 @@ class ProjectAgent(Base):
     """项目数字员工：Agent 在某个 Project 内的归属与配置覆盖层（yuanlei 域）。"""
 
     __tablename__ = "project_agents"
-    __table_args__ = (
-        UniqueConstraint("project_id", "agent_slug", name="uq_project_agents_project_agent"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "agent_slug", name="uq_project_agents_project_agent"),)
 
     id = Column(String(64), primary_key=True, comment="ProjectAgent UUID")
     project_id = Column(
@@ -996,9 +993,10 @@ class MCPServer(Base):
     description = Column(String(500), nullable=True, comment="描述")
 
     # 连接配置
-    transport = Column(String(20), nullable=False, comment="传输类型：sse/streamable_http/stdio")
+    transport = Column(String(20), nullable=False, comment="传输类型：sse/streamable_http")
     url = Column(String(500), nullable=True, comment="服务器 URL（sse/streamable_http）")
-    command = Column(String(500), nullable=True, comment="命令（stdio）")
+    # 历史 stdio 字段仅供管理员迁移旧配置，不参与运行时连接。
+    command = Column(String(500), nullable=True, comment="历史 stdio 命令")
     args = Column(JSON, nullable=True, comment="命令参数数组（stdio）")
     env = Column(JSON, nullable=True, comment="环境变量（stdio）")
     headers = Column(JSON, nullable=True, comment="HTTP 请求头")
@@ -1046,30 +1044,14 @@ class MCPServer(Base):
         }
 
     def to_mcp_config(self) -> dict[str, Any]:
-        """转换为 MCP 配置格式（用于加载到 MCP_SERVERS 缓存）"""
+        """生成远程 MCP 连接配置。"""
         import json
 
+        if self.transport not in ("sse", "streamable_http"):
+            raise ValueError("MCP 仅支持 sse 或 streamable_http，不支持 stdio 等其他 transport")
         config = {"transport": self.transport}
         if self.transport in ("sse", "streamable_http") and self.url:
             config["url"] = self.url
-        if self.transport == "stdio":
-            if self.command:
-                config["command"] = self.command
-            if self.args:
-                if isinstance(self.args, list):
-                    config["args"] = self.args
-                elif isinstance(self.args, str):
-                    try:
-                        config["args"] = json.loads(self.args)
-                    except json.JSONDecodeError:
-                        pass
-            if self.env and isinstance(self.env, dict):
-                config["env"] = self.env
-            elif isinstance(self.env, str):
-                try:
-                    config["env"] = json.loads(self.env)
-                except json.JSONDecodeError:
-                    pass
         # headers 只用于 sse/streamable_http 传输类型
         if self.transport in ("sse", "streamable_http") and self.headers:
             if isinstance(self.headers, dict):
@@ -1649,7 +1631,9 @@ class AgentRunRequest(Base):
     )
     input_message_id = Column(Integer, ForeignKey("messages.id"), nullable=False, comment="关联输入消息 ID")
     dispatched_run_id = Column(String(64), ForeignKey("agent_runs.id"), nullable=True, comment="已派发的 AgentRun ID")
-    input_payload = Column(JSON, nullable=False, default=dict, comment="原始输入载荷快照")
+    input_payload = Column(
+        JSON, nullable=False, default=dict, comment="接入时解析的模型与审批配置；消息由 input_message_id 关联"
+    )
     error_message = Column(Text, nullable=True, comment="rejected/failed 时的错误信息")
     created_at = Column(DateTime, nullable=False, default=utc_now_naive, comment="创建时间")
     dispatched_at = Column(DateTime, nullable=True, comment="派发时间")

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from yuxi.agents.buildin import agent_manager
+from yuxi.agents.buildin import AgentBackendNotFoundError, get_agent_backend, list_agent_backend_info
 from yuxi.agents.context import filter_declared_config
 from yuxi.repositories.agent_repository import (
     AgentRepository,
@@ -29,7 +29,7 @@ from yuxi.services.agent_request_queue_service import (
 from yuxi.services.agent_config_service import prepare_agent_config_write
 from yuxi.services.agent_run_service import (
     cancel_agent_run_view,
-    create_agent_run_view,
+    create_resume_run_view,
     get_active_run_by_thread,
     get_agent_run_langfuse_link,
     get_agent_run_result,
@@ -37,12 +37,12 @@ from yuxi.services.agent_run_service import (
     stream_agent_run_events,
 )
 from yuxi.services.input_message_service import build_chat_input_message
+from yuxi.services.agent_request_service import AgentRequestInput, RunOrigin, submit_agent_request
 from yuxi.services.project_agent_service import (
     AgentProjectScopeDenied,
     ensure_agent_project_scope,
     resolve_effective_agent_context,
 )
-from yuxi.services.run_submission_service import RunOrigin, RunSubmissionCommand, submit_run_command
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import User
 
@@ -90,16 +90,9 @@ class AgentRunCreate(BaseModel):
     )
 
 
-def _backend_info(info: dict) -> dict:
-    data = dict(info)
-    data["backend_id"] = data.pop("id", None)
-    data["type"] = "agent_backend"
-    return data
-
-
 def _filter_agent_config_json(backend_id: str, config_json: dict | None) -> dict:
-    backend = agent_manager.get_agent(backend_id)
-    context_schema = backend.context_schema if backend else None
+    backend = get_agent_backend(backend_id)
+    context_schema = backend.context_schema
     return filter_declared_config(config_json or {}, context_schema=context_schema)
 
 
@@ -111,40 +104,38 @@ async def _serialize_agent(
     include_configurable_items: bool = False,
     backend_info_cache: dict[tuple[str, bool, str], dict] | None = None,
 ) -> dict:
-    data = await repo.serialize(
-        item,
-        user=user,
-        include_configurable_items=include_configurable_items,
-        backend_info_cache=backend_info_cache,
-    )
-    data["config_json"] = _filter_agent_config_json(item.backend_id, data.get("config_json"))
+    try:
+        data = await repo.serialize(
+            item,
+            user=user,
+            include_configurable_items=include_configurable_items,
+            backend_info_cache=backend_info_cache,
+        )
+        data["config_json"] = _filter_agent_config_json(item.backend_id, data.get("config_json"))
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return data
 
 
 @agent_router.get("/backends")
 async def list_agent_backends(current_user: User = Depends(get_required_user)):
-    infos = await agent_manager.get_agents_info(include_configurable_items=False)
-    return {"backends": [_backend_info(info) for info in infos]}
+    infos = await list_agent_backend_info()
+    return {"backends": [{**info, "type": "agent_backend"} for info in infos]}
 
 
 @agent_router.get("/backends/{backend_id}")
-async def get_agent_backend(
+async def get_agent_backend_detail(
     backend_id: str,
     include_configurable_items: bool = Query(True),
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
-    backend = agent_manager.get_agent(backend_id)
-    if not backend:
-        raise HTTPException(status_code=404, detail=f"智能体后端 {backend_id} 不存在")
-    return _backend_info(
-        await backend.get_info(
-            user_role=current_user.role,
-            db=db,
-            user=current_user,
-            include_configurable_items=include_configurable_items,
-        )
-    )
+    try:
+        backend = get_agent_backend(backend_id)
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    info = await backend.get_info(user_role=current_user.role, db=db, user=current_user)
+    return {**info, "backend_id": backend_id, "type": "agent_backend"}
 
 
 @agent_router.get("")
@@ -190,9 +181,10 @@ async def get_default_agent(current_user: User = Depends(get_required_user), db:
 async def create_agent(
     payload: AgentCreate, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)
 ):
-    backend = agent_manager.get_agent(payload.backend_id)
-    if not backend:
-        raise HTTPException(status_code=404, detail=f"智能体后端 {payload.backend_id} 不存在")
+    try:
+        backend = get_agent_backend(payload.backend_id)
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     if payload.set_default:
         raise HTTPException(status_code=422, detail="默认智能体已固定为内置智能助手")
 
@@ -248,15 +240,17 @@ async def get_agent(
         data["is_project_agent"] = bool(
             await ProjectAgentRepository(db).list_project_ids_for_agent(item.slug)
         )
-        backend = agent_manager.get_agent(item.backend_id)
-        if backend is not None:
-            data["effective_context"] = await resolve_effective_agent_context(
-                agent_item=item,
-                project_id=project.id,
-                db=db,
-                user=current_user,
-                context_schema=backend.context_schema,
-            )
+        try:
+            backend = get_agent_backend(item.backend_id)
+        except AgentBackendNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        data["effective_context"] = await resolve_effective_agent_context(
+            agent_item=item,
+            project_id=project.id,
+            db=db,
+            user=current_user,
+            context_schema=backend.context_schema,
+        )
     return {"agent": data}
 
 
@@ -276,6 +270,7 @@ async def update_agent(
         raise HTTPException(status_code=403, detail="不能编辑非自己创建的智能体")
 
     try:
+        backend = get_agent_backend(item.backend_id)
         fields_set = payload.model_fields_set
         if "description" in fields_set and payload.description is None:
             item.description = None
@@ -285,10 +280,9 @@ async def update_agent(
         config_json = None
         config_resource_access = None
         if payload.config_json is not None:
-            backend = agent_manager.get_agent(item.backend_id)
             config_json, config_resource_access = await prepare_agent_config_write(
                 payload.config_json,
-                context_schema=backend.context_schema if backend else None,
+                context_schema=backend.context_schema,
                 db=db,
                 user=current_user,
             )
@@ -306,6 +300,8 @@ async def update_agent(
             updated_by=str(current_user.uid),
             updater=current_user,
         )
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"agent": await _serialize_agent(repo, updated, current_user, include_configurable_items=True)}
@@ -356,16 +352,10 @@ async def create_agent_run(
     if payload.resume is not None:
         if payload.queue_policy != "enqueue":
             raise HTTPException(status_code=422, detail="queue_policy 仅支持普通 Chat 请求")
-        input_message = None
-        if payload.query:
-            input_message = build_chat_input_message(payload.query, payload.image_content)
-        return await create_agent_run_view(
-            input_message=input_message,
+        return await create_resume_run_view(
             agent_slug=payload.agent_slug,
             thread_id=payload.thread_id,
             meta=dict(payload.meta or {}),
-            model_spec=payload.model_spec,
-            tool_approval_mode=payload.tool_approval_mode,
             current_uid=str(current_user.uid),
             db=db,
             resume=payload.resume,
@@ -379,8 +369,8 @@ async def create_agent_run(
 
     input_message = build_chat_input_message(payload.query or "", payload.image_content)
 
-    return await submit_run_command(
-        command=RunSubmissionCommand(
+    return await submit_agent_request(
+        request_input=AgentRequestInput(
             agent_slug=payload.agent_slug,
             thread_id=payload.thread_id,
             request_id=request_id,
@@ -459,14 +449,7 @@ async def steer_request(
 ):
     result = await steer_queued_request(request_id=request_id, current_uid=str(current_user.uid), db=db)
     await db.commit()
-    return {
-        "request_id": result.request_id,
-        "thread_id": result.thread_id,
-        "status": result.status,
-        "queue_policy": result.queue_policy,
-        "queue_position": result.queue_position,
-        "request_events_url": f"/api/agent/requests/{result.request_id}/events",
-    }
+    return result
 
 
 @agent_router.get("/requests/{request_id}/events")

@@ -47,7 +47,7 @@ Sandbox 删除等待从数据库事务中拆出：短事务预检、事务外删
 
 | 项目 | 版本 | 上游基线 |
 |---|---|---|
-| 元垒 | 0.1.0 | Yuxi v0.7.3 @ cd7d17c7（2026-09-14） |
+| 元垒 | 0.1.0 | Yuxi v0.7.3 @ 5a1bdc3c（2026-09-18） |
 
 - 上游 README 原文镜像：[README.yuxi.md](README.yuxi.md) · [README.yuxi.en.md](README.yuxi.en.md)
 - 同步基线单一事实源：[baseline.json](docs/develop-guides/yuanlei/baseline.json)
@@ -74,6 +74,13 @@ Yuxi 提供的基础能力继续可用：
 ![Yuxi 沙盒工作区与文件产物](https://xerrors.oss-cn-shanghai.aliyuncs.com/github/image-20260825152123583.png)
 
 </details>
+
+
+## 赞助商
+
+| 赞助商 | 介绍 |
+| :---: | :--- |
+| <img src="https://xerrors.oss-cn-shanghai.aliyuncs.com/github/%E4%B8%8B%E8%BD%BD.jpeg" alt="Fluxion AI LOGO" width="180" /> | Fluxion AI面向个人开发者、技术团队与企业，通过统一API接入并管理全球主流AI模型；通过多线路动态调度提升可用性，模型表现、响应时间与费用透明可查。根据不同模型与线路，API调用成本较官方或基准价格可降低40%—98%。专属链接[注册](https://fluxionai.space/register?source=github&campaign=yuxi&promo=YUXI) 获 $7 API 额度 |
 
 ## 技术栈
 

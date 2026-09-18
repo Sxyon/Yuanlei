@@ -7,8 +7,8 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
+from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.run_queue_service import enqueue_project_git_operation
 from yuxi.storage.postgres.models_business import Project
 from yuxi.utils.datetime_utils import utc_now_naive

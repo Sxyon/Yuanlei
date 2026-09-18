@@ -47,7 +47,7 @@ Yuanlei tracks `xerrors/Yuxi` and keeps merging upstream features and fixes. The
 
 | Project | Version | Upstream baseline |
 |---|---|---|
-| Yuanlei | 0.1.0 | Yuxi v0.7.3 @ cd7d17c7 (2026-09-14) |
+| Yuanlei | 0.1.0 | Yuxi v0.7.3 @ 5a1bdc3c (2026-09-18) |
 
 - Upstream README mirrors: [README.yuxi.md](README.yuxi.md) · [README.yuxi.en.md](README.yuxi.en.md)
 - Single source of truth: [baseline.json](docs/develop-guides/yuanlei/baseline.json)

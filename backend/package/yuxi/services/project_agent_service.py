@@ -7,8 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from yuxi.agents.buildin import agent_manager
+from yuxi.agents.buildin import AgentBackendNotFoundError, get_agent_backend
 from yuxi.agents.context import filter_declared_config, normalize_agent_context_config
 from yuxi.repositories.agent_repository import (
     AgentRepository,
@@ -87,7 +86,10 @@ async def _lock_agent_binding_mutations(*, db: AsyncSession, agent_slug: str) ->
 
 
 async def _serialize_binding(*, agent: Agent, binding, db: AsyncSession, user: User, cache: dict) -> dict[str, Any]:
-    backend = agent_manager.get_agent(agent.backend_id)
+    try:
+        backend = get_agent_backend(agent.backend_id)
+    except AgentBackendNotFoundError:
+        backend = None
     serialized = await AgentRepository(db).serialize(
         agent,
         user=user,
@@ -138,9 +140,10 @@ async def create_project_agent_view(
 ) -> dict[str, Any]:
     """在同一事务内创建私有 Agent 并绑定到项目；运行配置全部存入覆盖层。"""
     project = await _lock_manageable_project(project_id=project_id, db=db, user=user)
-    backend = agent_manager.get_agent(backend_id)
-    if backend is None:
-        raise HTTPException(status_code=404, detail=f"智能体后端 {backend_id} 不存在")
+    try:
+        backend = get_agent_backend(backend_id)
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     filtered, resource_access = await prepare_agent_config_write(
         config_json or {"context": {}},
@@ -233,9 +236,10 @@ async def update_project_agent_view(
     if binding is None:
         raise HTTPException(status_code=404, detail="该智能体未绑定到此项目")
 
-    backend = agent_manager.get_agent(agent.backend_id)
-    if backend is None:
-        raise HTTPException(status_code=409, detail=f"智能体后端 {agent.backend_id} 不存在")
+    try:
+        backend = get_agent_backend(agent.backend_id)
+    except AgentBackendNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     filtered, resource_access = await prepare_agent_config_write(
         config_json,
         context_schema=backend.context_schema,

@@ -66,7 +66,7 @@ def subagent_run_urls(run_id: str) -> dict[str, str]:
 def serialize_subagent_run_state(run: AgentRun) -> dict:
     """序列化给父智能体状态使用的子智能体 run 摘要。
 
-    任务描述不在此冗余存储：其唯一来源是父对话里 `task` 工具调用的入参，
+    任务描述不在此冗余存储：其唯一来源是父对话里 `subagent_start`（或历史 `task`）工具调用的入参，
     前端面板按 tool_call_id 回填展示。
     """
     payload = run.input_payload
@@ -111,7 +111,6 @@ class SubagentRunService:
         input_message: AgentRunInputMessage,
         tool_call_id: str,
         requested_thread_id: str | None = None,
-        model_spec: str | None = None,
     ) -> SubagentStartResult:
         """启动或继续一个后台子智能体 run，并在新建时入队 worker。"""
 
@@ -149,7 +148,6 @@ class SubagentRunService:
                 input_message=input_message,
                 request_id=request_id,
                 current_uid=uid,
-                model_spec=model_spec,
                 creator_run=creator_run,
                 relation=relation,
                 tool_call_id=tool_call_id,
@@ -195,7 +193,6 @@ class SubagentRunService:
         input_message: AgentRunInputMessage,
         request_id: str,
         current_uid: str,
-        model_spec: str | None,
         creator_run: AgentRun,
         relation: SubagentThread,
         tool_call_id: str,
@@ -225,8 +222,8 @@ class SubagentRunService:
 
         context = agent_run_service.load_agent_run_context(scope.agent_item, scope.agent_backend)
         resolved_model_spec = await agent_run_service.resolve_agent_run_model_spec(
-            model_spec,
             getattr(context, "model", None),
+            creator_run.input_payload.get("model_spec"),
             self.db,
         )
         runtime_payload = {

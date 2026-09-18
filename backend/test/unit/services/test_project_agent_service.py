@@ -55,7 +55,7 @@ def test_load_agent_run_context_merges_project_override():
         model = "base-model"
         tool_approval_mode = "default"
 
-        def update_from_dict(self, values):
+        def update_config(self, values):
             for key, value in values.items():
                 setattr(self, key, value)
 

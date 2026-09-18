@@ -15,7 +15,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
-
 from yuxi.git.credentials import GitCredentialOwner, GitNotConfiguredError
 from yuxi.git.executor import GitExecutionError, GitExecutor
 from yuxi.git.hosting import create_git_hosting_provider
@@ -337,9 +336,7 @@ async def list_conversation_git_repositories_view(*, uid: str, thread_id: str, d
     del conversation
     store = ProjectGitRepositoryStore(db)
     bindings = await store.list_project_bindings(project.id, uid)
-    allocations = {
-        item.repository_id: item for item in await store.list_scope_worktrees(thread_id, uid)
-    }
+    allocations = {item.repository_id: item for item in await store.list_scope_worktrees(thread_id, uid)}
     return [
         _conversation_repository_view(binding, allocations.get(binding.id), project.workdir_path)
         for binding in bindings
@@ -391,9 +388,7 @@ async def select_conversation_git_repository_view(
     return _conversation_repository_view(binding, worktree, project.workdir_path)
 
 
-async def retry_conversation_git_repository_view(
-    *, uid: str, thread_id: str, repository_id: str, db
-) -> dict:
+async def retry_conversation_git_repository_view(*, uid: str, thread_id: str, repository_id: str, db) -> dict:
     """显式把当前根任务的 prepare_failed allocation 恢复为 requested。"""
     _conversation, project = await _require_root_conversation(uid, thread_id, db, lock=True)
     store = ProjectGitRepositoryStore(db)
@@ -569,9 +564,7 @@ async def list_project_git_repositories_for_run(*, run_id: str, uid: str) -> dic
         run, _conversation, project = await _require_authorized_root_run(run_id, uid, db)
         store = ProjectGitRepositoryStore(db)
         bindings = await store.list_project_bindings(project.id, uid)
-        allocations = {
-            item.repository_id: item for item in await store.list_scope_worktrees(run.runtime_scope_id, uid)
-        }
+        allocations = {item.repository_id: item for item in await store.list_scope_worktrees(run.runtime_scope_id, uid)}
         repositories = [
             _tool_repository_view(binding, allocations.get(binding.id), project.workdir_path)
             for binding in bindings
@@ -1218,9 +1211,7 @@ def _conversation_repository_view(
     allocation = worktree.to_dict() if worktree is not None else None
     if allocation is not None:
         allocation["sandbox_path"] = (
-            runtime_git_worktree_path(workdir_path, worktree.relative_path)
-            if worktree.status == "ready"
-            else None
+            runtime_git_worktree_path(workdir_path, worktree.relative_path) if worktree.status == "ready" else None
         )
         allocation.pop("relative_path", None)
     return {

@@ -14,15 +14,15 @@
 - 与上游差异：上游没有 Project 级 Git 仓库绑定、凭据、任务分支或 worktree。元垒新增多仓库绑定、AES-GCM 凭据、Gitea provider、可信 staging fetch/push、根任务 worktree 和始终需要人工审批的 `git_push_branch`。
 - 语义 Owner：`backend/package/yuxi/services/project_git_service.py`、`backend/package/yuxi/git/`、`backend/server/routers/git_router.py`。
 - 决策记录：[多仓库与根任务 worktree](../decisions/implemented/2026-09-14-project-multi-repository-git-worktrees.md)、[按根任务显式分配 worktree](../decisions/proposed/2026-09-16-on-demand-project-git-worktrees.md)。
-- 合并注意：持久化位于 `yuanlei` schema 域；上游改动 project、agent、run manifest、tool approval 或 sandbox provider 时需要评估；credential、staging、HITL push 和隔离边界不因上游实现变化而放宽。
+- 合并注意：持久化位于 `yuanlei` schema 域；上游改动 project、agent、run manifest、tool approval、sandbox provider 或执行准备入口（`prepare_run_execution`、`AuthorizedWorkdir`）时需要评估；credential、staging、HITL push 和隔离边界不因上游实现变化而放宽。
 
 ## 项目数字员工（ProjectAgent）
 
 - 类型与状态：feature，已实现。
 - 与上游差异：上游 `agents` 是全局资源，只有 `created_by` 和 `share_config`。元垒新增 `(project_id, agent_slug)` 绑定与项目级配置覆盖，绑定后 Agent 只能在绑定项目内运行，运行边界 fail-closed。
-- 语义 Owner：`backend/package/yuxi/services/project_agent_service.py`、`backend/package/yuxi/repositories/project_agent_repository.py`、`web/src/components/model-management/ProjectAgentManagePanel.vue`。
-- 决策记录：[项目数字员工](../decisions/implemented/2026-09-17-project-digital-employees.md)。
-- 合并注意：`project_agents` 表属于 `yuanlei` 域 v3；上游改动 agent 列表、提交/执行边界或 manifest 时，`project_id` 过滤与有效配置合并必须保持；上游若引入项目级 Agent 模型，先写决策再取舍。
+- 语义 Owner：`backend/package/yuxi/services/project_agent_service.py`、`backend/package/yuxi/services/agent_request_service.py`（intake 校验与覆盖读取）、`backend/package/yuxi/repositories/project_agent_repository.py`、`web/src/components/model-management/ProjectAgentManagePanel.vue`。
+- 决策记录：[项目数字员工](../decisions/implemented/2026-09-17-project-digital-employees.md)、[上游 2026-09-18 同步迁移](../decisions/implemented/2026-09-18-upstream-23-sync-project-agent-port.md)。
+- 合并注意：`project_agents` 表属于 `yuanlei` 域 v3；上游改动 agent 列表、请求接入（`agent_request_service`）、执行准备（`prepare_run_execution`）或 manifest 时，`project_id` 过滤、范围校验与有效配置合并必须保持；上游若引入项目级 Agent 模型，先写决策再取舍。
 
 ## Git 工具错误收敛与 DeepSeek 兼容
 

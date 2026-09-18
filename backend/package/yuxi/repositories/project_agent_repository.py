@@ -77,7 +77,9 @@ class ProjectAgentRepository:
         return list(result.scalars().all())
 
     async def list_project_ids_for_agent(self, agent_slug: str) -> list[str]:
-        result = await self.db.execute(select(ProjectAgent.project_id).where(ProjectAgent.agent_slug == str(agent_slug)))
+        result = await self.db.execute(
+            select(ProjectAgent.project_id).where(ProjectAgent.agent_slug == str(agent_slug))
+        )
         return list(result.scalars().all())
 
     async def delete_project_bindings(self, project_id: str) -> int:

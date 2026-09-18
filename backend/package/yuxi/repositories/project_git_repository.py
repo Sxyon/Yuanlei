@@ -217,9 +217,7 @@ class ProjectGitRepositoryStore:
     async def list_pending_worktrees(self) -> list[ProjectGitWorktree]:
         """列出需要 reconciler 重投的 worktree 清理意图。"""
         result = await self.db.execute(
-            select(ProjectGitWorktree).where(
-                ProjectGitWorktree.status.in_(("cleanup_pending", "cleanup_failed"))
-            )
+            select(ProjectGitWorktree).where(ProjectGitWorktree.status.in_(("cleanup_pending", "cleanup_failed")))
         )
         return list(result.scalars())
 

@@ -778,6 +778,13 @@
                               />
                             </div>
                             <div class="state-list-item-meta">{{ run.description }}</div>
+                            <div
+                              v-if="run.observation_error"
+                              class="state-list-item-meta"
+                              role="status"
+                            >
+                              状态暂不可用，正在重连
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -809,7 +816,7 @@
           :thread-id="currentChatId"
           :active-run-id="currentThreadState?.activeRunId || null"
           :run-active="Boolean(currentThreadState?.activeRunId && currentThreadState?.isStreaming)"
-          :visible="isFilePanelOpen"
+          :visible="isFilePanelOpen && subagentObservationEnabled"
           :messages="currentDebugMessages"
           :runs="currentThreadRuns"
           :panel-ratio="panelRatio"
@@ -875,6 +882,7 @@ import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import AgentMessageComponent from '@/components/AgentMessageComponent.vue'
 import {
   formatEmptyRunStatus,
+  groupConversationContinuations,
   isConversationSettled as isRunConversationSettled
 } from '@/utils/conversationProcessGrouping'
 import RefsComponent from '@/components/RefsComponent.vue'
@@ -912,6 +920,7 @@ import HumanApprovalModal from '@/components/HumanApprovalModal.vue'
 import { extractPendingInterrupt, useApproval } from '@/composables/useApproval'
 import { useAgentThreadState, IDLE_QUEUE_SNAPSHOT } from '@/composables/useAgentThreadState'
 import { useAgentRunStream } from '@/composables/useAgentRunStream'
+import { useSubagentRuns } from '@/composables/useSubagentRuns'
 import { useAgentStreamHandler } from '@/composables/useAgentStreamHandler'
 import { useStreamSmoother } from '@/composables/useStreamSmoother'
 import { useAgentRequestQueue } from '@/composables/useAgentRequestQueue'
@@ -1852,9 +1861,18 @@ const currentTodos = computed(() => {
     }
   })
 })
-const currentSubagentRuns = computed(() => {
-  const runs = currentAgentState.value?.subagent_runs
-  return Array.isArray(runs) ? runs : []
+const subagentObservationEnabled = ref(true)
+const currentSubagentRuns = useSubagentRuns({
+  scope: computed(() =>
+    userStore.isLoggedIn && userStore.uid && currentChatId.value
+      ? `${userStore.uid}:${currentChatId.value}`
+      : ''
+  ),
+  enabled: subagentObservationEnabled,
+  runs: computed(() => {
+    const runs = currentAgentState.value?.subagent_runs
+    return Array.isArray(runs) ? runs : []
+  })
 })
 const currentSubagentRunById = computed(() => {
   const runById = new Map()
@@ -1882,10 +1900,11 @@ const currentSubagentOptionBySlug = computed(() => {
 const openSubagentThread = (run) => {
   if (!run?.child_thread_id) return
   const threadId = String(run.child_thread_id)
-  const key = `subagent:${threadId}`
+  const key = `subagent:${run.run_id || threadId}`
   const section = {
     key,
     type: 'subagent',
+    runId: run.run_id || '',
     title: getSubagentRunName(run),
     threadId,
     avatar: getSubagentIconSrc(run),
@@ -1897,6 +1916,8 @@ const openSubagentThread = (run) => {
   statePanelOpen.value = false
   panelRatio.value = clampPanelRatio(previewPanelRatio)
 }
+
+provide('openSubagentThread', openSubagentThread)
 
 const toggleMessageDebugPanel = () => {
   if (isFilePanelOpen.value && agentPanelActiveSectionKey.value === MESSAGE_DEBUG_SECTION.key) {
@@ -2336,9 +2357,9 @@ const conversations = computed(() => {
       messages: activeRunOngoingMessages,
       status: 'streaming'
     }
-    return [...activeRunHistoryConvs, onGoingConv]
+    return groupConversationContinuations([...activeRunHistoryConvs, onGoingConv])
   }
-  return activeRunHistoryConvs
+  return groupConversationContinuations(activeRunHistoryConvs)
 })
 
 /** 间隔超过一小时时，在新用户消息上方显示发送时间。 */
@@ -2367,7 +2388,10 @@ const getConversationTimeLabel = (conv, previousConv) => {
 const conversationRows = computed(() => {
   const rows = conversations.value.map((conv, index) => ({
     type: 'conversation',
-    key: conv.status === 'streaming' ? 'ongoing-conversation' : `history-${index}`,
+    key:
+      conv.displayKey ||
+      conv.run?.run_id ||
+      (conv.status === 'streaming' ? 'ongoing-conversation' : `history-${index}`),
     conv,
     timeLabel: getConversationTimeLabel(conv, conversations.value[index - 1]),
     displayItems: getDisplayItems(conv),
@@ -2833,6 +2857,7 @@ onMounted(() => {
 })
 
 onActivated(() => {
+  subagentObservationEnabled.value = true
   nextTick(() => {
     startChatMainResizeObserver()
   })
@@ -2842,6 +2867,7 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
+  subagentObservationEnabled.value = false
   stopChatMainResizeObserver()
   stopStreamingStateRefresh()
   stopReplyElapsedTimer()
@@ -3727,6 +3753,12 @@ const handleApprovalWithStream = async (answer) => {
     if (!runId) {
       throw new Error('创建 resume run 失败：缺少 run_id')
     }
+    // 首个流事件前读取已持久化的续跑关系；读取失败不能把已创建的 Run 当成创建失败。
+    try {
+      await fetchThreadMessages({ agentId: currentAgentId.value, threadId })
+    } catch (error) {
+      console.warn('Failed to refresh history before resume stream:', error)
+    }
     await startRunStream(threadId, runId, '0-0')
   } catch (error) {
     if (pendingInterrupt) {
@@ -3885,7 +3917,7 @@ const getMessageToolCalls = (message) => {
 const getDisplayItems = (conv) =>
   getConversationDisplayItems(conv, {
     enrichToolCalls: getMessageToolCalls,
-    runTiming: getMessageRun(getLastMessage(conv))?.timing,
+    runTiming: conv.processTiming || getMessageRun(getLastMessage(conv))?.timing,
     collapseIntermediate: conv?.status !== 'streaming' && isConversationSettled(conv)
   })
 

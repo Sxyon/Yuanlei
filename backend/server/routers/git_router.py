@@ -1,7 +1,5 @@
 """用户级 Git connection HTTP 适配层。"""
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,14 +27,14 @@ class GitConnectionCreate(BaseModel):
     ssh_host: str
     ssh_port: int = Field(ge=1, le=65535)
     ssh_known_host_key: str = Field(min_length=1, max_length=8192)
-    api_token: Any
+    api_token: str = Field(min_length=1, max_length=4096)
 
 
 class GitCredentialUpdate(BaseModel):
     """write-only Gitea Token 更新请求。"""
 
     model_config = ConfigDict(extra="forbid")
-    api_token: Any
+    api_token: str = Field(min_length=1, max_length=4096)
 
 
 @git.get("/connections")

@@ -58,9 +58,7 @@ class GitExecutor:
             known_hosts=known_hosts,
         )
 
-    async def import_bundle(
-        self, *, bundle_path: Path, bare_path: Path, pass_fds: tuple[int, ...] = ()
-    ) -> None:
+    async def import_bundle(self, *, bundle_path: Path, bare_path: Path, pass_fds: tuple[int, ...] = ()) -> None:
         """将已拉取对象无凭据导入共享 bare repo。"""
         await asyncio.to_thread(
             self._import_bundle,
@@ -113,9 +111,7 @@ class GitExecutor:
             pass_fds=pass_fds,
         )
 
-    async def remove_worktree(
-        self, *, bare_path: Path, worktree_path: Path, pass_fds: tuple[int, ...] = ()
-    ) -> None:
+    async def remove_worktree(self, *, bare_path: Path, worktree_path: Path, pass_fds: tuple[int, ...] = ()) -> None:
         """移除已经由服务层确认安全的 worktree。"""
         await asyncio.to_thread(
             self._remove_worktree,
@@ -173,9 +169,7 @@ class GitExecutor:
             bundle.chmod(0o600)
             return bundle
 
-    def _import_bundle(
-        self, *, bundle_path: Path, bare_path: Path, pass_fds: tuple[int, ...] = ()
-    ) -> None:
+    def _import_bundle(self, *, bundle_path: Path, bare_path: Path, pass_fds: tuple[int, ...] = ()) -> None:
         bare_path.parent.mkdir(parents=True, exist_ok=True)
         if not bare_path.exists():
             self._run(["git", "init", "--bare", str(bare_path)], pass_fds=pass_fds)
@@ -242,9 +236,7 @@ class GitExecutor:
         if branch_exists:
             args = self._git_args(bare_path, "worktree", "add", str(add_path), branch)
         else:
-            args = self._git_args(
-                bare_path, "worktree", "add", "-b", branch, str(add_path), resolved_base_sha
-            )
+            args = self._git_args(bare_path, "worktree", "add", "-b", branch, str(add_path), resolved_base_sha)
         self._run(args, pass_fds=pass_fds)
         self._run(
             self._git_args(bare_path, "config", "user.name", "Yuxi Agent"),
@@ -285,9 +277,7 @@ class GitExecutor:
         status = self._run([*prefix, "status", "--porcelain=v1"], pass_fds=pass_fds).stdout
         return WorktreeState(branch=branch, head_sha=head, clean=not status.strip())
 
-    def _remove_worktree(
-        self, *, bare_path: Path, worktree_path: Path, pass_fds: tuple[int, ...] = ()
-    ) -> None:
+    def _remove_worktree(self, *, bare_path: Path, worktree_path: Path, pass_fds: tuple[int, ...] = ()) -> None:
         if worktree_path.exists():
             self._run(
                 self._git_args(bare_path, "worktree", "remove", str(worktree_path)),

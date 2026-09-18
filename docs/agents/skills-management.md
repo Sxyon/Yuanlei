@@ -96,6 +96,14 @@ https://modelscope.cn/collections/MiniMax/MiniMax-Office-skills
 
 GitHub 的 `owner/repo` 简写会被转换为 HTTPS 地址。远程来源会在不继承全局或用户环境变量的一次性 Sandbox 中下载和提取，系统会拒绝绝对路径和路径穿越，并限制文件数、目录深度和总大小。来源白名单限制产品允许的地址，不是网络出口防火墙。
 
+### 新增内置 Skill
+
+在 `backend/package/yuxi/agents/skills/buildin/<slug>/` 新增目录，至少包含 `SKILL.md`。启动同步按目录名排序发现直接子目录，忽略下划线或点开头的目录；无需修改 Python 注册清单。
+
+`SKILL.md` frontmatter 唯一拥有名称、描述、版本和依赖。`slug` 必须与目录名一致，省略时使用 `name`；`version` 省略时为 `1.0.0`，建议使用引号包裹版本字符串。工具、MCP、Skill 依赖使用本页定义的字段。缺少根文件或元数据不合法时，启动同步明确失败。
+
+API/worker 启动时同步文件、元数据和依赖，保留数据库中的启停状态。重启后在“扩展 → Skills”核对新增项的说明和依赖；新增脚本或资源也必须随发行包携带。源码目录与共享投影分别拥有发布内容和安装文件，编辑应落在源码目录。
+
 ### 内置 `html-preview`
 
 系统启动时会同步仓库内置 Skills。`html-preview` 用于在普通 Markdown 难以清晰表达指标、对比、流程、时间线或层级关系时，指导 Agent 输出静态 `html:preview` 围栏；普通 HTML 源码仍使用 `html` 代码块。前端会把该围栏清洗后放入 sandboxed iframe 预览，不依赖额外工具。
