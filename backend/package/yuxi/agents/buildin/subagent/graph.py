@@ -36,6 +36,12 @@ _SUBAGENT_DISABLED_TOOLS = frozenset(
         "git_list_project_repositories",
         "git_prepare_worktree",
         "git_push_branch",
+        "coding_session_start",
+        "coding_session_send",
+        "coding_session_status",
+        "coding_session_await",
+        "coding_session_control",
+        "coding_session_list",
     }
 )
 # 默认审批模式额外隐藏敏感 backend 工具，避免子智能体绕过主线程逐项审批。

@@ -220,6 +220,9 @@ async def prepare_run_execution(
             "workdir_path": runtime_workdir_path(workdir_binding.workdir_path),
             "git_repositories": list(git_repositories or []),
             "project_git_enabled": bool(project_git_enabled),
+            "coding_executors": CodingCredentialService.declared_executors(
+                agent_item.config_json
+            ),
         }
     )
     if payload.get("model_spec"):

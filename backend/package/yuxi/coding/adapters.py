@@ -19,6 +19,8 @@ class CodingTurnRequest:
     session_ref: str | None = None
     plan_only: bool = False
     workdir: str | None = None
+    env: dict[str, str] | None = None
+    prelude: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,21 @@ def _with_workdir(command: str, workdir: str | None) -> str:
     if not workdir:
         return command
     return f"cd {shlex.quote(workdir)} && {command}"
+
+
+def _apply_turn_wrapper(command: str, request: CodingTurnRequest) -> str:
+    """按需前置 prelude 与 env 赋值；env 只承载路径等非密值。"""
+    wrapped = command
+    if request.env:
+        assignments = " ".join(
+            f"{key}={shlex.quote(str(value))}"
+            for key, value in sorted(request.env.items())
+        )
+        if assignments:
+            wrapped = f"env {assignments} {wrapped}"
+    if request.prelude:
+        wrapped = f"{request.prelude} && {wrapped}"
+    return wrapped
 
 
 def _iter_json_lines(output: str):
@@ -104,7 +121,7 @@ class OpenCodeAdapter:
             parts += ["-s", request.session_ref]
         parts.append(request.prompt)
         command = " ".join(shlex.quote(part) for part in parts)
-        return _with_workdir(command, request.workdir)
+        return _with_workdir(_apply_turn_wrapper(command, request), request.workdir)
 
     def parse_events(self, output: str) -> list[NormalizedEvent]:
         events: list[NormalizedEvent] = []
@@ -169,7 +186,7 @@ class CodexAdapter:
             parts += ["-m", request.model]
         parts.append(request.prompt)
         command = " ".join(shlex.quote(part) for part in parts)
-        return _with_workdir(command, request.workdir)
+        return _with_workdir(_apply_turn_wrapper(command, request), request.workdir)
 
     def parse_events(self, output: str) -> list[NormalizedEvent]:
         events: list[NormalizedEvent] = []

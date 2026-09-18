@@ -168,6 +168,23 @@ class CodingSessionRepository:
         )
         return list(result.scalars().all())
 
+    async def list_turns(self, *, session_id: str) -> list[CodingSessionTurn]:
+        result = await self.db.execute(
+            select(CodingSessionTurn)
+            .where(CodingSessionTurn.session_id == str(session_id))
+            .order_by(CodingSessionTurn.seq.asc())
+        )
+        return list(result.scalars().all())
+
+    async def list_for_uid(self, *, uid: str, limit: int = 50) -> list[CodingSession]:
+        result = await self.db.execute(
+            select(CodingSession)
+            .where(CodingSession.uid == str(uid))
+            .order_by(CodingSession.created_at.desc(), CodingSession.id.desc())
+            .limit(int(limit))
+        )
+        return list(result.scalars().all())
+
     async def _next_seq(self, model, session_id: str) -> int:
         current = await self.db.scalar(
             select(func.max(model.seq)).where(model.session_id == session_id)

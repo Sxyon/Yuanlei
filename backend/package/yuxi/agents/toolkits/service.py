@@ -176,4 +176,13 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
             selected_tools.append(git_tool)
             selected_tool_names.add(git_tool.name)
 
+    if getattr(context, "coding_executors", None):
+        from yuxi.agents.toolkits.buildin.coding_tools import CODING_TOOLS
+
+        for coding_tool in CODING_TOOLS:
+            if coding_tool.name in selected_tool_names:
+                raise RuntimeError(f"工具名冲突：编码执行器工具 {coding_tool.name} 已被其他来源占用")
+            selected_tools.append(coding_tool)
+            selected_tool_names.add(coding_tool.name)
+
     return selected_tools

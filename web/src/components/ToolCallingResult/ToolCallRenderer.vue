@@ -38,6 +38,7 @@ import SearchFileTool from './tools/SearchFileTool.vue'
 import GrepTool from './tools/GrepTool.vue'
 import GlobTool from './tools/GlobTool.vue'
 import EditFileTool from './tools/EditFileTool.vue'
+import CodingSessionTool from './tools/CodingSessionTool.vue'
 import MysqlQueryTool from './tools/MysqlQueryTool.vue'
 import MysqlDescribeTableTool from './tools/MysqlDescribeTableTool.vue'
 import MysqlListTablesTool from './tools/MysqlListTablesTool.vue'
@@ -69,6 +70,12 @@ const TOOL_RENDERERS = {
   bash: ExecuteTool,
   calculator: CalculatorTool,
   cmd: ExecuteTool,
+  coding_session_await: CodingSessionTool,
+  coding_session_control: CodingSessionTool,
+  coding_session_list: CodingSessionTool,
+  coding_session_send: CodingSessionTool,
+  coding_session_start: CodingSessionTool,
+  coding_session_status: CodingSessionTool,
   edit_file: EditFileTool,
   execute: ExecuteTool,
   find_kb_document: FindKbDocumentTool,

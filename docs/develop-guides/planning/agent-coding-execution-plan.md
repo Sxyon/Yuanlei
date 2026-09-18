@@ -87,11 +87,14 @@ M0 契约探针与接口冻结
 - 退出证据：编码提案矩阵第 1、3 行以单测覆盖（凭据缺失/环境映射/指纹触发重建）；第 5、7、10 行随 M5 工具与事件一起验证。
 - 依赖：M1（凭据与指纹）、M3（专属 scope 下的串行）。
 
-### M5 持久编码会话（M5a 完成，M5b 待做）
+### M5 持久编码会话（M5a/M5b-1 完成，M5b-2 待做）
 
-- 进度（M5a，2026-09-18）：`coding_sessions/coding_session_turns/coding_session_events` 三表随 yuanlei v5→v6 落地（ORM + DDL + 迁移链 + 真实 PG 幂等测试）；`CodingSessionRepository`（会话/ turn /事件，seq 会话内递增、after_seq 回放）；`CodingSessionService` 显式状态机（pending/starting/idle/running/awaiting_plan_approval/suspended/终态）、`create_session`/`start_turn`/`finish_turn`/`record_events`，归一事件直接持久化。工具面 `coding_*` 与计划审批随 M5b 落地（复用 M4 适配器）。
-- 证据：会话服务 4 用例 + 迁移单元/集成（v5→v6 幂等）+ 模型约束测试；全量单测 2390 passed（仅 3 个既有 xlrd 环境失败）。
-- 待做（M5b）：`coding_*` 工具（start/send/status/await/control/list）与计划审批 interrupt；会话 supervisor（turn 泵送、预算硬执行）；跨 Run 恢复与 `resume_degraded`；Run SSE `yuxi.coding_session_event` 投影与前端最小会话卡片。
+- 进度（M5a，2026-09-18）：`coding_sessions/coding_session_turns/coding_session_events` 三表随 yuanlei v5→v6 落地（ORM + DDL + 迁移链 + 真实 PG 幂等测试）；`CodingSessionRepository`（会话/turn/事件，seq 会话内递增、after_seq 回放）；`CodingSessionService` 显式状态机与 create/start_turn/finish_turn/record_events。
+- 进度（M5b-1，2026-09-18）：`CodingExecutionService` 在专属 scope 内跑 headless turn（ensure_ready + 凭据 env/指纹 → 适配器命令 → `execute` → 归一事件持久化 → turn/会话终态，输出按注入密钥值级脱敏）；六个 `coding_*` 工具（start/send/status/await/control/list）经 `toolkits/registry` 注册（category=coding），由 Agent 配置 `coding.executors` 白名单门控（manifest 注入 `context.coding_executors`，未声明则工具不可见）；默认审批模式对 `coding_session_start` 走任务级计划审批；子智能体禁用全部 coding 工具。共享 scope 显式拒绝（`coding_scope_unsupported`）。
+- 进度（M5b-2a，2026-09-18）：CLI 原生状态持久化到 Workdir（opencode `XDG_DATA_HOME/XDG_CACHE_HOME`、codex `CODEX_HOME` 并在 prelude 复制非密 config.toml），沙盒重建后原生会话可续；`resume_degraded` 在状态缺失时显式清空 session ref 并记录事件；`max_turns` 预算硬执行（超限会话落 `failed/budget_exceeded`）；前端新增 `CodingSessionTool` 会话卡片并注册 6 个 `coding_*` 渲染与图标/名称映射。
+- 进度（M5b-2b，2026-09-18）：coding 工具通过 `get_stream_writer` 投影 `yuxi.coding_session_event`（含 session/turn/executor/state/usage/resume_degraded，Run SSE 以 custom 事件下发）；真实沙盒冒烟通过——经真实 provisioner 建立 agent-project scope 沙盒（注入 `OPENCODE_*`），`opencode run --format json` 返回 PONG，适配器解析出 `session_ref/output_delta/usage`，退出码 0，随后按 scope 释放并清理探针资源。
+- 待做（M5b-2b 剩余）：长任务 supervisor（跨进程 turn 泵送与超时 kill）随 M6 程序化通道落地；`yuxi.coding_session_event` 的前端消费与断线回放（当前前端对未知 custom 事件安全忽略）随 M6 会话面板补。
+- 证据：M5a 会话服务 4 用例 + 迁移/模型测试；M5b-1 执行服务 6 用例；全量单测 2396 passed（仅 3 个既有 xlrd 环境失败）。
 - 交付：`coding_sessions/turns/events`；会话 supervisor（与 M2 同一 worker 基础设施）；跨 Run 恢复与 `resume_degraded`；`resume_policy=confirm` 重建确认路径；预算硬执行。
 - 退出证据：编码提案矩阵第 4、6、8 行；沙盒提案矩阵第 4 行的 confirm 路径。
 
