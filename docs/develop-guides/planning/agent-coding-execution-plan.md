@@ -68,8 +68,11 @@ M0 契约探针与接口冻结
 - 退出证据：沙盒提案矩阵第 1、2、3、5、8、12 行；第 4 行的 auto 路径。
 - 风险护栏：默认路径零行为变化；resident 与 persistent 受配额与面板约束。
 
-### M3 执行租约与串行
+### M3 执行租约与串行（实现完成，集成验证待补）
 
+- 进度：`SandboxLeaseService` 已落地（acquire 独立事务轮询等待、heartbeat fencing、仅持有者可 release、`reconcile_expired` 过期收敛与事件）；Run 接线完成——专属 Run 在执行前获取租约（busy 落 `sandbox_busy` 终态）、RunContext heartbeat 同步续租（失去沙盒租约触发 lease_lost/取消，终态后静默退出）、终态事件前释放租约；supervisor tick 增加过期租约回收计数。事件写入 `agent_sandbox_events`（lease_acquired/lease_waiting/lease_released/lease_expired）。
+- 证据：lease/supervisor/run_worker 66 passed；affected 全量 1236 passed。
+- 待补：真实两 Run 争抢的集成用例（矩阵第 6 行）、旧 owner 接管后写入被拒的负向验证（矩阵第 7 行，provider generation fencing 已有单测）、`yuxi.sandbox_waiting` 的 Run SSE 投影（M4/M5 随工具与会话事件一起接）。
 - 交付：租约字段与获取/心跳/释放服务；等待事件与超时；generation fencing 与过期收敛；Run、编码 turn、终端三类持有者的接入点（后两者在 M5/M7 使用）。
 - 退出证据：沙盒提案矩阵第 6、7 行。
 

@@ -155,9 +155,32 @@ async def test_tick_skips_resident_sandbox(session):
 
     counts = await run_sandbox_lifecycle_tick(db=session, provider=provider, now=NOW)
 
-    assert counts == {"checked": 1, "keepalive": 0, "suspended": 0, "generation_changed": 0}
+    assert counts == {
+        "checked": 1,
+        "keepalive": 0,
+        "suspended": 0,
+        "generation_changed": 0,
+        "leases_expired": 0,
+    }
     assert provider.touched == []
     assert row.status == "active"
+
+
+async def test_tick_reclaims_expired_leases(session):
+    await _add_project(session)
+    row = await _add_sandbox(session)
+    row.generation = "gen-1"
+    row.lease_owner_kind = "run"
+    row.lease_owner_id = "run-9"
+    row.lease_expires_at = NOW - timedelta(seconds=1)
+    await session.flush()
+    provider = _FakeProvider([_record("gen-1")])
+
+    counts = await run_sandbox_lifecycle_tick(db=session, provider=provider, now=NOW)
+
+    assert counts["leases_expired"] == 1
+    assert row.lease_owner_id is None
+    assert row.lease_expires_at is None
 
 
 async def test_tick_records_external_generation_change(session):

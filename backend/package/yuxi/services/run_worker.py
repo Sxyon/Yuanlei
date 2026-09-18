@@ -60,6 +60,13 @@ from yuxi.services.sandbox_lifecycle_supervisor_service import (
     run_sandbox_lifecycle_tick,
     sandbox_lifecycle_interval_seconds,
 )
+from yuxi.services.sandbox_lease_service import (
+    SandboxBusyError,
+    acquire_sandbox_lease_for_run,
+    release_sandbox_lease_for_run,
+    renew_sandbox_lease_for_run,
+    sandbox_scope_for_run,
+)
 from yuxi.services.task_queue_service import (
     TASK_RECONCILIATION_HEALTH_KEY,
     TASK_RECONCILIATION_HEALTH_TTL_SECONDS,
@@ -184,6 +191,7 @@ class RunContext:
     run_id: str
     worker_id: str
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    sandbox_scope: SandboxScope | None = None
     _watch_task: asyncio.Task | None = None
     _durable_cancel_task: asyncio.Task | None = None
     _heartbeat_task: asyncio.Task | None = None
@@ -251,9 +259,18 @@ class RunContext:
                 return
             try:
                 renewed = await renew_run_lease(self.run_id, self.worker_id)
-                if not renewed and await _run_attempt_finished(self.run_id, self.worker_id):
+                sandbox_renewed = True
+                if self.sandbox_scope is not None:
+                    sandbox_renewed = await renew_sandbox_lease_for_run(
+                        scope=self.sandbox_scope,
+                        owner_id=self.run_id,
+                    )
+                if (not renewed or not sandbox_renewed) and await _run_attempt_finished(
+                    self.run_id, self.worker_id
+                ):
                     # 终态事务已清除 lease；本 attempt 仍需完成流收尾、清理和事件发布。
                     return
+                renewed = renewed and sandbox_renewed
             except Exception:
                 logger.error(f"Failed to renew AgentRun lease: run={self.run_id}", exc_info=True)
                 renewed = False
@@ -418,6 +435,12 @@ async def _release_runtime_before_terminal_event(run: AgentRun | None) -> None:
     """在终态事件可见前收敛 runtime，避免客户端撞上随后发生的删除。"""
     if run is None or run.run_type == "subagent":
         return
+    scope = sandbox_scope_for_run(run)
+    if scope is not None:
+        try:
+            await release_sandbox_lease_for_run(scope=scope, owner_id=str(run.id))
+        except Exception:
+            logger.error("Failed to release sandbox lease: run=%s", run.id, exc_info=True)
     await _require_runtime_cleanup(run, f"Run {run.id} 的 execution tree 尚未完成 runtime cleanup")
 
 
@@ -1058,6 +1081,24 @@ async def process_agent_run(ctx, run_id: str):
             return
 
         await run_ctx.start()
+        sandbox_scope = sandbox_scope_for_run(run)
+        if sandbox_scope is not None:
+            try:
+                await acquire_sandbox_lease_for_run(
+                    run=run,
+                    scope=sandbox_scope,
+                    project_id=workdir_binding.project_id,
+                )
+            except SandboxBusyError as exc:
+                await mark_run_terminal(
+                    run_id,
+                    "failed",
+                    "sandbox_busy",
+                    str(exc),
+                    worker_id=worker_id,
+                )
+                return
+            run_ctx.sandbox_scope = sandbox_scope
         try:
             git_repositories = await prepare_selected_project_git_worktrees(
                 uid=str(uid),

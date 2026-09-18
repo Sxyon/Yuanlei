@@ -12,6 +12,7 @@ from yuxi.agents.backends.sandbox import get_sandbox_provider
 from yuxi.config import get_int_env
 from yuxi.repositories.agent_sandbox_repository import AgentSandboxRepository
 from yuxi.services.sandbox_lifecycle_service import SandboxLifecycleService
+from yuxi.services.sandbox_lease_service import SandboxLeaseService
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import AgentSandbox, Project
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -61,7 +62,14 @@ async def _run_tick(db: AsyncSession, provider, timestamp: datetime) -> dict[str
     inventory = {record.sandbox_id: record for record in records}
     interval = sandbox_lifecycle_interval_seconds()
     default_idle = sandbox_idle_suspend_seconds()
-    counts = {"checked": 0, "keepalive": 0, "suspended": 0, "generation_changed": 0}
+    counts = {
+        "checked": 0,
+        "keepalive": 0,
+        "suspended": 0,
+        "generation_changed": 0,
+        "leases_expired": 0,
+    }
+    counts["leases_expired"] = await SandboxLeaseService(db=db).reconcile_expired(now=timestamp)
 
     for row in await repo.list_all():
         counts["checked"] += 1
