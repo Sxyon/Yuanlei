@@ -55,11 +55,15 @@ M0 契约探针与接口冻结
   - 生命周期：provisioner 按沙盒 TTL 与 resident 跳过 reaper 的行为；容器跨 provisioner 重启后的 inventory 对账；执行租约在真实 worker 重启下的过期接管。
 - 退出证据：文档中每条命令与样本都有真实运行输出；无法成立的项给出降级设计。无生产代码改动。
 
-### M1 凭据与配置基座
+### M1 凭据与配置基座（M1a/M1b 完成）
 
+- 进度（M1a，2026-09-18）：`coding_credentials` 表随 yuanlei v4→v5 落地（ORM + DDL + 迁移链与真实 PG 幂等测试）；`coding/credentials.py` 提供 AES-GCM（`YUXI_CODING_CREDENTIAL_KEY`、AAD 绑定 scope/uid/executor/provider/id、缺失 fail-closed）、`credential_fingerprint`（非密配置 + 密文版本）、`redact_credential_values`；`CodingCredentialRepository`/`CodingCredentialService`（用户级 > 全局解析、掩码视图、轮换版本自增、删除销毁密文）；用户/管理端 API `/api/user/coding-credentials`、`/api/system/coding-credentials`（write-only + 掩码读，未知 executor 422，缺 master key 503）；`.env.template` 与 compose（dev/prod）注入新密钥。`agents.config_json.sandbox` 与项目覆盖合并已在 M2.4 完成。
+- 进度（M1b，2026-09-18）：系统配置新增 `sandbox_dedicated_max_per_user`（默认 3）与 `sandbox_resident_max_per_user`（默认 1），`int` 类型规范化与「常驻 ≤ 专属」保存校验；`ensure_ready` 仅在创建新绑定时强制每用户专属/常驻配额，超限抛 `sandbox_quota_exceeded`，已有绑定不受新增限制；设置页新增「编码执行器凭据」卡（列表掩码、保存 write-only、删除）并注册 tab。
+- 证据：coding 13 + router 2 + 配额/生命周期 16 + 配置 11；web `lint:check` 通过、unit 367 passed、build 成功；全量后端单测 2368 passed（仅 3 个既有 xlrd 环境失败）。
+- 未验证/待补：设置页凭据卡的真实浏览器截图（当前环境无浏览器工具，仅完成 lint/unit/build）；管理端全局凭据的图形化配置随 M8 管理面板；配额在 Agent 配置保存表单层的提示（当前由创建时结构化失败兜底）。
 - 交付：`coding_credentials`（yuanlei）+ AES-GCM 服务 + 用户/管理端 API + 设置页凭据卡；`agents.config_json.sandbox` 与 `project_agents.config_overrides.sandbox` 字段与合并逻辑；系统配额配置项；指纹实现（按 M0 契约）；输出脱敏。
 - 退出证据：编码提案矩阵第 1、2 行；沙盒提案矩阵第 9 行；指纹契约单测。
-- 迁移：若与 M2 同窗口，两批表一次进 v4；否则本阶段先升一次版本。
+- 迁移：已按顺序推进——专属沙盒表进 v4，编码凭据表进 v5。
 
 ### M2 沙盒身份与生命周期核心（进行中）
 

@@ -121,6 +121,18 @@ system_options = Option(
                 "type": "ocr_engine",
                 "default": "rapid_ocr",
             },
+            {
+                "key": "sandbox_dedicated_max_per_user",
+                "label": "每用户专属沙盒上限",
+                "type": "int",
+                "default": 3,
+            },
+            {
+                "key": "sandbox_resident_max_per_user",
+                "label": "每用户常驻沙盒上限",
+                "type": "int",
+                "default": 1,
+            },
         ],
     },
 )
@@ -342,10 +354,22 @@ async def update_option_value(
     for field_key, raw_value in value.items():
         field = fields[field_key]
         updated[field_key] = normalize_option_value(field, raw_value)
+    if key == system_options.key:
+        _validate_system_options_quota(updated)
     record.value = updated
     record.updated_by = updated_by
     await db.flush()
     return record
+
+
+def _validate_system_options_quota(value: dict[str, Any]) -> None:
+    """保存系统配置时校验配额关系。"""
+    dedicated = value.get("sandbox_dedicated_max_per_user")
+    resident = value.get("sandbox_resident_max_per_user")
+    if dedicated is None or resident is None:
+        return
+    if int(resident) > int(dedicated):
+        raise ValueError("常驻沙盒上限不能超过专属沙盒上限")
 
 
 async def invalidate_option_cache(key: str) -> None:
@@ -378,6 +402,14 @@ def normalize_option_value(field: dict[str, Any], value: Any) -> Any:
         return value
 
     normalized = str(value or "").strip()
+    if field.get("type") == "int":
+        try:
+            parsed = int(normalized)
+        except (TypeError, ValueError):
+            raise ValueError("配置值必须是整数") from None
+        if parsed < 0:
+            raise ValueError("配置值必须是非负整数")
+        return parsed
     if field.get("type") == "url" and normalized:
         return str(_URL_ADAPTER.validate_python(normalized))
     if field.get("type") == "ocr_engine" and normalized:

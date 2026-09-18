@@ -707,6 +707,54 @@ class AgentSandboxEvent(Base):
     created_at = Column(DateTime, default=utc_now_naive)
 
 
+class CodingCredential(Base):
+    """编码执行器（opencode/codex）的用户级或全局凭据（yuanlei 域）。"""
+
+    __tablename__ = "coding_credentials"
+    __table_args__ = (
+        Index(
+            "uq_coding_credentials_user",
+            "uid",
+            "executor",
+            "provider",
+            unique=True,
+            postgresql_where=text("scope = 'user'"),
+            sqlite_where=text("scope = 'user'"),
+        ),
+        Index(
+            "uq_coding_credentials_global",
+            "executor",
+            "provider",
+            unique=True,
+            postgresql_where=text("scope = 'global'"),
+            sqlite_where=text("scope = 'global'"),
+        ),
+    )
+
+    id = Column(String(64), primary_key=True, comment="凭据 UUID")
+    scope = Column(String(16), nullable=False, default="user", comment="user/global")
+    uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE", name="fk_coding_credentials_uid_users"),
+        nullable=True,
+        comment="所有者 uid；global 行为空",
+    )
+    executor = Column(String(16), nullable=False, comment="opencode/codex")
+    provider = Column(String(64), nullable=False, comment="供应商标识")
+    base_url = Column(String(512), nullable=True, comment="OpenAI 兼容/Responses 端点")
+    model = Column(String(255), nullable=True, comment="默认模型")
+    api_key_cipher = Column(LargeBinary, nullable=True, comment="AES-GCM 密文")
+    nonce = Column(LargeBinary, nullable=True, comment="AES-GCM nonce")
+    key_version = Column(Integer, nullable=True, comment="加密密钥版本")
+    extra_json = Column(JSON_VALUE, nullable=False, default=dict, comment="非密扩展配置")
+    status = Column(String(16), nullable=False, default="active", comment="active/deleted")
+    version = Column(Integer, nullable=False, default=1, comment="凭据版本，用于指纹")
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
 class Skill(Base):
     """Skill 元数据模型（内容存文件系统，索引存数据库）"""
 

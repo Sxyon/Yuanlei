@@ -66,7 +66,7 @@
 
 ## Agent 专属沙盒、编码 CLI 协作与执行租约
 
-- 类型与状态：feature，提案（proposed），实现进行中；M0 契约探针已出证，M2.1 provisioner 按沙盒生命周期字段已落地（旧请求行为不变），其余按合并计划推进。
+- 类型与状态：feature，提案（proposed），实现进行中；M0 契约探针已出证，专属沙盒核心（M2）、执行租约（M3）、凭据基座（M1：加密存储/API/设置页卡/配额强制）均已落地，编码执行器接入（M4）待做。
 - 与上游差异：上游沙盒是线程级身份、全局 idle TTL、根 Run 终态释放且只有一次性 `execute`；没有 `(uid, agent, project)` 专属沙盒、生命周期策略、执行租约、编码凭据通道与 opencode/codex 会话工具。
 - 语义 Owner：`backend/package/yuxi/agents/backends/sandbox/provider.py`（身份、生命周期与租约）、`docker/sandbox_provisioner/app.py`（按沙盒策略回收与终端代理）、新增 `backend/package/yuxi/agents/coding/`（适配器与会话工具）、`backend/package/yuxi/storage/postgres/manager.py`（yuanlei 域表）。
 - 决策记录：[Agent 专属沙盒与生命周期策略](../decisions/proposed/2026-09-18-agent-dedicated-sandbox-lifecycle.md)、[智能体驱动沙盒内 opencode/codex 编码执行](../decisions/proposed/2026-09-18-agent-driven-coding-cli-sessions.md)；实施顺序与共享契约见 [合并实施计划](../../planning/agent-coding-execution-plan.md)。

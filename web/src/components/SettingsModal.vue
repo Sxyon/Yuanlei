@@ -82,6 +82,15 @@
             <SquareTerminal class="icon" :size="18" />
             <span>环境变量</span>
           </div>
+          <div
+            class="sider-item"
+            :class="{ activesec: activeTab === 'codingCredentials' }"
+            @click="activeTab = 'codingCredentials'"
+            v-if="userStore.isLoggedIn"
+          >
+            <KeyRound class="icon" :size="18" />
+            <span>编码凭据</span>
+          </div>
         </div>
 
         <div v-if="showStarCard" class="settings-star-card">
@@ -146,6 +155,14 @@
         </div>
         <div
           class="nav-item"
+          :class="{ active: activeTab === 'codingCredentials' }"
+          @click="activeTab = 'codingCredentials'"
+          v-if="userStore.isLoggedIn"
+        >
+          编码执行器凭据
+        </div>
+        <div
+          class="nav-item"
           :class="{ active: activeTab === 'base' }"
           @click="activeTab = 'base'"
           v-if="userStore.isAdmin"
@@ -202,6 +219,13 @@
             <AgentEnvSettingsCard />
           </div>
 
+          <div
+            v-show="activeTab === 'codingCredentials'"
+            v-if="userStore.isLoggedIn && loadedTabs.has('codingCredentials')"
+          >
+            <CodingCredentialSettingsCard />
+          </div>
+
           <div v-show="activeTab === 'base'" v-if="userStore.isAdmin && loadedTabs.has('base')">
             <BasicSettingsSection />
           </div>
@@ -232,9 +256,10 @@ import { useUserStore } from '@/stores/user'
 import {
   CircleUser,
   ExternalLink,
-  Settings,
   Key,
+  KeyRound,
   ScanText,
+  Settings,
   Star,
   SquareTerminal,
   User,
@@ -247,6 +272,9 @@ const AccountSettingsComponent = createAsyncPanel(
   () => import('@/components/AccountSettingsComponent.vue')
 )
 const AgentEnvSettingsCard = createAsyncPanel(() => import('@/components/AgentEnvSettingsCard.vue'))
+const CodingCredentialSettingsCard = createAsyncPanel(
+  () => import('@/components/CodingCredentialSettingsCard.vue')
+)
 const BasicSettingsSection = createAsyncPanel(() => import('@/components/BasicSettingsSection.vue'))
 const OCRSettingsSection = createAsyncPanel(() => import('@/components/OCRSettingsSection.vue'))
 const ApiKeyManagementComponent = createAsyncPanel(
@@ -287,7 +315,7 @@ const visible = computed({
 
 const availableTabs = computed(() => {
   const tabs = []
-  if (userStore.isLoggedIn) tabs.push('account', 'apiKeys', 'agentEnv')
+  if (userStore.isLoggedIn) tabs.push('account', 'apiKeys', 'agentEnv', 'codingCredentials')
   if (userStore.isAdmin) tabs.push('base', 'ocr', 'user')
   if (userStore.isSuperAdmin) tabs.push('department')
   return tabs

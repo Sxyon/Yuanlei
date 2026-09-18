@@ -11,6 +11,7 @@ from yuxi.agents.backends.sandbox.policy import SandboxPolicy
 from yuxi.repositories.agent_sandbox_repository import AgentSandboxRepository
 from yuxi.services.sandbox_lifecycle_service import (
     SandboxLifecycleService,
+    SandboxQuotaExceededError,
     SandboxRebuildConfirmationRequired,
     resolve_agent_sandbox_policy,
     resolve_dispatch_runtime_scope,
@@ -21,6 +22,7 @@ from yuxi.storage.postgres.models_business import (
     AgentSandbox,
     AgentSandboxEvent,
     Base,
+    ConfigOption,
     ProjectAgent,
 )
 
@@ -264,6 +266,83 @@ async def test_suspend_is_idempotent(session):
     assert row.generation is None
     assert row.suspended_at is not None
     assert provider.release_calls == ["agent-project:user-1:coder:project-1"]
+
+
+async def _set_quota(session, *, dedicated: int, resident: int) -> None:
+    session.add(
+        ConfigOption(
+            key="system_options",
+            name="系统配置",
+            params={},
+            value={
+                "sandbox_dedicated_max_per_user": dedicated,
+                "sandbox_resident_max_per_user": resident,
+            },
+        )
+    )
+    await session.flush()
+
+
+async def test_ensure_ready_enforces_dedicated_quota_on_new_binding(session):
+    await _set_quota(session, dedicated=1, resident=1)
+    provider = _FakeProvider()
+    service = SandboxLifecycleService(session, provider=provider)
+    await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        policy=_dedicated_policy(),
+        workdir_path=WORKDIR,
+    )
+
+    with pytest.raises(SandboxQuotaExceededError, match="sandbox_quota_exceeded"):
+        await service.ensure_ready(
+            uid="user-1",
+            agent_slug="coder",
+            project_id="project-2",
+            policy=_dedicated_policy(),
+            workdir_path=WORKDIR,
+        )
+
+    # 已有绑定不受新增配额限制
+    await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        policy=_dedicated_policy(),
+        workdir_path=WORKDIR,
+    )
+
+
+async def test_ensure_ready_enforces_resident_quota(session):
+    await _set_quota(session, dedicated=3, resident=1)
+    provider = _FakeProvider()
+    service = SandboxLifecycleService(session, provider=provider)
+    await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        policy=_dedicated_policy(lifecycle="resident"),
+        workdir_path=WORKDIR,
+    )
+
+    with pytest.raises(SandboxQuotaExceededError, match="resident"):
+        await service.ensure_ready(
+            uid="user-1",
+            agent_slug="coder",
+            project_id="project-2",
+            policy=_dedicated_policy(lifecycle="resident"),
+            workdir_path=WORKDIR,
+        )
+
+    # 非 resident 策略仍可在专属配额内创建
+    await service.ensure_ready(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-2",
+        policy=_dedicated_policy(lifecycle="persistent"),
+        workdir_path=WORKDIR,
+    )
 
 
 async def test_ensure_ready_rejects_shared_policy(session):

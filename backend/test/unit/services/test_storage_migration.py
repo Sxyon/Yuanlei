@@ -222,6 +222,7 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
+        upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -248,7 +249,8 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert calls.index("upgrade_yuanlei_v1_v2") < calls.index("upgrade_yuanlei_v2_v3")
     assert calls.index("upgrade_yuanlei_v2_v3") < calls.index("upgrade_yuanlei_v3_v4")
-    assert calls.index("upgrade_yuanlei_v3_v4") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v3_v4") < calls.index("upgrade_yuanlei_v4_v5")
+    assert calls.index("upgrade_yuanlei_v4_v5") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -275,6 +277,7 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
+        upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -301,9 +304,11 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
     assert "upgrade_yuanlei_v1_v2" not in calls
     assert "upgrade_yuanlei_v2_v3" in calls
     assert "upgrade_yuanlei_v3_v4" in calls
+    assert "upgrade_yuanlei_v4_v5" in calls
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert calls.index("upgrade_yuanlei_v2_v3") < calls.index("upgrade_yuanlei_v3_v4")
-    assert calls.index("upgrade_yuanlei_v3_v4") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v3_v4") < calls.index("upgrade_yuanlei_v4_v5")
+    assert calls.index("upgrade_yuanlei_v4_v5") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -330,6 +335,7 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
+        upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -356,8 +362,66 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
     assert "upgrade_yuanlei_v1_v2" not in calls
     assert "upgrade_yuanlei_v2_v3" not in calls
     assert "upgrade_yuanlei_v3_v4" in calls
+    assert "upgrade_yuanlei_v4_v5" in calls
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
-    assert calls.index("upgrade_yuanlei_v3_v4") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v3_v4") < calls.index("upgrade_yuanlei_v4_v5")
+    assert calls.index("upgrade_yuanlei_v4_v5") < calls.index(version_call)
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_earlier_steps(monkeypatch):
+    calls: list[str] = []
+    sessions = [_Session(), _Session(), _Session()]
+
+    @asynccontextmanager
+    async def session_context():
+        yield sessions.pop(0)
+
+    manager = SimpleNamespace(
+        initialize=lambda: calls.append("initialize"),
+        schema_migration_lock=lambda: _async_context(calls, "schema_lock"),
+        create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
+        get_schema_versions=lambda: _async_value(
+            {
+                "business": storage_migration.BUSINESS_SCHEMA_VERSION,
+                "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION,
+                "yuanlei": 4,
+            }
+        ),
+        record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
+        upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
+        upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
+        upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
+        get_async_session_context=session_context,
+        close=lambda: _record(calls, "close"),
+    )
+    monkeypatch.setattr(storage_migration, "pg_manager", manager)
+    monkeypatch.setattr(
+        storage_migration,
+        "read_v071_workdir_plan",
+        lambda _db: _async_value(V071WorkdirMigrationPlan(False, (), ())),
+    )
+    monkeypatch.setattr(storage_migration, "_legacy_skill_roots_exist", lambda: False)
+    monkeypatch.setattr(storage_migration, "_legacy_system_config_exists", lambda: False)
+    monkeypatch.setattr(storage_migration, "runtime_storage_requires_quiescence", lambda: False)
+    monkeypatch.setattr(
+        storage_migration,
+        "_converge_database_state",
+        lambda *, fail_nonterminal_runs: _record(calls, f"converge:{fail_nonterminal_runs}"),
+    )
+    monkeypatch.setattr(storage_migration, "migrate_shared_skills", lambda _db: _record(calls, "skills"))
+    monkeypatch.setattr(storage_migration, "mark_v071_skills_migrated", lambda: calls.append("mark_skills"))
+    monkeypatch.setattr(storage_migration, "migrate_runtime_storage_identity", lambda: calls.append("runtime_identity"))
+
+    await storage_migration.main()
+
+    assert "upgrade_yuanlei_v1_v2" not in calls
+    assert "upgrade_yuanlei_v2_v3" not in calls
+    assert "upgrade_yuanlei_v3_v4" not in calls
+    assert "upgrade_yuanlei_v4_v5" in calls
+    version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
+    assert calls.index("upgrade_yuanlei_v4_v5") < calls.index(version_call)
 
 
 @pytest.mark.asyncio

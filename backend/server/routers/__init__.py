@@ -7,6 +7,7 @@ from server.routers.agent_router import agent_router
 from server.routers.auth_dept_router import department
 from server.routers.auth_router import auth
 from server.routers.chat_router import chat
+from server.routers.coding_credential_router import admin_coding_credentials, user_coding_credentials
 from server.routers.dashboard_router import dashboard
 from server.routers.external_kb_router import external_kb
 from server.routers.filesystem_router import filesystem_router
@@ -53,6 +54,8 @@ router.include_router(skills)  # /api/system/skills/* Skills 管理
 router.include_router(user_skills)  # /api/skills/* 用户可用 Skills
 router.include_router(tools)  # /api/system/tools/* 工具列表与配置
 router.include_router(user_router)  # /api/user/* 用户级配置与凭据
+router.include_router(user_coding_credentials)  # /api/user/coding-credentials* 编码执行器凭据
+router.include_router(admin_coding_credentials)  # /api/system/coding-credentials* 全局编码执行器凭据
 router.include_router(filesystem_router)  # /api/viewer/filesystem/* 工作台文件系统视图
 router.include_router(workspace)  # /api/workspace/* 用户个人工作区
 router.include_router(mention_router)  # /api/mention/* 提及文件搜索接口

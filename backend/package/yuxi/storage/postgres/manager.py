@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 4
+YUANLEI_SCHEMA_VERSION = 5
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -385,6 +385,38 @@ AGENT_SANDBOX_SCHEMA_STATEMENTS = (
     (
         "CREATE INDEX IF NOT EXISTS ix_agent_sandbox_events_sandbox_created "
         "ON agent_sandbox_events(sandbox_id, created_at)"
+    ),
+)
+CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS coding_credentials (
+        id VARCHAR(64) PRIMARY KEY,
+        scope VARCHAR(16) NOT NULL DEFAULT 'user',
+        uid VARCHAR(64) CONSTRAINT fk_coding_credentials_uid_users
+            REFERENCES users(uid) ON DELETE CASCADE,
+        executor VARCHAR(16) NOT NULL,
+        provider VARCHAR(64) NOT NULL,
+        base_url VARCHAR(512),
+        model VARCHAR(255),
+        api_key_cipher BYTEA,
+        nonce BYTEA,
+        key_version INTEGER,
+        extra_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by VARCHAR(64),
+        updated_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_coding_credentials_user "
+        "ON coding_credentials(uid, executor, provider) WHERE scope = 'user'"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_coding_credentials_global "
+        "ON coding_credentials(executor, provider) WHERE scope = 'global'"
     ),
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
@@ -846,6 +878,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in AGENT_SANDBOX_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v4_to_v5(self) -> None:
+        """为编码执行器增加用户级/全局凭据表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CODING_CREDENTIAL_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

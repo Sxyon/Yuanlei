@@ -280,6 +280,30 @@ async def test_yuanlei_v3_to_v4_upgrade_creates_agent_sandboxes_idempotently():
     assert "ix_agent_sandbox_events_sandbox_created" in statements
 
 
+def test_coding_credential_schema_owns_user_foreign_key_and_unique_indexes():
+    """编码凭据表按作用域保证唯一并拒绝悬空用户归属。"""
+    assert "coding_credentials" in BusinessBase.metadata.tables
+    table = BusinessBase.metadata.tables["coding_credentials"]
+    foreign_keys = {constraint.name for constraint in table.foreign_key_constraints}
+    assert foreign_keys == {"fk_coding_credentials_uid_users"}
+    index_names = {index.name for index in table.indexes}
+    assert {"uq_coding_credentials_user", "uq_coding_credentials_global"}.issubset(index_names)
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v4_to_v5_upgrade_creates_coding_credentials_idempotently():
+    """编码凭据表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v4_to_v5()
+        await manager.upgrade_yuanlei_schema_v4_to_v5()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS coding_credentials" in statements
+    assert "REFERENCES users(uid) ON DELETE CASCADE" in statements
+    assert "uq_coding_credentials_user" in statements
+    assert "uq_coding_credentials_global" in statements
+
+
 @pytest.mark.asyncio
 async def test_ensure_business_schema_cleans_duplicate_active_agent_runs_before_unique_index():
     async with _recording_manager() as (manager, connection):

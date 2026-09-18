@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.agents.backends.sandbox import SandboxConnection, SandboxScope, get_sandbox_provider
@@ -23,6 +24,61 @@ class SandboxRebuildConfirmationRequired(RuntimeError):
         self.scope_key = scope_key
         self.sandbox_id = sandbox_id
         self.suspended_at = suspended_at
+
+
+DEFAULT_DEDICATED_MAX_PER_USER = 3
+DEFAULT_RESIDENT_MAX_PER_USER = 1
+
+
+class SandboxQuotaExceededError(RuntimeError):
+    """用户专属/常驻沙盒数量超过系统配额。"""
+
+    error_code = "sandbox_quota_exceeded"
+
+    def __init__(self, *, limit_key: str, limit: int, current: int):
+        super().__init__(f"sandbox_quota_exceeded: {limit_key} limit={limit} current={current}")
+        self.limit_key = limit_key
+        self.limit = limit
+        self.current = current
+
+
+async def sandbox_quota_limits(db: AsyncSession) -> tuple[int, int]:
+    """读取管理员配置的每用户配额上限（记录缺失时用默认值）。"""
+    from yuxi.config.options import get_option, system_options
+
+    record = await get_option(db, system_options.key)
+    stored = dict(record.value or {}) if record is not None else {}
+    resolved = system_options.resolve(stored)
+    dedicated = resolved.get("sandbox_dedicated_max_per_user")
+    resident = resolved.get("sandbox_resident_max_per_user")
+    return (
+        int(dedicated) if dedicated is not None else DEFAULT_DEDICATED_MAX_PER_USER,
+        int(resident) if resident is not None else DEFAULT_RESIDENT_MAX_PER_USER,
+    )
+
+
+async def enforce_sandbox_quota(db: AsyncSession, *, uid: str, policy: SandboxPolicy) -> None:
+    """创建新专属沙盒前强制每用户配额；已有记录不计新增。"""
+    if not policy.is_dedicated:
+        return
+    rows = (
+        await db.execute(select(AgentSandbox).where(AgentSandbox.uid == str(uid)))
+    ).scalars().all()
+    dedicated_max, resident_max = await sandbox_quota_limits(db)
+    if len(rows) >= dedicated_max:
+        raise SandboxQuotaExceededError(
+            limit_key="sandbox_dedicated_max_per_user",
+            limit=dedicated_max,
+            current=len(rows),
+        )
+    if policy.lifecycle == "resident":
+        resident_count = sum(1 for row in rows if row.lifecycle == "resident")
+        if resident_count >= resident_max:
+            raise SandboxQuotaExceededError(
+                limit_key="sandbox_resident_max_per_user",
+                limit=resident_max,
+                current=resident_count,
+            )
 
 
 async def resolve_agent_sandbox_policy(
@@ -110,6 +166,7 @@ class SandboxLifecycleService:
         scope = SandboxScope.agent_project(uid=uid, agent_slug=agent_slug, project_id=project_id)
         row = await self.repo.get_for_update(uid=uid, agent_slug=agent_slug, project_id=project_id)
         if row is None:
+            await enforce_sandbox_quota(db=self.db, uid=uid, policy=policy)
             row = await self.repo.add(
                 uid=uid,
                 agent_slug=agent_slug,
