@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from arq.worker import RetryJob, func
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import OperationalError
 from yuxi.agents.backends.sandbox.provider import SandboxScope, get_sandbox_provider
 from yuxi.agents.callbacks.model_request_timing import FirstModelRequestRecorder
@@ -60,12 +60,13 @@ from yuxi.services.sandbox_lifecycle_supervisor_service import (
     run_sandbox_lifecycle_tick,
     sandbox_lifecycle_interval_seconds,
 )
+from yuxi.services.run_scope_service import list_scope_run_ids, resolve_run_scope_key
 from yuxi.services.sandbox_lease_service import (
     SandboxBusyError,
     acquire_sandbox_lease_for_run,
     release_sandbox_lease_for_run,
     renew_sandbox_lease_for_run,
-    sandbox_scope_for_run,
+    sandbox_scope_from_key,
 )
 from yuxi.services.coding_execution_service import run_coding_turn_job
 from yuxi.services.task_queue_service import (
@@ -334,11 +335,17 @@ class ChunkedEventWriter:
         buffer.last_flush = time.monotonic()
 
 
+async def _run_scope_key(run: AgentRun) -> str:
+    """解析 Run 的执行 scope（专属走 yuanlei 映射），使用独立会话避免事务耦合。"""
+    async with pg_manager.get_async_session_context() as db:
+        return await resolve_run_scope_key(db, run)
+
+
 async def _release_runtime_if_idle(run: AgentRun) -> bool:
     """保留持久 cleanup fence，并在数据库事务外销毁根 runtime。"""
     if run.run_type == "subagent":
         return False
-    runtime_scope_id = str(getattr(run, "runtime_scope_id", None) or run.conversation_thread_id)
+    runtime_scope_id = await _run_scope_key(run)
     lock_key = f"yuxi-runtime-cleanup:{run.uid}:{runtime_scope_id}"
     async with pg_manager.get_async_session_context() as db:
         await db.execute(
@@ -348,7 +355,7 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
         current = await db.scalar(select(AgentRun).where(AgentRun.id == run.id).with_for_update())
         if current is None:
             raise RuntimeError(f"Run {run.id} 不存在，不能确认 runtime cleanup Owner")
-        current_scope_id = str(current.runtime_scope_id or current.conversation_thread_id)
+        current_scope_id = await resolve_run_scope_key(db, current)
         if str(current.uid) != str(run.uid) or current_scope_id != runtime_scope_id:
             raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
         if not current.runtime_cleanup_pending:
@@ -361,10 +368,14 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
             current.runtime_cleanup_pending = False
             await db.flush()
             return True
+        scope_run_ids = await list_scope_run_ids(db, scope_key=runtime_scope_id)
         result = await db.execute(
             select(AgentRun.id)
             .where(
-                AgentRun.runtime_scope_id == runtime_scope_id,
+                or_(
+                    AgentRun.runtime_scope_id == runtime_scope_id,
+                    AgentRun.id.in_(scope_run_ids),
+                ),
                 AgentRun.id != current.id,
                 AgentRun.status.notin_(TERMINAL_RUN_STATUSES),
             )
@@ -401,15 +412,19 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
         current = await db.scalar(select(AgentRun).where(AgentRun.id == run.id).with_for_update())
         if current is None:
             raise RuntimeError(f"Run {run.id} 不存在，不能确认 runtime cleanup Owner")
-        current_scope_id = str(current.runtime_scope_id or current.conversation_thread_id)
+        current_scope_id = await resolve_run_scope_key(db, current)
         if str(current.uid) != target.uid or current_scope_id != target.runtime_scope_id:
             raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
         if not current.runtime_cleanup_pending:
             return True
+        scope_run_ids = await list_scope_run_ids(db, scope_key=target.runtime_scope_id)
         result = await db.execute(
             select(AgentRun.id)
             .where(
-                AgentRun.runtime_scope_id == target.runtime_scope_id,
+                or_(
+                    AgentRun.runtime_scope_id == target.runtime_scope_id,
+                    AgentRun.id.in_(scope_run_ids),
+                ),
                 AgentRun.id != current.id,
                 AgentRun.status.notin_(TERMINAL_RUN_STATUSES),
             )
@@ -436,12 +451,12 @@ async def _release_runtime_before_terminal_event(run: AgentRun | None) -> None:
     """在终态事件可见前收敛 runtime，避免客户端撞上随后发生的删除。"""
     if run is None or run.run_type == "subagent":
         return
-    scope = sandbox_scope_for_run(run)
+    scope = sandbox_scope_from_key(await _run_scope_key(run))
     if scope is not None:
         try:
             await release_sandbox_lease_for_run(scope=scope, owner_id=str(run.id))
         except Exception:
-            logger.error("Failed to release sandbox lease: run=%s", run.id, exc_info=True)
+            logger.opt(exception=True).error("Failed to release sandbox lease: run={}", run.id)
     await _require_runtime_cleanup(run, f"Run {run.id} 的 execution tree 尚未完成 runtime cleanup")
 
 
@@ -602,7 +617,7 @@ async def reconcile_pending_runtime_cleanups() -> list[str]:
             if not await _release_runtime_if_idle(run):
                 continue
         except Exception:
-            logger.error("Failed to reconcile execution-tree runtime cleanup: run=%s", run.id, exc_info=True)
+            logger.opt(exception=True).error("Failed to reconcile execution-tree runtime cleanup: run={}", run.id)
             continue
         if run.status in TERMINAL_RUN_STATUSES:
             await _append_end_event(run.id, run.status, thread_id=run.conversation_thread_id)
@@ -673,7 +688,7 @@ async def _record_run_timing_best_effort(
             else:
                 raise ValueError(f"不支持的 AgentRun timing phase: {phase}")
     except Exception:
-        logger.warning("Failed to persist AgentRun timing: run=%s, phase=%s", run_id, phase, exc_info=True)
+        logger.opt(exception=True).warning("Failed to persist AgentRun timing: run={}, phase={}", run_id, phase)
 
 
 async def _load_user(uid: str):
@@ -1082,7 +1097,7 @@ async def process_agent_run(ctx, run_id: str):
             return
 
         await run_ctx.start()
-        sandbox_scope = sandbox_scope_for_run(run)
+        sandbox_scope = sandbox_scope_from_key(await _run_scope_key(run))
         if sandbox_scope is not None:
             try:
                 await acquire_sandbox_lease_for_run(
@@ -1105,7 +1120,7 @@ async def process_agent_run(ctx, run_id: str):
                 uid=str(uid),
                 project_id=workdir_binding.project_id,
                 workdir_path=workdir_binding.workdir_path,
-                runtime_scope_id=str(run.runtime_scope_id),
+                runtime_scope_id=await _run_scope_key(run),
                 worker_id=worker_id,
             )
         except ProjectGitBusyError as exc:
@@ -1681,7 +1696,7 @@ async def _reconcile_durable_tasks_forever() -> None:
         try:
             reconciled = await reconcile_and_publish_tasks()
             if reconciled:
-                logger.warning("Reconciled expired durable tasks: count=%s", len(reconciled))
+                logger.warning("Reconciled expired durable tasks: count={}", len(reconciled))
             await _publish_task_reconciliation_health()
         except asyncio.CancelledError:
             raise
@@ -1704,11 +1719,11 @@ async def _reconcile_sandbox_lifecycle_forever() -> None:
         try:
             counts = await run_sandbox_lifecycle_tick()
             if counts["suspended"] or counts["generation_changed"]:
-                logger.info("Sandbox lifecycle tick: %s", counts)
+                logger.info("Sandbox lifecycle tick: {}", counts)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.error("Failed to reconcile sandbox lifecycle", exc_info=True)
+            logger.opt(exception=True).error("Failed to reconcile sandbox lifecycle")
 
 
 async def _publish_task_reconciliation_health() -> None:
@@ -1774,7 +1789,7 @@ async def _worker_startup(ctx):
     try:
         await run_sandbox_lifecycle_tick()
     except Exception:
-        logger.error("Failed to run initial sandbox lifecycle tick", exc_info=True)
+        logger.opt(exception=True).error("Failed to run initial sandbox lifecycle tick")
     ctx[_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_agent_run_leases_forever())
     ctx[_TASK_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_durable_tasks_forever())
     ctx[_SANDBOX_LIFECYCLE_TASK_KEY] = asyncio.create_task(_reconcile_sandbox_lifecycle_forever())

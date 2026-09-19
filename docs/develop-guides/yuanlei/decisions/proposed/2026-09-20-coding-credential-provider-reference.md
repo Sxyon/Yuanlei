@@ -80,6 +80,7 @@ Owner：backend/package/yuxi/services/coding_credential_service.py
 | 每 scope 每 executor 仅一条最新生效；存量多行收敛 | 旧配置继续生效或迁移失败 | repository + 迁移 | 单测：写入后旧行停用；`pytest test/unit/services/test_storage_migration.py`、`test/integration/services/test_schema_migration_version.py` | 迁移二次执行幂等；deleted 行清空密文 | Passed |
 | 读取自检与运行时不可用原因一致 | 静默跳过或泛化报错 | `coding_credential_service.py` + `coding_tools.py` | 单测：list_masked 状态；工具调用抛 `credential_unavailable` 原因 | 供应商停用后列表标记且工具报原因，不阻塞沙盒创建 | Passed |
 | 选择器端点无密钥泄漏且普通用户可用 | 越权或泄漏明文 | router | 单测 + 真实 HTTP：响应不含 `api_key`/密文；匿名 401 | 非管理员可读；disabled 供应商带标记返回 | Passed |
+| 初始化与失败提示：缺密钥可一键生成，启动/前端提示可执行 | 克隆后仍 503 或只提示查看容器 | `scripts/init.sh` / `init.ps1`、compose 注入、`web/src/apis/base.js` | `python3 -m unittest scripts.test_init_coding_secret`（2 用例）；`pnpm run test:unit` 中 `api_boundary` 新增 2 用例；`bash scripts/init.sh --validate-security-env` | 非法 hex 被替换；非白名单 503 不泄漏明细；compose 缺值 fail-fast | Passed |
 
 ## 风险
 

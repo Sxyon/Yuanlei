@@ -133,6 +133,9 @@ M0 契约探针与接口冻结
 - 问题：编码凭据与模型供应商是两套独立配置，用户必须复制粘贴 key；同一渠道多 key 只能建多个供应商条目（普通用户还没有条目权限）；换渠道/换 key 后编码不会跟随；同执行器多行时生效项按字典序不可解释。
 - 决策与验收矩阵见[《编码凭据引用模型供应商》](../yuanlei/decisions/proposed/2026-09-20-coding-credential-provider-reference.md)。三模式：手动 / 引用·共用密钥 / 引用·单独密钥；引用为活引用，指纹纳入解析后的实际值与密钥短哈希，供应商换 key 自动触发沙盒重建；不做 agent 跟随、不阻断供应商删除/停用，改为读取自检 + 运行时结构化不可用原因。
 - 交付：yuanlei v6→v7（`source`/`model_provider_id`/`key_mode` + 同执行器多行收敛最新）；解析与自检、环境构建返回 unavailable/missing；工具层不可用报错；用户掩码选择器 `GET /api/user/coding-credentials/model-providers`；凭据卡三模式表单。
+- 运维与文档（2026-09-19 追加）：`scripts/init.sh`/`init.ps1` 新增 `--ensure-coding-secret`（生成/校验 32 字节 base64url，幂等），compose 对 `YUXI_CODING_CREDENTIAL_KEY` 改为缺值即启动失败；凭据接口 503 的可读明细直达前端（其他端点仍走通用文案）；新增[配置指南](../advanced/coding-execution-setup.md)、[配置参考](../advanced/coding-execution-reference.md)、[机制详解](../mechanisms/coding-execution.md)并注册导航。证据：`scripts/test_init_coding_secret.py` 2 用例、`api_boundary.test.js` 15 用例、docs build 通过。
+- 会话可观测（2026-09-19 追加）：聊天头部新增「沙盒」入口（状态/生命周期/最后活动 + 直达终端），后端新增 `GET /api/coding/threads/{id}/sandbox` 与 `POST /api/coding/threads/{id}/terminal`（预热+复用终端会话）；真实 HTTP 集成与浏览器断言通过。
+- 运行时修复（2026-09-19）：supervisor 调用不存在的 `provider.touch` 导致每分钟失败（已补 `ProvisionerSandboxProvider.touch` 并修 loguru `%s` 日志）；专属 scope key 超过上游 `agent_runs.runtime_scope_id` 的 64 上限且违反 `ck_agent_runs_nonterminal_shape`，改为 yuanlei v8 `agent_run_scopes` 映射（凭证/清理/租约/execution tree/Git worktree 全部走 `resolve_run_scope_key`）。证据：长 slug 专属 Agent 真实 HTTP 派发用例、provider.touch 单测、business 列宽幂等迁移集成用例；受影响 unit 344 passed、集成 24 passed（仅 2 个既有 project_git 失败）。
 - 证据：单测 11（引用解析/自检/去重/指纹）+ 路由 2 + 真实 PG 迁移 1（v6→v7 幂等与多行收敛）+ 真实 HTTP 集成 1（引用生命周期/停用自检/选择器掩码）；全量后端 2452 passed（另 3 个既有 xlrd 失败；`test_skill_service` 序列化用例在满负载下偶发计时失败、单文件复跑通过；`test_schema_migration_version.py` 的 2 个 `project_git` 业务迁移用例经 stash 对照确认在本改动前即失败）；web lint/unit（377）/build 通过；真实页面验证设置页三模式、共用密钥、停用自检（截图与脚本 `web/test/browser/codingCredentialReference.js`）。
 
 ### 整体未验证清单（本计划结束时）

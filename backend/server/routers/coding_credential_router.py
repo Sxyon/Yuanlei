@@ -45,7 +45,13 @@ async def _parse_payload(request: Request) -> CodingCredentialPayload:
 
 def _service_error(exc: Exception) -> HTTPException:
     if isinstance(exc, CodingNotConfiguredError):
-        return HTTPException(status_code=503, detail="编码凭据加密未配置，请联系管理员设置 YUXI_CODING_CREDENTIAL_KEY")
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "编码凭据加密未配置或无效：请在 .env 设置 YUXI_CODING_CREDENTIAL_KEY"
+                "（32 字节 base64url，可运行 `bash scripts/init.sh` 生成），并执行 docker compose up -d --force-recreate api worker（restart 不会刷新环境变量）"
+            ),
+        )
     # 服务层 ValueError 只包含非密校验原因（供应商/模型/模式），直接回显便于前端提示。
     return HTTPException(status_code=422, detail=str(exc) or "编码凭据请求非法")
 

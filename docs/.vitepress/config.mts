@@ -82,6 +82,7 @@ export default defineConfig({
           { text: '阅读路径', link: '/mechanisms/' },
           { text: 'Agent 运行时上下文', link: '/mechanisms/agent-runtime' },
           { text: '沙盒与文件系统', link: '/mechanisms/sandbox' },
+          { text: '编码执行（opencode/codex）', link: '/mechanisms/coding-execution' },
           { text: '上下文压缩', link: '/mechanisms/context-compression' },
           { text: '知识库', link: '/mechanisms/knowledge-base' }
         ]
@@ -91,6 +92,8 @@ export default defineConfig({
         items: [
           { text: '配置系统详解', link: '/advanced/configuration' },
           { text: 'Project Git 配置与分支', link: '/advanced/project-git-reference' },
+          { text: '编码执行配置指南', link: '/advanced/coding-execution-setup' },
+          { text: '编码执行配置参考', link: '/advanced/coding-execution-reference' },
           { text: 'Agent 并发容量', link: '/advanced/agent-concurrency-capacity' },
           { text: 'Langfuse 集成', link: '/advanced/langfuse-integration' },
           { text: '文档解析', link: '/advanced/document-processing' },

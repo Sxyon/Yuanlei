@@ -106,7 +106,7 @@ async def _run_tick(db: AsyncSession, provider, timestamp: datetime) -> dict[str
                 continue
             row.updated_at = timestamp
         except Exception:
-            logger.error("Sandbox lifecycle tick failed for %s", row.sandbox_id, exc_info=True)
+            logger.opt(exception=True).error("Sandbox lifecycle tick failed for {}", row.sandbox_id)
     return counts
 
 

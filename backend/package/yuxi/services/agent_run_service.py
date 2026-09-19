@@ -33,6 +33,7 @@ from yuxi.config.options import system_options
 from yuxi.models.providers.cache import model_cache
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_output_repository import AgentRunOutputRepository
+from yuxi.services.run_scope_service import inherit_run_scope
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES, AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.services.input_message_service import (
@@ -476,7 +477,7 @@ async def create_resume_run_view(
     run, created = await persist_agent_run_record(
         agent_slug=agent_slug,
         conversation_thread_id=thread_id,
-        runtime_scope_id=getattr(parent_run, "runtime_scope_id", None) or thread_id,
+        runtime_scope_id=thread_id,
         current_uid=current_uid,
         db=db,
         request_id=request_id,
@@ -491,6 +492,12 @@ async def create_resume_run_view(
         origin_metadata=origin_metadata,
     )
     if created:
+        await inherit_run_scope(
+            db,
+            parent_run=parent_run,
+            child_run_id=run.id,
+            child_conversation_thread_id=thread_id,
+        )
         await _commit_and_enqueue(db, run.id)
 
     return _build_run_response(run)

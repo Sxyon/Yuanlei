@@ -17,6 +17,31 @@ from yuxi.services.agent_run_manifest_service import (
 
 
 @pytest.fixture(autouse=True)
+def _stub_run_scope(monkeypatch):
+    """单元测试用 Run 行自身字段代替 yuanlei scope 映射。"""
+
+    async def _scope(_db, run):
+        return str(getattr(run, "runtime_scope_id", None) or getattr(run, "conversation_thread_id", "") or "")
+
+    monkeypatch.setattr(manifest_service, "resolve_run_scope_key", _scope)
+
+
+@pytest.fixture(autouse=True)
+def _stub_coding_settings(monkeypatch):
+    """单元测试用固定执行器集合，避免触达项目覆盖查询。"""
+    from yuxi.services.coding_credential_service import CodingSettings
+
+    class _FakeCredentialService:
+        def __init__(self, _db):
+            pass
+
+        async def resolve_settings(self, **_kwargs):
+            return CodingSettings(executors=(), default_executor=None)
+
+    monkeypatch.setattr(manifest_service, "CodingCredentialService", _FakeCredentialService)
+
+
+@pytest.fixture(autouse=True)
 def _default_shared_sandbox_policy(monkeypatch):
     """默认共享沙盒策略；专属策略路径由专项用例覆盖。"""
     from yuxi.agents.backends.sandbox.policy import SandboxPolicy
@@ -549,6 +574,9 @@ async def test_execution_preparation_rejects_missing_dependencies(monkeypatch, m
     monkeypatch.setattr("yuxi.agents.context._load_workspace_agent_context", lambda uid: "")
     monkeypatch.setattr(service, "prepare_agent_runtime_context", AsyncMock(side_effect=lambda context: context))
     monkeypatch.setattr(service, "ensure_agent_project_scope", AsyncMock())
+    from yuxi.agents.backends.sandbox.policy import SandboxPolicy
+
+    monkeypatch.setattr(service, "resolve_agent_sandbox_policy", AsyncMock(return_value=SandboxPolicy()))
     monkeypatch.setattr(service, "load_project_agent_override", AsyncMock(return_value=None))
     run = SimpleNamespace(
         id="run",
@@ -567,3 +595,66 @@ async def test_execution_preparation_rejects_missing_dependencies(monkeypatch, m
             workdir_binding=SimpleNamespace(workdir_path="projects/project", project_id="project-1"),
             worker_id="owner",
         )
+
+
+@pytest.mark.asyncio
+async def test_manifest_exposes_project_coding_executors(monkeypatch):
+    """项目覆盖声明的执行器进入 context.coding_executors，供工具服务注入 coding_* 工具。"""
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+
+    from yuxi.agents.buildin.subagent.context import SubAgentContext
+    from yuxi.services.coding_credential_service import CodingSettings
+
+    agent = NS(slug="employee", backend_id="ChatbotAgent", config_json={"context": {}})
+    monkeypatch.setattr(
+        manifest_service,
+        "AgentRepository",
+        lambda db: NS(get_visible_by_slug=AsyncMock(return_value=agent)),
+    )
+    monkeypatch.setattr(
+        manifest_service,
+        "get_agent_backend",
+        lambda _backend_id: NS(context_schema=SubAgentContext),
+    )
+
+    class _FakeCredentialService:
+        def __init__(self, _db):
+            pass
+
+        async def resolve_settings(self, **_kwargs):
+            return CodingSettings(executors=("opencode", "codex"), default_executor="opencode")
+
+    monkeypatch.setattr(manifest_service, "CodingCredentialService", _FakeCredentialService)
+
+    async def _prepare(context):
+        context._runtime_prepared = True
+        context._skill_runtime_snapshot = {
+            "preloaded_skills": [],
+            "preloaded_skill_contents": {},
+            "skill_metadata": {},
+        }
+        return context
+
+    monkeypatch.setattr(manifest_service, "prepare_agent_runtime_context", _prepare)
+    monkeypatch.setattr(manifest_service, "ensure_agent_project_scope", AsyncMock())
+    monkeypatch.setattr(manifest_service, "load_project_agent_override", AsyncMock(return_value=None))
+
+    run = NS(
+        id="run-1",
+        request_id="request-1",
+        agent_slug="employee",
+        run_type="chat",
+        runtime_scope_id="thread-1",
+        conversation_thread_id="thread-1",
+        input_payload={},
+    )
+    result = await manifest_service.prepare_run_execution(
+        run=run,
+        user=SimpleNamespace(uid="user"),
+        db=object(),
+        workdir_binding=SimpleNamespace(workdir_path="projects/project", project_id="project-1"),
+        worker_id="owner",
+    )
+
+    assert result.context.coding_executors == ["opencode", "codex"]

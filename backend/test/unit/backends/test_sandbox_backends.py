@@ -1741,3 +1741,51 @@ def test_workdir_paths_are_workspace_relative_and_reject_symlinks(monkeypatch, t
     (projects / file_id).write_text("file", encoding="utf-8")
     with pytest.raises(ValueError, match="符号链接或非目录组件"):
         paths.user_workdir_host_dir("user-1", f"projects/{file_id}")
+
+
+def test_provider_touch_delegates_to_provisioner_client():
+    """生命周期 supervisor 依赖 provider.touch 保活；必须透传并按存活返回布尔。"""
+
+    class _Client:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def touch(self, sandbox_id: str) -> bool:
+            self.calls.append(sandbox_id)
+            return sandbox_id == "alive-sandbox"
+
+    client = _Client()
+    provider = _make_provider(client)
+
+    assert provider.touch("alive-sandbox") is True
+    assert provider.touch("gone-sandbox") is False
+    assert client.calls == ["alive-sandbox", "gone-sandbox"]
+
+
+def test_dedicated_scope_refuses_lazy_create_without_env():
+    """专属沙盒禁止旁路懒创建：必须由生命周期带 env_overrides 创建。"""
+    from yuxi.agents.backends.sandbox.provider import SandboxScope
+
+    class _Client:
+        def __init__(self):
+            self.create_calls = 0
+
+        def create(self, *_args, **_kwargs):
+            self.create_calls += 1
+            raise AssertionError("lazy create must not reach provisioner")
+
+        def discover(self, _sandbox_id):
+            return None
+
+    provider = _make_provider(_Client())
+    scope = SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="ensure_ready"):
+        provider.get_scope(scope, create_if_missing=True, workdir_path="projects/project-1")
+
+    connection = provider.get_scope(
+        scope, create_if_missing=False, workdir_path="projects/project-1"
+    )
+    assert connection is None

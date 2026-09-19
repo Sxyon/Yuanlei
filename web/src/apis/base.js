@@ -44,7 +44,20 @@ function safeResponseHeaders(headers) {
   return safeHeaders
 }
 
-function safeErrorData(errorData, status, publicMessage) {
+const ACTIONABLE_DETAIL_PATHS = ['/api/user/coding-credentials', '/api/system/coding-credentials']
+
+/**
+ * 白名单端点允许把服务端 503 的可读明细展示给用户（如加密密钥未配置）。
+ * 其他 503 继续使用通用文案，避免泄漏内部实现细节。
+ */
+function actionableErrorDetail(url, status, errorData) {
+  if (status !== 503) return null
+  const detail = errorData?.detail
+  if (typeof detail !== 'string' || !detail) return null
+  return ACTIONABLE_DETAIL_PATHS.includes(safeRequestMetadata(url, {}).path) ? detail : null
+}
+
+function safeErrorData(errorData, status, publicMessage, actionableDetail = null) {
   if (
     status === 409 &&
     errorData?.detail?.code === 'workspace_contains_symlinks'
@@ -56,6 +69,7 @@ function safeErrorData(errorData, status, publicMessage) {
       }
     }
   }
+  if (actionableDetail) return { detail: actionableDetail }
   if (status !== 422) return { detail: publicMessage }
   const detail = errorData?.detail
   if (!Array.isArray(detail)) return { detail: publicMessage }
@@ -151,12 +165,13 @@ export async function apiRequest(url, options = {}, requiresAuth = true, respons
       }
 
       // 特殊处理401和403错误
-      const error = new Error(errorMessage)
+      const actionableDetail = actionableErrorDetail(url, response.status, errorData)
+      const error = new Error(actionableDetail || errorMessage)
       error.status = response.status
       error.headers = safeResponseHeaders(response.headers)
       error.response = {
         status: response.status,
-        data: safeErrorData(errorData, response.status, errorMessage),
+        data: safeErrorData(errorData, response.status, errorMessage, actionableDetail),
         headers: error.headers
       }
 

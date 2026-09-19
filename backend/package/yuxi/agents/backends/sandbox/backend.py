@@ -1227,7 +1227,7 @@ finally:
                     with suppress(FileNotFoundError):
                         os.unlink(target_path)
                     raise
-                logger.error("Failed to remove sandbox file snapshot %s: %s", export_path, exc)
+                logger.error("Failed to remove sandbox file snapshot {}: {}", export_path, exc)
 
     def download_files(self, paths: list[str]) -> list[FileDownloadResponse]:
         """Download file payloads as raw bytes from the sandbox file API."""

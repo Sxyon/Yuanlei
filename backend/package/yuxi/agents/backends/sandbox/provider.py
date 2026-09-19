@@ -257,6 +257,14 @@ class ProvisionerSandboxProvider:
         connection.generation = record.generation
         return True
 
+    def touch(self, sandbox_id: str) -> bool:
+        """按 sandbox_id 续期 provisioner 空闲计时；容器不存在时返回 False。
+
+        生命周期 supervisor 用它为 persistent/resident 沙盒保活，避免被
+        provisioner 的空闲回收误杀。
+        """
+        return self._client.touch(str(sandbox_id))
+
     def get(
         self,
         thread_id: str,
@@ -331,6 +339,16 @@ class ProvisionerSandboxProvider:
                     logger.warning(f"Failed to touch sandbox {current.sandbox_id} for {cache_key}: {exc}")
                     return current
 
+            if (
+                create_if_missing
+                and scope.kind == "agent_project"
+                and env_overrides is None
+            ):
+                # 专属沙盒只能由 SandboxLifecycleService.ensure_ready 创建：
+                # 旁路懒创建会丢失编码凭据 env，并让指纹记录与实际运行时不符。
+                raise RuntimeError(
+                    "dedicated sandbox must be created by SandboxLifecycleService.ensure_ready"
+                )
             if create_if_missing:
                 env: dict[str, str] = load_user_agent_env(scope.uid) if inherit_env else {}
                 if env_overrides and inherit_env:

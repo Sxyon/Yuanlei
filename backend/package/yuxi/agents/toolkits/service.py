@@ -94,6 +94,14 @@ def get_tool_instances_by_category(category: str) -> list[Any]:
     return tools
 
 
+def _find_selected_tool(selected_tools: list[Any], name: str):
+    """按名称查找已选工具实例；供运行时注入做同实例幂等判断。"""
+    for tool in selected_tools:
+        if getattr(tool, "name", None) == name:
+            return tool
+    return None
+
+
 async def resolve_configured_runtime_tools(context) -> list[Any]:
     from yuxi.agents.mcp.service import get_enabled_mcp_tools
 
@@ -171,7 +179,11 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
         )
 
         for git_tool in (git_list_project_repositories, git_prepare_worktree, git_push_branch):
-            if git_tool.name in selected_tool_names:
+            existing = _find_selected_tool(selected_tools, git_tool.name)
+            if existing is not None:
+                # 同一实例可能已被 Skill 门控注册（@tool 懒加载后进入全局注册表），保持一致不重复添加。
+                if existing is git_tool:
+                    continue
                 raise RuntimeError(f"工具名冲突：运行时 Git 工具 {git_tool.name} 已被其他来源占用")
             selected_tools.append(git_tool)
             selected_tool_names.add(git_tool.name)
@@ -180,7 +192,12 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
         from yuxi.agents.toolkits.buildin.coding_tools import CODING_TOOLS
 
         for coding_tool in CODING_TOOLS:
-            if coding_tool.name in selected_tool_names:
+            existing = _find_selected_tool(selected_tools, coding_tool.name)
+            if existing is not None:
+                # 首次运行懒加载后编码工具会进入全局注册表，Skill 门控可能已注册同一实例；
+                # 名称相同且实例一致时直接跳过，避免重复注入引发假冲突。
+                if existing is coding_tool:
+                    continue
                 raise RuntimeError(f"工具名冲突：编码执行器工具 {coding_tool.name} 已被其他来源占用")
             selected_tools.append(coding_tool)
             selected_tool_names.add(coding_tool.name)

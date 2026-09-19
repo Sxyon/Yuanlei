@@ -21,6 +21,17 @@ from yuxi.storage.postgres.models_business import AgentRun
 
 CODING_EXECUTOR_DESCRIPTION = "编码执行器：opencode 或 codex"
 
+CODING_TOOL_NAMES = frozenset(
+    {
+        "coding_session_start",
+        "coding_session_send",
+        "coding_session_status",
+        "coding_session_await",
+        "coding_session_control",
+        "coding_session_list",
+    }
+)
+
 
 class CodingStartInput(BaseModel):
     """启动编码会话的输入。"""

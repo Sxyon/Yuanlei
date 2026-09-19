@@ -887,6 +887,56 @@ async def test_yuanlei_v6_to_v7_adds_reference_columns_and_dedupes_idempotently(
         await admin_engine.dispose()
 
 
+async def test_business_runtime_scope_width_widens_idempotently_for_dedicated_agents() -> None:
+    """存量 business 库把 Run / Git worktree 的 runtime_scope_id 扩到 191（幂等）。"""
+    schema = f"pytest_runtime_scope_{uuid.uuid4().hex[:16]}"
+    admin_engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    scoped_engine = None
+    try:
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        scoped_engine = create_async_engine(
+            os.environ["POSTGRES_URL"],
+            pool_pre_ping=True,
+            connect_args={"server_settings": {"search_path": schema}},
+        )
+        manager = _scoped_manager(scoped_engine)
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(
+                text("ALTER TABLE agent_runs ALTER COLUMN runtime_scope_id TYPE VARCHAR(64)")
+            )
+            await connection.execute(
+                text("ALTER TABLE project_git_worktrees ALTER COLUMN runtime_scope_id TYPE VARCHAR(64)")
+            )
+
+        await manager.ensure_runtime_scope_width()
+        await manager.ensure_runtime_scope_width()
+
+        async with scoped_engine.connect() as connection:
+            widths = {
+                row.table_name: row.character_maximum_length
+                for row in (
+                    await connection.execute(
+                        text(
+                            "SELECT table_name, character_maximum_length "
+                            "FROM information_schema.columns "
+                            "WHERE table_schema = current_schema() "
+                            "AND column_name = 'runtime_scope_id' "
+                            "AND table_name IN ('agent_runs', 'project_git_worktrees')"
+                        )
+                    )
+                )
+            }
+            assert widths == {"agent_runs": 191, "project_git_worktrees": 191}
+    finally:
+        if scoped_engine is not None:
+            await scoped_engine.dispose()
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await admin_engine.dispose()
+
+
 async def test_project_agents_enforce_project_agent_boundaries() -> None:
     """真实 PostgreSQL 拒绝悬空绑定与重复绑定。"""
     schema = f"pytest_project_agent_bounds_{uuid.uuid4().hex[:16]}"

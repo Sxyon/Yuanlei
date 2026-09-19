@@ -47,12 +47,19 @@ def sandbox_lease_wait_seconds() -> int:
     return max(0, get_int_env("SANDBOX_LEASE_WAIT_SECONDS", DEFAULT_WAIT_SECONDS))
 
 
-def sandbox_scope_for_run(run) -> SandboxScope | None:
-    """Run 的 runtime scope 为专属形态时解析出 SandboxScope。"""
-    runtime_scope_id = str(getattr(run, "runtime_scope_id", None) or "").strip()
+def sandbox_scope_from_key(scope_key: str | None) -> SandboxScope | None:
+    """scope key 为专属形态时解析出 SandboxScope。"""
+    runtime_scope_id = str(scope_key or "").strip()
     if not runtime_scope_id.startswith("agent-project:"):
         return None
     return SandboxScope.from_cache_key(runtime_scope_id)
+
+
+async def sandbox_scope_for_run(db: AsyncSession, run) -> SandboxScope | None:
+    """Run 的执行 scope 为专属形态时解析出 SandboxScope（yuanlei 映射优先）。"""
+    from yuxi.services.run_scope_service import resolve_run_scope_key
+
+    return sandbox_scope_from_key(await resolve_run_scope_key(db, run))
 
 
 class SandboxLeaseService:

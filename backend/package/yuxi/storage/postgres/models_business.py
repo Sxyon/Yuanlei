@@ -325,7 +325,7 @@ class ProjectGitWorktree(Base):
     repository_id = Column(String(64), nullable=False, index=True)
     project_id = Column(String(64), nullable=False, index=True)
     uid = Column(String(64), nullable=False, index=True)
-    runtime_scope_id = Column(String(64), nullable=False, index=True)
+    runtime_scope_id = Column(String(191), nullable=False, index=True)
     task_key = Column(String(64), nullable=False)
     selection_source = Column(String(16), nullable=False)
     task_purpose = Column(Text, nullable=False)
@@ -705,6 +705,25 @@ class AgentSandboxEvent(Base):
     actor_id = Column(String(64), nullable=True, comment="触发者标识")
     payload_json = Column(JSON_VALUE, nullable=False, default=dict, comment="事件负载（脱敏）")
     created_at = Column(DateTime, default=utc_now_naive)
+
+
+class AgentRunScope(Base):
+    """Run 的执行 scope 映射（yuanlei 域）。
+
+    上游 ck_agent_runs_nonterminal_shape 要求根 chat/resume run 的
+    runtime_scope_id 等于会话线程 id；专属沙盒的 agent-project scope key
+    存在本表，由 resolve_run_scope_key 统一解析。
+    """
+
+    __tablename__ = "agent_run_scopes"
+
+    run_id = Column(
+        String(64),
+        ForeignKey("agent_runs.id", ondelete="CASCADE", name="fk_agent_run_scopes_run_id"),
+        primary_key=True,
+    )
+    scope_key = Column(String(191), nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
 
 
 class CodingCredential(Base):
@@ -1633,7 +1652,12 @@ class AgentRun(Base):
 
     id = Column(String(64), primary_key=True, comment="Run ID (UUID)")
     conversation_thread_id = Column(String(64), index=True, nullable=False, comment="Conversation thread ID snapshot")
-    runtime_scope_id = Column(String(64), index=True, nullable=False, comment="Root conversation runtime scope")
+    runtime_scope_id = Column(
+        String(191),
+        index=True,
+        nullable=False,
+        comment="Root conversation runtime scope；专属沙盒为 agent-project scope key",
+    )
     runtime_cleanup_pending = Column(
         Boolean,
         nullable=False,

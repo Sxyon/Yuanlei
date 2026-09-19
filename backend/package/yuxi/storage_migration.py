@@ -16,6 +16,7 @@ from yuxi.storage.postgres.manager import (
     AGENT_SANDBOX_SCHEMA_STATEMENTS,
     BUSINESS_SCHEMA_VERSION,
     CODING_CREDENTIAL_SCHEMA_STATEMENTS,
+    AGENT_RUN_SCOPE_SCHEMA_STATEMENTS,
     CODING_SESSION_SCHEMA_STATEMENTS,
     KNOWLEDGE_SCHEMA_VERSION,
     PROJECT_AGENT_SCHEMA_STATEMENTS,
@@ -118,6 +119,7 @@ async def _ensure_yuanlei_schema() -> None:
             *AGENT_SANDBOX_SCHEMA_STATEMENTS,
             *CODING_CREDENTIAL_SCHEMA_STATEMENTS,
             *CODING_SESSION_SCHEMA_STATEMENTS,
+            *AGENT_RUN_SCOPE_SCHEMA_STATEMENTS,
         ):
             await connection.execute(text(statement))
 
@@ -160,7 +162,7 @@ async def main() -> None:
                 "yuanlei",
                 yuanlei_version,
                 YUANLEI_SCHEMA_VERSION,
-                upgrade_from=(1, 2, 3, 4, 5, 6),
+                upgrade_from=(1, 2, 3, 4, 5, 6, 7),
             )
 
             if business_version is None:
@@ -178,11 +180,14 @@ async def main() -> None:
                 if business_version is None:
                     await pg_manager.setup_langgraph_checkpointer()
                 await pg_manager.record_schema_version("business", BUSINESS_SCHEMA_VERSION)
+            # 存量 business v7 库不经过 ensure_business_schema；这里无条件收敛
+            # runtime_scope_id 宽度，保证专属沙盒 scope key 可写入。
+            await pg_manager.ensure_runtime_scope_width()
 
             if yuanlei_version is None:
                 await _ensure_yuanlei_schema()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
-            elif yuanlei_version in {1, 2, 3, 4, 5, 6}:
+            elif yuanlei_version in {1, 2, 3, 4, 5, 6, 7}:
                 if yuanlei_version == 1:
                     await pg_manager.upgrade_yuanlei_schema_v1_to_v2()
                 if yuanlei_version in {1, 2}:
@@ -193,6 +198,7 @@ async def main() -> None:
                     await pg_manager.upgrade_yuanlei_schema_v4_to_v5()
                 await pg_manager.upgrade_yuanlei_schema_v5_to_v6()
                 await pg_manager.upgrade_yuanlei_schema_v6_to_v7()
+                await pg_manager.upgrade_yuanlei_schema_v7_to_v8()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             if knowledge_version is None:

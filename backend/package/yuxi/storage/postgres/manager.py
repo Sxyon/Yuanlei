@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 7
+YUANLEI_SCHEMA_VERSION = 8
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -196,7 +196,7 @@ PROJECT_GIT_SCHEMA_STATEMENTS = (
         repository_id VARCHAR(64) NOT NULL,
         project_id VARCHAR(64) NOT NULL,
         uid VARCHAR(64) NOT NULL,
-        runtime_scope_id VARCHAR(64) NOT NULL,
+        runtime_scope_id VARCHAR(191) NOT NULL,
         task_key VARCHAR(64) NOT NULL,
         selection_source VARCHAR(16) NOT NULL,
         task_purpose TEXT NOT NULL,
@@ -386,6 +386,17 @@ AGENT_SANDBOX_SCHEMA_STATEMENTS = (
         "CREATE INDEX IF NOT EXISTS ix_agent_sandbox_events_sandbox_created "
         "ON agent_sandbox_events(sandbox_id, created_at)"
     ),
+)
+AGENT_RUN_SCOPE_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS agent_run_scopes (
+        run_id VARCHAR(64) PRIMARY KEY
+            CONSTRAINT fk_agent_run_scopes_run_id REFERENCES agent_runs(id) ON DELETE CASCADE,
+        scope_key VARCHAR(191) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW() NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_agent_run_scopes_scope_key ON agent_run_scopes(scope_key)",
 )
 CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     """
@@ -707,8 +718,14 @@ TASK_DURABLE_SCHEMA_STATEMENTS = (
     END $$
     """,
 )
+RUNTIME_SCOPE_WIDTH_STATEMENTS = (
+    # 专属沙盒 scope key（agent-project:{uid}:{slug}:{project_id}）可超过 64：
+    # 这两列承载 Run / Git worktree 的完整 runtime scope，必须容纳完整 key。
+    "ALTER TABLE IF EXISTS agent_runs ALTER COLUMN runtime_scope_id TYPE VARCHAR(191)",
+    "ALTER TABLE IF EXISTS project_git_worktrees ALTER COLUMN runtime_scope_id TYPE VARCHAR(191)",
+)
 RUNTIME_SCOPE_SCHEMA_STATEMENTS = (
-    "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS runtime_scope_id VARCHAR(64)",
+    "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS runtime_scope_id VARCHAR(191)",
     (
         "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS "
         "runtime_cleanup_pending BOOLEAN NOT NULL DEFAULT FALSE"
@@ -1000,6 +1017,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in CODING_CREDENTIAL_REFERENCE_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v7_to_v8(self) -> None:
+        """新增 Run 执行 scope 映射表，承接专属沙盒 scope key。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in AGENT_RUN_SCOPE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):
@@ -1384,6 +1408,13 @@ class PostgresManager(metaclass=SingletonMeta):
             for stmt in stmts:
                 await conn.execute(text(stmt))
 
+    async def ensure_runtime_scope_width(self) -> None:
+        """把 Run / Git worktree 的 runtime_scope_id 扩到 191（存量库幂等）。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in RUNTIME_SCOPE_WIDTH_STATEMENTS:
+                await conn.execute(text(statement))
+
     async def ensure_business_schema(self):
         """确保业务 schema 包含后续新增字段（运行时 schema 演进）。"""
         self._check_initialized()
@@ -1412,6 +1443,9 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS last_viewed_run_id VARCHAR(64)",
             "ALTER TABLE IF EXISTS mcp_servers ADD COLUMN IF NOT EXISTS env JSONB",
+            # 专属沙盒的 scope key（agent-project:{uid}:{slug}:{project_id}）可超过 64；
+            # 这两列承载 Run / Git worktree 的 runtime scope，必须容纳完整 key。
+            *RUNTIME_SCOPE_WIDTH_STATEMENTS,
             *AGENT_RUN_CURSOR_SCHEMA_STATEMENTS,
             """
             CREATE TABLE IF NOT EXISTS agent_envs (

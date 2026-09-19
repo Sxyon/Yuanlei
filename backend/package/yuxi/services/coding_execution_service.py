@@ -175,9 +175,14 @@ class CodingExecutionService:
                 "agent sandbox policy is not dedicated; coding execution is unavailable"
             )
         credentials = CodingCredentialService(self.db)
+        settings = await credentials.resolve_settings(
+            agent_config=agent_config,
+            agent_slug=self.scope.agent_slug or "",
+            project_id=self.scope.project_id or "",
+        )
         environment = await credentials.build_coding_environment(
             uid=self.uid,
-            executors=credentials.declared_executors(agent_config),
+            executors=list(settings.executors),
         )
         await SandboxLifecycleService(self.db, provider=self._provider).ensure_ready(
             uid=self.uid,

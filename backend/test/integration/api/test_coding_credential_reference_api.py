@@ -30,6 +30,47 @@ async def _create_provider(test_client, headers, *, label: str) -> str:
     return provider_id
 
 
+async def test_manual_coding_credential_save_requires_live_master_key(test_client, admin_headers):
+    """手动模式会真实加密：验证 api 容器已注入 YUXI_CODING_CREDENTIAL_KEY。"""
+    await test_client.delete(
+        "/api/user/coding-credentials",
+        headers=admin_headers,
+        params={"executor": "opencode", "provider": "pytest-manual"},
+    )
+    try:
+        saved = await test_client.put(
+            "/api/user/coding-credentials",
+            headers=admin_headers,
+            json={
+                "executor": "opencode",
+                "source": "manual",
+                "provider": "pytest-manual",
+                "api_key": "sk-pytest-manual-secret",
+                "base_url": "https://api.pytest.example.com/v1",
+                "model": "pytest-model",
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["has_key"] is True
+        assert "sk-pytest-manual-secret" not in saved.text
+
+        listed = await test_client.get("/api/user/coding-credentials", headers=admin_headers)
+        assert listed.status_code == 200, listed.text
+        item = next(
+            entry
+            for entry in listed.json()
+            if entry["executor"] == "opencode" and entry["provider"] == "pytest-manual"
+        )
+        assert item["availability"] == "active"
+        assert item["source"] == "manual"
+    finally:
+        await test_client.delete(
+            "/api/user/coding-credentials",
+            headers=admin_headers,
+            params={"executor": "opencode", "provider": "pytest-manual"},
+        )
+
+
 async def test_coding_credential_provider_reference_lifecycle(test_client, admin_headers):
     """引用凭据可保存、自检；供应商停用后标记不可用且选择器不泄漏密钥。"""
     provider_id = await _create_provider(test_client, admin_headers, label="lifecycle")

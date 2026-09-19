@@ -20,6 +20,7 @@
           </div>
         </div>
         <div class="header__right">
+          <ConversationSandboxChip v-if="currentChatId" :thread-id="currentChatId" />
           <button
             v-if="messageDebugEnabled"
             type="button"
@@ -875,6 +876,7 @@ import {
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import ConversationSandboxChip from '@/components/ConversationSandboxChip.vue'
 import AgentInputArea from '@/components/AgentInputArea.vue'
 import ContextUsageRing from '@/components/ContextUsageRing.vue'
 import ToolApprovalModeSelector from '@/components/ToolApprovalModeSelector.vue'

@@ -25,8 +25,13 @@ from yuxi.services.coding_session_service import (
     SESSION_TERMINAL_STATUSES,
     CodingSessionService,
 )
+from yuxi.services.coding_thread_sandbox_service import (
+    CodingThreadSandboxError,
+    CodingThreadSandboxService,
+)
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import User
+from yuxi.utils.logging_config import logger
 
 coding_sessions = APIRouter(prefix="/coding", tags=["coding-sessions"])
 
@@ -117,6 +122,39 @@ async def create_terminal_ticket(
         "ws_path": f"/api/coding/sessions/{session_id}/terminal?ticket={ticket}",
         "expires_in": DEFAULT_TICKET_TTL_SECONDS,
     }
+
+
+@coding_sessions.get("/threads/{thread_id}/sandbox")
+async def get_thread_sandbox(
+    thread_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """会话视角的专属沙盒摘要；非专属返回 enabled=false。"""
+    try:
+        return await CodingThreadSandboxService(db).status(
+            uid=str(current_user.uid), thread_id=thread_id
+        )
+    except CodingThreadSandboxError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+
+
+@coding_sessions.post("/threads/{thread_id}/terminal")
+async def open_thread_terminal(
+    thread_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """确保会话的专属沙盒就绪并签发终端门票（无需先有编码会话）。"""
+    try:
+        return await CodingThreadSandboxService(db).open_terminal(
+            uid=str(current_user.uid), thread_id=thread_id
+        )
+    except CodingThreadSandboxError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    except Exception as exc:  # noqa: BLE001
+        logger.opt(exception=True).error("open thread terminal failed: {}", exc)
+        raise HTTPException(status_code=502, detail="沙盒终端不可用，请查看服务日志") from None
 
 
 async def _set_terminal_attached(uid: str, session_id: str, attached: bool) -> None:

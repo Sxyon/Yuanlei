@@ -59,7 +59,11 @@ Owner：backend/package/yuxi/agents/backends/sandbox/provider.py
 - `thread`：现状，缓存键沿用 `{uid}::{thread_id}` 与既有 `sandbox_id` 派生（M2.3 决定不改变旧派生，避免存量容器失联），用于未开启专属的 agent。
 - `agent_project`：`scope_key = f"agent-project:{uid}:{agent_slug}:{project_id}"`，`sandbox_id = sha256(scope_key)[:12]`，用于开启专属的 agent；一个容器只服务一个 Project Workdir，`workdir_path` 校验保持现有一致性语义。
 
-Run 的 `runtime_scope_id` 按 agent 策略解析为对应 scope：专属时为 `agent:<agent_slug>:project:<project_id>`，否则保持会话线程。子 Agent 继承根 Run 的 scope（现状不变）。同一线程切换 agent 时，不同 agent 可分别命中各自 scope。
+Run 的执行 scope 按 agent 策略解析：专属时为 `agent-project:{uid}:{agent_slug}:{project_id}`，否则保持会话线程。受上游 `ck_agent_runs_nonterminal_shape`（根 chat/resume run 的 `runtime_scope_id` 必须等于会话线程 id）约束，专属 scope 存在 yuanlei 表 `agent_run_scopes`（v8）并在派发时绑定，resume / subagent 继承映射；manifest context 与沙盒访问统一通过 `resolve_run_scope_key` 解析。
+
+### 上游兼容修正（2026-09-19）
+
+初版把 scope key 直接写回 `agent_runs.runtime_scope_id`，导致超过 64 字符的专属 scope 触发截断，且即使加宽也违反上游 shape 约束。现改为：上游列保持线程 id，yuanlei 映射表承载专属 scope；`agent_runs` / `project_git_worktrees` 的 `runtime_scope_id` 仍幂等扩到 191 以容纳后续形态。清理、租约、execution tree 与 Git worktree 查询同时按映射聚合。子 Agent 继承根 Run 的 scope（现状不变）。同一线程切换 agent 时，不同 agent 可分别命中各自 scope。
 
 ### 2. 生命周期模型
 

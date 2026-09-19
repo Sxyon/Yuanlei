@@ -487,6 +487,78 @@ async def test_awrap_model_call_keeps_gated_tools_when_activated():
     assert captured["tools"] == {"read_file", "list_kbs", "query_kb"}
 
 
+def _make_coding_request(*, coding_executors):
+    coding_tools = [
+        SimpleNamespace(name=name)
+        for name in (
+            "coding_session_start",
+            "coding_session_send",
+            "coding_session_status",
+            "coding_session_await",
+            "coding_session_control",
+            "coding_session_list",
+        )
+    ]
+
+    class FakeRequest:
+        def __init__(self, tools):
+            context = SimpleNamespace(
+                mcps=[],
+                _skill_runtime_snapshot={
+                    "effective_skills": ["coding-executor"],
+                    "runtime_skills": {
+                        "coding-executor": _runtime_skill(
+                            "coding-executor",
+                            tools=[tool.name for tool in coding_tools],
+                        )
+                    },
+                },
+            )
+            if coding_executors is not None:
+                context.coding_executors = coding_executors
+            self.runtime = SimpleNamespace(context=context)
+            self.state = {"activated_skills": []}
+            self.tools = tools
+
+        def override(self, *, tools):
+            new_request = FakeRequest(tools)
+            new_request.runtime = self.runtime
+            new_request.state = self.state
+            return new_request
+
+    return FakeRequest([SimpleNamespace(name="read_file"), *coding_tools])
+
+
+@pytest.mark.asyncio
+async def test_coding_tools_visible_without_skill_activation_when_executors_declared():
+    """运行上下文声明执行器时，编码工具由运行时注入，不受 Skill 激活门控。"""
+    request = _make_coding_request(coding_executors=["opencode"])
+    captured = {}
+
+    async def handler(req):
+        captured["tools"] = {tool.name for tool in req.tools}
+        return "ok"
+
+    await SkillsMiddleware(enable_skills_prompt=False).awrap_model_call(request, handler)
+
+    assert "coding_session_start" in captured["tools"]
+
+
+@pytest.mark.asyncio
+async def test_coding_tools_stay_gated_without_declared_executors():
+    """未声明执行器时，编码工具仍按 Skill 激活门控隐藏。"""
+    request = _make_coding_request(coding_executors=None)
+    captured = {}
+
+    async def handler(req):
+        captured["tools"] = {tool.name for tool in req.tools}
+        return "ok"
+
+    await SkillsMiddleware(enable_skills_prompt=False).awrap_model_call(request, handler)
+
+    assert "coding_session_start" not in captured["tools"]
+
+
 def test_read_file_activates_only_readable_skill() -> None:
     middleware = SkillsMiddleware()
     result = ToolMessage(content="ok", tool_call_id="tool-1", name="read_file")

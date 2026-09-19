@@ -40,6 +40,7 @@ async def test_storage_migration_reads_legacy_schema_before_cutover(monkeypatch)
         create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business_tables"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge_tables"),
         ensure_business_schema=lambda: _record(calls, "ensure_business_schema"),
@@ -111,6 +112,7 @@ async def test_storage_migration_rejects_v071_schema_without_quiescence_proof(mo
         create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
         ensure_business_schema=lambda: _record(calls, "schema"),
@@ -158,6 +160,7 @@ async def test_current_schema_skips_schema_ddl(monkeypatch):
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
         ensure_business_schema=lambda: _record(calls, "business_schema"),
@@ -219,12 +222,14 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
         upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         upgrade_yuanlei_schema_v5_to_v6=lambda: _record(calls, "upgrade_yuanlei_v5_v6"),
         upgrade_yuanlei_schema_v6_to_v7=lambda: _record(calls, "upgrade_yuanlei_v6_v7"),
+        upgrade_yuanlei_schema_v7_to_v8=lambda: _record(calls, "upgrade_yuanlei_v7_v8"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -254,7 +259,8 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
     assert calls.index("upgrade_yuanlei_v3_v4") < calls.index("upgrade_yuanlei_v4_v5")
     assert calls.index("upgrade_yuanlei_v4_v5") < calls.index("upgrade_yuanlei_v5_v6")
     assert calls.index("upgrade_yuanlei_v5_v6") < calls.index("upgrade_yuanlei_v6_v7")
-    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index("upgrade_yuanlei_v7_v8")
+    assert calls.index("upgrade_yuanlei_v7_v8") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -278,12 +284,14 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
         upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         upgrade_yuanlei_schema_v5_to_v6=lambda: _record(calls, "upgrade_yuanlei_v5_v6"),
         upgrade_yuanlei_schema_v6_to_v7=lambda: _record(calls, "upgrade_yuanlei_v6_v7"),
+        upgrade_yuanlei_schema_v7_to_v8=lambda: _record(calls, "upgrade_yuanlei_v7_v8"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -313,12 +321,14 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
     assert "upgrade_yuanlei_v4_v5" in calls
     assert "upgrade_yuanlei_v5_v6" in calls
     assert "upgrade_yuanlei_v6_v7" in calls
+    assert "upgrade_yuanlei_v7_v8" in calls
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert calls.index("upgrade_yuanlei_v2_v3") < calls.index("upgrade_yuanlei_v3_v4")
     assert calls.index("upgrade_yuanlei_v3_v4") < calls.index("upgrade_yuanlei_v4_v5")
     assert calls.index("upgrade_yuanlei_v4_v5") < calls.index("upgrade_yuanlei_v5_v6")
     assert calls.index("upgrade_yuanlei_v5_v6") < calls.index("upgrade_yuanlei_v6_v7")
-    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index("upgrade_yuanlei_v7_v8")
+    assert calls.index("upgrade_yuanlei_v7_v8") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -342,12 +352,14 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
         upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         upgrade_yuanlei_schema_v5_to_v6=lambda: _record(calls, "upgrade_yuanlei_v5_v6"),
         upgrade_yuanlei_schema_v6_to_v7=lambda: _record(calls, "upgrade_yuanlei_v6_v7"),
+        upgrade_yuanlei_schema_v7_to_v8=lambda: _record(calls, "upgrade_yuanlei_v7_v8"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -377,11 +389,13 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
     assert "upgrade_yuanlei_v4_v5" in calls
     assert "upgrade_yuanlei_v5_v6" in calls
     assert "upgrade_yuanlei_v6_v7" in calls
+    assert "upgrade_yuanlei_v7_v8" in calls
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert calls.index("upgrade_yuanlei_v3_v4") < calls.index("upgrade_yuanlei_v4_v5")
     assert calls.index("upgrade_yuanlei_v4_v5") < calls.index("upgrade_yuanlei_v5_v6")
     assert calls.index("upgrade_yuanlei_v5_v6") < calls.index("upgrade_yuanlei_v6_v7")
-    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index("upgrade_yuanlei_v7_v8")
+    assert calls.index("upgrade_yuanlei_v7_v8") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -405,12 +419,14 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
         upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         upgrade_yuanlei_schema_v5_to_v6=lambda: _record(calls, "upgrade_yuanlei_v5_v6"),
         upgrade_yuanlei_schema_v6_to_v7=lambda: _record(calls, "upgrade_yuanlei_v6_v7"),
+        upgrade_yuanlei_schema_v7_to_v8=lambda: _record(calls, "upgrade_yuanlei_v7_v8"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -440,10 +456,12 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
     assert "upgrade_yuanlei_v4_v5" in calls
     assert "upgrade_yuanlei_v5_v6" in calls
     assert "upgrade_yuanlei_v6_v7" in calls
+    assert "upgrade_yuanlei_v7_v8" in calls
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert calls.index("upgrade_yuanlei_v4_v5") < calls.index("upgrade_yuanlei_v5_v6")
     assert calls.index("upgrade_yuanlei_v5_v6") < calls.index("upgrade_yuanlei_v6_v7")
-    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index("upgrade_yuanlei_v7_v8")
+    assert calls.index("upgrade_yuanlei_v7_v8") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -467,12 +485,14 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
             }
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
         upgrade_yuanlei_schema_v3_to_v4=lambda: _record(calls, "upgrade_yuanlei_v3_v4"),
         upgrade_yuanlei_schema_v4_to_v5=lambda: _record(calls, "upgrade_yuanlei_v4_v5"),
         upgrade_yuanlei_schema_v5_to_v6=lambda: _record(calls, "upgrade_yuanlei_v5_v6"),
         upgrade_yuanlei_schema_v6_to_v7=lambda: _record(calls, "upgrade_yuanlei_v6_v7"),
+        upgrade_yuanlei_schema_v7_to_v8=lambda: _record(calls, "upgrade_yuanlei_v7_v8"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -502,9 +522,11 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
     assert "upgrade_yuanlei_v4_v5" not in calls
     assert "upgrade_yuanlei_v5_v6" in calls
     assert "upgrade_yuanlei_v6_v7" in calls
+    assert "upgrade_yuanlei_v7_v8" in calls
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert calls.index("upgrade_yuanlei_v5_v6") < calls.index("upgrade_yuanlei_v6_v7")
-    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v6_v7") < calls.index("upgrade_yuanlei_v7_v8")
+    assert calls.index("upgrade_yuanlei_v7_v8") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -560,6 +582,7 @@ async def test_supported_business_schema_is_converged_and_versioned_as_current(m
             {"business": previous_version, "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION}
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
         ensure_business_schema=lambda: _record(calls, "business_schema"),
@@ -612,6 +635,7 @@ async def test_failed_business_migration_does_not_record_version(monkeypatch):
         create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
         ensure_business_schema=lambda: _record(calls, "business_schema"),
@@ -654,6 +678,7 @@ async def test_current_schema_does_not_rewrite_workdir_data(monkeypatch):
         create_schema_version_table=lambda: _record(calls, "create_schema_version_table"),
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
         ensure_business_schema=lambda: _record(calls, "schema"),

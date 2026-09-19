@@ -464,3 +464,65 @@ async def test_execution_config_validation_and_section_reset(test_client, admin_
         await _delete_agent(test_client, admin_headers, slug)
         if standalone_slug:
             await _delete_agent(test_client, admin_headers, standalone_slug)
+
+
+async def test_dedicated_agent_long_scope_dispatches_without_truncation(test_client, admin_headers):
+    """专属 scope key 可超过 64：Run 派发写入 runtime_scope_id 不再截断失败。"""
+    project_id, directory = await _create_project(test_client, admin_headers, "long-scope")
+    long_slug = f"pytest-long-scope-{'x' * 40}"
+    created = await test_client.post(
+        "/api/agent",
+        headers=admin_headers,
+        json={
+            "name": _agent_name("long-scope"),
+            "backend_id": "ChatbotAgent",
+            "slug": long_slug,
+            "config_json": {
+                "sandbox": {"mode": "dedicated", "lifecycle": "persistent"},
+                "coding": {"executors": ["opencode"]},
+            },
+        },
+    )
+    assert created.status_code == 200, created.text
+    slug = created.json()["agent"]["slug"]
+    assert slug.startswith("pytest-long-scope-")
+    generated_scope = "agent-project:pytest-superadmin:" + slug + ":" + "0" * 36
+    assert len(generated_scope) > 64
+    thread_id: str | None = None
+    try:
+        thread = await test_client.post(
+            "/api/chat/thread",
+            headers=admin_headers,
+            json={
+                "agent_id": slug,
+                "project_id": project_id,
+                "title": make_test_conversation_title("dedicated-long-scope"),
+                "metadata": make_test_conversation_metadata("dedicated-long-scope"),
+            },
+        )
+        assert thread.status_code == 200, thread.text
+        thread_id = thread.json()["id"]
+
+        run = await test_client.post(
+            "/api/agent/runs",
+            headers=admin_headers,
+            json={
+                "agent_slug": slug,
+                "thread_id": thread_id,
+                "query": "hello",
+                "meta": {"request_id": f"pytest-long-scope-{uuid.uuid4().hex[:16]}"},
+            },
+        )
+        assert run.status_code == 200, run.text
+        request_id = run.json().get("request_id")
+        assert request_id
+
+        cancel = await test_client.post(
+            f"/api/agent/requests/{request_id}/cancel", headers=admin_headers
+        )
+        assert cancel.status_code in {200, 404, 409}, cancel.text
+    finally:
+        if thread_id:
+            await _delete_thread(test_client, admin_headers, thread_id)
+        await _delete_project(test_client, admin_headers, project_id, directory)
+        await _delete_agent(test_client, admin_headers, slug)

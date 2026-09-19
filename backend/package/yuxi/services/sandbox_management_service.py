@@ -115,9 +115,14 @@ class SandboxManagementService:
         if not policy.is_dedicated:
             raise ValueError("agent does not use a dedicated sandbox")
         credentials = CodingCredentialService(self.db)
+        settings = await credentials.resolve_settings(
+            agent_config=agent_config,
+            agent_slug=str(agent_slug),
+            project_id=str(project_id),
+        )
         environment = await credentials.build_coding_environment(
             uid=str(uid),
-            executors=credentials.declared_executors(agent_config),
+            executors=list(settings.executors),
         )
         return workdir, policy, environment.env, environment.fingerprint
 

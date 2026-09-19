@@ -469,3 +469,56 @@ test('工具元数据 API 使用普通用户认证且普通用户可正常请求
     assert.equal(result.data[0].slug, 'web_search')
   })
 })
+
+test('编码凭据 503 直接展示可执行的配置提示而不是看容器', async () => {
+  await withServer(async (server) => {
+    storageValues.clear()
+    storageValues.set('user_token', 'test-token')
+    const detail =
+      '编码凭据加密未配置或无效：请在 .env 设置 YUXI_CODING_CREDENTIAL_KEY' +
+      '（32 字节 base64url，可运行 `bash scripts/init.sh` 生成），然后重启 api 与 worker'
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ detail }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' }
+      })
+
+    setActivePinia(createPinia())
+    const { useUserStore } = await server.ssrLoadModule('/src/stores/user.js')
+    useUserStore().token = 'test-token'
+    const { codingCredentialApi } = await server.ssrLoadModule('/src/apis/coding_credential_api.js')
+
+    await assert.rejects(
+      codingCredentialApi.save({ executor: 'opencode', provider: 'sf', api_key: 'sk-test' }),
+      (error) => {
+        assert.equal(error.status, 503)
+        assert.equal(error.message, detail)
+        assert.equal(error.response.data.detail, detail)
+        return true
+      }
+    )
+  })
+})
+
+test('非白名单端点的 503 保持通用文案且不泄漏服务端明细', async () => {
+  await withServer(async (server) => {
+    storageValues.clear()
+    storageValues.set('user_token', 'test-token')
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ detail: 'internal-service-secret' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' }
+      })
+
+    setActivePinia(createPinia())
+    const { apiGet } = await server.ssrLoadModule('/src/apis/base.js')
+    const { useUserStore } = await server.ssrLoadModule('/src/stores/user.js')
+    useUserStore().token = 'test-token'
+
+    await assert.rejects(apiGet('/api/system/ready'), (error) => {
+      assert.equal(error.message, '服务器内部错误，请使用 docker compose logs api 查看详细日志')
+      assert.equal(JSON.stringify(error.response.data).includes('internal-service-secret'), false)
+      return true
+    })
+  })
+})

@@ -22,6 +22,7 @@ from yuxi.agents.context import BaseContext, prepare_agent_runtime_context
 from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.services.coding_credential_service import CodingCredentialService
+from yuxi.services.run_scope_service import resolve_run_scope_key
 from yuxi.services.project_agent_service import ensure_agent_project_scope, load_project_agent_override
 from yuxi.services.sandbox_lifecycle_service import (
     SandboxLifecycleService,
@@ -178,17 +179,22 @@ async def prepare_run_execution(
         agent_slug=run.agent_slug,
         project_id=project_id,
     )
+    persisted_scope = await resolve_run_scope_key(db, run)
+    coding_settings = await CodingCredentialService(db).resolve_settings(
+        agent_config=agent_item.config_json,
+        agent_slug=run.agent_slug,
+        project_id=project_id,
+    )
     if run.run_type != "subagent" and policy.is_dedicated:
         expected_scope = SandboxScope.agent_project(
             uid=str(user.uid), agent_slug=run.agent_slug, project_id=project_id
         ).cache_key
-        persisted_scope = str(run.runtime_scope_id or run.conversation_thread_id)
         if persisted_scope != expected_scope:
             raise RuntimeError("Run runtime scope 与 Agent 专属沙盒策略不一致，请重新发起请求")
         credential_service = CodingCredentialService(db)
         coding_environment = await credential_service.build_coding_environment(
             uid=str(user.uid),
-            executors=credential_service.declared_executors(agent_item.config_json),
+            executors=list(coding_settings.executors),
         )
         await SandboxLifecycleService(db).ensure_ready(
             uid=str(user.uid),
@@ -215,14 +221,12 @@ async def prepare_run_execution(
             "run_id": run.id,
             "request_id": run.request_id,
             "worker_id": worker_id,
-            "runtime_scope_id": run.runtime_scope_id or run.conversation_thread_id,
+            "runtime_scope_id": persisted_scope or run.conversation_thread_id,
             "workdir_relative_path": workdir_binding.workdir_path,
             "workdir_path": runtime_workdir_path(workdir_binding.workdir_path),
             "git_repositories": list(git_repositories or []),
             "project_git_enabled": bool(project_git_enabled),
-            "coding_executors": CodingCredentialService.declared_executors(
-                agent_item.config_json
-            ),
+            "coding_executors": list(coding_settings.executors),
         }
     )
     if payload.get("model_spec"):
