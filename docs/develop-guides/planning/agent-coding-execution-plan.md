@@ -114,10 +114,19 @@ M0 契约探针与接口冻结
 - 证据：真实链路——经 provisioner WS 代理连接沙盒终端，收到 `restore_output/terminal_restored/output` 帧并验证 `{type:'input'}` 生效（`echo PROBE_OK` 回显）；门票单测（签名/绑定/过期/篡改/缺密钥）与 provisioner WS 鉴权 4401 用例；全量后端 2414 passed、web lint/unit/build 通过。
 - 未验证：浏览器内真实页面截图（当前环境无浏览器工具）；终端接管期间 agent 工具 busy 语义尚未强制（`terminal_attached` 已可读，busy 拒绝留待后续小项）。
 
-### M8 管理面与运维收尾
+### M8 管理面与运维收尾（完成）
 
-- 交付：沙盒管理面板与事件时间线（手动 suspend/重建/解除专属）；配额与用量展示；metrics；策略切换后的遗留 scope 清理；ACP spike 结论。
-- 退出证据：沙盒提案矩阵第 10、11 行；ACP spike 产出接入/放弃结论并回写对应提案。
+- 进度（2026-09-18）：管理 API `GET /api/coding/sandboxes`（状态/generation/租约/最后活动 + 配额用量）、`POST .../{agent_slug}/{project_id}/suspend|rebuild`（手动回收与按当前策略/凭据重建，遵守「删除不改 Workdir 字节」，越权 422）；`SandboxManagementService` 复用生命周期状态机与事件（`manual_suspend/manual_rebuild`）；设置页新增「专属沙盒」卡（配额、列表、回收/重建确认）。
+- ACP spike 结论：镜像自带 `opencode acp` 可启动，但一次性 stdin 管道在观察窗口内只看到数据库迁移输出、拿不到 JSON-RPC 响应——ACP 需要持久 stdio 会话（`create_session/write/view`），与 mid-turn steer 依赖同一缺失原语。结论：保留 ACP 为适配器预留位，待 SDK 会话能力接入后再评估，不在当前版本实现。
+- 证据：管理服务 4 用例；全量后端 2418 passed、web lint/unit（367）/build 通过；工程信任检查与 `git diff --check` 通过。
+
+### 整体未验证清单（本计划结束时）
+
+- 真实浏览器页面验证（终端面板与会话卡交互截图/录屏）：当前环境无浏览器工具。
+- 需 e2e 账号与专用 agent 的 API 级 E2E（async turn 全链路、FIFO 争抢与 cancel）：仅完成服务级单测与真实沙盒冒烟（opencode 计划轮 + 终端 WS）。
+- mid-turn steer（依赖 SDK shell session 或 opencode serve 会话输入）。
+- K8s provisioner 后端与 quiesce 的生命周期路径。
+- 提案文档保持 `proposed`：验收矩阵中这些行仍为 `Not run`，完成上述验证后再按 spec-loop 迁移到 `implemented` 并改写为现在时。
 
 ## 证据与门禁
 
