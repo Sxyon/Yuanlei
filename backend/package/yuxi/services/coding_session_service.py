@@ -35,6 +35,63 @@ class CodingSessionService:
         self.db = db
         self.repo = CodingSessionRepository(db)
 
+    async def list_sessions_for_uid(
+        self,
+        *,
+        uid: str,
+        conversation_id: int | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """按用户（或 Conversation）列出会话摘要。"""
+        if conversation_id is not None:
+            sessions = await self.repo.list_for_conversation(
+                conversation_id=int(conversation_id), uid=str(uid)
+            )
+        else:
+            sessions = await self.repo.list_for_uid(uid=str(uid), limit=limit)
+        return [_session_summary(session) for session in sessions]
+
+    async def session_detail(
+        self,
+        *,
+        uid: str,
+        session_id: str,
+        after_seq: int = 0,
+        event_limit: int = 100,
+    ) -> dict | None:
+        """读取单个会话详情（含 turn 时间线与增量事件）；越权返回 None。"""
+        session = await self.repo.get(session_id)
+        if session is None or session.uid != str(uid):
+            return None
+        turns = await self.repo.list_turns(session_id=session.id)
+        events = await self.repo.list_events(
+            session_id=session.id, after_seq=after_seq, limit=event_limit
+        )
+        detail = _session_summary(session)
+        detail["turns"] = [
+            {
+                "seq": turn.seq,
+                "status": turn.status,
+                "summary": turn.result_summary,
+                "usage": turn.usage_json or {},
+                "started_at": turn.started_at.isoformat() if turn.started_at else None,
+                "ended_at": turn.ended_at.isoformat() if turn.ended_at else None,
+                "error_code": turn.error_code,
+            }
+            for turn in turns
+        ]
+        detail["events"] = [
+            {
+                "seq": event.seq,
+                "turn_id": event.turn_id,
+                "kind": event.kind,
+                "payload": event.payload_json,
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in events
+        ]
+        return detail
+
     async def create_session(
         self,
         *,
@@ -128,6 +185,30 @@ class CodingSessionService:
         )
         return turn
 
+    async def queue_turn(
+        self,
+        session: CodingSession,
+        *,
+        request_text: str,
+    ) -> CodingSessionTurn:
+        """异步模式：会话进入 running 并创建一个 pending turn 等待 worker 执行。"""
+        if session.status not in {"pending", "idle"}:
+            raise CodingSessionStateError(
+                f"coding session is not ready for a new turn: {session.status}"
+            )
+        if session.status == "pending":
+            await self.transition(session, status="starting")
+            await self.transition(session, status="idle")
+        await self.transition(session, status="running")
+        turn = await self.repo.add_turn(session, request_text=request_text, status="pending")
+        await self.repo.append_event(
+            session,
+            kind="turn_queued",
+            turn_id=turn.id,
+            payload={"seq": turn.seq},
+        )
+        return turn
+
     async def finish_turn(
         self,
         session: CodingSession,
@@ -187,3 +268,24 @@ class CodingSessionService:
                 turn_id=turn_id,
                 payload=event.payload,
             )
+
+
+def _session_summary(session: CodingSession) -> dict:
+    """会话行的对外摘要（不含凭据或原生 CLI 状态细节）。"""
+    return {
+        "id": session.id,
+        "project_id": session.project_id,
+        "conversation_id": session.conversation_id,
+        "executor": session.executor,
+        "mode": session.mode,
+        "status": session.status,
+        "title": session.title,
+        "runtime_scope_id": session.runtime_scope_id,
+        "terminal_attached": bool((session.policy_json or {}).get("terminal_attached")),
+        "cli_session_ref": session.cli_session_ref,
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "last_activity_at": session.last_activity_at.isoformat() if session.last_activity_at else None,
+        "terminal_at": session.terminal_at.isoformat() if session.terminal_at else None,
+        "error_code": session.error_code,
+        "error_message": session.error_message,
+    }

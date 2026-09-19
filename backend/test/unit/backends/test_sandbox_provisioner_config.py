@@ -457,6 +457,20 @@ def test_idle_reaper_does_not_delete_or_forget_new_generation(monkeypatch):
     assert reaper._last_activity_at["sandbox-1"][0] == "generation-2"
 
 
+def test_websocket_proxy_requires_bearer_token(monkeypatch):
+    token = "test-provisioner-token-that-is-long-enough"
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_PROVISIONER_TOKEN", token)
+    module = _load_module()
+
+    with TestClient(module.app) as client:
+        with pytest.raises(module.WebSocketDisconnect) as exc_info:
+            with client.websocket_connect("/api/sandboxes/missing/proxy/ws"):
+                pass
+
+    assert exc_info.value.code == 4401
+
+
 def test_create_request_validates_lifecycle_policy_fields(monkeypatch):
     monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
     module = _load_module()

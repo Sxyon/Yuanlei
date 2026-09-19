@@ -305,6 +305,18 @@ async def test_budget_exceeded_fails_session(session):
     assert status["session"]["error_code"] == "budget_exceeded"
 
 
+async def test_terminate_cli_processes_issues_pkill(session):
+    await _seed_credential(session)
+    provider = _FakeProvider()
+    backend = _FakeBackend(OPENCODE_OUTPUT)
+    service = _service(session, backend, provider)
+
+    await service.terminate_cli_processes()
+
+    assert any("pkill -f 'opencode run'" in command for command in backend.commands)
+    assert any("pkill -f 'codex exec'" in command for command in backend.commands)
+
+
 async def test_ensure_declared_executor_requires_whitelist():
     assert _ensure_declared_executor(AGENT_CONFIG, "opencode") == "opencode"
 

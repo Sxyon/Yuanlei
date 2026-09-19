@@ -18,7 +18,7 @@ from yuxi.services.coding_credential_service import (
     CodingCredentialWrite,
     mask_credential,
 )
-from yuxi.storage.postgres.models_business import Base
+from yuxi.storage.postgres.models_business import Base, ProjectAgent
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.unit]
 
@@ -261,6 +261,36 @@ async def test_executor_environment_maps_image_contract():
 
     with pytest.raises(ValueError, match="unsupported coding executor"):
         coding_executor_environment(executor="aider", provider="sf", api_key="sk-x")
+
+
+async def test_resolve_settings_merges_project_override(session):
+    session.add(
+        ProjectAgent(
+            id="pa-1",
+            project_id="project-1",
+            agent_slug="coder",
+            config_overrides={
+                "coding": {"executors": ["opencode", "codex"], "default_executor": "codex"}
+            },
+        )
+    )
+    await session.flush()
+    service = CodingCredentialService(session, owner=_owner())
+
+    settings = await service.resolve_settings(
+        agent_config={"coding": {"executors": ["opencode"], "default_executor": "opencode"}},
+        agent_slug="coder",
+        project_id="project-1",
+    )
+    fallback = await service.resolve_settings(
+        agent_config={"coding": {"executors": ["opencode"], "default_executor": "codex"}},
+        agent_slug="coder",
+        project_id=None,
+    )
+
+    assert settings.executors == ("opencode", "codex")
+    assert settings.default_executor == "codex"
+    assert fallback.default_executor is None
 
 
 async def test_build_coding_environment_uses_declared_executors(session):

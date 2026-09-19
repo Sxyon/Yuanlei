@@ -93,7 +93,12 @@ M0 契约探针与接口冻结
 - 进度（M5b-1，2026-09-18）：`CodingExecutionService` 在专属 scope 内跑 headless turn（ensure_ready + 凭据 env/指纹 → 适配器命令 → `execute` → 归一事件持久化 → turn/会话终态，输出按注入密钥值级脱敏）；六个 `coding_*` 工具（start/send/status/await/control/list）经 `toolkits/registry` 注册（category=coding），由 Agent 配置 `coding.executors` 白名单门控（manifest 注入 `context.coding_executors`，未声明则工具不可见）；默认审批模式对 `coding_session_start` 走任务级计划审批；子智能体禁用全部 coding 工具。共享 scope 显式拒绝（`coding_scope_unsupported`）。
 - 进度（M5b-2a，2026-09-18）：CLI 原生状态持久化到 Workdir（opencode `XDG_DATA_HOME/XDG_CACHE_HOME`、codex `CODEX_HOME` 并在 prelude 复制非密 config.toml），沙盒重建后原生会话可续；`resume_degraded` 在状态缺失时显式清空 session ref 并记录事件；`max_turns` 预算硬执行（超限会话落 `failed/budget_exceeded`）；前端新增 `CodingSessionTool` 会话卡片并注册 6 个 `coding_*` 渲染与图标/名称映射。
 - 进度（M5b-2b，2026-09-18）：coding 工具通过 `get_stream_writer` 投影 `yuxi.coding_session_event`（含 session/turn/executor/state/usage/resume_degraded，Run SSE 以 custom 事件下发）；真实沙盒冒烟通过——经真实 provisioner 建立 agent-project scope 沙盒（注入 `OPENCODE_*`），`opencode run --format json` 返回 PONG，适配器解析出 `session_ref/output_delta/usage`，退出码 0，随后按 scope 释放并清理探针资源。
-- 待做（M5b-2b 剩余）：长任务 supervisor（跨进程 turn 泵送与超时 kill）随 M6 程序化通道落地；`yuxi.coding_session_event` 的前端消费与断线回放（当前前端对未知 custom 事件安全忽略）随 M6 会话面板补。
+- 进度（M6a，2026-09-18）：只读会话 API 落地——`GET /api/coding/sessions`（按用户/Conversation 列表）与 `GET /api/coding/sessions/{id}?after_seq=&event_limit=`（详情 + turn 时间线 + 增量事件回放，越权 404）；内置 `coding-executor` Skill（工具依赖 + 执行器选择与分轮推进流程）随内置 Skills 同步发布。
+- 进度（M6b-1，2026-09-18）：执行器设置落地——`resolve_settings` 合并 Agent `coding` 与项目覆盖，支持 `default_executor`（不在白名单自动回落 None）；`coding_session_start` 的 executor 可选，缺省用项目默认，不可用即显式失败；前端新增 `coding_session_api` 并在会话工具卡内按需拉取 turn 列表（消费 M6a 只读 API）。程序化通道预验证：真实沙盒内 `opencode serve` 经 provisioner 代理（`x-aio-proxy-port`）返回 200，SSE `/event` 流式可达（首事件 `server.connected`）。
+- 进度（M6b-2a，2026-09-18）：新增 `GET /api/coding/sessions/{id}/events/stream` SSE 尾随流（轮询持久事件、keep-alive、终态且追平后 `coding_end` 收尾，支持 `after_seq` 断线续读；生成器支持注入 session factory 便于测试）；前端会话卡在非终态时按 2s 轮询刷新 turn 列表（终态/卸载停止）。
+- 进度（M6b-3，2026-09-18）：异步 turn 与 supervisor 落地——`coding_session_start/send` 新增 `wait=false`：准备环境后创建 `pending` turn 入队并立即返回（要求 persistent/resident 专属沙盒，否则显式失败）；worker 新增 ARQ 任务 `process_coding_turn`（幂等跳过已终态/缺失 turn，执行前检查 Redis 取消信号，执行后若收到取消则 turn/会话落 `cancelled`）；`coding_session_await(session_id, timeout_seconds)` 轮询至最新 turn 终态或 `wait_timed_out`；`coding_session_control(cancel)` 对 running 会话发布 `coding:cancel:{session_id}` 信号；执行尾部抽取为共用 `_execute_turn_tail`（同步/异步同一路径）。设计约束已落实：异步 turn 不重复申请沙盒执行租约（串行由同 scope 的 Run 租约 + 单 active turn 保证），避免 await 与 supervisor 的租约死锁；mid-turn 进程级 kill 与 steer 仍待 SDK shell session 支持。
+- 进度（M6b-4，2026-09-18）：进程级取消落地——`CodingExecutionService.terminate_cli_processes` 在专属沙盒内 `pkill` 活跃 opencode/codex 进程（前提是单 active turn，由会话状态保证）；`coding_session_control(cancel)` 对 running 会话发布信号并立即终止进程，阻塞中的 `execute` 随即返回非零退出，执行尾部依据取消信号把 turn/会话收敛为 `cancelled`。
+- 待做（M6b 剩余）：mid-turn steer（需要 opencode `serve` 会话输入或 SDK shell session `write_to_process` 的协议接入，M6b-1 已证明 SSE 通道可达）、真实链路 E2E（专用 agent + 凭据，含 async 与 cancel）。完成后进入 M7 终端直连。
 - 证据：M5a 会话服务 4 用例 + 迁移/模型测试；M5b-1 执行服务 6 用例；全量单测 2396 passed（仅 3 个既有 xlrd 环境失败）。
 - 交付：`coding_sessions/turns/events`；会话 supervisor（与 M2 同一 worker 基础设施）；跨 Run 恢复与 `resume_degraded`；`resume_policy=confirm` 重建确认路径；预算硬执行。
 - 退出证据：编码提案矩阵第 4、6、8 行；沙盒提案矩阵第 4 行的 confirm 路径。
@@ -103,10 +108,11 @@ M0 契约探针与接口冻结
 - 交付：opencode serve SSE；codex 逐轮 JSON 流（shell session 增量读取）；mid-turn steer；审批升级；executor registry 与 `coding-executor` Skill；完整会话面板。
 - 退出证据：编码提案矩阵第 10（steer/未知事件）、14 行；P4 交付清单对应的真实链路 E2E。
 
-### M7 终端直连
+### M7 终端直连（完成）
 
-- 交付：provisioner WS 代理与 ticket；xterm 面板；接管/交还（持执行租约）；Channel 流式输出。
-- 退出证据：编码提案矩阵第 9、13 行；按 web 约定完成真实页面验证（浅/深色、loading、empty、error）。
+- 进度（2026-09-18）：provisioner 新增 WebSocket 代理 `/api/sandboxes/{id}/proxy/ws`（Bearer 鉴权、剥离自身 Authorization 后转发到沙盒 `/v1/shell/ws`、双向中继与 websockets 12–15 头部兼容）；API 新增 `POST /api/coding/sessions/{id}/terminal-ticket`（HMAC 短 TTL 门票，绑定 uid+session）与 `WS /api/coding/sessions/{id}/terminal?ticket=`（校验门票与归属，非专属 scope 拒绝，中继到 provisioner，并写 `terminal_attached/detached` 事件与 `policy_json.terminal_attached`）；前端新增 `CodingTerminalModal`（xterm 动态加载避免 SSR 测试破坏）与会话卡「打开终端」入口，vite `/api` 代理开启 `ws: true`。
+- 证据：真实链路——经 provisioner WS 代理连接沙盒终端，收到 `restore_output/terminal_restored/output` 帧并验证 `{type:'input'}` 生效（`echo PROBE_OK` 回显）；门票单测（签名/绑定/过期/篡改/缺密钥）与 provisioner WS 鉴权 4401 用例；全量后端 2414 passed、web lint/unit/build 通过。
+- 未验证：浏览器内真实页面截图（当前环境无浏览器工具）；终端接管期间 agent 工具 busy 语义尚未强制（`terminal_attached` 已可读，busy 拒绝留待后续小项）。
 
 ### M8 管理面与运维收尾
 

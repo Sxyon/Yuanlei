@@ -168,6 +168,37 @@ async def clear_cancel_signal(run_id: str) -> None:
         logger.warning(f"Failed to clear cancel signal for run {run_id}: {e}")
 
 
+def _coding_cancel_key(session_id: str) -> str:
+    return f"coding:cancel:{session_id}"
+
+
+async def publish_coding_cancel_signal(session_id: str) -> None:
+    """标记编码会话取消意图；后台 turn 在边界检查该信号。"""
+    try:
+        redis = await get_redis_client()
+        await redis.set(_coding_cancel_key(session_id), "1", ex=RUN_CANCEL_KEY_TTL_SECONDS)
+    except Exception as e:
+        logger.warning(f"Failed to publish coding cancel signal for session {session_id}: {e}")
+
+
+async def coding_cancel_requested(session_id: str) -> bool:
+    """读取编码会话取消信号；Redis 不可用时按未取消处理（持久状态仍是权威）。"""
+    try:
+        redis = await get_redis_client()
+        return bool(await redis.get(_coding_cancel_key(session_id)))
+    except Exception as e:
+        logger.warning(f"Failed to read coding cancel signal for session {session_id}: {e}")
+        return False
+
+
+async def clear_coding_cancel_signal(session_id: str) -> None:
+    try:
+        redis = await get_redis_client()
+        await redis.delete(_coding_cancel_key(session_id))
+    except Exception as e:
+        logger.warning(f"Failed to clear coding cancel signal for session {session_id}: {e}")
+
+
 async def append_run_stream_event(run_id: str, event_type: str, payload: dict, *, thread_id: str | None = None) -> str:
     redis = await get_redis_client()
     key = _event_stream_key(run_id)

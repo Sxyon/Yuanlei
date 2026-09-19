@@ -29,10 +29,16 @@ from yuxi.services.coding_session_service import (
     CodingSessionService,
     CodingSessionStateError,
 )
+from yuxi.services.run_queue_service import (
+    clear_coding_cancel_signal,
+    coding_cancel_requested,
+)
 from yuxi.services.sandbox_lifecycle_service import (
     SandboxLifecycleService,
     resolve_agent_sandbox_policy,
 )
+from yuxi.storage.postgres.manager import pg_manager
+from yuxi.storage.postgres.models_business import AgentRun
 
 DEFAULT_CODING_TURN_TIMEOUT_SECONDS = 600
 
@@ -184,6 +190,18 @@ class CodingExecutionService:
         )
         return [value for value in env.values() if value]
 
+    async def prepare(self, agent_config: dict | None) -> list[str]:
+        """公开的环境准备入口：异步入队前确保凭据与专属沙盒就绪。"""
+        return await self._prepare(agent_config)
+
+    async def terminate_cli_processes(self) -> None:
+        """进程级取消：终止本沙盒内活跃的编码 CLI（前提是单 active turn）。"""
+        command = (
+            "pkill -f 'opencode run' 2>/dev/null; "
+            "pkill -f 'codex exec' 2>/dev/null; true"
+        )
+        await asyncio.to_thread(self.backend.execute, command, timeout=15)
+
     async def run_turn(
         self,
         *,
@@ -226,6 +244,28 @@ class CodingExecutionService:
             )
             await self.db.commit()
             raise CodingBudgetExceededError(message)
+        turn = await self.sessions.start_turn(session, request_text=task)
+        await self.db.commit()
+        return await self._execute_turn_tail(
+            session=session,
+            turn=turn,
+            executor=str(executor),
+            task=task,
+            plan_only=plan_only,
+            secrets=secrets,
+        )
+
+    async def _execute_turn_tail(
+        self,
+        *,
+        session,
+        turn,
+        executor: str,
+        task: str,
+        plan_only: bool,
+        secrets: list[str],
+    ) -> CodingTurnOutcome:
+        """执行既定 turn 的公共尾部：状态探测、命令执行、事件持久化与终态收敛。"""
         layout = _cli_state_layout(executor=session.executor, session_id=session.id)
         resume_degraded = False
         if session.cli_session_ref:
@@ -236,15 +276,12 @@ class CodingExecutionService:
             if "__PRESENT__" not in str(getattr(probe, "output", "") or ""):
                 resume_degraded = True
                 session.cli_session_ref = None
-                await repo.append_event(
+                await self.sessions.repo.append_event(
                     session,
                     kind="resume_degraded",
                     payload={"reason": "cli_state_missing", "executor": session.executor},
                 )
-        turn = await self.sessions.start_turn(session, request_text=task)
-        await self.db.commit()
-
-        adapter = get_coding_adapter(executor)
+        adapter = get_coding_adapter(executor or session.executor)
         command = adapter.build_command(
             CodingTurnRequest(
                 prompt=task,
@@ -273,33 +310,48 @@ class CodingExecutionService:
         result = extract_turn_result(events)
         await self.sessions.record_events(session, turn_id=turn.id, events=events)
 
+        cancelled = await coding_cancel_requested(session.id)
         failed = bool(result.error or infra_error or exit_code != 0)
         summary = CodingCredentialService.redact(result.output_text[:2000], secrets)
-        await self.sessions.finish_turn(
-            session,
-            turn,
-            status="failed" if failed else "completed",
-            result_summary=summary,
-            usage=result.usage,
-            error_code="executor_error" if failed else None,
-            error_message=CodingCredentialService.redact(
-                result.error or infra_error or "", secrets
-            ) or None,
-            cli_session_ref=result.session_ref,
-        )
+        if cancelled:
+            await self.sessions.repo.finish_turn(
+                turn, status="cancelled", result_summary=summary, usage=result.usage
+            )
+            await self.sessions.repo.append_event(
+                session,
+                kind="turn_finished",
+                turn_id=turn.id,
+                payload={"seq": turn.seq, "status": "cancelled"},
+            )
+            await self.sessions.transition(session, status="cancelled")
+        else:
+            await self.sessions.finish_turn(
+                session,
+                turn,
+                status="failed" if failed else "completed",
+                result_summary=summary,
+                usage=result.usage,
+                error_code="executor_error" if failed else None,
+                error_message=CodingCredentialService.redact(
+                    result.error or infra_error or "", secrets
+                )
+                or None,
+                cli_session_ref=result.session_ref,
+            )
+        await clear_coding_cancel_signal(session.id)
         await self.db.commit()
         return CodingTurnOutcome(
             session_id=session.id,
             turn_seq=turn.seq,
-            status=session.status,
+            status="cancelled" if cancelled else session.status,
             executor=session.executor,
             output_text=summary,
             cli_session_ref=session.cli_session_ref,
             usage=result.usage,
             event_count=len(events),
             resume_degraded=resume_degraded,
-            error_code="executor_error" if failed else None,
-            error_message=result.error or infra_error,
+            error_code=None if cancelled else ("executor_error" if failed else None),
+            error_message=None if cancelled else (result.error or infra_error),
         )
 
     async def status(self, session_id: str, *, event_limit: int = 20) -> dict:
@@ -370,3 +422,124 @@ class CodingExecutionService:
     @staticmethod
     def summarize_for_tool(outcome: CodingTurnOutcome) -> str:
         return json.dumps(outcome.to_dict(), ensure_ascii=False)
+
+
+async def _load_agent_config_for_session(db, session) -> dict | None:
+    if not session.parent_run_id:
+        return None
+    from yuxi.repositories.agent_repository import AgentRepository
+
+    run = await db.get(AgentRun, str(session.parent_run_id))
+    if run is None:
+        return None
+    agent = await AgentRepository(db).get_by_slug(run.agent_slug)
+    return agent.config_json if agent is not None else None
+
+
+async def run_coding_turn_job(
+    *,
+    session_id: str,
+    turn_id: str,
+    plan_only: bool = False,
+    session_factory=None,
+    provider=None,
+    backend=None,
+) -> dict:
+    """worker 后台执行已入队的 turn；重复执行与终态 turn 幂等跳过。"""
+    factory = session_factory or pg_manager.get_async_session_context
+    async with factory() as db:
+        repo = CodingSessionRepository(db)
+        session = await repo.get_for_update(session_id)
+        if session is None:
+            return {"status": "skipped", "reason": "session_missing"}
+        turn = await repo.get_turn(turn_id)
+        if turn is None:
+            return {"status": "skipped", "reason": "turn_missing"}
+        if turn.status != "pending":
+            return {"status": "skipped", "reason": turn.status}
+        if session.status in SESSION_TERMINAL_STATUSES:
+            await repo.finish_turn(turn, status="cancelled", error_code="session_terminal")
+            await db.commit()
+            return {"status": "skipped", "reason": "session_terminal"}
+        await repo.mark_turn_running(turn)
+        await db.commit()
+        agent_config = await _load_agent_config_for_session(db, session)
+        if await coding_cancel_requested(session.id):
+            await cancel_queued_turn(db, session, turn)
+            return {"status": "cancelled", "session_id": session.id, "turn_seq": turn.seq}
+        service = CodingExecutionService(
+            db,
+            uid=session.uid,
+            thread_id=session.runtime_scope_id,
+            runtime_scope_id=session.runtime_scope_id,
+            workdir_relative_path=session.workdir_path,
+            provider=provider,
+            backend=backend,
+        )
+        outcome = await service._execute_turn_tail(
+            session=session,
+            turn=turn,
+            executor=session.executor,
+            task=turn.request_text,
+            plan_only=plan_only,
+            secrets=[],
+        )
+        return outcome.to_dict()
+
+
+async def cancel_queued_turn(db, session, turn) -> None:
+    """执行前发现取消信号：把 pending turn 与会话一并收敛为 cancelled。"""
+    repo = CodingSessionRepository(db)
+    await repo.finish_turn(turn, status="cancelled", error_code="cancel_requested")
+    await repo.append_event(
+        session,
+        kind="turn_finished",
+        turn_id=turn.id,
+        payload={"seq": turn.seq, "status": "cancelled"},
+    )
+    await CodingSessionService(db).transition(session, status="cancelled")
+    await clear_coding_cancel_signal(session.id)
+    await db.commit()
+
+
+async def enqueue_coding_turn(*, session_id: str, turn_id: str, plan_only: bool = False) -> None:
+    """把 pending turn 投递给 worker；投递失败由调用方显式处理。"""
+    from yuxi.services.run_queue_service import get_arq_pool
+
+    pool = await get_arq_pool()
+    await pool.enqueue_job("process_coding_turn", session_id, turn_id, plan_only)
+
+
+async def wait_for_latest_turn(
+    *,
+    uid: str,
+    session_id: str,
+    timeout_seconds: float = 300.0,
+    poll_seconds: float = 2.0,
+    session_factory=None,
+) -> dict:
+    """轮询会话直到最新 turn 进入终态；超时返回 wait_timed_out。"""
+    factory = session_factory or pg_manager.get_async_session_context
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max(0.0, float(timeout_seconds))
+    while True:
+        async with factory() as db:
+            service = CodingSessionService(db)
+            detail = await service.session_detail(uid=uid, session_id=session_id, event_limit=0)
+        if detail is None:
+            return {"status": "not_found", "session_id": session_id}
+        turns = detail.get("turns") or []
+        latest = turns[-1] if turns else None
+        if latest is not None and latest["status"] in {"completed", "failed", "cancelled"}:
+            return {
+                "session_id": session_id,
+                "status": detail["status"],
+                "turn": latest,
+            }
+        if loop.time() >= deadline:
+            return {
+                "session_id": session_id,
+                "status": "wait_timed_out",
+                "session_state": detail["status"],
+            }
+        await asyncio.sleep(max(0.05, float(poll_seconds)))

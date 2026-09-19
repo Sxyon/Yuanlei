@@ -91,6 +91,7 @@ class CodingSessionRepository:
         session: CodingSession,
         *,
         request_text: str,
+        status: str = "running",
         now: datetime | None = None,
     ) -> CodingSessionTurn:
         timestamp = now or utc_now_naive()
@@ -100,9 +101,9 @@ class CodingSessionRepository:
             session_id=session.id,
             seq=next_seq,
             request_text=str(request_text),
-            status="running",
+            status=str(status),
             usage_json={},
-            started_at=timestamp,
+            started_at=timestamp if status == "running" else None,
             created_at=timestamp,
         )
         self.db.add(turn)
@@ -167,6 +168,29 @@ class CodingSessionRepository:
             .limit(int(limit))
         )
         return list(result.scalars().all())
+
+    async def get_turn(self, turn_id: str) -> CodingSessionTurn | None:
+        return await self.db.scalar(
+            select(CodingSessionTurn).where(CodingSessionTurn.id == str(turn_id))
+        )
+
+    async def latest_turn(self, *, session_id: str) -> CodingSessionTurn | None:
+        return await self.db.scalar(
+            select(CodingSessionTurn)
+            .where(CodingSessionTurn.session_id == str(session_id))
+            .order_by(CodingSessionTurn.seq.desc())
+            .limit(1)
+        )
+
+    async def mark_turn_running(
+        self, turn: CodingSessionTurn, *, now: datetime | None = None
+    ) -> CodingSessionTurn:
+        """把已入队 turn 标记为运行中（仅 pending 生效）。"""
+        if turn.status == "pending":
+            turn.status = "running"
+            turn.started_at = now or utc_now_naive()
+            await self.db.flush()
+        return turn
 
     async def list_turns(self, *, session_id: str) -> list[CodingSessionTurn]:
         result = await self.db.execute(

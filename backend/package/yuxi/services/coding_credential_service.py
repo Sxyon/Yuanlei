@@ -16,6 +16,7 @@ from yuxi.coding.credentials import (
     redact_credential_values,
 )
 from yuxi.repositories.coding_credential_repository import CodingCredentialRepository
+from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.storage.postgres.models_business import CodingCredential
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -71,6 +72,14 @@ def mask_credential(row: CodingCredential) -> dict:
         "version": int(row.version or 0),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
+
+
+@dataclass(frozen=True)
+class CodingSettings:
+    """Agent/项目生效的编码执行器设置。"""
+
+    executors: tuple[str, ...]
+    default_executor: str | None
 
 
 class CodingCredentialService:
@@ -207,6 +216,36 @@ class CodingCredentialService:
             for item in raw
             if str(item).strip().lower() in VALID_EXECUTORS
         ]
+
+    async def resolve_settings(
+        self,
+        *,
+        agent_config: dict | None,
+        agent_slug: str,
+        project_id: str | None,
+    ) -> CodingSettings:
+        """合并 Agent 默认与项目覆盖，得到执行器白名单与默认执行器。"""
+        merged: dict = {}
+        agent_block = (agent_config or {}).get("coding")
+        if isinstance(agent_block, dict):
+            merged.update(agent_block)
+        if project_id:
+            binding = await ProjectAgentRepository(self.db).get(str(project_id), agent_slug)
+            if binding is not None:
+                override = (binding.config_overrides or {}).get("coding")
+                if isinstance(override, dict):
+                    merged.update(override)
+        raw_executors = merged.get("executors")
+        executors: list[str] = []
+        if isinstance(raw_executors, list):
+            for item in raw_executors:
+                candidate = str(item).strip().lower()
+                if candidate in VALID_EXECUTORS and candidate not in executors:
+                    executors.append(candidate)
+        default_executor = str(merged.get("default_executor") or "").strip().lower() or None
+        if default_executor not in executors:
+            default_executor = None
+        return CodingSettings(executors=tuple(executors), default_executor=default_executor)
 
     async def build_coding_environment(
         self,

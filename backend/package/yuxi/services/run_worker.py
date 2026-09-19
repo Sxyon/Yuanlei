@@ -67,6 +67,7 @@ from yuxi.services.sandbox_lease_service import (
     renew_sandbox_lease_for_run,
     sandbox_scope_for_run,
 )
+from yuxi.services.coding_execution_service import run_coding_turn_job
 from yuxi.services.task_queue_service import (
     TASK_RECONCILIATION_HEALTH_KEY,
     TASK_RECONCILIATION_HEALTH_TTL_SECONDS,
@@ -1688,6 +1689,14 @@ async def _reconcile_durable_tasks_forever() -> None:
             logger.error("Failed to reconcile durable tasks", exc_info=True)
 
 
+async def process_coding_turn(ctx, session_id: str, turn_id: str, plan_only: bool = False) -> dict:
+    """ARQ 任务：后台执行编码会话已入队的 turn。"""
+    _ = ctx
+    return await run_coding_turn_job(
+        session_id=str(session_id), turn_id=str(turn_id), plan_only=bool(plan_only)
+    )
+
+
 async def _reconcile_sandbox_lifecycle_forever() -> None:
     """周期收敛专属沙盒：保活、空闲 suspend 与 inventory 对账。"""
     while True:
@@ -1794,6 +1803,7 @@ async def _worker_shutdown(ctx):
 class WorkerSettings:
     functions = [
         process_agent_run,
+        process_coding_turn,
         process_project_git_operation,
         process_project_git_worktree_cleanup,
         func(process_task, timeout=TASKER_DEFAULT_TIMEOUT_SECONDS + 30),

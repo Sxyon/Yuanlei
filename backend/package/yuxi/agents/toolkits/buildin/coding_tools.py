@@ -15,6 +15,7 @@ from yuxi.services.coding_execution_service import (
     CodingScopeUnsupportedError,
 )
 from yuxi.services.coding_session_service import CodingSessionStateError
+from yuxi.services.run_queue_service import publish_coding_cancel_signal
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import AgentRun
 
@@ -24,10 +25,16 @@ CODING_EXECUTOR_DESCRIPTION = "编码执行器：opencode 或 codex"
 class CodingStartInput(BaseModel):
     """启动编码会话的输入。"""
 
-    executor: str = Field(description=CODING_EXECUTOR_DESCRIPTION)
+    executor: str | None = Field(
+        default=None, description=f"{CODING_EXECUTOR_DESCRIPTION}；省略时使用项目默认执行器"
+    )
     task: str = Field(min_length=1, description="交给编码执行器的任务描述")
     plan_first: bool = Field(default=True, description="是否先执行只读计划轮，再由后续消息推进实现")
     max_turns: int | None = Field(default=None, ge=1, le=50, description="可选：本会话最大轮数预算")
+    wait: bool = Field(
+        default=True,
+        description="是否等待本轮完成；false 时后台执行（需要 persistent/resident 专属沙盒），用 coding_session_await 收割",
+    )
 
 
 class CodingSendInput(BaseModel):
@@ -35,6 +42,7 @@ class CodingSendInput(BaseModel):
 
     session_id: str = Field(description="编码会话 id")
     message: str = Field(min_length=1, description="追加给编码执行器的消息")
+    wait: bool = Field(default=True, description="是否等待本轮完成；false 时后台执行")
 
 
 class CodingStatusInput(BaseModel):
@@ -44,9 +52,10 @@ class CodingStatusInput(BaseModel):
 
 
 class CodingAwaitInput(BaseModel):
-    """等待会话 turn 结束（同步执行语义下等价于查询）。"""
+    """等待会话 turn 结束。"""
 
     session_id: str = Field(description="编码会话 id")
+    timeout_seconds: int = Field(default=300, ge=1, le=3600, description="最长等待秒数")
 
 
 class CodingControlInput(BaseModel):
@@ -72,14 +81,101 @@ def _scope_inputs(runtime: ToolRuntime):
     }
 
 
-async def _load_agent_config(db, run_id: str) -> dict | None:
-    run = await db.get(AgentRun, str(run_id))
+async def _load_coding_context(db, runtime: ToolRuntime):
+    """加载本次运行的 Agent 配置与编码执行器设置（含项目覆盖）。"""
+    run = await db.get(AgentRun, str(runtime.context.run_id))
     if run is None:
-        return None
+        raise ValueError("agent run not found for coding tool")
     from yuxi.repositories.agent_repository import AgentRepository
+    from yuxi.storage.postgres.models_business import Conversation
 
     agent = await AgentRepository(db).get_by_slug(run.agent_slug)
-    return agent.config_json if agent is not None else None
+    agent_config = agent.config_json if agent is not None else None
+    conversation = (
+        await db.get(Conversation, run.conversation_id) if run.conversation_id is not None else None
+    )
+    settings = await CodingCredentialService(db).resolve_settings(
+        agent_config=agent_config,
+        agent_slug=run.agent_slug,
+        project_id=conversation.project_id if conversation is not None else None,
+    )
+    return agent_config, settings
+
+
+def _select_executor(settings, executor: str | None) -> str:
+    """按显式参数或项目默认选择执行器，未启用时显式失败。"""
+    normalized = str(executor or "").strip().lower() or settings.default_executor
+    if not normalized:
+        raise ValueError("coding executor is required: no default executor configured")
+    if normalized not in VALID_EXECUTORS:
+        raise ValueError(f"unsupported coding executor: {executor!r}")
+    if normalized not in settings.executors:
+        raise ValueError(
+            f"coding executor {normalized!r} is not enabled for this agent (coding.executors)"
+        )
+    return normalized
+
+
+async def _queue_turn(
+    db,
+    runtime: ToolRuntime,
+    *,
+    config: dict | None,
+    executor: str,
+    task: str,
+    plan_only: bool,
+    session_id: str | None = None,
+    budget: dict | None = None,
+) -> str:
+    """异步模式：准备环境、入队 pending turn 并投递 worker，立即返回。"""
+    from yuxi.repositories.coding_session_repository import CodingSessionRepository
+    from yuxi.services.coding_execution_service import enqueue_coding_turn
+    from yuxi.services.sandbox_lifecycle_service import resolve_agent_sandbox_policy
+
+    service = await _build_service(db, runtime)
+    policy = await resolve_agent_sandbox_policy(
+        db=db,
+        agent_config=config,
+        agent_slug=service.scope.agent_slug or "",
+        project_id=service.scope.project_id or "",
+    )
+    if not policy.is_dedicated or policy.lifecycle not in {"persistent", "resident"}:
+        raise ValueError(
+            "async coding turns require a persistent or resident dedicated sandbox policy"
+        )
+    await service.prepare(config)
+    repo = CodingSessionRepository(db)
+    if session_id:
+        session = await repo.get_for_update(session_id)
+        if session is None or session.uid != service.uid:
+            raise ValueError("coding session not found")
+        if session.status != "idle":
+            raise CodingSessionStateError(f"coding session is not idle: {session.status}")
+    else:
+        session = await service.sessions.create_session(
+            uid=service.uid,
+            project_id=service.scope.project_id or "",
+            runtime_scope_id=service.scope.cache_key,
+            executor=executor,
+            workdir_path=service.workdir_relative_path,
+            title=task.strip()[:120] or None,
+            policy={"executor": executor},
+            budget=budget,
+        )
+    session.executor = executor
+    turn = await service.sessions.queue_turn(session, request_text=task)
+    await db.commit()
+    await enqueue_coding_turn(session_id=session.id, turn_id=turn.id, plan_only=plan_only)
+    return json.dumps(
+        {
+            "session_id": session.id,
+            "turn_seq": turn.seq,
+            "executor": executor,
+            "status": "running",
+            "queued": True,
+        },
+        ensure_ascii=False,
+    )
 
 
 def _error_payload(exc: Exception) -> str:
@@ -111,6 +207,7 @@ def _emit_session_event(outcome) -> None:
 
 
 def _ensure_declared_executor(config: dict | None, executor: str) -> str:
+    """兼容入口：仅按 Agent 配置校验执行器白名单。"""
     normalized = str(executor or "").strip().lower()
     if normalized not in VALID_EXECUTORS:
         raise ValueError(f"unsupported coding executor: {executor!r}")
@@ -134,24 +231,36 @@ async def _build_service(db, runtime: ToolRuntime) -> CodingExecutionService:
     args_schema=CodingStartInput,
 )
 async def coding_session_start(
-    executor: str,
     task: str,
+    executor: str | None = None,
     plan_first: bool = True,
     max_turns: int | None = None,
+    wait: bool = True,
     runtime: ToolRuntime = None,
 ) -> str:
     """启动编码执行器会话并运行第一轮（默认只读计划轮）。"""
     try:
         async with pg_manager.get_async_session_context() as db:
-            config = await _load_agent_config(db, str(runtime.context.run_id))
-            normalized = _ensure_declared_executor(config, executor)
+            config, settings = await _load_coding_context(db, runtime)
+            normalized = _select_executor(settings, executor)
+            budget = {"max_turns": int(max_turns)} if max_turns else None
+            if not wait:
+                return await _queue_turn(
+                    db,
+                    runtime,
+                    config=config,
+                    executor=normalized,
+                    task=task,
+                    plan_only=bool(plan_first),
+                    budget=budget,
+                )
             service = await _build_service(db, runtime)
             outcome = await service.run_turn(
                 executor=normalized,
                 task=task,
                 plan_only=bool(plan_first),
                 agent_config=config,
-                budget={"max_turns": int(max_turns)} if max_turns else None,
+                budget=budget,
             )
             _emit_session_event(outcome)
             return CodingExecutionService.summarize_for_tool(outcome)
@@ -169,16 +278,26 @@ async def coding_session_start(
 async def coding_session_send(
     session_id: str,
     message: str,
+    wait: bool = True,
     runtime: ToolRuntime = None,
 ) -> str:
     """在既有编码会话中追加一轮执行（执行轮）。"""
     try:
         async with pg_manager.get_async_session_context() as db:
-            config = await _load_agent_config(db, str(runtime.context.run_id))
+            config, settings = await _load_coding_context(db, runtime)
             service = await _build_service(db, runtime)
             status = await service.status(session_id)
-            executor = status["session"]["executor"]
-            normalized = _ensure_declared_executor(config, executor)
+            normalized = _select_executor(settings, status["session"]["executor"])
+            if not wait:
+                return await _queue_turn(
+                    db,
+                    runtime,
+                    config=config,
+                    executor=normalized,
+                    task=message,
+                    plan_only=False,
+                    session_id=session_id,
+                )
             outcome = await service.run_turn(
                 executor=normalized,
                 task=message,
@@ -216,9 +335,23 @@ async def coding_session_status(session_id: str, runtime: ToolRuntime = None) ->
     icon="SquareTerminal",
     args_schema=CodingAwaitInput,
 )
-async def coding_session_await(session_id: str, runtime: ToolRuntime = None) -> str:
-    """等待当前 turn 结束；同步执行语义下返回最新状态。"""
-    return await coding_session_status(session_id, runtime)
+async def coding_session_await(
+    session_id: str,
+    timeout_seconds: int = 300,
+    runtime: ToolRuntime = None,
+) -> str:
+    """等待最新 turn 进入终态或超时；用于异步 turn 的收割。"""
+    from yuxi.services.coding_execution_service import wait_for_latest_turn
+
+    try:
+        result = await wait_for_latest_turn(
+            uid=str(runtime.context.uid),
+            session_id=session_id,
+            timeout_seconds=float(timeout_seconds),
+        )
+        return json.dumps(result, ensure_ascii=False)
+    except (ValueError, RuntimeError) as exc:
+        return _error_payload(exc)
 
 
 @tool(
@@ -239,6 +372,13 @@ async def coding_session_control(
     try:
         async with pg_manager.get_async_session_context() as db:
             service = await _build_service(db, runtime)
+            status = await service.status(session_id)
+            if status["session"]["status"] == "running":
+                await publish_coding_cancel_signal(session_id)
+                await service.terminate_cli_processes()
+                return json.dumps(
+                    {"session_id": session_id, "status": "cancel_requested"}, ensure_ascii=False
+                )
             return json.dumps(await service.cancel(session_id), ensure_ascii=False)
     except (ValueError, CodingSessionStateError, CodingScopeUnsupportedError, RuntimeError) as exc:
         return _error_payload(exc)

@@ -12,7 +12,7 @@ import time
 import weakref
 from collections.abc import AsyncIterator
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
@@ -20,7 +20,7 @@ from urllib import request
 
 import httpx
 from dotenv import dotenv_values
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -2319,3 +2319,88 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
         status_code=upstream_response.status_code,
         headers=response_headers,
     )
+
+
+def _websocket_connect(ws_url: str, headers: dict[str, str]):
+    """兼容 websockets 12-15 的头部参数命名差异。"""
+    import websockets
+
+    try:
+        return websockets.connect(
+            ws_url, additional_headers=headers, open_timeout=10, max_size=8 * 1024 * 1024
+        )
+    except TypeError:
+        return websockets.connect(
+            ws_url, extra_headers=headers, open_timeout=10, max_size=8 * 1024 * 1024
+        )
+
+
+@app.websocket("/api/sandboxes/{sandbox_id}/proxy/ws")
+async def proxy_sandbox_websocket(websocket: WebSocket, sandbox_id: str):
+    """终端 WebSocket 代理：Bearer 鉴权后双向转发到沙盒 nginx。"""
+    authorization = websocket.headers.get("authorization")
+    expected = f"Bearer {provisioner_token()}"
+    if not authorization or not secrets.compare_digest(authorization, expected):
+        await websocket.close(code=4401)
+        return
+    try:
+        record = await asyncio.to_thread(backend_impl.discover, sandbox_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to discover sandbox {sandbox_id} for WebSocket: {exc}")
+        await websocket.close(code=4404)
+        return
+    if record is None:
+        await websocket.close(code=4404)
+        return
+
+    await websocket.accept()
+    base = record.sandbox_url.rstrip("/")
+    if base.startswith("https://"):
+        ws_url = "wss://" + base[len("https://") :] + "/v1/shell/ws"
+    elif base.startswith("http://"):
+        ws_url = "ws://" + base[len("http://") :] + "/v1/shell/ws"
+    else:
+        ws_url = base + "/v1/shell/ws"
+    query = websocket.url.query
+    if query:
+        ws_url = f"{ws_url}?{query}"
+    idle_reaper.remember(record)
+    idle_reaper.touch(sandbox_id, generation=record.generation)
+
+    async def client_to_upstream(upstream) -> None:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            if message.get("text") is not None:
+                await upstream.send(message["text"])
+            elif message.get("bytes") is not None:
+                await upstream.send(message["bytes"])
+
+    async def upstream_to_client(upstream) -> None:
+        async for payload in upstream:
+            if isinstance(payload, (bytes, bytearray)):
+                await websocket.send_bytes(bytes(payload))
+            else:
+                await websocket.send_text(str(payload))
+
+    try:
+        async with _websocket_connect(ws_url, {}) as upstream:
+            tasks = {
+                asyncio.create_task(client_to_upstream(upstream)),
+                asyncio.create_task(upstream_to_client(upstream)),
+            }
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            for task in done:
+                with suppress(Exception):
+                    task.result()
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Sandbox terminal WebSocket failed for {sandbox_id}: {exc}")
+    finally:
+        with suppress(Exception):
+            await websocket.close()

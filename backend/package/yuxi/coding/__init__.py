@@ -10,14 +10,26 @@ from .credentials import (
     credential_fingerprint,
     redact_credential_values,
 )
+from .terminal_ticket import (
+    DEFAULT_TICKET_TTL_SECONDS,
+    TerminalTicketError,
+    TerminalTicketNotConfiguredError,
+    issue_terminal_ticket,
+    verify_terminal_ticket,
+)
 
 __all__ = [
+    "DEFAULT_TICKET_TTL_SECONDS",
     "KEY_VERSION",
     "VALID_EXECUTORS",
     "CodingCredentialOwner",
     "CodingNotConfiguredError",
     "EncryptedCodingCredential",
+    "TerminalTicketError",
+    "TerminalTicketNotConfiguredError",
     "coding_executor_environment",
     "credential_fingerprint",
+    "issue_terminal_ticket",
     "redact_credential_values",
+    "verify_terminal_ticket",
 ]
