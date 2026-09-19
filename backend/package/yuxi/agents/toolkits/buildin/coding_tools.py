@@ -116,6 +116,13 @@ def _select_executor(settings, executor: str | None) -> str:
     return normalized
 
 
+async def _ensure_executor_available(db, runtime: ToolRuntime, executor: str) -> None:
+    """选中执行器必须已配置且引用可用，否则返回结构化不可用原因。"""
+    await CodingCredentialService(db).ensure_executor_available(
+        uid=str(runtime.context.uid), executor=executor
+    )
+
+
 async def _queue_turn(
     db,
     runtime: ToolRuntime,
@@ -243,6 +250,7 @@ async def coding_session_start(
         async with pg_manager.get_async_session_context() as db:
             config, settings = await _load_coding_context(db, runtime)
             normalized = _select_executor(settings, executor)
+            await _ensure_executor_available(db, runtime, normalized)
             budget = {"max_turns": int(max_turns)} if max_turns else None
             if not wait:
                 return await _queue_turn(
@@ -288,6 +296,7 @@ async def coding_session_send(
             service = await _build_service(db, runtime)
             status = await service.status(session_id)
             normalized = _select_executor(settings, status["session"]["executor"])
+            await _ensure_executor_available(db, runtime, normalized)
             if not wait:
                 return await _queue_turn(
                     db,

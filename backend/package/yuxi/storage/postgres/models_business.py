@@ -741,6 +741,15 @@ class CodingCredential(Base):
     )
     executor = Column(String(16), nullable=False, comment="opencode/codex")
     provider = Column(String(64), nullable=False, comment="供应商标识")
+    source = Column(
+        String(16),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+        comment="manual/model_provider",
+    )
+    model_provider_id = Column(String(100), nullable=True, comment="引用的模型供应商 provider_id")
+    key_mode = Column(String(16), nullable=True, comment="引用模式密钥来源：inherit/custom")
     base_url = Column(String(512), nullable=True, comment="OpenAI 兼容/Responses 端点")
     model = Column(String(255), nullable=True, comment="默认模型")
     api_key_cipher = Column(LargeBinary, nullable=True, comment="AES-GCM 密文")

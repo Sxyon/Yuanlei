@@ -175,7 +175,7 @@ class CodingExecutionService:
                 "agent sandbox policy is not dedicated; coding execution is unavailable"
             )
         credentials = CodingCredentialService(self.db)
-        env, fingerprint = await credentials.build_coding_environment(
+        environment = await credentials.build_coding_environment(
             uid=self.uid,
             executors=credentials.declared_executors(agent_config),
         )
@@ -185,10 +185,10 @@ class CodingExecutionService:
             project_id=self.scope.project_id or "",
             policy=policy,
             workdir_path=self.workdir_relative_path,
-            credential_fingerprint=fingerprint,
-            env_overrides=env,
+            credential_fingerprint=environment.fingerprint,
+            env_overrides=environment.env,
         )
-        return [value for value in env.values() if value]
+        return [value for value in environment.env.values() if value]
 
     async def prepare(self, agent_config: dict | None) -> list[str]:
         """公开的环境准备入口：异步入队前确保凭据与专属沙盒就绪。"""

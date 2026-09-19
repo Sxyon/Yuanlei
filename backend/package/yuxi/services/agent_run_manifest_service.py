@@ -186,7 +186,7 @@ async def prepare_run_execution(
         if persisted_scope != expected_scope:
             raise RuntimeError("Run runtime scope 与 Agent 专属沙盒策略不一致，请重新发起请求")
         credential_service = CodingCredentialService(db)
-        coding_env, coding_fingerprint = await credential_service.build_coding_environment(
+        coding_environment = await credential_service.build_coding_environment(
             uid=str(user.uid),
             executors=credential_service.declared_executors(agent_item.config_json),
         )
@@ -196,8 +196,8 @@ async def prepare_run_execution(
             project_id=project_id,
             policy=policy,
             workdir_path=workdir_binding.workdir_path,
-            credential_fingerprint=coding_fingerprint,
-            env_overrides=coding_env,
+            credential_fingerprint=coding_environment.fingerprint,
+            env_overrides=coding_environment.env,
         )
 
     context = backend.context_schema()

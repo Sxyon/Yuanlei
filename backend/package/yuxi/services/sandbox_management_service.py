@@ -115,11 +115,11 @@ class SandboxManagementService:
         if not policy.is_dedicated:
             raise ValueError("agent does not use a dedicated sandbox")
         credentials = CodingCredentialService(self.db)
-        env, fingerprint = await credentials.build_coding_environment(
+        environment = await credentials.build_coding_environment(
             uid=str(uid),
             executors=credentials.declared_executors(agent_config),
         )
-        return workdir, policy, env, fingerprint
+        return workdir, policy, environment.env, environment.fingerprint
 
     async def _finalize_ensure(self, *, connection, uid: str, agent_slug: str, project_id: str) -> dict:
         """提交生命周期变更并返回带 generation 的沙盒视图。"""

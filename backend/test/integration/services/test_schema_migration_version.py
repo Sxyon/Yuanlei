@@ -799,6 +799,94 @@ async def test_yuanlei_v5_to_v6_converges_coding_sessions_idempotently() -> None
         await admin_engine.dispose()
 
 
+async def test_yuanlei_v6_to_v7_adds_reference_columns_and_dedupes_idempotently() -> None:
+    """真实 PostgreSQL：v6→v7 补齐引用列，并把同执行器多行收敛为最近一条。"""
+    schema = f"pytest_coding_reference_{uuid.uuid4().hex[:16]}"
+    admin_engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    scoped_engine = None
+    try:
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        scoped_engine = create_async_engine(
+            os.environ["POSTGRES_URL"],
+            pool_pre_ping=True,
+            connect_args={"server_settings": {"search_path": schema}},
+        )
+        manager = _scoped_manager(scoped_engine)
+        await manager.create_business_tables()
+        # 退回 v6 形态：移除引用列后预置同执行器多行 active（global scope 避免用户外键）。
+        async with scoped_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "ALTER TABLE coding_credentials "
+                    "DROP COLUMN IF EXISTS source, "
+                    "DROP COLUMN IF EXISTS model_provider_id, "
+                    "DROP COLUMN IF EXISTS key_mode"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO coding_credentials "
+                    "(id, scope, uid, executor, provider, status, version, updated_at, created_at, "
+                    " api_key_cipher, extra_json) "
+                    "VALUES "
+                    "('g1', 'global', NULL, 'opencode', 'provider-a', 'active', 1, "
+                    " NOW() - INTERVAL '2 hours', NOW() - INTERVAL '3 hours', decode('00', 'hex'), '{}'::jsonb), "
+                    "('g2', 'global', NULL, 'opencode', 'provider-b', 'active', 1, "
+                    " NOW(), NOW() - INTERVAL '1 hour', NULL, '{}'::jsonb), "
+                    "('g3', 'global', NULL, 'codex', 'provider-a', 'active', 1, NOW(), NOW(), NULL, '{}'::jsonb)"
+                )
+            )
+
+        await manager.upgrade_yuanlei_schema_v6_to_v7()
+        await manager.upgrade_yuanlei_schema_v6_to_v7()
+
+        async with scoped_engine.connect() as connection:
+            columns = {
+                row.column_name
+                for row in (
+                    await connection.execute(
+                        text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema = current_schema() AND table_name = 'coding_credentials' "
+                            "AND column_name IN ('source', 'model_provider_id', 'key_mode')"
+                        )
+                    )
+                )
+            }
+            assert columns == {"source", "model_provider_id", "key_mode"}
+            source_default = await connection.scalar(
+                text("SELECT source FROM coding_credentials WHERE id = 'g2'")
+            )
+            assert source_default == "manual"
+            rows = (
+                await connection.execute(
+                    text(
+                        "SELECT id, executor, status, api_key_cipher FROM coding_credentials "
+                        "ORDER BY id"
+                    )
+                )
+            ).all()
+            assert {(row.executor, row.status) for row in rows} == {
+                ("opencode", "active"),
+                ("opencode", "deleted"),
+                ("codex", "active"),
+            }
+            active_by_executor: dict[str, str] = {}
+            for row in rows:
+                if row.status == "active":
+                    active_by_executor[row.executor] = row.id
+            assert active_by_executor == {"opencode": "g2", "codex": "g3"}
+            deleted_row = next(row for row in rows if row.id == "g1")
+            assert deleted_row.api_key_cipher is None
+    finally:
+        if scoped_engine is not None:
+            await scoped_engine.dispose()
+        async with admin_engine.begin() as connection:
+            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await admin_engine.dispose()
+
+
 async def test_project_agents_enforce_project_agent_boundaries() -> None:
     """真实 PostgreSQL 拒绝悬空绑定与重复绑定。"""
     schema = f"pytest_project_agent_bounds_{uuid.uuid4().hex[:16]}"

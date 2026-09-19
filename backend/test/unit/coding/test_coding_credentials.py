@@ -297,19 +297,22 @@ async def test_build_coding_environment_uses_declared_executors(session):
     await _upsert_user(session)
     service = CodingCredentialService(session, owner=_owner())
 
-    env, fingerprint = await service.build_coding_environment(
+    environment = await service.build_coding_environment(
         uid="user-1", executors=["opencode", "codex"]
     )
 
-    assert env["OPENCODE_API_KEY"] == "sk-user-secret"
-    assert "CODEX_API_KEY" not in env
-    assert fingerprint is not None and len(fingerprint) == 64
+    assert environment.env["OPENCODE_API_KEY"] == "sk-user-secret"
+    assert "CODEX_API_KEY" not in environment.env
+    assert environment.missing == ("codex",)
+    assert environment.unavailable == ()
+    assert environment.fingerprint is not None and len(environment.fingerprint) == 64
 
-    empty_env, empty_fingerprint = await service.build_coding_environment(
+    empty_environment = await service.build_coding_environment(
         uid="user-2", executors=["opencode"]
     )
-    assert empty_env == {}
-    assert empty_fingerprint is None
+    assert empty_environment.env == {}
+    assert empty_environment.fingerprint is None
+    assert empty_environment.missing == ("opencode",)
 
     assert service.declared_executors({"coding": {"executors": ["opencode", "AIDER"]}}) == ["opencode"]
     assert service.declared_executors({}) == []

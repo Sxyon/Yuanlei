@@ -128,6 +128,13 @@ M0 契约探针与接口冻结
 - 证据：单测 35 项（配置校验 18、项目覆盖 7、管理与预热 10）；真实 HTTP integration 2 条（`test_execution_config_validation_and_section_reset`：422 不落库、写入回显、section reset；`test_coding_sandbox_api`：真实 provisioner 预热→回收→预热、共享策略 422）；web `lint:check`、`test:unit`（372 passed，含 5 个新用例）、`build` 通过；本机 Playwright + 一次性 fixture 完成两个弹窗的真实页面断言（`web/test/browser/agentExecutionConfig.js`），无 console error。
 - 未验证：项目覆盖弹窗预热按钮的点击链路未在浏览器内实际触发（避免测试账号留下真实容器；API 集成已覆盖 provision 全链路）；dark 主题截图未采集。
 
+### M10 编码凭据引用模型供应商（进行中，2026-09-20）
+
+- 问题：编码凭据与模型供应商是两套独立配置，用户必须复制粘贴 key；同一渠道多 key 只能建多个供应商条目（普通用户还没有条目权限）；换渠道/换 key 后编码不会跟随；同执行器多行时生效项按字典序不可解释。
+- 决策与验收矩阵见[《编码凭据引用模型供应商》](../yuanlei/decisions/proposed/2026-09-20-coding-credential-provider-reference.md)。三模式：手动 / 引用·共用密钥 / 引用·单独密钥；引用为活引用，指纹纳入解析后的实际值与密钥短哈希，供应商换 key 自动触发沙盒重建；不做 agent 跟随、不阻断供应商删除/停用，改为读取自检 + 运行时结构化不可用原因。
+- 交付：yuanlei v6→v7（`source`/`model_provider_id`/`key_mode` + 同执行器多行收敛最新）；解析与自检、环境构建返回 unavailable/missing；工具层不可用报错；用户掩码选择器 `GET /api/user/coding-credentials/model-providers`；凭据卡三模式表单。
+- 证据：单测 11（引用解析/自检/去重/指纹）+ 路由 2 + 真实 PG 迁移 1（v6→v7 幂等与多行收敛）+ 真实 HTTP 集成 1（引用生命周期/停用自检/选择器掩码）；全量后端 2452 passed（另 3 个既有 xlrd 失败；`test_skill_service` 序列化用例在满负载下偶发计时失败、单文件复跑通过；`test_schema_migration_version.py` 的 2 个 `project_git` 业务迁移用例经 stash 对照确认在本改动前即失败）；web lint/unit（377）/build 通过；真实页面验证设置页三模式、共用密钥、停用自检（截图与脚本 `web/test/browser/codingCredentialReference.js`）。
+
 ### 整体未验证清单（本计划结束时）
 
 - 真实浏览器页面验证（终端面板与会话卡交互截图/录屏）：M8 结束时环境无浏览器工具；M9 已接入本机 Playwright（见 M9 条目），终端面板与会话卡截图仍未补。

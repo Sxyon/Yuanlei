@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from server.routers.coding_credential_router import (
     delete_user_coding_credential,
     list_user_coding_credentials,
+    list_user_model_provider_options,
     upsert_user_coding_credential,
 )
 from yuxi.storage.postgres.models_business import Base, Department, User
@@ -94,4 +95,95 @@ async def test_user_coding_credential_route_rejects_unknown_executor(session):
             db=db,
         )
 
+    assert exc_info.value.status_code == 422
+
+
+def _provider_row():
+    from yuxi.storage.postgres.models_business import ModelProvider
+
+    return ModelProvider(
+        provider_id="siliconflow-cn",
+        display_name="SiliconFlow",
+        provider_type="openai",
+        base_url="https://api.siliconflow.cn/v1",
+        api_key="sk-provider-secret",
+        capabilities=["chat"],
+        enabled_models=[{"id": "m1", "type": "chat", "display_name": "M1"}],
+        is_enabled=True,
+        is_builtin=False,
+    )
+
+
+async def test_user_coding_credential_route_supports_provider_reference(session):
+    """引用模式可写入并回显来源/自检信息；选择器不泄漏供应商密钥。"""
+    db, user = session
+    db.add(_provider_row())
+    await db.commit()
+
+    created = await upsert_user_coding_credential(
+        request=_FakeRequest(
+            {
+                "executor": "opencode",
+                "source": "model_provider",
+                "model_provider_id": "siliconflow-cn",
+                "key_mode": "inherit",
+                "model": "m1",
+            }
+        ),
+        current_user=user,
+        db=db,
+    )
+    assert created["source"] == "model_provider"
+    assert created["model_provider_id"] == "siliconflow-cn"
+    assert created["key_mode"] == "inherit"
+    assert created["has_key"] is False
+
+    listed = await list_user_coding_credentials(current_user=user, db=db)
+    assert listed[0]["availability"] == "active"
+    assert listed[0]["provider_display_name"] == "SiliconFlow"
+    assert listed[0]["base_url"] == "https://api.siliconflow.cn/v1"
+
+    options = await list_user_model_provider_options(current_user=user, db=db)
+    assert options[0]["provider_id"] == "siliconflow-cn"
+    assert options[0]["models"] == [{"id": "m1", "display_name": "M1"}]
+    assert "sk-provider-secret" not in str(options)
+
+
+async def test_user_coding_credential_route_rejects_invalid_reference(session):
+    """引用模式校验在路由层以 422 回显非密原因。"""
+    db, user = session
+    db.add(_provider_row())
+    await db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await upsert_user_coding_credential(
+            request=_FakeRequest(
+                {
+                    "executor": "opencode",
+                    "source": "model_provider",
+                    "model_provider_id": "siliconflow-cn",
+                    "key_mode": "inherit",
+                    "model": "m1",
+                    "api_key": "sk-should-not-be-here",
+                }
+            ),
+            current_user=user,
+            db=db,
+        )
+    assert exc_info.value.status_code == 422
+
+    with pytest.raises(HTTPException) as exc_info:
+        await upsert_user_coding_credential(
+            request=_FakeRequest(
+                {
+                    "executor": "opencode",
+                    "source": "model_provider",
+                    "model_provider_id": "siliconflow-cn",
+                    "key_mode": "inherit",
+                    "model": "unknown-model",
+                }
+            ),
+            current_user=user,
+            db=db,
+        )
     assert exc_info.value.status_code == 422

@@ -160,7 +160,7 @@ async def main() -> None:
                 "yuanlei",
                 yuanlei_version,
                 YUANLEI_SCHEMA_VERSION,
-                upgrade_from=(1, 2, 3, 4, 5),
+                upgrade_from=(1, 2, 3, 4, 5, 6),
             )
 
             if business_version is None:
@@ -182,7 +182,7 @@ async def main() -> None:
             if yuanlei_version is None:
                 await _ensure_yuanlei_schema()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
-            elif yuanlei_version in {1, 2, 3, 4, 5}:
+            elif yuanlei_version in {1, 2, 3, 4, 5, 6}:
                 if yuanlei_version == 1:
                     await pg_manager.upgrade_yuanlei_schema_v1_to_v2()
                 if yuanlei_version in {1, 2}:
@@ -192,6 +192,7 @@ async def main() -> None:
                 if yuanlei_version in {1, 2, 3, 4}:
                     await pg_manager.upgrade_yuanlei_schema_v4_to_v5()
                 await pg_manager.upgrade_yuanlei_schema_v5_to_v6()
+                await pg_manager.upgrade_yuanlei_schema_v6_to_v7()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             if knowledge_version is None:

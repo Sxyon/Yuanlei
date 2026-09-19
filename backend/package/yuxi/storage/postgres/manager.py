@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 6
+YUANLEI_SCHEMA_VERSION = 7
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -396,6 +396,9 @@ CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
             REFERENCES users(uid) ON DELETE CASCADE,
         executor VARCHAR(16) NOT NULL,
         provider VARCHAR(64) NOT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'manual',
+        model_provider_id VARCHAR(100),
+        key_mode VARCHAR(16),
         base_url VARCHAR(512),
         model VARCHAR(255),
         api_key_cipher BYTEA,
@@ -418,6 +421,36 @@ CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_coding_credentials_global "
         "ON coding_credentials(executor, provider) WHERE scope = 'global'"
     ),
+)
+CODING_CREDENTIAL_REFERENCE_STATEMENTS = (
+    (
+        "ALTER TABLE IF EXISTS coding_credentials "
+        "ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual'"
+    ),
+    (
+        "ALTER TABLE IF EXISTS coding_credentials "
+        "ADD COLUMN IF NOT EXISTS model_provider_id VARCHAR(100)"
+    ),
+    "ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS key_mode VARCHAR(16)",
+    # 同一 scope 同一执行器只保留最近更新的一条生效记录，其余软删并清理密文。
+    """
+    WITH ranked AS (
+        SELECT id, row_number() OVER (
+            PARTITION BY scope, COALESCE(uid, ''), executor
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        ) AS rank
+        FROM coding_credentials
+        WHERE status = 'active'
+    )
+    UPDATE coding_credentials AS credential
+    SET status = 'deleted',
+        api_key_cipher = NULL,
+        nonce = NULL,
+        key_version = NULL,
+        updated_at = NOW()
+    FROM ranked
+    WHERE credential.id = ranked.id AND ranked.rank > 1
+    """,
 )
 CODING_SESSION_SCHEMA_STATEMENTS = (
     """
@@ -960,6 +993,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in CODING_SESSION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v6_to_v7(self) -> None:
+        """编码凭据支持引用模型供应商，并把同执行器多行收敛为最近更新的一条。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CODING_CREDENTIAL_REFERENCE_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

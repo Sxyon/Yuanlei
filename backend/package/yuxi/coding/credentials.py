@@ -91,6 +91,11 @@ class CodingCredentialOwner:
         return value.decode()
 
 
+def key_fingerprint(api_key: str) -> str:
+    """密钥短哈希：只参与指纹计算，不可逆且不落库。"""
+    return hashlib.sha256(str(api_key).encode("utf-8")).hexdigest()[:16]
+
+
 def credential_fingerprint(
     *,
     executor: str,
@@ -99,8 +104,13 @@ def credential_fingerprint(
     model: str | None,
     secret_version: int,
     extra: dict | None = None,
+    key_hash: str | None = None,
 ) -> str:
-    """按冻结契约计算指纹：非密配置 + 密文版本 + 扩展 env 贡献。"""
+    """按冻结契约计算指纹：非密配置 + 密文版本 + 扩展 env 贡献。
+
+    `key_hash` 只在引用模型供应商时提供，用于感知供应商密钥轮换；
+    manual 模式不传以保持既有指纹不变（升级不触发存量沙盒重建）。
+    """
     payload = {
         "executor": str(executor),
         "provider": str(provider),
@@ -109,6 +119,8 @@ def credential_fingerprint(
         "secret_version": int(secret_version),
         "extra": extra or {},
     }
+    if key_hash:
+        payload["key_hash"] = str(key_hash)
     canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:64]
 

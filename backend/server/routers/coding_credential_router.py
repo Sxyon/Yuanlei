@@ -20,15 +20,18 @@ admin_coding_credentials = APIRouter(prefix="/system/coding-credentials", tags=[
 
 
 class CodingCredentialPayload(BaseModel):
-    """write-only 凭据写入请求。"""
+    """write-only 凭据写入请求；引用模式可不携带 api_key。"""
 
     model_config = ConfigDict(extra="forbid")
     executor: str = Field(min_length=1, max_length=16)
-    provider: str = Field(min_length=1, max_length=64)
-    api_key: str = Field(min_length=1, max_length=8192)
+    provider: str | None = Field(default=None, max_length=64)
+    api_key: str | None = Field(default=None, max_length=8192)
     base_url: str | None = Field(default=None, max_length=512)
     model: str | None = Field(default=None, max_length=255)
     extra: dict | None = None
+    source: str = Field(default="manual", max_length=16)
+    model_provider_id: str | None = Field(default=None, max_length=100)
+    key_mode: str | None = Field(default=None, max_length=16)
 
 
 async def _parse_payload(request: Request) -> CodingCredentialPayload:
@@ -43,7 +46,8 @@ async def _parse_payload(request: Request) -> CodingCredentialPayload:
 def _service_error(exc: Exception) -> HTTPException:
     if isinstance(exc, CodingNotConfiguredError):
         return HTTPException(status_code=503, detail="编码凭据加密未配置，请联系管理员设置 YUXI_CODING_CREDENTIAL_KEY")
-    return HTTPException(status_code=422, detail="编码凭据请求非法")
+    # 服务层 ValueError 只包含非密校验原因（供应商/模型/模式），直接回显便于前端提示。
+    return HTTPException(status_code=422, detail=str(exc) or "编码凭据请求非法")
 
 
 @user_coding_credentials.get("")
@@ -52,6 +56,15 @@ async def list_user_coding_credentials(
     db: AsyncSession = Depends(get_db),
 ):
     return await CodingCredentialService(db).list_masked(scope="user", uid=str(current_user.uid))
+
+
+@user_coding_credentials.get("/model-providers")
+async def list_user_model_provider_options(
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户可见的掩码供应商选择器：只含 provider_id/名称/base_url/chat 模型。"""
+    return await CodingCredentialService(db).list_model_provider_options()
 
 
 @user_coding_credentials.put("")
