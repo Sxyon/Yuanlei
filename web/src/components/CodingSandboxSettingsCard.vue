@@ -4,7 +4,7 @@
       <div class="header-content">
         <div class="section-title">专属沙盒</div>
         <p class="section-description">
-          查看当前用户的 Agent 专属沙盒状态与配额；可手动回收 runtime 或按当前配置重建。回收与重建不会删除 Workdir 文件。
+          查看当前用户的 Agent 专属沙盒状态与配额；可手动预热、回收 runtime 或按当前配置重建。预热与重建不会删除 Workdir 文件。
         </p>
       </div>
       <div class="header-actions">
@@ -38,6 +38,9 @@
             </span>
           </div>
           <div class="sandbox-actions">
+            <a-button size="small" :loading="busyKey === item.scope_key" @click="provision(item)">
+              预热
+            </a-button>
             <a-button size="small" :loading="busyKey === item.scope_key" @click="suspend(item)">
               回收
             </a-button>
@@ -96,6 +99,16 @@ const runAction = async (item, action) => {
 }
 
 const suspend = (item) => runAction(item, codingSandboxApi.suspend)
+
+const provision = (item) => {
+  Modal.confirm({
+    title: '预热专属沙盒',
+    content: '将按当前配置创建或恢复 runtime；已有 runtime 会复用，Workdir 文件不会丢失。继续？',
+    okText: '预热',
+    cancelText: '取消',
+    onOk: () => runAction(item, codingSandboxApi.provision)
+  })
+}
 
 const rebuild = (item) => {
   Modal.confirm({

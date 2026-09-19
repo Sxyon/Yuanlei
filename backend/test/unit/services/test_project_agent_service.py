@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -124,3 +126,121 @@ async def test_resolve_effective_agent_context_without_binding_uses_base(monkeyp
     )
 
     assert context["system_prompt"] == "基础人格"
+
+
+class _FakeDb:
+    """记录提交结果的最小会话替身。"""
+
+    def __init__(self):
+        self.committed = False
+
+    async def commit(self):
+        self.committed = True
+
+    async def refresh(self, _item):
+        return None
+
+
+def _install_update_fakes(monkeypatch, *, overrides: dict, context_schema, captured: dict) -> None:
+    """替身仓储与依赖，并捕获被修改的 binding。"""
+
+    class _AgentRepo:
+        def __init__(self, _db):
+            pass
+
+        async def get_visible_by_slug(self, **_kwargs):
+            return SimpleNamespace(
+                slug="employee", backend_id="ChatbotAgent", config_json={"context": {}}
+            )
+
+    class _BindingRepo:
+        def __init__(self, _db):
+            pass
+
+        async def get_for_update(self, _project_id: str, _agent_slug: str):
+            binding = SimpleNamespace(
+                config_overrides=copy.deepcopy(overrides), updated_by=None, updated_at=None
+            )
+            captured["binding"] = binding
+            return binding
+
+    async def fake_lock(**_kwargs):
+        return SimpleNamespace(id="project-1")
+
+    async def fake_serialize(**_kwargs):
+        return {}
+
+    monkeypatch.setattr(service, "_lock_manageable_project", fake_lock)
+    monkeypatch.setattr(service, "AgentRepository", _AgentRepo)
+    monkeypatch.setattr(service, "ProjectAgentRepository", _BindingRepo)
+    monkeypatch.setattr(service, "user_can_manage_agent", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        service,
+        "get_agent_backend",
+        lambda _backend_id: SimpleNamespace(context_schema=context_schema),
+    )
+    monkeypatch.setattr(service, "_serialize_binding", fake_serialize)
+
+
+async def _run_update_view(monkeypatch, *, overrides, reset_fields, context_schema, captured) -> None:
+    _install_update_fakes(
+        monkeypatch, overrides=overrides, context_schema=context_schema, captured=captured
+    )
+    db = _FakeDb()
+    await service.update_project_agent_view(
+        project_id="project-1",
+        agent_slug="employee",
+        config_json={},
+        reset_fields=reset_fields,
+        db=db,
+        user=SimpleNamespace(uid="user-1", role="user"),
+    )
+    assert db.committed
+
+
+@dataclass
+class _ResetContext:
+    """覆盖保存 reset 语义的最小 Schema。"""
+
+    model: str = ""
+    title: str = ""
+
+
+@pytest.mark.asyncio
+async def test_update_project_agent_view_resets_execution_sections(monkeypatch):
+    """reset_fields 支持 sandbox/coding 整段恢复继承，同时保留 context 覆盖。"""
+    captured: dict = {}
+    await _run_update_view(
+        monkeypatch,
+        overrides={
+            "context": {"model": "project-model"},
+            "sandbox": {"mode": "dedicated", "lifecycle": "persistent"},
+            "coding": {"executors": ["opencode"]},
+        },
+        reset_fields=["sandbox", "coding"],
+        context_schema=BaseContext,
+        captured=captured,
+    )
+
+    assert captured["binding"].config_overrides == {"context": {"model": "project-model"}}
+
+
+@pytest.mark.asyncio
+async def test_update_project_agent_view_reset_keeps_other_sections(monkeypatch):
+    """重置 context 字段不影响 sandbox/coding 覆盖层。"""
+    captured: dict = {}
+    await _run_update_view(
+        monkeypatch,
+        overrides={
+            "context": {"model": "project-model", "title": "keep"},
+            "sandbox": {"mode": "dedicated"},
+        },
+        reset_fields=["model"],
+        context_schema=_ResetContext,
+        captured=captured,
+    )
+
+    assert captured["binding"].config_overrides == {
+        "context": {"title": "keep"},
+        "sandbox": {"mode": "dedicated"},
+    }

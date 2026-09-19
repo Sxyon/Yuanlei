@@ -1,14 +1,23 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { Bot, RefreshCw, Settings2, SlidersHorizontal, Upload, Wrench } from '@lucide/vue'
+import { Bot, RefreshCw, Settings2, SlidersHorizontal, Terminal, Upload, Wrench } from '@lucide/vue'
 
 import { agentApi } from '@/apis/agent_api'
+import { codingSandboxApi } from '@/apis/coding_sandbox_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 import { userApi } from '@/apis/user_api'
+import AgentExecutionConfigForm from '@/components/AgentExecutionConfigForm.vue'
 import ProjectAgentConfigForm from '@/components/model-management/ProjectAgentConfigForm.vue'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
 import { normalizeAgent } from '@/utils/agentConfigUtils'
+import {
+  buildExecutionConfigPatch,
+  defaultCodingSettings,
+  defaultSandboxPolicy,
+  normalizeCodingSettings,
+  normalizeSandboxPolicy
+} from '@/utils/agentExecutionConfig'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { MAX_IMAGE_UPLOAD_SIZE_BYTES, MAX_IMAGE_UPLOAD_SIZE_MB } from '@/utils/upload_limits'
 
@@ -24,7 +33,8 @@ const SECTION_ITEMS = [
   { key: 'basic', label: '基本信息', icon: Bot },
   { key: 'model', label: '模型配置', icon: SlidersHorizontal },
   { key: 'tools', label: '工具配置', icon: Wrench },
-  { key: 'other', label: '其他配置', icon: Settings2 }
+  { key: 'other', label: '其他配置', icon: Settings2 },
+  { key: 'execution', label: '沙盒与编码', icon: Terminal }
 ]
 
 const activeSection = ref('basic')
@@ -38,6 +48,17 @@ let initialValues = {}
 const baseValues = ref({})
 const originalOverriddenKeys = ref([])
 const resetFields = ref([])
+
+const sandboxValues = ref(defaultSandboxPolicy())
+const codingValues = ref(defaultCodingSettings())
+const baseSandbox = ref(defaultSandboxPolicy())
+const baseCoding = ref(defaultCodingSettings())
+const sandboxOverridden = ref(false)
+const codingOverridden = ref(false)
+const resetSections = ref([])
+const warmUpLoading = ref(false)
+let initialSandbox = defaultSandboxPolicy()
+let initialCoding = defaultCodingSettings()
 
 const agentDetail = computed(() => (props.agent ? normalizeAgent(props.agent) : null))
 const canManage = computed(() => !!agentDetail.value?.can_manage)
@@ -66,9 +87,26 @@ const hasConfigChanges = computed(() => {
   return false
 })
 
-const hasAnyChanges = computed(
-  () => hasProfileChanges.value || hasConfigChanges.value || resetFields.value.length > 0
+const hasExecutionChanges = computed(
+  () =>
+    resetSections.value.length > 0 ||
+    Object.keys(
+      buildExecutionConfigPatch({
+        initial: { sandbox: initialSandbox, coding: initialCoding },
+        current: { sandbox: sandboxValues.value, coding: codingValues.value }
+      })
+    ).length > 0
 )
+
+const hasAnyChanges = computed(
+  () =>
+    hasProfileChanges.value ||
+    hasConfigChanges.value ||
+    resetFields.value.length > 0 ||
+    hasExecutionChanges.value
+)
+
+const warmUpDisabled = computed(() => normalizeSandboxPolicy(sandboxValues.value).mode !== 'dedicated')
 
 const closeModal = () => {
   if (saving.value || iconUploading.value) return
@@ -121,6 +159,95 @@ const handleResetField = (key) => {
   }
 }
 
+const handleSandboxUpdate = (value) => {
+  sandboxValues.value = value
+  if (JSON.stringify(normalizeSandboxPolicy(value)) !== JSON.stringify(baseSandbox.value)) {
+    resetSections.value = resetSections.value.filter((field) => field !== 'sandbox')
+  }
+}
+
+const handleCodingUpdate = (value) => {
+  codingValues.value = value
+  if (JSON.stringify(normalizeCodingSettings(value)) !== JSON.stringify(baseCoding.value)) {
+    resetSections.value = resetSections.value.filter((field) => field !== 'coding')
+  }
+}
+
+const restoreSandbox = () => {
+  sandboxValues.value = { ...baseSandbox.value }
+  if (!resetSections.value.includes('sandbox')) {
+    resetSections.value = [...resetSections.value, 'sandbox']
+  }
+}
+
+const restoreCoding = () => {
+  codingValues.value = { ...baseCoding.value, executors: [...baseCoding.value.executors] }
+  if (!resetSections.value.includes('coding')) {
+    resetSections.value = [...resetSections.value, 'coding']
+  }
+}
+
+const persistChanges = async () => {
+  const agent = agentDetail.value
+  if (!agent) return
+  if (hasProfileChanges.value) {
+    await agentApi.updateAgent(agent.slug, {
+      name: form.value.name.trim(),
+      description: form.value.description.trim() || null,
+      icon: form.value.icon.trim() || null
+    })
+  }
+  const reset = [...resetFields.value]
+  const changed = {}
+  for (const [key, value] of Object.entries(values.value)) {
+    // 恢复继承的字段不写入覆盖，由 reset_fields 在后端删除旧覆盖。
+    if (reset.includes(key)) continue
+    if (JSON.stringify(value) !== JSON.stringify(initialValues[key])) {
+      changed[key] = value
+    }
+  }
+  const executionPatch = buildExecutionConfigPatch({
+    initial: { sandbox: initialSandbox, coding: initialCoding },
+    current: { sandbox: sandboxValues.value, coding: codingValues.value }
+  })
+  const changedSections = {}
+  if (executionPatch.sandbox && !resetSections.value.includes('sandbox')) {
+    changedSections.sandbox = executionPatch.sandbox
+  }
+  if (executionPatch.coding && !resetSections.value.includes('coding')) {
+    changedSections.coding = executionPatch.coding
+  }
+  const resetAll = [...reset, ...resetSections.value]
+  if (Object.keys(changed).length || Object.keys(changedSections).length || resetAll.length) {
+    await projectAgentApi.updateOverrides(
+      agent.project_id,
+      agent.slug,
+      { context: changed, ...changedSections },
+      resetAll
+    )
+  }
+  initialProfile = profileSnapshot()
+  initialValues = JSON.parse(JSON.stringify(values.value))
+  const appliedOverrides = new Set(originalOverriddenKeys.value)
+  for (const key of reset) appliedOverrides.delete(key)
+  for (const key of Object.keys(changed)) appliedOverrides.add(key)
+  originalOverriddenKeys.value = [...appliedOverrides]
+  resetFields.value = []
+  if (resetSections.value.includes('sandbox')) {
+    sandboxOverridden.value = false
+  } else if (changedSections.sandbox) {
+    sandboxOverridden.value = true
+  }
+  if (resetSections.value.includes('coding')) {
+    codingOverridden.value = false
+  } else if (changedSections.coding) {
+    codingOverridden.value = true
+  }
+  initialSandbox = normalizeSandboxPolicy(sandboxValues.value)
+  initialCoding = normalizeCodingSettings(codingValues.value)
+  resetSections.value = []
+}
+
 const submit = async () => {
   const agent = agentDetail.value
   if (!agent) return
@@ -134,30 +261,7 @@ const submit = async () => {
   }
   saving.value = true
   try {
-    if (hasProfileChanges.value) {
-      await agentApi.updateAgent(agent.slug, {
-        name: form.value.name.trim(),
-        description: form.value.description.trim() || null,
-        icon: form.value.icon.trim() || null
-      })
-    }
-    const reset = [...resetFields.value]
-    const changed = {}
-    for (const [key, value] of Object.entries(values.value)) {
-      // 恢复继承的字段不写入覆盖，由 reset_fields 在后端删除旧覆盖。
-      if (reset.includes(key)) continue
-      if (JSON.stringify(value) !== JSON.stringify(initialValues[key])) {
-        changed[key] = value
-      }
-    }
-    if (Object.keys(changed).length || reset.length) {
-      await projectAgentApi.updateOverrides(
-        agent.project_id,
-        agent.slug,
-        { context: changed },
-        reset
-      )
-    }
+    await persistChanges()
     emit('saved')
     emit('update:open', false)
     message.success('项目智能体已保存')
@@ -165,6 +269,24 @@ const submit = async () => {
     message.error(error.message || '保存项目智能体失败')
   } finally {
     saving.value = false
+  }
+}
+
+const warmUp = async () => {
+  const agent = agentDetail.value
+  if (!agent || !canManage.value || warmUpDisabled.value) return
+  warmUpLoading.value = true
+  try {
+    if (hasAnyChanges.value) {
+      await persistChanges()
+      emit('saved')
+    }
+    await codingSandboxApi.provision(agent.slug, agent.project_id)
+    message.success('专属沙盒已按当前策略就绪')
+  } catch (error) {
+    message.error(error.message || '沙盒预热失败')
+  } finally {
+    warmUpLoading.value = false
   }
 }
 
@@ -188,6 +310,25 @@ watch(
     values.value = JSON.parse(JSON.stringify(merged))
     initialValues = JSON.parse(JSON.stringify(merged))
     resetFields.value = []
+
+    const baseExecutionSandbox = normalizeSandboxPolicy(agent.config_json?.sandbox)
+    const baseExecutionCoding = normalizeCodingSettings(agent.config_json?.coding)
+    const overrideSandbox = agent.config_overrides?.sandbox
+    const overrideCoding = agent.config_overrides?.coding
+    baseSandbox.value = baseExecutionSandbox
+    baseCoding.value = baseExecutionCoding
+    sandboxOverridden.value = !!overrideSandbox
+    codingOverridden.value = !!overrideCoding
+    const mergedSandbox = normalizeSandboxPolicy({ ...baseExecutionSandbox, ...(overrideSandbox || {}) })
+    const mergedCoding = normalizeCodingSettings({
+      executors: overrideCoding?.executors ?? baseExecutionCoding.executors,
+      default_executor: overrideCoding?.default_executor ?? baseExecutionCoding.default_executor
+    })
+    sandboxValues.value = mergedSandbox
+    codingValues.value = mergedCoding
+    initialSandbox = JSON.parse(JSON.stringify(mergedSandbox))
+    initialCoding = JSON.parse(JSON.stringify(mergedCoding))
+    resetSections.value = []
     activeSection.value = 'basic'
   }
 )
@@ -234,7 +375,13 @@ watch(
             <component :is="item.icon" :size="16" />
             <span>{{ item.label }}</span>
           </span>
-          <span v-if="item.key !== 'basic' && hasConfigChanges" class="nav-dirty-dot" />
+          <span
+            v-if="
+              item.key !== 'basic' &&
+              (item.key === 'execution' ? hasExecutionChanges : hasConfigChanges)
+            "
+            class="nav-dirty-dot"
+          />
         </button>
       </aside>
 
@@ -339,7 +486,7 @@ watch(
         </section>
 
         <section
-          v-show="activeSection !== 'basic'"
+          v-show="activeSection !== 'basic' && activeSection !== 'execution'"
           class="agent-modal-section runtime-section"
         >
           <ProjectAgentConfigForm
@@ -350,6 +497,24 @@ watch(
             :overridden-keys="originalOverriddenKeys"
             @update:values="handleValuesUpdate"
             @reset-field="handleResetField"
+          />
+        </section>
+
+        <section v-show="activeSection === 'execution'" class="agent-modal-section">
+          <AgentExecutionConfigForm
+            :sandbox="sandboxValues"
+            :coding="codingValues"
+            :disabled="!canManage"
+            :sandbox-overridden="sandboxOverridden"
+            :coding-overridden="codingOverridden"
+            :show-warm-up="true"
+            :warm-up-loading="warmUpLoading"
+            :warm-up-disabled="warmUpDisabled"
+            @update:sandbox="handleSandboxUpdate"
+            @update:coding="handleCodingUpdate"
+            @reset-sandbox="restoreSandbox"
+            @reset-coding="restoreCoding"
+            @warm-up="warmUp"
           />
         </section>
       </div>

@@ -66,12 +66,15 @@ async def create_project_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """创建私有 Agent 并绑定为项目数字员工。"""
-    return await create_project_agent_view(
-        project_id=project_id,
-        db=db,
-        user=current_user,
-        **payload.model_dump(),
-    )
+    try:
+        return await create_project_agent_view(
+            project_id=project_id,
+            db=db,
+            user=current_user,
+            **payload.model_dump(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @project_agents.post("/bind")
@@ -101,14 +104,17 @@ async def update_project_agent(
     """更新项目覆盖层。"""
     if payload.config_json is None and not payload.reset_fields:
         raise HTTPException(status_code=422, detail="config_json 与 reset_fields 不能同时为空")
-    return await update_project_agent_view(
-        project_id=project_id,
-        agent_slug=agent_slug,
-        config_json=payload.config_json or {},
-        reset_fields=payload.reset_fields,
-        db=db,
-        user=current_user,
-    )
+    try:
+        return await update_project_agent_view(
+            project_id=project_id,
+            agent_slug=agent_slug,
+            config_json=payload.config_json or {},
+            reset_fields=payload.reset_fields,
+            db=db,
+            user=current_user,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @project_agents.delete("/{agent_slug}")

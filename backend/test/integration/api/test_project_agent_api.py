@@ -370,3 +370,97 @@ async def test_project_agent_management_is_private_to_project_owner(test_client,
         await _delete_agent(test_client, admin_headers, agent["slug"])
         if own_agent_slug:
             await _delete_agent(test_client, user_headers, own_agent_slug)
+
+
+async def test_execution_config_validation_and_section_reset(test_client, admin_headers):
+    """sandbox/coding 在写入边界校验并真实落库；项目覆盖可整段恢复继承。"""
+    project_id, directory = await _create_project(test_client, admin_headers, "execution")
+    agent = await _create_project_agent(
+        test_client, admin_headers, project_id, name=_agent_name("execution")
+    )
+    slug = agent["slug"]
+    standalone_slug: str | None = None
+    try:
+        invalid_sandbox = await test_client.put(
+            f"/api/projects/{project_id}/agents/{slug}",
+            headers=admin_headers,
+            json={"config_json": {"sandbox": {"mode": "invalid"}}},
+        )
+        assert invalid_sandbox.status_code == 422, invalid_sandbox.text
+        invalid_coding = await test_client.put(
+            f"/api/projects/{project_id}/agents/{slug}",
+            headers=admin_headers,
+            json={"config_json": {"coding": {"executors": ["unknown-executor"]}}},
+        )
+        assert invalid_coding.status_code == 422, invalid_coding.text
+
+        listed = await test_client.get(f"/api/projects/{project_id}/agents", headers=admin_headers)
+        assert listed.status_code == 200, listed.text
+        item = next(entry for entry in listed.json()["agents"] if entry["slug"] == slug)
+        assert "sandbox" not in item["config_overrides"]
+        assert "coding" not in item["config_overrides"]
+
+        saved = await test_client.put(
+            f"/api/projects/{project_id}/agents/{slug}",
+            headers=admin_headers,
+            json={
+                "config_json": {
+                    "sandbox": {
+                        "mode": "dedicated",
+                        "lifecycle": "persistent",
+                        "idle_suspend_seconds": 600,
+                    },
+                    "coding": {"executors": ["opencode"], "default_executor": "opencode"},
+                }
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        overrides = saved.json()["config_overrides"]
+        assert overrides["sandbox"]["mode"] == "dedicated"
+        assert overrides["sandbox"]["idle_suspend_seconds"] == 600
+        assert overrides["coding"]["default_executor"] == "opencode"
+
+        invalid_create = await test_client.post(
+            "/api/agent",
+            headers=admin_headers,
+            json={
+                "name": _agent_name("execution-invalid"),
+                "backend_id": "ChatbotAgent",
+                "config_json": {"sandbox": {"mode": "bogus"}},
+            },
+        )
+        assert invalid_create.status_code == 422, invalid_create.text
+
+        created = await test_client.post(
+            "/api/agent",
+            headers=admin_headers,
+            json={
+                "name": _agent_name("execution-standalone"),
+                "backend_id": "ChatbotAgent",
+                "config_json": {
+                    "sandbox": {"mode": "dedicated", "lifecycle": "persistent"},
+                    "coding": {"executors": ["opencode", "codex"], "default_executor": "codex"},
+                },
+            },
+        )
+        assert created.status_code == 200, created.text
+        standalone_slug = created.json()["agent"]["slug"]
+        detail = await test_client.get(f"/api/agent/{standalone_slug}", headers=admin_headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["agent"]["config_json"]["sandbox"]["mode"] == "dedicated"
+        assert detail.json()["agent"]["config_json"]["coding"]["default_executor"] == "codex"
+
+        reset = await test_client.put(
+            f"/api/projects/{project_id}/agents/{slug}",
+            headers=admin_headers,
+            json={"config_json": {}, "reset_fields": ["sandbox", "coding"]},
+        )
+        assert reset.status_code == 200, reset.text
+        assert "sandbox" not in reset.json()["config_overrides"]
+        assert "coding" not in reset.json()["config_overrides"]
+        assert reset.json()["config_overrides"]["context"]["system_prompt"] == "项目专属人格"
+    finally:
+        await _delete_project(test_client, admin_headers, project_id, directory)
+        await _delete_agent(test_client, admin_headers, slug)
+        if standalone_slug:
+            await _delete_agent(test_client, admin_headers, standalone_slug)

@@ -7,11 +7,13 @@ import {
   RefreshCw,
   Settings2,
   SlidersHorizontal,
+  Terminal,
   Upload,
   Wrench
 } from '@lucide/vue'
 
 import { userApi } from '@/apis/user_api'
+import AgentExecutionConfigForm from '@/components/AgentExecutionConfigForm.vue'
 import AgentRuntimeConfigForm from '@/components/AgentRuntimeConfigForm.vue'
 import ShareConfigForm from '@/components/ShareConfigForm.vue'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
@@ -19,6 +21,11 @@ import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { MAX_IMAGE_UPLOAD_SIZE_BYTES, MAX_IMAGE_UPLOAD_SIZE_MB } from '@/utils/upload_limits'
+import {
+  buildExecutionConfigPatch,
+  cloneExecutionConfig,
+  parseExecutionConfig
+} from '@/utils/agentExecutionConfig'
 import { normalizeAgent } from '@/utils/agentConfigUtils'
 
 const props = defineProps({
@@ -53,6 +60,9 @@ const agentForm = reactive({
   description: '',
   icon: ''
 })
+
+const executionConfig = ref(parseExecutionConfig(null))
+const initialExecutionConfig = ref(cloneExecutionConfig(null))
 
 // 基本配置的原始基线，用于在标题栏显示「有修改」状态。slug / backend_id
 // 仅在创建模式可编辑，因此新建时不参与比对。
@@ -137,7 +147,19 @@ const captureProfileBaseline = () => {
   originalShareConfig.value = snapshotShareConfig()
 }
 
-const hasAnyUnsavedChanges = computed(() => agentStore.hasConfigChanges || hasProfileChanges.value)
+const hasExecutionChanges = computed(
+  () =>
+    Object.keys(
+      buildExecutionConfigPatch({
+        initial: initialExecutionConfig.value,
+        current: executionConfig.value
+      })
+    ).length > 0
+)
+
+const hasAnyUnsavedChanges = computed(
+  () => agentStore.hasConfigChanges || hasProfileChanges.value || hasExecutionChanges.value
+)
 
 const agentModalMenuItems = computed(() => {
   const items = [{ key: 'basic', label: '基本信息', icon: Bot }]
@@ -145,7 +167,8 @@ const agentModalMenuItems = computed(() => {
     items.push(
       { key: 'model', label: '模型配置', icon: SlidersHorizontal },
       { key: 'tools', label: '工具配置', icon: Wrench },
-      { key: 'other', label: '其他配置', icon: Settings2 }
+      { key: 'other', label: '其他配置', icon: Settings2 },
+      { key: 'execution', label: '沙盒与编码', icon: Terminal }
     )
   }
   return items
@@ -247,6 +270,8 @@ const openCreate = () => {
   agentModalActiveTab.value = 'basic'
   resetAgentForm()
   agentStore.resetAgentConfig()
+  executionConfig.value = parseExecutionConfig(null)
+  initialExecutionConfig.value = cloneExecutionConfig(null)
   showAgentModal.value = true
   focusAgentNameInput()
 }
@@ -278,6 +303,9 @@ const openEdit = async (agent) => {
       }
     : detail.share_config || getInitialShareConfig()
   await agentStore.selectAgent(detail.id, { allowSubagent: true })
+  const loadedExecutionConfig = parseExecutionConfig(detail.config_json)
+  executionConfig.value = cloneExecutionConfig(loadedExecutionConfig)
+  initialExecutionConfig.value = cloneExecutionConfig(loadedExecutionConfig)
   captureProfileBaseline()
   showAgentModal.value = true
 }
@@ -339,6 +367,14 @@ const buildAgentPayload = () => {
   return payload
 }
 
+const handleSandboxUpdate = (value) => {
+  executionConfig.value.sandbox = value
+}
+
+const handleCodingUpdate = (value) => {
+  executionConfig.value.coding = value
+}
+
 const saveAgent = async () => {
   if (!agentForm.name.trim()) {
     agentModalActiveTab.value = 'basic'
@@ -359,10 +395,22 @@ const saveAgent = async () => {
   try {
     const payload = buildAgentPayload()
     if (editingAgentId.value) {
+      const configJson = {}
       if (agentStore.hasConfigChanges) {
-        payload.config_json = { context: agentStore.changedAgentConfig }
+        configJson.context = agentStore.changedAgentConfig
+      }
+      Object.assign(
+        configJson,
+        buildExecutionConfigPatch({
+          initial: initialExecutionConfig.value,
+          current: executionConfig.value
+        })
+      )
+      if (Object.keys(configJson).length) {
+        payload.config_json = configJson
       }
       const updated = await agentStore.updateAgentProfile(editingAgentId.value, payload)
+      initialExecutionConfig.value = cloneExecutionConfig(executionConfig.value)
       captureProfileBaseline()
       emit('saved', { mode: 'edit', agent: updated })
       message.success('智能体已保存')
@@ -428,7 +476,13 @@ defineExpose({
             <component :is="item.icon" :size="16" />
             <span>{{ item.label }}</span>
           </span>
-          <span v-if="item.key === 'model' && agentStore.hasConfigChanges" class="nav-dirty-dot" />
+          <span
+            v-if="
+              (item.key === 'model' && agentStore.hasConfigChanges) ||
+              (item.key === 'execution' && hasExecutionChanges)
+            "
+            class="nav-dirty-dot"
+          />
         </button>
       </aside>
 
@@ -544,6 +598,19 @@ defineExpose({
           class="agent-modal-section runtime-section"
         >
           <AgentRuntimeConfigForm :segment="runtimeConfigSegment" :show-segmented="false" />
+        </section>
+
+        <section
+          v-if="editingAgentId"
+          v-show="agentModalActiveTab === 'execution'"
+          class="agent-modal-section"
+        >
+          <AgentExecutionConfigForm
+            :sandbox="executionConfig.sandbox"
+            :coding="executionConfig.coding"
+            @update:sandbox="handleSandboxUpdate"
+            @update:coding="handleCodingUpdate"
+          />
         </section>
       </div>
     </div>

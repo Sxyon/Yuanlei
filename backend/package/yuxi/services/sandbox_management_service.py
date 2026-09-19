@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.agents.backends.sandbox import SandboxScope, get_sandbox_provider
+from yuxi.agents.skills.service import refresh_user_skill_projection_async
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_sandbox_repository import AgentSandboxRepository
 from yuxi.services.coding_credential_service import CodingCredentialService
@@ -98,13 +99,16 @@ class SandboxManagementService:
         )
         return _sandbox_view(row) if row is not None else {}
 
-    async def rebuild(self, *, uid: str, agent_slug: str, project_id: str) -> dict:
-        """手动重建：先回收旧 runtime，再按当前策略与凭据重建。"""
+    async def _dedicated_environment(self, *, uid: str, agent_slug: str, project_id: str):
+        """解析专属沙盒所需的工作目录、策略与编码凭据环境。"""
+        # 创建 runtime 前物化 Skill 投影：provisioner 校验该目录存在且不含符号链接。
+        await refresh_user_skill_projection_async(str(uid))
         workdir = await self._project_workdir(uid=uid, project_id=project_id)
         agent = await AgentRepository(self.db).get_by_slug(str(agent_slug))
+        agent_config = agent.config_json if agent is not None else None
         policy = await resolve_agent_sandbox_policy(
             db=self.db,
-            agent_config=(agent.config_json if agent is not None else None),
+            agent_config=agent_config,
             agent_slug=str(agent_slug),
             project_id=str(project_id),
         )
@@ -113,9 +117,42 @@ class SandboxManagementService:
         credentials = CodingCredentialService(self.db)
         env, fingerprint = await credentials.build_coding_environment(
             uid=str(uid),
-            executors=credentials.declared_executors(
-                agent.config_json if agent is not None else None
-            ),
+            executors=credentials.declared_executors(agent_config),
+        )
+        return workdir, policy, env, fingerprint
+
+    async def _finalize_ensure(self, *, connection, uid: str, agent_slug: str, project_id: str) -> dict:
+        """提交生命周期变更并返回带 generation 的沙盒视图。"""
+        await self.db.commit()
+        row = await AgentSandboxRepository(self.db).get_for_update(
+            uid=str(uid), agent_slug=str(agent_slug), project_id=str(project_id)
+        )
+        view = _sandbox_view(row) if row is not None else {}
+        view["generation"] = connection.generation or view.get("generation")
+        return view
+
+    async def provision(self, *, uid: str, agent_slug: str, project_id: str) -> dict:
+        """手动预热：按当前策略创建或恢复专属沙盒，已有 runtime 原样复用。"""
+        workdir, policy, env, fingerprint = await self._dedicated_environment(
+            uid=uid, agent_slug=agent_slug, project_id=project_id
+        )
+        connection = await SandboxLifecycleService(self.db, provider=self.provider).ensure_ready(
+            uid=str(uid),
+            agent_slug=str(agent_slug),
+            project_id=str(project_id),
+            policy=policy,
+            workdir_path=workdir,
+            credential_fingerprint=fingerprint,
+            env_overrides=env,
+        )
+        return await self._finalize_ensure(
+            connection=connection, uid=uid, agent_slug=agent_slug, project_id=project_id
+        )
+
+    async def rebuild(self, *, uid: str, agent_slug: str, project_id: str) -> dict:
+        """手动重建：先回收旧 runtime，再按当前策略与凭据重建。"""
+        workdir, policy, env, fingerprint = await self._dedicated_environment(
+            uid=uid, agent_slug=agent_slug, project_id=project_id
         )
         lifecycle = SandboxLifecycleService(self.db, provider=self.provider)
         await lifecycle.suspend(
@@ -136,13 +173,9 @@ class SandboxManagementService:
             credential_fingerprint=fingerprint,
             env_overrides=env,
         )
-        await self.db.commit()
-        row = await AgentSandboxRepository(self.db).get_for_update(
-            uid=str(uid), agent_slug=str(agent_slug), project_id=str(project_id)
+        return await self._finalize_ensure(
+            connection=connection, uid=uid, agent_slug=agent_slug, project_id=project_id
         )
-        view = _sandbox_view(row) if row is not None else {}
-        view["generation"] = connection.generation or view.get("generation")
-        return view
 
     @staticmethod
     def scope_for(*, uid: str, agent_slug: str, project_id: str) -> SandboxScope:

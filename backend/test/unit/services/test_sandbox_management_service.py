@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from yuxi.repositories.agent_sandbox_repository import AgentSandboxRepository
+from yuxi.services import sandbox_management_service as service
 from yuxi.services.coding_credential_service import (
     CodingCredentialService,
     CodingCredentialWrite,
@@ -16,9 +17,11 @@ from yuxi.services.coding_credential_service import (
 from yuxi.services.sandbox_management_service import SandboxManagementService
 from yuxi.storage.postgres.models_business import (
     Agent,
+    AgentSandbox,
     AgentSandboxEvent,
     Base,
     Project,
+    ProjectAgent,
 )
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.unit]
@@ -32,6 +35,7 @@ class _FakeProvider:
     def __init__(self):
         self.connections: dict[str, object] = {}
         self.created: list[str] = []
+        self.created_calls: list[dict] = []
         self.released: list[str] = []
 
     def get_scope(self, scope, *, create_if_missing=False, **_kwargs):
@@ -40,6 +44,15 @@ class _FakeProvider:
         if not create_if_missing:
             return None
         self.created.append(scope.cache_key)
+        self.created_calls.append(
+            {
+                "scope": scope,
+                "lifecycle": _kwargs.get("lifecycle"),
+                "idle_timeout_seconds": _kwargs.get("idle_timeout_seconds"),
+                "workdir_path": _kwargs.get("workdir_path"),
+                "env_overrides": _kwargs.get("env_overrides"),
+            }
+        )
         connection = SimpleNamespace(
             cache_key=scope.cache_key,
             sandbox_id=scope.sandbox_id,
@@ -70,6 +83,16 @@ async def session(monkeypatch):
     async with factory() as db:
         yield db
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _stub_skill_projection(monkeypatch):
+    """单元测试不触达真实 Skill 投影存储。"""
+
+    async def noop(_uid: str) -> dict:
+        return {}
+
+    monkeypatch.setattr(service, "refresh_user_skill_projection_async", noop)
 
 
 async def _seed(session, *, status="active"):
@@ -112,6 +135,42 @@ async def _seed(session, *, status="active"):
     row.status = status
     await session.flush()
     return row
+
+
+async def _seed_agent_project(session, *, sandbox_config: dict, overrides: dict | None = None) -> None:
+    """预置 Project 与 Agent（不创建沙盒记录），用于预热路径。"""
+    session.add(
+        Project(
+            id="project-1",
+            uid="user-1",
+            selection_status="selectable",
+            workdir_path=WORKDIR,
+            directory_mode="linked",
+            status="active",
+        )
+    )
+    session.add(
+        Agent(
+            slug="coder",
+            backend_id="ChatbotAgent",
+            name="Coder",
+            pics=[],
+            config_json=sandbox_config,
+            share_config={},
+            is_default=False,
+            is_subagent=False,
+        )
+    )
+    if overrides is not None:
+        session.add(
+            ProjectAgent(
+                id="pa-1",
+                project_id="project-1",
+                agent_slug="coder",
+                config_overrides=overrides,
+            )
+        )
+    await session.flush()
 
 
 async def test_list_reports_quota_and_usage(session):
@@ -171,3 +230,97 @@ async def test_manual_operations_reject_foreign_project(session):
         await SandboxManagementService(session, provider=_FakeProvider()).suspend(
             uid="user-2", agent_slug="coder", project_id="project-1"
         )
+
+
+async def test_provision_creates_dedicated_sandbox(session):
+    """预热为新绑定创建专属沙盒，并使用项目 Workdir。"""
+    await _seed_agent_project(
+        session, sandbox_config={"sandbox": {"mode": "dedicated", "lifecycle": "persistent"}}
+    )
+    provider = _FakeProvider()
+
+    view = await SandboxManagementService(session, provider=provider).provision(
+        uid="user-1", agent_slug="coder", project_id="project-1"
+    )
+
+    assert view["status"] == "active"
+    assert view["lifecycle"] == "persistent"
+    assert view["generation"] == "gen-1"
+    assert provider.created_calls[0]["workdir_path"] == WORKDIR
+    row = (await session.execute(select(AgentSandbox))).scalars().one()
+    assert row.uid == "user-1"
+    assert row.scope_key == SCOPE_KEY
+
+
+async def test_provision_reuses_existing_runtime(session):
+    """重复预热复用已有 runtime，不重复创建。"""
+    await _seed_agent_project(
+        session, sandbox_config={"sandbox": {"mode": "dedicated", "lifecycle": "persistent"}}
+    )
+    provider = _FakeProvider()
+    management = SandboxManagementService(session, provider=provider)
+
+    first = await management.provision(uid="user-1", agent_slug="coder", project_id="project-1")
+    second = await management.provision(uid="user-1", agent_slug="coder", project_id="project-1")
+
+    assert len(provider.created) == 1
+    assert second["generation"] == first["generation"]
+
+
+async def test_provision_applies_project_override_policy(session):
+    """项目覆盖层的生命周期策略在预热时生效。"""
+    await _seed_agent_project(
+        session,
+        sandbox_config={"sandbox": {"mode": "dedicated", "lifecycle": "persistent"}},
+        overrides={"sandbox": {"lifecycle": "resident", "idle_suspend_seconds": 0}},
+    )
+    provider = _FakeProvider()
+
+    view = await SandboxManagementService(session, provider=provider).provision(
+        uid="user-1", agent_slug="coder", project_id="project-1"
+    )
+
+    assert view["lifecycle"] == "resident"
+    assert provider.created_calls[0]["idle_timeout_seconds"] == 0
+
+
+async def test_provision_rejects_shared_policy(session):
+    """共享策略不允许预热专属沙盒。"""
+    await _seed_agent_project(session, sandbox_config={"sandbox": {"mode": "shared"}})
+
+    with pytest.raises(ValueError, match="dedicated"):
+        await SandboxManagementService(session, provider=_FakeProvider()).provision(
+            uid="user-1", agent_slug="coder", project_id="project-1"
+        )
+
+
+async def test_provision_rejects_foreign_project(session):
+    """预热只允许作用于自己拥有的项目。"""
+    await _seed_agent_project(
+        session, sandbox_config={"sandbox": {"mode": "dedicated", "lifecycle": "persistent"}}
+    )
+
+    with pytest.raises(ValueError, match="project not found"):
+        await SandboxManagementService(session, provider=_FakeProvider()).provision(
+            uid="user-2", agent_slug="coder", project_id="project-1"
+        )
+
+
+async def test_provision_refreshes_skill_projection_before_create(session, monkeypatch):
+    """预热前先物化 Skill 投影，避免 provisioner 目录校验失败。"""
+    await _seed_agent_project(
+        session, sandbox_config={"sandbox": {"mode": "dedicated", "lifecycle": "persistent"}}
+    )
+    calls: list[str] = []
+
+    async def record_refresh(uid: str) -> dict:
+        calls.append(uid)
+        return {}
+
+    monkeypatch.setattr(service, "refresh_user_skill_projection_async", record_refresh)
+
+    await SandboxManagementService(session, provider=_FakeProvider()).provision(
+        uid="user-1", agent_slug="coder", project_id="project-1"
+    )
+
+    assert calls == ["user-1"]

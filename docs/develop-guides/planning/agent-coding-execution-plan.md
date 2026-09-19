@@ -31,6 +31,7 @@ M0 契约探针与接口冻结
                                                             └─► M6 程序化通道与自主编排
                                                                  └─► M7 终端直连
                                                                       └─► M8 管理面与运维收尾
+                                                                           └─► M9 执行配置面闭合
 ```
 
 - M1 与 M2 在 M0 之后可并行（触碰文件不重叠：M1 在 config/凭据/前端设置，M2 在 sandbox/provisioner/worker）。
@@ -120,9 +121,16 @@ M0 契约探针与接口冻结
 - ACP spike 结论：镜像自带 `opencode acp` 可启动，但一次性 stdin 管道在观察窗口内只看到数据库迁移输出、拿不到 JSON-RPC 响应——ACP 需要持久 stdio 会话（`create_session/write/view`），与 mid-turn steer 依赖同一缺失原语。结论：保留 ACP 为适配器预留位，待 SDK 会话能力接入后再评估，不在当前版本实现。
 - 证据：管理服务 4 用例；全量后端 2418 passed、web lint/unit（367）/build 通过；工程信任检查与 `git diff --check` 通过。
 
+### M9 执行配置面闭合（完成，2026-09-19）
+
+- 问题：`sandbox`/`coding` 已在读取端生效，但写入端不校验（非法值拖到运行期）、项目覆盖无法整段恢复继承、项目覆盖路由 `ValueError` 变 500、前端没有配置入口、管理面没有预热入口。决策与验收矩阵见[《Agent 执行配置面》](../yuanlei/decisions/proposed/2026-09-19-agent-execution-config-surface.md)。
+- 交付：`prepare_agent_config_write` 校验 `sandbox`/`coding`（非法值 422，创建/更新与项目覆盖共用）；项目覆盖 `reset_fields` 支持 `sandbox`/`coding` 整段恢复继承，路由补 `ValueError → 422`；`SandboxManagementService.provision` + `POST /api/coding/sandboxes/{agent_slug}/{project_id}/provision`（预热前物化 Skill 投影，复用生命周期状态机与配额，`rebuild` 抽取同一实现）；前端 `agentExecutionConfig` 工具 + `AgentExecutionConfigForm`，Agent 编辑新增「沙盒与编码」tab，项目覆盖新增同名 section（恢复继承 + 立即预热），沙盒面板对已有记录提供预热按钮。
+- 证据：单测 35 项（配置校验 18、项目覆盖 7、管理与预热 10）；真实 HTTP integration 2 条（`test_execution_config_validation_and_section_reset`：422 不落库、写入回显、section reset；`test_coding_sandbox_api`：真实 provisioner 预热→回收→预热、共享策略 422）；web `lint:check`、`test:unit`（372 passed，含 5 个新用例）、`build` 通过；本机 Playwright + 一次性 fixture 完成两个弹窗的真实页面断言（`web/test/browser/agentExecutionConfig.js`），无 console error。
+- 未验证：项目覆盖弹窗预热按钮的点击链路未在浏览器内实际触发（避免测试账号留下真实容器；API 集成已覆盖 provision 全链路）；dark 主题截图未采集。
+
 ### 整体未验证清单（本计划结束时）
 
-- 真实浏览器页面验证（终端面板与会话卡交互截图/录屏）：当前环境无浏览器工具。
+- 真实浏览器页面验证（终端面板与会话卡交互截图/录屏）：M8 结束时环境无浏览器工具；M9 已接入本机 Playwright（见 M9 条目），终端面板与会话卡截图仍未补。
 - 需 e2e 账号与专用 agent 的 API 级 E2E（async turn 全链路、FIFO 争抢与 cancel）：仅完成服务级单测与真实沙盒冒烟（opencode 计划轮 + 终端 WS）。
 - mid-turn steer（依赖 SDK shell session 或 opencode serve 会话输入）。
 - K8s provisioner 后端与 quiesce 的生命周期路径。

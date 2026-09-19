@@ -5,6 +5,12 @@ const CODING_SANDBOX_PATH = '/api/coding/sandboxes'
 export const codingSandboxApi = {
   list: () => apiGet(CODING_SANDBOX_PATH),
 
+  provision: (agentSlug, projectId) =>
+    apiPost(
+      `${CODING_SANDBOX_PATH}/${encodeURIComponent(agentSlug)}/${encodeURIComponent(projectId)}/provision`,
+      {}
+    ),
+
   suspend: (agentSlug, projectId) =>
     apiPost(
       `${CODING_SANDBOX_PATH}/${encodeURIComponent(agentSlug)}/${encodeURIComponent(projectId)}/suspend`,
