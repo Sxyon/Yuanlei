@@ -8,7 +8,7 @@
 - `intro/` 拥有从零完成结果的教程，`advanced/` 拥有配置和运维参考，`agents/` 拥有 Agent 配置与扩展方法，`mechanisms/` 拥有运行机制、状态、权限、失败和源码定位。实质性混合内容必须拆页。
 - 当前系统边界和主链路属于仓库根 `ARCHITECTURE.md`；测试层级与命令属于[测试规范](develop-guides/testing-guidelines.md)；工程信任闭环属于[工程信任系统](develop-guides/engineering-trust.md)。不要在专题页复制这些完整规则。
 - 非显然取舍属于 `develop-guides/decisions/`，达到门槛的事故因果属于 `develop-guides/postmortems/`，已发布事实属于 changelog，未完成方向属于 roadmap。`docs/vibe/` 只用于被忽略的本地临时计划。
-- `develop-guides/yuanlei/` 拥有元垒 fork 关系、上游同步规则和元垒决策；上游 Yuxi 决策仍在 `develop-guides/decisions/`。
+- `develop-guides/yuanlei/` 拥有 fork 关系、差异 Feature、同步规则和元垒决策；上游决策仍在 `develop-guides/decisions/`。
 - 源码、schema、Compose、数据约束和测试拥有可执行事实；外部 Wiki、旧 changelog、历史 PR 和 Agent 自述只能帮助定位，不能覆盖当前 Owner。
 
 ## Agent 写作流程

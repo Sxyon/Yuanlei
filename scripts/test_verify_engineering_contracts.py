@@ -59,6 +59,7 @@ Owner 与 gate 必须在同一变更中保持一致。
         self._write_valid_workflows()
         self._write_valid_agents_files()
         self._write_valid_postmortem_files()
+        self._write_valid_yuanlei_features()
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -178,6 +179,70 @@ jobs:
         self._write(
             "docs/develop-guides/postmortems/README.md",
             "# 工程事故复盘\n\n达到门槛的事故使用模板。\n",
+        )
+
+    def _write_valid_yuanlei_features(self) -> None:
+        self._write(
+            "docs/develop-guides/yuanlei/decisions/implemented/2026-08-15-example-feature.md",
+            """# 示例功能决策
+
+状态：implemented
+类型：feature
+Owner：owner.md
+
+## 问题
+示例功能需要可追溯的业务语义。
+
+## 决策
+保留最小差异并链接证据。
+
+## 替代方案
+拒绝无记录的实现。
+
+## 后果
+后续合并可重建取舍。
+
+## 验证
+运行工程契约检查。
+""",
+        )
+        self._write(
+            "docs/develop-guides/yuanlei/features/README.md",
+            "# 元垒差异化功能索引\n\n- [示例功能](example-feature.md)\n",
+        )
+        self._write(
+            "docs/develop-guides/yuanlei/features/example-feature.md",
+            """# 示例功能
+
+状态：已实现
+类型：有意产品差异
+主要 Owner：`owner.md`
+
+## 需求与失败场景
+用户需要稳定结果。
+
+## 必须保留的业务语义
+结果必须可观察。
+
+## 与 Yuxi 的边界
+Yuxi 拥有基础入口，元垒拥有差异行为。
+
+## 稳定集成点
+入口调用 owning service。
+
+## 上游依赖
+依赖上游入口契约。
+
+## 合并判断
+对照业务语义评价上游变化。
+
+## 替换或删除条件
+上游提供等价能力后删除差异。
+
+## 决策与证据
+- [功能决策](../decisions/implemented/2026-08-15-example-feature.md)
+- [Owner-local 证据](../../../../owner.md)
+""",
         )
         self._write(
             "docs/develop-guides/postmortems/TEMPLATE.md",
@@ -640,6 +705,77 @@ jobs:
                     )
                 )
 
+    def test_yuanlei_feature_missing_business_invariants_is_rejected(self) -> None:
+        path = self.root / "docs/develop-guides/yuanlei/features/example-feature.md"
+        text = path.read_text(encoding="utf-8").replace(
+            "## 必须保留的业务语义", "## 其他说明"
+        )
+        path.write_text(text, encoding="utf-8")
+
+        self.assertTrue(
+            any(
+                "元垒 Feature 缺少标题" in error and "必须保留" in error
+                for error in self._errors()
+            )
+        )
+
+    def test_yuanlei_feature_missing_retirement_conditions_is_rejected(self) -> None:
+        path = self.root / "docs/develop-guides/yuanlei/features/example-feature.md"
+        text = path.read_text(encoding="utf-8").replace(
+            "## 替换或删除条件", "## 长期维护"
+        )
+        path.write_text(text, encoding="utf-8")
+
+        self.assertTrue(
+            any(
+                "元垒 Feature 缺少标题" in error and "替换或删除" in error
+                for error in self._errors()
+            )
+        )
+
+    def test_yuanlei_feature_not_linked_from_index_is_rejected(self) -> None:
+        self._write(
+            "docs/develop-guides/yuanlei/features/README.md",
+            "# 元垒差异化功能索引\n\n没有功能导航。\n",
+        )
+
+        self.assertTrue(any("元垒 Feature 未被索引引用" in error for error in self._errors()))
+
+    def test_yuanlei_feature_missing_decision_link_is_rejected(self) -> None:
+        path = self.root / "docs/develop-guides/yuanlei/features/example-feature.md"
+        text = path.read_text(encoding="utf-8").replace(
+            "- [功能决策](../decisions/implemented/2026-08-15-example-feature.md)\n",
+            "",
+        )
+        path.write_text(text, encoding="utf-8")
+
+        self.assertTrue(any("元垒 Feature 缺少有效 Decision 链接" in error for error in self._errors()))
+
+    def test_yuanlei_feature_decision_index_is_not_a_decision(self) -> None:
+        self._write(
+            "docs/develop-guides/yuanlei/decisions/README.md",
+            "# 元垒决策记录\n",
+        )
+        path = self.root / "docs/develop-guides/yuanlei/features/example-feature.md"
+        text = path.read_text(encoding="utf-8").replace(
+            "../decisions/implemented/2026-08-15-example-feature.md",
+            "../decisions/README.md",
+        )
+        path.write_text(text, encoding="utf-8")
+
+        self.assertTrue(any("元垒 Feature 缺少有效 Decision 链接" in error for error in self._errors()))
+
+    def test_yuanlei_feature_broken_evidence_link_is_rejected(self) -> None:
+        path = self.root / "docs/develop-guides/yuanlei/features/example-feature.md"
+        text = path.read_text(encoding="utf-8").replace(
+            "../../../../owner.md", "../../../../missing-evidence.md"
+        )
+        path.write_text(text, encoding="utf-8")
+
+        errors = self._errors()
+        self.assertTrue(any("元垒 Feature 引用失效" in error for error in errors))
+        self.assertTrue(any("元垒 Feature 缺少可定位证据入口" in error for error in errors))
+
     def test_document_contrastive_negation_is_rejected(self) -> None:
         examples = (
             "系统不是缓存层，而是最终事实源。",
@@ -1091,7 +1227,13 @@ Owner：owner.md
                     "status": "implemented",
                     "type": "process",
                     "owner": "owner.md",
-                }
+                },
+                {
+                    "path": "docs/develop-guides/yuanlei/decisions/implemented/2026-08-15-example-feature.md",
+                    "status": "implemented",
+                    "type": "feature",
+                    "owner": "owner.md",
+                },
             ],
         )
         self.assertEqual(

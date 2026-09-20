@@ -8,6 +8,14 @@
 
 元垒是本仓库的产品名，代码基线来自 Yuxi。上游 `business`、`knowledge` 两个 Schema 域和 `docs/develop-guides/decisions/` 归上游所有；元垒新增持久化结构全部进入 `yuanlei` 域，由 `storage-migrator` 在 business 域收敛后升级 `YUANLEI_SCHEMA_VERSION`。上游同步、改动归属和冲突取舍规则见[元垒与上游 Yuxi](docs/develop-guides/yuanlei/README.md)。
 
+### 元垒差异是业务语义扩展
+
+元垒在 Yuxi 的真实语义 Owner 上扩展业务能力。元垒代码可以位于既有 service、repository、router、worker 或前端组件；文件路径和 `yuxi` 命名空间不决定改动归属。代码边界只在当前 consumer、重复规则、绕过风险或持续同步成本证明必要时重构，不把目录隔离本身作为目标。
+
+源码、数据约束和公开契约拥有当前运行事实；[差异化 Feature](docs/develop-guides/yuanlei/features/README.md)拥有原始需求、必须保留的业务不变量、与 Yuxi 的集成关系、上游依赖和退出条件；元垒 Decision 保存非显然取舍与代价。Feature 记录稳定语义和集成角色，不复制完整实现或 Git 文件清单。测试和负向案例证明语义仍成立，Git 历史拥有精确修改事实。
+
+上游同步以业务语义为验收对象。上游重构允许替换元垒的实现方式；上游提供等价能力时删除或缩小差异；需求失效时删除过期行为。共同修改文件只标识候选影响面，不能替代对 Feature、Decision、当前上游行为和证据的重新评价。同步结果记录为保留并迁移、采用上游替代、缩小差异、需求过期删除或形成新决策。
+
 ## 鸟瞰
 
 Yuxi 是一个面向 RAG、知识图谱和多智能体工作流的知识库平台。用户通过 Vue 前端管理智能体、知识库、模型、工具、Skills、MCP 与 SubAgents；前端通过 `/api` 调用 FastAPI；后端服务层协调 PostgreSQL、Redis、MinIO、Milvus、Neo4j、LangGraph 和沙盒。
@@ -108,6 +116,7 @@ Yuxi 只交付完整知识能力路径。API 始终注册 `external_kb`、`knowl
 - Run 结果以 `output_message_id` 指向的同 Run assistant 消息为权威；只有历史 `completed` Run 可在缺少指针时兼容读取同 conversation、相同 `run_id` 的 assistant 消息，禁止从未完成或相邻 Run 猜测输出。
 - `/api/system/health` 只表达 API 进程 liveness；Compose 以 `/api/system/ready` 判断启动完成、PostgreSQL/Redis 可用且存在完成启动的兼容 worker。worker 同时续租短 TTL ARQ 消费健康、AgentRun lease reconciliation 与 Durable Task reconciliation 成功事实；持久 key、超长 TTL、错误 Redis DSN 或持续无法收敛失联执行都不能维持 readiness。业务正确性仍由真实链路测试证明。
 - 数据库 Schema 只由 `storage-migrator` 在 PostgreSQL advisory lock 内修改并记录 business/knowledge/yuanlei 域版本；API 与 worker 不建表或执行收敛 DDL，并在任一域版本缺失、过旧或过新时拒绝启动。上游域归上游维护，元垒新增表只进 yuanlei 域。
+- 每项长期 Yuanlei 差异都能从 Feature 追溯到需求、业务不变量、Yuxi 集成点、上游依赖、替换或删除条件、Decision 与证据；无法解释的 fork 差异不得在同步中被静默保留或覆盖。
 - 内置 Skills 是默认 Agent shipping contract 的 required 组成，API/worker 通过 PostgreSQL advisory lock 串行同步；内置 MCP 定义是 optional，但失败必须形成可观测 degraded 而非被组件内部吞掉。
 - 跨 repository 的身份管理用例只有一个 service 事务 Owner；Department、User 与强制 OperationLog 同一提交。API Key 由独立服务端主密钥和客户端幂等 ID 确定性派生，只保存 hash；原始创建意图使用不可变指纹校验，撤销保留 request-id tombstone，同一请求可恢复响应但不能复活已撤销凭据。
 - 前端 API 调用集中在 `web/src/apis`，组件不要散落拼接普通 HTTP 接口。

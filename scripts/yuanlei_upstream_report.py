@@ -15,7 +15,6 @@ UPSTREAM_REF = "refs/remotes/upstream/main"
 BASELINE_PATH = Path("docs/develop-guides/yuanlei/baseline.json")
 UPSTREAM_DECISIONS_PREFIX = "docs/develop-guides/decisions/"
 YUANLEI_DECISIONS_PREFIX = "docs/develop-guides/yuanlei/decisions/"
-YUANLEI_MARKER = "yuanlei"
 MIRRORS = (
     ("README.yuxi.md", "README.md"),
     ("README.yuxi.en.md", "README.en.md"),
@@ -89,26 +88,6 @@ def changed_files(repo: Path, base: str, ref: str) -> dict[str, str]:
     return parse_name_status(git(repo, "diff", "--name-status", base, ref))
 
 
-def tracked_paths(repo: Path) -> set[str]:
-    return set(git(repo, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
-
-
-def yuanlei_coupled(repo: Path, paths: list[str]) -> list[str]:
-    """找出上游修改且在当前 HEAD 中带有 yuanlei 标记的文件。"""
-
-    existing = [path for path in paths if path in tracked_paths(repo)]
-    if not existing:
-        return []
-    output = try_git(
-        repo, "grep", "-i", "-l", "-F", "-e", YUANLEI_MARKER, "HEAD", "--", *existing
-    )
-    if not output:
-        return []
-    return sorted(
-        line.split(":", 1)[1] for line in output.splitlines() if ":" in line
-    )
-
-
 def load_baseline(repo: Path) -> dict:
     path = repo / BASELINE_PATH
     if not path.is_file():
@@ -171,7 +150,6 @@ class SyncReport:
     upstream_commits: list[str] = field(default_factory=list)
     ours_files: dict[str, str] = field(default_factory=dict)
     upstream_files: dict[str, str] = field(default_factory=dict)
-    coupled: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
 
     @property
@@ -202,7 +180,6 @@ def build_report(repo: Path, upstream_ref: str, commit_limit: int) -> SyncReport
         upstream_files=changed_files(repo, base, upstream_ref),
         problems=mirror_problems(repo, baseline) + baseline_problems(repo, upstream_ref, baseline),
     )
-    report.coupled = yuanlei_coupled(repo, list(report.upstream_files))
     return report
 
 
@@ -251,10 +228,6 @@ def render_report(report: SyncReport, commit_limit: int, file_limit: int) -> str
         f"## 共同修改（R3/R4 冲突候选，{len(report.overlap)} 个）",
         "",
         *_bullet_lines(report.overlap),
-        "",
-        f"## 高危：上游触碰的 yuanlei 耦合文件（{len(report.coupled)} 个）",
-        "",
-        *_bullet_lines(report.coupled),
         "",
         "## 决策记录变化",
         "",

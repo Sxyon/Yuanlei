@@ -19,6 +19,7 @@ DECISIONS_ROOTS = (
     (Path("docs/develop-guides/yuanlei/decisions"), ("implemented", "proposed")),
 )
 POSTMORTEMS_PATH = Path("docs/develop-guides/postmortems")
+YUANLEI_FEATURES_PATH = Path("docs/develop-guides/yuanlei/features")
 FORBIDDEN_CENTRAL_INVENTORIES = (Path("docs/develop-guides/engineering-claims.json"),)
 DECISION_FILE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*\.md$")
 DECISION_TYPES = frozenset(
@@ -42,6 +43,17 @@ PROPOSED_EVIDENCE_HEADER = (
 )
 EVIDENCE_RESULTS = frozenset({"Passed", "Inspected", "Not run", "Inferred"})
 SIMPLIFICATION_REQUIRED_LABELS = ("旧能力不存在：", "重新引入条件：")
+YUANLEI_FEATURE_REQUIRED_METADATA = ("状态：", "类型：", "主要 Owner：")
+YUANLEI_FEATURE_REQUIRED_HEADINGS = (
+    "## 需求与失败场景",
+    "## 必须保留的业务语义",
+    "## 与 Yuxi 的边界",
+    "## 稳定集成点",
+    "## 上游依赖",
+    "## 合并判断",
+    "## 替换或删除条件",
+    "## 决策与证据",
+)
 POSTMORTEM_TEMPLATE_HEADINGS = (
     "## 影响",
     "## 事实时间线",
@@ -79,7 +91,10 @@ AGENTS_FILE_BUDGETS = {
     "web/AGENTS.md": 1000,
     "docs/AGENTS.md": 3200,
 }
-AGENTS_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
+MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
+REPOSITORY_PATH_CODE_PATTERN = re.compile(
+    r"`((?:agents|backend|docs|scripts|web)/[^`\s/]+(?:/[^`\s/]+)*\.[a-z0-9]+)`"
+)
 EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:")
 DOCUMENT_PROSE_CONTRAST = re.compile(
     r"(?:不是|并非)[^。\n]{0,160}(?:而是|而在于)"
@@ -818,6 +833,95 @@ def _validate_postmortems(root: Path, errors: list[str]) -> list[str]:
     return checked
 
 
+def _validate_yuanlei_features(root: Path, errors: list[str]) -> list[str]:
+    """检查元垒差异档案的语义骨架与索引覆盖。"""
+
+    features_root = root / YUANLEI_FEATURES_PATH
+    index = features_root / "README.md"
+    if not index.is_file():
+        errors.append(f"缺少元垒差异化功能索引：{index.relative_to(root)}")
+        return []
+
+    index_text = index.read_text(encoding="utf-8")
+    indexed_files = {
+        target.split("#", 1)[0]
+        for target in MARKDOWN_LINK_PATTERN.findall(index_text)
+        if target.split("#", 1)[0].endswith(".md")
+        and "/" not in target.split("#", 1)[0]
+    }
+    checked: list[str] = []
+    for path in sorted(features_root.glob("*.md")):
+        if path.name == "README.md":
+            continue
+        relative = path.relative_to(root)
+        checked.append(relative.as_posix())
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.md", path.name):
+            errors.append(f"元垒 Feature 文件名必须使用 kebab-case：{relative}")
+        if path.name not in indexed_files:
+            errors.append(f"元垒 Feature 未被索引引用：{relative}")
+
+        lines = _visible_markdown_lines(path.read_text(encoding="utf-8"))
+        if sum(1 for line in lines if line.startswith("# ")) != 1:
+            errors.append(f"元垒 Feature 必须有且只有一个 H1：{relative}")
+        for label in YUANLEI_FEATURE_REQUIRED_METADATA:
+            if not _metadata(lines, label):
+                errors.append(f"元垒 Feature 缺少元数据 {label}：{relative}")
+        sections = _decision_sections(lines)
+        for heading in YUANLEI_FEATURE_REQUIRED_HEADINGS:
+            if heading not in sections:
+                errors.append(f"元垒 Feature 缺少标题：{relative} -> {heading}")
+            elif not any(line.strip() for line in sections[heading]):
+                errors.append(f"元垒 Feature 标题下没有内容：{relative} -> {heading}")
+
+        evidence_lines = sections.get("## 决策与证据", [])
+        valid_links: list[Path] = []
+        evidence_text = "\n".join(evidence_lines)
+        for target in MARKDOWN_LINK_PATTERN.findall(evidence_text):
+            local_target = target.split("#", 1)[0]
+            if not local_target or target.startswith(EXTERNAL_LINK_PREFIXES):
+                continue
+            resolved = (path.parent / local_target).resolve()
+            try:
+                resolved.relative_to(root.resolve())
+            except ValueError:
+                errors.append(f"元垒 Feature 链接超出仓库：{relative} -> {target}")
+                continue
+            if not resolved.is_file():
+                errors.append(f"元垒 Feature 引用失效：{relative} -> {target}")
+                continue
+            valid_links.append(resolved)
+
+        decisions_root = (root / "docs/develop-guides/yuanlei/decisions").resolve()
+        decision_paths = []
+        for linked in valid_links:
+            if not linked.is_relative_to(decisions_root):
+                continue
+            decision_relative = linked.relative_to(decisions_root)
+            if (
+                len(decision_relative.parts) == 2
+                and decision_relative.parts[0] in {"implemented", "proposed"}
+                and DECISION_FILE_PATTERN.fullmatch(decision_relative.name)
+            ):
+                decision_paths.append(linked)
+        if not decision_paths:
+            errors.append(f"元垒 Feature 缺少有效 Decision 链接：{relative}")
+        evidence_paths = [
+            linked for linked in valid_links if not linked.is_relative_to(decisions_root)
+        ]
+        for raw_path in REPOSITORY_PATH_CODE_PATTERN.findall(evidence_text):
+            evidence_path = (root / raw_path).resolve()
+            if evidence_path.is_file() and evidence_path.is_relative_to(root.resolve()):
+                evidence_paths.append(evidence_path)
+            else:
+                errors.append(f"元垒 Feature 证据路径失效：{relative} -> {raw_path}")
+        if not evidence_paths:
+            errors.append(f"元垒 Feature 缺少可定位证据入口：{relative}")
+
+    if not checked:
+        errors.append("至少需要一份元垒差异化 Feature 档案")
+    return checked
+
+
 def _attribute_root_name(node: ast.expr) -> str | None:
     while isinstance(node, ast.Attribute):
         node = node.value
@@ -838,7 +942,7 @@ def _validate_agents_files(root: Path, errors: list[str]) -> list[dict[str, Any]
         if sum(1 for line in visible if line.startswith("# ")) != 1:
             errors.append(f"AGENTS 指令必须有且只有一个 H1：{relative}")
         for line in visible:
-            for link in AGENTS_LINK_PATTERN.findall(line):
+            for link in MARKDOWN_LINK_PATTERN.findall(line):
                 target = link.split("#", 1)[0]
                 if not target or target.startswith(EXTERNAL_LINK_PREFIXES):
                     continue
@@ -1005,6 +1109,7 @@ def verify(root: Path) -> tuple[list[str], dict[str, Any]]:
                 f"禁止手工中央主张清单；主张必须在语义 Owner 处闭合：{forbidden}"
             )
     decisions = _validate_decisions(resolved_root, errors)
+    yuanlei_features = _validate_yuanlei_features(resolved_root, errors)
     postmortems = _validate_postmortems(resolved_root, errors)
     workflows = _validate_workflows(resolved_root, errors)
     agents_files = _validate_agents_files(resolved_root, errors)
@@ -1018,6 +1123,7 @@ def verify(root: Path) -> tuple[list[str], dict[str, Any]]:
         "derived": True,
         "authority": "owner-local code, tests, decisions and workflows",
         "decisions": decisions,
+        "yuanlei_features": yuanlei_features,
         "postmortems": postmortems,
         "workflows": workflows,
         "agents_files": agents_files,
@@ -1053,6 +1159,7 @@ def main() -> int:
         print(
             "工程信任检查通过："
             f"{len(projection['decisions'])} decisions / "
+            f"{len(projection['yuanlei_features'])} yuanlei features / "
             f"{len(projection['workflows'])} workflows / "
             f"{len(projection['agents_files'])} agents files / "
             f"{projection['boundaries']['document_files_checked']} docs / "

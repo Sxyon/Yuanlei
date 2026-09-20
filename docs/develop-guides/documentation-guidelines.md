@@ -37,7 +37,7 @@ Yuxi 采用 [Diátaxis](https://diataxis.fr/) 的四类文档思路。现有目�
 - `mechanisms/`：运行链路、状态、权限、文件与失败恢复的解释。
 - `develop-guides/`：贡献、测试、设计和文档治理。
 - `decisions/`：代码和当前文档无法表达的非显然取舍；它不是运行时说明的副本。
-- `yuanlei/`：元垒与上游 Yuxi 的关系、同步流程、差异化功能索引和元垒决策；上游决策仍在 `decisions/`。
+- `yuanlei/`：元垒与上游 Yuxi 的关系、同步流程、差异 Feature 和元垒决策；Feature 解释业务理由、不变量、集成关系与退出条件，上游决策仍在 `decisions/`。
 - `postmortems/`：达到项目门槛的逃逸事故及其防复发机制。
 - `changelog.md`：已发布变更；`roadmap.md`：尚未完成的方向。
 
