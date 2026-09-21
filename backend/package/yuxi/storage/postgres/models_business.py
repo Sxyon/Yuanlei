@@ -726,6 +726,50 @@ class AgentRunScope(Base):
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
 
 
+class ProjectDocument(Base):
+    """项目命名 JSON 文档：按 (project_id, key) 版本化持久化（yuanlei 域）。"""
+
+    __tablename__ = "project_documents"
+    __table_args__ = (
+        UniqueConstraint("project_id", "key", name="uq_project_documents_project_key"),
+        CheckConstraint("version > 0", name="ck_project_documents_version"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="文档 UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_project_documents_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    key = Column(String(120), nullable=False, comment="规范化文档 key")
+    content = Column(JSON_VALUE, nullable=False, comment="JSON 内容")
+    version = Column(Integer, nullable=False, default=1, comment="单调递增版本，从 1 开始")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    updated_by = Column(String(64), nullable=True, comment="最近更新者 uid")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class ProjectDashboard(Base):
+    """项目 Dashboard 入口页面的 revision 元数据（yuanlei 域）。"""
+
+    __tablename__ = "project_dashboards"
+    __table_args__ = (CheckConstraint("revision > 0", name="ck_project_dashboards_revision"),)
+
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_project_dashboards_project_id"),
+        primary_key=True,
+        comment="Project ID；每个项目至多一行",
+    )
+    revision = Column(BigInteger, nullable=False, default=1, comment="页面 revision，从 1 开始")
+    content_sha256 = Column(String(64), nullable=False, comment="最近一次受控写入的页面内容 SHA-256")
+    content_size = Column(Integer, nullable=False, comment="页面字节数")
+    updated_by = Column(String(64), nullable=True, comment="最近提交者 uid")
+    updated_at = Column(DateTime, default=utc_now_naive, nullable=False, comment="最近 revision 时间")
+
+
 class CodingCredential(Base):
     """编码执行器（opencode/codex）的用户级或全局凭据（yuanlei 域）。"""
 

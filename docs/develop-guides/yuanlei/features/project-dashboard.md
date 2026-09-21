@@ -1,12 +1,14 @@
 # 项目自定义 Dashboard
 
-状态：提案中（proposed Decision 待收敛，尚未实现）
+状态：提案中（阶段 A 持久化与服务骨架已实现；页面编辑、bridge 与 E2E 待收敛）
 类型：新增能力
 主要 Owner：`docs/develop-guides/yuanlei/decisions/proposed/2026-09-21-project-dashboard.md`（实现 Owner 见该提案；页面资产当前由 `backend/package/yuxi/workspace/workdir.py` 拥有）
 
 ## 需求与失败场景
 
 每个 Project 需要由 Agent 生成和维护自己的 Dashboard 页面，把项目已有的智能体、会话、专属沙盒等事实组合成可展示界面。平台提供受控运行壳、只读数据桥和版本化的松散 JSON，项目拥有页面内容与组织方式；平台不预置项目中枢，也不替项目建蓝图、目标、任务、报告等实体。
+
+当前阶段仅提供 `project_documents` 的 HTTP 读写，以及未注册为 HTTP 路由的页面 revision/hash 对账服务。它不是用户可打开的 Dashboard：没有页面读写接口、受控 writer、Agent 工具、前端路由、iframe bridge 或首批项目数据投影。后续工作不得把现有迁移、表或 service 测试当作这些用户能力已经交付的证据。
 
 失败场景：页面文件按 last-write-wins 写入会让并发编辑静默覆盖；文件系统与 PostgreSQL 不能组成可回滚的同一事务，提交失败后旧 revision 可能被当成最新内容；iframe 里的页面若带同源身份或凭据，就能读取其他项目数据或主动访问网络；缺少首批项目数据投影会让项目页长期只显示静态内容。
 
@@ -17,7 +19,7 @@
 - 页面 revision 的元数据 Owner 是 Yuanlei `project_dashboards` 表，页面字节的事实 Owner 是 Workdir 文件。两者不一致时读接口显式暴露待修复状态，不把旧 revision 伪装成最新内容。
 - 松散项目 JSON 以 `(project_id, key)` 唯一。创建用事务 advisory lock 防重复，替换用行锁加乐观 `expected_version`；锁只在单次服务调用内有效，不是长期编辑租约。
 - Dashboard API 与 bridge source 只读取当前用户 active、selectable 的 Project，并始终在后端按 `project_id`、`uid` 和必要时的 `agent_slug` 过滤；不可见项目统一 404。
-- iframe 是无网络、无同源、无凭据的只读运行面。页面只能通过版本化 bridge 请求白名单 source 和受限内部导航，不能写平台数据。
+- iframe 是无网络、无同源、无凭据的只读运行面。页面只能通过版本化 bridge 请求白名单 source，不能写平台数据；v0 不提供对象详情跳转。
 - 首批只读数据覆盖项目摘要、项目数字员工、项目内活动会话、按项目与 Agent 关联的专属沙盒及其受限组合，不新增 Agent、会话或沙盒业务实体。
 - Redis 不拥有页面、JSON、版本或锁的最终事实；PostgreSQL 的版本与冲突结果是唯一事实。
 
@@ -34,7 +36,7 @@ Yuxi 继续拥有 Project、Conversation、Agent、AgentSandbox 生命周期、W
 | 页面 revision | 新增 `project_dashboards` 表与 Dashboard service | 乐观 revision 比较、advisory lock 串行化、hash 不一致时的待修复状态 |
 | 松散 JSON | 新增 `project_documents` 表与 repository | `(project_id, key)` 唯一、行锁、单调 version 与结构化 409 |
 | 平台事实读投影 | 新增 Dashboard read service | 按 project、uid、agent_slug 过滤，裁剪内部字段，分页与响应上限 |
-| iframe 与 bridge | 前端 Dashboard frame | source 身份校验、协议版本、超时与导航白名单 |
+| iframe 与 bridge | 前端 Dashboard frame | source 身份校验、协议版本、超时与响应上限 |
 | Agent 编辑能力 | 带 `project_id` 的 Agent Run 中可用的 writer 工具 | 读取当前 revision 与数据契约；只响应明确的 Dashboard 请求，提交必须携带 `expected_revision` |
 
 ## 上游依赖

@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 8
+YUANLEI_SCHEMA_VERSION = 9
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -397,6 +397,38 @@ AGENT_RUN_SCOPE_SCHEMA_STATEMENTS = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS ix_agent_run_scopes_scope_key ON agent_run_scopes(scope_key)",
+)
+PROJECT_DOCUMENT_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS project_documents (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_project_documents_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        key VARCHAR(120) NOT NULL,
+        content JSONB NOT NULL DEFAULT '{}'::jsonb,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by VARCHAR(64),
+        updated_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_project_documents_project_key UNIQUE (project_id, key),
+        CONSTRAINT ck_project_documents_version CHECK (version > 0)
+    )
+    """,
+)
+PROJECT_DASHBOARD_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS project_dashboards (
+        project_id VARCHAR(64) PRIMARY KEY CONSTRAINT fk_project_dashboards_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        revision BIGINT NOT NULL DEFAULT 1,
+        content_sha256 VARCHAR(64) NOT NULL,
+        content_size INTEGER NOT NULL,
+        updated_by VARCHAR(64),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_project_dashboards_revision CHECK (revision > 0)
+    )
+    """,
 )
 CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     """
@@ -1024,6 +1056,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in AGENT_RUN_SCOPE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v8_to_v9(self) -> None:
+        """新增项目命名 JSON 文档与 Dashboard revision 元数据表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in (*PROJECT_DOCUMENT_SCHEMA_STATEMENTS, *PROJECT_DASHBOARD_SCHEMA_STATEMENTS):
                 await conn.execute(text(statement))
 
     async def drop_tables(self):
