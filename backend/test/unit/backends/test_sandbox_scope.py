@@ -29,7 +29,18 @@ class _RecordingClient:
         self.deleted: list[tuple[str, str | None]] = []
         self.records: dict[str, object] = {}
 
-    def create(self, sandbox_id, identity, _uid, _env, *, workdir_path, inherit_env, lifecycle=None, idle_timeout_seconds=None):
+    def create(
+        self,
+        sandbox_id,
+        identity,
+        _uid,
+        _env,
+        *,
+        workdir_path,
+        inherit_env,
+        lifecycle=None,
+        idle_timeout_seconds=None,
+    ):
         self.created.append(
             {
                 "sandbox_id": sandbox_id,
@@ -110,7 +121,12 @@ def test_provider_creates_agent_project_sandbox_with_scope_identity(monkeypatch)
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda _uid: {})
     scope = SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1")
 
-    connection = provider.get_scope(scope, create_if_missing=True, workdir_path=WORKDIR)
+    connection = provider.get_scope(
+        scope,
+        create_if_missing=True,
+        workdir_path=WORKDIR,
+        env_overrides={},
+    )
 
     assert connection is not None
     assert connection.scope_kind == "agent_project"
@@ -136,6 +152,7 @@ def test_provider_isolates_thread_and_agent_project_caches(monkeypatch):
         SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1"),
         create_if_missing=True,
         workdir_path=WORKDIR,
+        env_overrides={},
     )
 
     assert thread_connection is not None and project_connection is not None
@@ -152,6 +169,7 @@ def test_provider_rejects_agent_project_identity_mismatch_on_cached_connection(m
         SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1"),
         create_if_missing=True,
         workdir_path=WORKDIR,
+        env_overrides={},
     )
 
     # 同一缓存键只可能来自同一 scope；构造人为错配验证防御性校验。
@@ -201,6 +219,7 @@ def test_provider_forwards_lifecycle_policy_to_provisioner(monkeypatch):
         workdir_path=WORKDIR,
         lifecycle="persistent",
         idle_timeout_seconds=1800,
+        env_overrides={},
     )
 
     assert connection is not None
@@ -243,7 +262,12 @@ def test_provider_release_scope_deletes_by_scope_sandbox_id(monkeypatch):
     provider = _make_provider(client)
     monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda _uid: {})
     scope = SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1")
-    provider.get_scope(scope, create_if_missing=True, workdir_path=WORKDIR)
+    provider.get_scope(
+        scope,
+        create_if_missing=True,
+        workdir_path=WORKDIR,
+        env_overrides={},
+    )
 
     provider.release_scope(scope, workdir_path=WORKDIR)
 

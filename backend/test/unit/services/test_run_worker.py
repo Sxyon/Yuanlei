@@ -442,6 +442,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, run_obj: SimpleNamespace):
 
     monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session_ctx)
     monkeypatch.setattr(run_worker, "_get_run", fake_get_run)
+    monkeypatch.setattr(run_worker, "_run_scope_key", AsyncMock(return_value=run_obj.runtime_scope_id))
     monkeypatch.setattr(run_worker, "_load_user", fake_load_user)
     monkeypatch.setattr(run_worker, "_load_input_message", fake_load_input_message)
     monkeypatch.setattr(run_worker, "get_agent_state_view", fake_get_agent_state_view)
@@ -1561,6 +1562,10 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
     async def fake_claim_and_dispatch_due_jobs():
         calls.append("claim_and_dispatch_due_jobs")
 
+    async def fake_reconcile_coding_turns():
+        calls.append("reconcile_coding_turns")
+        return {"republished": 0, "failed": 0}
+
     monkeypatch.setattr(run_worker.pg_manager, "initialize", fake_initialize)
     monkeypatch.setattr(run_worker.pg_manager, "require_current_schema", fake_require_current_schema)
     monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session_ctx)
@@ -1587,6 +1592,7 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
     monkeypatch.setattr(run_worker, "_reconcile_durable_tasks_forever", fake_task_reconciliation_loop)
     monkeypatch.setattr(run_worker, "recover_scheduled_dispatches", fake_recover_scheduled_dispatches)
     monkeypatch.setattr(run_worker, "claim_and_dispatch_due_jobs", fake_claim_and_dispatch_due_jobs)
+    monkeypatch.setattr(run_worker, "reconcile_coding_turns", fake_reconcile_coding_turns)
     options_module = importlib.import_module("yuxi.config.options")
     monkeypatch.setattr(options_module, "ensure_options_in_db", fake_ensure_options_in_db)
 
@@ -1610,6 +1616,7 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "publish_task_reconciliation_health",
         "recover_scheduled_dispatches",
         "claim_and_dispatch_due_jobs",
+        "reconcile_coding_turns",
         "publish_reconciliation_health",
         "reconciliation_loop",
         "task_reconciliation_loop",
@@ -1780,6 +1787,89 @@ async def test_manifest_persist_failure_fails_run_before_execution(monkeypatch: 
     assert terminal_calls[0]["status"] == "failed"
     assert terminal_calls[0]["error_type"] == "manifest_persist_failed"
     assert "执行未开始" in terminal_calls[0]["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_dedicated_runtime_is_ensured_only_after_sandbox_lease(monkeypatch):
+    """凭据变化可能触发重建；runtime ensure 必须位于沙盒执行租约之后。"""
+    run = _build_run()
+    _patch_common(monkeypatch, run)
+    from dataclasses import replace
+
+    from test.unit.agent_context_fixtures import prepared_execution
+
+    order: list[str] = []
+    prepared = prepared_execution(runtime_scope_id="agent-project:user-1:agent-1:project-1")
+    monkeypatch.setattr(
+        run_worker,
+        "prepare_and_record_run_execution",
+        AsyncMock(return_value=replace(prepared, sandbox_runtime=SimpleNamespace())),
+    )
+
+    async def acquire(**_kwargs):
+        order.append("lease")
+
+    async def ensure(_db, _prepared):
+        order.append("runtime")
+
+    class ActiveLease:
+        async def owns_active(self, **_kwargs):
+            return True
+
+    def stream(**_kwargs):
+        order.append("execute")
+        return _BytesAsyncIter([b'{"status":"finished","request_id":"req-1","thread_id":"thread-1"}\n'])
+
+    monkeypatch.setattr(run_worker, "acquire_sandbox_lease_for_run", acquire)
+    monkeypatch.setattr(run_worker, "SandboxLeaseService", ActiveLease)
+    monkeypatch.setattr(run_worker, "ensure_prepared_sandbox_runtime", ensure)
+    monkeypatch.setattr(run_worker, "stream_agent_chat", stream)
+    monkeypatch.setattr(
+        run_worker,
+        "mark_run_terminal",
+        AsyncMock(return_value=run_worker.TerminalTransition(status="completed", changed=True)),
+    )
+
+    await run_worker.process_agent_run({"job_try": 1}, run.id)
+
+    assert order == ["lease", "runtime", "execute"]
+
+
+@pytest.mark.asyncio
+async def test_dedicated_runtime_prepare_failure_releases_sandbox_lease(monkeypatch):
+    run = _build_run()
+    _patch_common(monkeypatch, run)
+    from dataclasses import replace
+
+    from test.unit.agent_context_fixtures import prepared_execution
+
+    prepared = prepared_execution(runtime_scope_id="agent-project:user-1:agent-1:project-1")
+    monkeypatch.setattr(
+        run_worker,
+        "prepare_and_record_run_execution",
+        AsyncMock(return_value=replace(prepared, sandbox_runtime=SimpleNamespace())),
+    )
+    monkeypatch.setattr(run_worker, "acquire_sandbox_lease_for_run", AsyncMock())
+    monkeypatch.setattr(
+        run_worker,
+        "ensure_prepared_sandbox_runtime",
+        AsyncMock(side_effect=RuntimeError("provision failed")),
+    )
+    release = AsyncMock(return_value=True)
+    terminal = AsyncMock(return_value=run_worker.TerminalTransition(status="failed", changed=True))
+    monkeypatch.setattr(run_worker, "release_sandbox_lease_for_run", release)
+    monkeypatch.setattr(run_worker, "mark_run_terminal", terminal)
+    monkeypatch.setattr(
+        run_worker,
+        "stream_agent_chat",
+        lambda **_kwargs: pytest.fail("runtime 准备失败后不得执行 Agent"),
+    )
+
+    await run_worker.process_agent_run({"job_try": 1}, run.id)
+
+    release.assert_awaited_once()
+    assert release.call_args.kwargs["owner_id"] == run.id
+    assert terminal.call_args.kwargs["error_type"] == "sandbox_prepare_failed"
 
 
 def test_retry_requires_new_manifest_fingerprint_to_match_write_once_fact():

@@ -27,6 +27,7 @@ from yuxi.services.agent_request_queue_service import (
 from yuxi.services.agent_run_manifest_service import (
     PreparedRunExecution,
     compute_manifest_fingerprint,
+    ensure_prepared_sandbox_runtime,
     prepare_run_execution,
 )
 from yuxi.services.chat_service import get_agent_state_view, stream_agent_chat, stream_agent_resume
@@ -63,12 +64,13 @@ from yuxi.services.sandbox_lifecycle_supervisor_service import (
 from yuxi.services.run_scope_service import list_scope_run_ids, resolve_run_scope_key
 from yuxi.services.sandbox_lease_service import (
     SandboxBusyError,
+    SandboxLeaseService,
     acquire_sandbox_lease_for_run,
     release_sandbox_lease_for_run,
     renew_sandbox_lease_for_run,
     sandbox_scope_from_key,
 )
-from yuxi.services.coding_execution_service import run_coding_turn_job
+from yuxi.services.coding_execution_service import reconcile_coding_turns, run_coding_turn_job
 from yuxi.services.task_queue_service import (
     TASK_RECONCILIATION_HEALTH_KEY,
     TASK_RECONCILIATION_HEALTH_TTL_SECONDS,
@@ -101,6 +103,7 @@ WORKER_ID = f"worker-{uuid.uuid4().hex}"
 _RECONCILIATION_TASK_KEY = "agent_run_reconciliation_task"
 _TASK_RECONCILIATION_TASK_KEY = "durable_task_reconciliation_task"
 _SANDBOX_LIFECYCLE_TASK_KEY = "sandbox_lifecycle_task"
+_CODING_TURN_RECONCILIATION_TASK_KEY = "coding_turn_reconciliation_task"
 
 
 def worker_max_jobs() -> int:
@@ -267,9 +270,7 @@ class RunContext:
                         scope=self.sandbox_scope,
                         owner_id=self.run_id,
                     )
-                if (not renewed or not sandbox_renewed) and await _run_attempt_finished(
-                    self.run_id, self.worker_id
-                ):
+                if (not renewed or not sandbox_renewed) and await _run_attempt_finished(self.run_id, self.worker_id):
                     # 终态事务已清除 lease；本 attempt 仍需完成流收尾、清理和事件发布。
                     return
                 renewed = renewed and sandbox_renewed
@@ -360,9 +361,7 @@ async def _release_runtime_if_idle(run: AgentRun) -> bool:
             raise RuntimeError(f"Run {run.id} 的 runtime cleanup 身份不一致")
         if not current.runtime_cleanup_pending:
             return True
-        sandbox_row = await db.scalar(
-            select(AgentSandbox).where(AgentSandbox.scope_key == runtime_scope_id)
-        )
+        sandbox_row = await db.scalar(select(AgentSandbox).where(AgentSandbox.scope_key == runtime_scope_id))
         if sandbox_row is not None and sandbox_row.lifecycle in {"persistent", "resident"}:
             # 专属长驻沙盒的 runtime 归生命周期 supervisor 管理，Run 终态只清 fence。
             current.runtime_cleanup_pending = False
@@ -1097,24 +1096,6 @@ async def process_agent_run(ctx, run_id: str):
             return
 
         await run_ctx.start()
-        sandbox_scope = sandbox_scope_from_key(await _run_scope_key(run))
-        if sandbox_scope is not None:
-            try:
-                await acquire_sandbox_lease_for_run(
-                    run=run,
-                    scope=sandbox_scope,
-                    project_id=workdir_binding.project_id,
-                )
-            except SandboxBusyError as exc:
-                await mark_run_terminal(
-                    run_id,
-                    "failed",
-                    "sandbox_busy",
-                    str(exc),
-                    worker_id=worker_id,
-                )
-                return
-            run_ctx.sandbox_scope = sandbox_scope
         try:
             git_repositories = await prepare_selected_project_git_worktrees(
                 uid=str(uid),
@@ -1192,6 +1173,60 @@ async def process_agent_run(ctx, run_id: str):
         # 固化期间用户可能已取消；复查一次，把取消竞态窗口恢复到执行开始前的水平。
         if await _is_cancel_requested(run_id):
             raise asyncio.CancelledError(f"run {run_id} cancelled after manifest recorded")
+
+        # 专属 Sandbox 由运行清单准备路径按生效项目配置创建，随后才存在可租赁的绑定。
+        sandbox_scope = sandbox_scope_from_key(prepared_execution.context.runtime_scope_id)
+        if sandbox_scope is not None:
+            try:
+                await acquire_sandbox_lease_for_run(
+                    run=run,
+                    scope=sandbox_scope,
+                    project_id=workdir_binding.project_id,
+                )
+            except SandboxBusyError as exc:
+                await mark_run_terminal(
+                    run_id,
+                    "failed",
+                    "sandbox_busy",
+                    str(exc),
+                    worker_id=worker_id,
+                )
+                return
+            run_ctx.sandbox_scope = sandbox_scope
+
+        try:
+            async with pg_manager.get_async_session_context() as db:
+                await ensure_prepared_sandbox_runtime(db, prepared_execution)
+                # lifecycle 准备会锁定沙盒行；先提交释放锁，再 fencing 后进入执行。
+                await db.commit()
+            if sandbox_scope is not None and not await SandboxLeaseService().owns_active(
+                uid=sandbox_scope.uid,
+                agent_slug=sandbox_scope.agent_slug or "",
+                project_id=sandbox_scope.project_id or "",
+                owner_id=str(run.id),
+            ):
+                raise RuntimeError("sandbox lease expired during runtime preparation")
+        except Exception as sandbox_error:
+            logger.error(f"Failed to prepare dedicated sandbox: run={run_id}", exc_info=True)
+            if sandbox_scope is not None:
+                try:
+                    await release_sandbox_lease_for_run(
+                        scope=sandbox_scope, owner_id=str(run.id)
+                    )
+                except Exception:
+                    logger.error(
+                        f"Failed to release sandbox lease after prepare error: run={run_id}",
+                        exc_info=True,
+                    )
+                run_ctx.sandbox_scope = None
+            await mark_run_terminal(
+                run_id,
+                "failed",
+                error_type="sandbox_prepare_failed",
+                error_message=f"专属沙盒准备失败：{sandbox_error}",
+                worker_id=worker_id,
+            )
+            return
 
         context = prepared_execution.context
         meta = {
@@ -1707,9 +1742,7 @@ async def _reconcile_durable_tasks_forever() -> None:
 async def process_coding_turn(ctx, session_id: str, turn_id: str, plan_only: bool = False) -> dict:
     """ARQ 任务：后台执行编码会话已入队的 turn。"""
     _ = ctx
-    return await run_coding_turn_job(
-        session_id=str(session_id), turn_id=str(turn_id), plan_only=bool(plan_only)
-    )
+    return await run_coding_turn_job(session_id=str(session_id), turn_id=str(turn_id), plan_only=bool(plan_only))
 
 
 async def _reconcile_sandbox_lifecycle_forever() -> None:
@@ -1724,6 +1757,20 @@ async def _reconcile_sandbox_lifecycle_forever() -> None:
             raise
         except Exception:
             logger.opt(exception=True).error("Failed to reconcile sandbox lifecycle")
+
+
+async def _reconcile_coding_turns_forever() -> None:
+    """周期补投 pending 编码 turn，并终结失联 running turn。"""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            counts = await reconcile_coding_turns()
+            if counts["republished"] or counts["failed"]:
+                logger.warning("Reconciled coding turns: {}", counts)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.opt(exception=True).error("Failed to reconcile coding turns")
 
 
 async def _publish_task_reconciliation_health() -> None:
@@ -1785,6 +1832,7 @@ async def _worker_startup(ctx):
     await _publish_task_reconciliation_health()
     await recover_scheduled_dispatches()
     await claim_and_dispatch_due_jobs()
+    await reconcile_coding_turns()
     await _publish_reconciliation_health()
     try:
         await run_sandbox_lifecycle_tick()
@@ -1793,6 +1841,7 @@ async def _worker_startup(ctx):
     ctx[_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_agent_run_leases_forever())
     ctx[_TASK_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_durable_tasks_forever())
     ctx[_SANDBOX_LIFECYCLE_TASK_KEY] = asyncio.create_task(_reconcile_sandbox_lifecycle_forever())
+    ctx[_CODING_TURN_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_coding_turns_forever())
 
 
 async def _worker_shutdown(ctx):
@@ -1803,6 +1852,7 @@ async def _worker_shutdown(ctx):
             ctx.pop(_RECONCILIATION_TASK_KEY, None),
             ctx.pop(_TASK_RECONCILIATION_TASK_KEY, None),
             ctx.pop(_SANDBOX_LIFECYCLE_TASK_KEY, None),
+            ctx.pop(_CODING_TURN_RECONCILIATION_TASK_KEY, None),
         ]
         reconciliation_tasks = [task for task in reconciliation_tasks if task is not None]
         for task in reconciliation_tasks:

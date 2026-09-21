@@ -17,6 +17,7 @@ from yuxi.services.coding_execution_service import (
     CodingBudgetExceededError,
     CodingExecutionService,
     CodingScopeUnsupportedError,
+    coding_agent_config_snapshot,
 )
 from yuxi.services.coding_session_service import CodingSessionStateError
 from yuxi.storage.postgres.models_business import Base
@@ -66,9 +67,7 @@ class _FakeProvider:
             return self.connections[scope.cache_key]
         if not create_if_missing:
             return None
-        self.create_calls.append(
-            {"workdir_path": workdir_path, "env_overrides": env_overrides, "lifecycle": lifecycle}
-        )
+        self.create_calls.append({"workdir_path": workdir_path, "env_overrides": env_overrides, "lifecycle": lifecycle})
         connection = SimpleNamespace(
             cache_key=scope.cache_key,
             sandbox_id=scope.sandbox_id,
@@ -120,9 +119,7 @@ async def _seed_credential(session):
     await CodingCredentialService(session).upsert(
         scope="user",
         uid="user-1",
-        payload=CodingCredentialWrite(
-            executor="opencode", provider="sf", api_key="sk-secret"
-        ),
+        payload=CodingCredentialWrite(executor="opencode", provider="sf", api_key="sk-secret"),
         actor="user-1",
     )
 
@@ -153,6 +150,8 @@ async def test_start_plan_turn_persists_session_turn_and_events(session):
         task="实现登录接口",
         plan_only=True,
         agent_config=AGENT_CONFIG,
+        conversation_id=7,
+        parent_run_id="run-7",
     )
 
     assert outcome.status == "idle"
@@ -167,6 +166,74 @@ async def test_start_plan_turn_persists_session_turn_and_events(session):
     assert "turn_started" in kinds
     assert "output_delta" in kinds
     assert "turn_finished" in kinds
+    assert status["session"]["conversation_id"] == 7
+    stored = await service.sessions.repo.get(outcome.session_id)
+    assert stored.parent_run_id == "run-7"
+
+
+async def test_continuation_rejects_another_conversation(session):
+    await _seed_credential(session)
+    service = _service(session, _FakeBackend(OPENCODE_OUTPUT), _FakeProvider())
+    first = await service.run_turn(
+        executor="opencode",
+        task="计划",
+        agent_config=AGENT_CONFIG,
+        conversation_id=7,
+        parent_run_id="run-7",
+    )
+
+    with pytest.raises(CodingSessionStateError, match="another conversation"):
+        await service.run_turn(
+            executor="opencode",
+            task="越权续轮",
+            session_id=first.session_id,
+            agent_config=AGENT_CONFIG,
+            conversation_id=8,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("project_id", "project-2", "another project"),
+        ("runtime_scope_id", "agent-project:user-1:coder:project-2", "another runtime scope"),
+        ("workdir_path", "projects/other", "another workdir"),
+    ],
+)
+async def test_continuation_rejects_changed_execution_scope(session, field, value, message):
+    await _seed_credential(session)
+    service = _service(session, _FakeBackend(OPENCODE_OUTPUT), _FakeProvider())
+    first = await service.run_turn(
+        executor="opencode",
+        task="计划",
+        agent_config=AGENT_CONFIG,
+        conversation_id=7,
+    )
+    stored = await service.sessions.repo.get(first.session_id)
+    setattr(stored, field, value)
+    await session.flush()
+
+    with pytest.raises(CodingSessionStateError, match=message):
+        service.validate_session_scope(stored, conversation_id=7)
+
+
+async def test_config_snapshot_merges_project_effective_blocks_and_marks_frozen():
+    snapshot = coding_agent_config_snapshot(
+        {
+            "sandbox": {"mode": "shared", "lifecycle": "ephemeral"},
+            "coding": {"executors": ["opencode"], "default_executor": "opencode"},
+        },
+        {
+            "sandbox": {"mode": "dedicated", "lifecycle": "persistent"},
+            "coding": {"executors": ["codex"], "default_executor": "codex"},
+        },
+    )
+
+    assert snapshot == {
+        "_coding_effective_snapshot": True,
+        "sandbox": {"mode": "dedicated", "lifecycle": "persistent"},
+        "coding": {"executors": ["codex"], "default_executor": "codex"},
+    }
 
 
 async def test_send_continues_native_session(session):
@@ -174,9 +241,7 @@ async def test_send_continues_native_session(session):
     provider = _FakeProvider()
     backend = _FakeBackend(OPENCODE_OUTPUT)
     service = _service(session, backend, provider)
-    first = await service.run_turn(
-        executor="opencode", task="计划", plan_only=True, agent_config=AGENT_CONFIG
-    )
+    first = await service.run_turn(executor="opencode", task="计划", plan_only=True, agent_config=AGENT_CONFIG)
 
     second = await service.run_turn(
         executor="opencode",
@@ -199,9 +264,7 @@ async def test_executor_error_fails_session_explicitly(session):
     backend = _FakeBackend(FAILED_OUTPUT)
     service = _service(session, backend, provider)
 
-    outcome = await service.run_turn(
-        executor="opencode", task="会失败", plan_only=False, agent_config=AGENT_CONFIG
-    )
+    outcome = await service.run_turn(executor="opencode", task="会失败", plan_only=False, agent_config=AGENT_CONFIG)
 
     assert outcome.status == "failed"
     assert outcome.error_code == "executor_error"
@@ -226,9 +289,7 @@ async def test_cancel_session_is_idempotent_guarded(session):
     await _seed_credential(session)
     provider = _FakeProvider()
     service = _service(session, _FakeBackend(OPENCODE_OUTPUT), provider)
-    created = await service.run_turn(
-        executor="opencode", task="取消我", plan_only=True, agent_config=AGENT_CONFIG
-    )
+    created = await service.run_turn(executor="opencode", task="取消我", plan_only=True, agent_config=AGENT_CONFIG)
 
     cancelled = await service.cancel(created.session_id)
 
@@ -243,9 +304,7 @@ async def test_turn_command_persists_cli_state_under_workdir(session):
     backend = _FakeBackend(OPENCODE_OUTPUT)
     service = _service(session, backend, provider)
 
-    await service.run_turn(
-        executor="opencode", task="持久化状态", plan_only=True, agent_config=AGENT_CONFIG
-    )
+    await service.run_turn(executor="opencode", task="持久化状态", plan_only=True, agent_config=AGENT_CONFIG)
 
     command = backend.commands[0]
     assert "XDG_DATA_HOME=" in command
@@ -258,9 +317,7 @@ async def test_resume_degraded_when_cli_state_missing(session):
     provider = _FakeProvider()
     backend = _FakeBackend(OPENCODE_OUTPUT, state_present=False)
     service = _service(session, backend, provider)
-    first = await service.run_turn(
-        executor="opencode", task="第一轮", plan_only=True, agent_config=AGENT_CONFIG
-    )
+    first = await service.run_turn(executor="opencode", task="第一轮", plan_only=True, agent_config=AGENT_CONFIG)
     assert first.cli_session_ref == "ses_1"
 
     second = await service.run_turn(

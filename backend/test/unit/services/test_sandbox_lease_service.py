@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -113,9 +115,7 @@ async def test_heartbeat_renews_only_for_owner(session):
     await _acquire(session, owner_id="run-1")
     service = SandboxLeaseService(db=session)
 
-    other = await service.heartbeat(
-        uid="user-1", agent_slug="coder", project_id="project-1", owner_id="run-2", now=NOW
-    )
+    other = await service.heartbeat(uid="user-1", agent_slug="coder", project_id="project-1", owner_id="run-2", now=NOW)
     renewed = await service.heartbeat(
         uid="user-1",
         agent_slug="coder",
@@ -123,9 +123,7 @@ async def test_heartbeat_renews_only_for_owner(session):
         owner_id="run-1",
         now=NOW + timedelta(seconds=30),
     )
-    row = await AgentSandboxRepository(session).get_for_update(
-        uid="user-1", agent_slug="coder", project_id="project-1"
-    )
+    row = await AgentSandboxRepository(session).get_for_update(uid="user-1", agent_slug="coder", project_id="project-1")
 
     assert other is False
     assert renewed is True
@@ -133,20 +131,53 @@ async def test_heartbeat_renews_only_for_owner(session):
     assert row.lease_heartbeat_at == NOW + timedelta(seconds=30)
 
 
+async def test_expired_owner_cannot_heartbeat_or_pass_fencing(session):
+    await _add_sandbox(session)
+    await _acquire(session, owner_id="run-1")
+    service = SandboxLeaseService(db=session)
+
+    renewed = await service.heartbeat(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        owner_id="run-1",
+        now=NOW + timedelta(seconds=121),
+    )
+    active = await service.owns_active(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        owner_id="run-1",
+        now=NOW + timedelta(seconds=121),
+    )
+
+    assert renewed is False
+    assert active is False
+
+
+async def test_current_owner_passes_fencing(session):
+    await _add_sandbox(session)
+    await _acquire(session, owner_id="run-1")
+
+    active = await SandboxLeaseService(db=session).owns_active(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        owner_id="run-1",
+        now=NOW + timedelta(seconds=30),
+    )
+
+    assert active is True
+
+
 async def test_release_clears_only_owner_lease(session):
     await _add_sandbox(session)
     await _acquire(session, owner_id="run-1")
     service = SandboxLeaseService(db=session)
 
-    stolen = await service.release(
-        uid="user-1", agent_slug="coder", project_id="project-1", owner_id="run-2"
-    )
-    released = await service.release(
-        uid="user-1", agent_slug="coder", project_id="project-1", owner_id="run-1"
-    )
-    row = await AgentSandboxRepository(session).get_for_update(
-        uid="user-1", agent_slug="coder", project_id="project-1"
-    )
+    stolen = await service.release(uid="user-1", agent_slug="coder", project_id="project-1", owner_id="run-2")
+    released = await service.release(uid="user-1", agent_slug="coder", project_id="project-1", owner_id="run-1")
+    row = await AgentSandboxRepository(session).get_for_update(uid="user-1", agent_slug="coder", project_id="project-1")
 
     assert stolen is False
     assert released is True
@@ -156,19 +187,86 @@ async def test_release_clears_only_owner_lease(session):
     assert [event.kind for event in events] == ["lease_acquired", "lease_released"]
 
 
+async def test_duplicate_coding_attempt_cannot_reenter_or_release_active_owner(session):
+    """同一 turn 的不同 attempt 必须被当作不同 owner 做 fencing。"""
+    await _add_sandbox(session)
+    service = SandboxLeaseService(db=session)
+    first_owner = "coding-turn:abc:first"
+    duplicate_owner = "coding-turn:abc:duplicate"
+    await service.acquire(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        owner_kind="coding_session",
+        owner_id=first_owner,
+        wait_timeout_seconds=0,
+        now=NOW,
+    )
+
+    with pytest.raises(SandboxBusyError):
+        await service.acquire(
+            uid="user-1",
+            agent_slug="coder",
+            project_id="project-1",
+            owner_kind="coding_session",
+            owner_id=duplicate_owner,
+            wait_timeout_seconds=0,
+            now=NOW,
+        )
+    assert not await service.release(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        owner_id=duplicate_owner,
+        now=NOW,
+    )
+    assert await service.owns_active(
+        uid="user-1",
+        agent_slug="coder",
+        project_id="project-1",
+        owner_id=first_owner,
+        now=NOW,
+    )
+
+
 async def test_reconcile_expired_clears_stale_lease_and_records_event(session):
     await _add_sandbox(session)
     await _acquire(session, owner_id="run-1")
 
-    reconciled = await SandboxLeaseService(db=session).reconcile_expired(
-        now=NOW + timedelta(seconds=121)
-    )
-    row = await AgentSandboxRepository(session).get_for_update(
-        uid="user-1", agent_slug="coder", project_id="project-1"
-    )
+    reconciled = await SandboxLeaseService(db=session).reconcile_expired(now=NOW + timedelta(seconds=121))
+    row = await AgentSandboxRepository(session).get_for_update(uid="user-1", agent_slug="coder", project_id="project-1")
 
     assert reconciled == 1
     assert row.lease_owner_id is None
     events = await _events(session)
     assert [event.kind for event in events] == ["lease_acquired", "lease_expired"]
     assert events[1].payload_json == {"owner_kind": "run", "owner_id": "run-1"}
+
+
+async def test_reconcile_expired_rechecks_locked_row_and_preserves_new_owner():
+    """候选扫描后被新 attempt 续租的行，锁后重检必须保留。"""
+
+    class CandidateResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return ["sandbox-row-1"]
+
+    renewed = SimpleNamespace(
+        id="sandbox-row-1",
+        lease_owner_kind="coding_session",
+        lease_owner_id="coding-turn:abc:new-attempt",
+        lease_expires_at=NOW + timedelta(seconds=120),
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(return_value=CandidateResult()),
+        scalar=AsyncMock(return_value=renewed),
+        flush=AsyncMock(),
+    )
+
+    reconciled = await SandboxLeaseService(db=db).reconcile_expired(now=NOW)
+
+    assert reconciled == 0
+    assert renewed.lease_owner_id == "coding-turn:abc:new-attempt"
+    db.scalar.assert_awaited_once()

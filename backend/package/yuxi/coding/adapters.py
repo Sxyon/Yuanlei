@@ -176,14 +176,27 @@ class CodexAdapter:
 
     def build_command(self, request: CodingTurnRequest) -> str:
         if request.session_ref:
-            parts = ["codex", "exec", "resume", request.session_ref]
+            # codex 0.139 的 resume 子命令只沿用原线程配置；首轮的 sandbox/model
+            # 参数再次传入会被 resume parser 拒绝。
+            parts = [
+                "codex",
+                "exec",
+                "resume",
+                request.session_ref,
+                "--json",
+                "--skip-git-repo-check",
+            ]
         else:
-            parts = ["codex", "exec"]
-        parts.append("--json")
-        parts.append("--skip-git-repo-check")
-        parts += ["-s", "read-only" if request.plan_only else "workspace-write"]
-        if request.model:
-            parts += ["-m", request.model]
+            parts = [
+                "codex",
+                "exec",
+                "--json",
+                "--skip-git-repo-check",
+                "-s",
+                "read-only" if request.plan_only else "workspace-write",
+            ]
+            if request.model:
+                parts += ["-m", request.model]
         parts.append(request.prompt)
         command = " ".join(shlex.quote(part) for part in parts)
         return _with_workdir(_apply_turn_wrapper(command, request), request.workdir)

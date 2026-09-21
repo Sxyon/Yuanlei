@@ -75,6 +75,9 @@ async def _run_tick(db: AsyncSession, provider, timestamp: datetime) -> dict[str
         counts["checked"] += 1
         if row.status != "active":
             continue
+        if row.lease_owner_id is not None and row.lease_expires_at is not None and row.lease_expires_at > timestamp:
+            # 活跃执行 owner 优先于 idle 策略；supervisor 不得删除其 runtime。
+            continue
         try:
             record = inventory.get(row.sandbox_id)
             if record is None:

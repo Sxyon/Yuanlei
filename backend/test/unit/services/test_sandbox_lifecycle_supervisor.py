@@ -183,6 +183,25 @@ async def test_tick_reclaims_expired_leases(session):
     assert row.lease_expires_at is None
 
 
+async def test_tick_does_not_suspend_sandbox_with_active_lease(session):
+    await _add_project(session)
+    row = await _add_sandbox(session)
+    row.generation = "gen-1"
+    row.last_activity_at = NOW - timedelta(days=7)
+    row.last_keepalive_at = NOW - timedelta(days=7)
+    row.lease_owner_kind = "coding_session"
+    row.lease_owner_id = "coding-turn:turn-1"
+    row.lease_expires_at = NOW + timedelta(seconds=60)
+    await session.flush()
+    provider = _FakeProvider([_record("gen-1")])
+
+    counts = await run_sandbox_lifecycle_tick(db=session, provider=provider, now=NOW)
+
+    assert counts["suspended"] == 0
+    assert row.status == "active"
+    assert provider.released == []
+
+
 async def test_tick_records_external_generation_change(session):
     await _add_project(session)
     row = await _add_sandbox(session)

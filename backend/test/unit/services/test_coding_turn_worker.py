@@ -15,6 +15,10 @@ from yuxi.services.coding_credential_service import (
     CodingCredentialWrite,
 )
 from yuxi.services.coding_execution_service import (
+    _heartbeat_coding_turn_lease,
+    _new_coding_turn_owner_id,
+    coding_turn_owner_prefix,
+    reconcile_coding_turns,
     run_coding_turn_job,
     wait_for_latest_turn,
 )
@@ -59,15 +63,44 @@ class _FakeProvider:
 
 
 class _FakeBackend:
-    def __init__(self, output: str, *, state_present: bool = True):
+    def __init__(self, output: str, *, state_present: bool = True, on_execute=None):
         self.output = output
         self.state_present = state_present
+        self.on_execute = on_execute
+        self.commands: list[str] = []
 
     def execute(self, command: str, timeout: int | None = None):
+        self.commands.append(command)
         if command.startswith("test -d"):
             output = "__PRESENT__" if self.state_present else ""
             return SimpleNamespace(output=output, exit_code=0, truncated=False)
+        if self.on_execute is not None:
+            self.on_execute()
         return SimpleNamespace(output=self.output, exit_code=0, truncated=False)
+
+
+class _FakeLeaseService:
+    def __init__(self, *, active: bool = True):
+        self.active = active
+        self.acquired = False
+        self.released = False
+
+    async def acquire(self, **_kwargs):
+        self.acquired = True
+        return SimpleNamespace()
+
+    async def heartbeat(self, **_kwargs):
+        return self.active
+
+    async def owns_active(self, **_kwargs):
+        return self.active
+
+    async def owns_active_prefix(self, **_kwargs):
+        return self.active
+
+    async def release(self, **_kwargs):
+        self.released = True
+        return True
 
 
 @pytest_asyncio.fixture()
@@ -90,6 +123,42 @@ def _factory_for(session):
     return factory
 
 
+async def test_duplicate_job_attempts_use_distinct_fencing_owners():
+    """重复投递必须使用不同 owner，后到任务不能重入或释放先到任务的租约。"""
+    turn_id = "turn-1"
+    first = _new_coding_turn_owner_id(turn_id)
+    duplicate = _new_coding_turn_owner_id(turn_id)
+
+    assert first != duplicate
+    assert first.startswith(coding_turn_owner_prefix(turn_id))
+    assert duplicate.startswith(coding_turn_owner_prefix(turn_id))
+    assert len(first) <= 64
+
+
+async def test_heartbeat_exception_marks_attempt_ownership_lost(monkeypatch):
+    """心跳存储异常必须 fail-closed，不能让 worker 继续提交终态。"""
+
+    class FailingLease:
+        async def heartbeat(self, **_kwargs):
+            raise RuntimeError("database unavailable")
+
+    async def immediate_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(execution_module.asyncio, "sleep", immediate_sleep)
+    lost = execution_module.asyncio.Event()
+    scope = SimpleNamespace(uid="user-1", agent_slug="coder", project_id="project-1")
+
+    await _heartbeat_coding_turn_lease(
+        lease=FailingLease(),
+        scope=scope,
+        owner_id="coding-turn:abc:attempt",
+        lost=lost,
+    )
+
+    assert lost.is_set()
+
+
 async def _seed_pending_turn(session, *, plan_only=True):
     await CodingCredentialService(session).upsert(
         scope="user",
@@ -105,8 +174,13 @@ async def _seed_pending_turn(session, *, plan_only=True):
         executor="opencode",
         workdir_path=WORKDIR,
         parent_run_id="run-1",
+        policy={"agent_config": {"sandbox": {"mode": "dedicated"}, "coding": {"executors": ["opencode"]}}},
     )
-    turn = await service.queue_turn(created, request_text="后台执行")
+    turn = await service.queue_turn(
+        created,
+        request_text="后台执行",
+        plan_only=plan_only,
+    )
     await session.commit()
     return created, turn
 
@@ -114,23 +188,85 @@ async def _seed_pending_turn(session, *, plan_only=True):
 async def test_job_executes_pending_turn(session, monkeypatch):
     monkeypatch.setattr(execution_module, "coding_cancel_requested", _async_false)
     created, turn = await _seed_pending_turn(session)
+    backend = _FakeBackend(OPENCODE_OUTPUT)
 
     result = await run_coding_turn_job(
         session_id=created.id,
         turn_id=turn.id,
-        plan_only=True,
+        plan_only=False,
         session_factory=_factory_for(session),
         provider=_FakeProvider(),
-        backend=_FakeBackend(OPENCODE_OUTPUT),
+        backend=backend,
+        lease_service=_FakeLeaseService(),
     )
 
     assert result["status"] == "idle"
     assert result["output_text"] == "PONG"
-    detail = await CodingSessionService(session).session_detail(
-        uid="user-1", session_id=created.id
-    )
+    detail = await CodingSessionService(session).session_detail(uid="user-1", session_id=created.id)
     assert detail["turns"][0]["status"] == "completed"
     assert "turn_queued" in [event["kind"] for event in detail["events"]]
+    assert any("--agent plan" in command for command in backend.commands)
+    assert "pending_turn" not in (created.policy_json or {})
+
+
+async def test_job_commits_lifecycle_row_lock_before_cli_execution(session, monkeypatch):
+    monkeypatch.setattr(execution_module, "coding_cancel_requested", _async_false)
+    created, turn = await _seed_pending_turn(session)
+
+    def assert_transaction_released():
+        assert not session.in_transaction(), "CLI 执行前仍持有准备事务"
+
+    backend = _FakeBackend(OPENCODE_OUTPUT, on_execute=assert_transaction_released)
+
+    result = await run_coding_turn_job(
+        session_id=created.id,
+        turn_id=turn.id,
+        session_factory=_factory_for(session),
+        provider=_FakeProvider(),
+        backend=backend,
+        lease_service=_FakeLeaseService(),
+    )
+
+    assert result["status"] == "idle"
+
+
+async def test_job_redacts_credential_before_persisting_events(session, monkeypatch):
+    monkeypatch.setattr(execution_module, "coding_cancel_requested", _async_false)
+    created, turn = await _seed_pending_turn(session)
+    output = "\n".join(
+        [
+            json.dumps({"type": "text", "part": {"text": "leak sk-job"}}),
+            json.dumps({"type": "step_finish", "part": {}}),
+        ]
+    )
+
+    await run_coding_turn_job(
+        session_id=created.id,
+        turn_id=turn.id,
+        session_factory=_factory_for(session),
+        provider=_FakeProvider(),
+        backend=_FakeBackend(output),
+        lease_service=_FakeLeaseService(),
+    )
+
+    detail = await CodingSessionService(session).session_detail(uid="user-1", session_id=created.id)
+    serialized = json.dumps(detail, ensure_ascii=False)
+    assert "sk-job" not in serialized
+    assert "[redacted]" in serialized
+
+
+async def test_event_redaction_recurses_into_nested_payloads():
+    payload = {
+        "outer": [
+            {"message": "token sk-nested-secret"},
+            {"details": ["safe", "sk-nested-secret"]},
+        ]
+    }
+
+    redacted = execution_module._redact_event_payload(payload, ["sk-nested-secret"])
+
+    assert json.dumps(redacted, ensure_ascii=False).count("[redacted]") == 2
+    assert "sk-nested-secret" not in json.dumps(redacted, ensure_ascii=False)
 
 
 async def test_job_skips_terminal_turn(session, monkeypatch):
@@ -143,6 +279,7 @@ async def test_job_skips_terminal_turn(session, monkeypatch):
         session_factory=_factory_for(session),
         provider=_FakeProvider(),
         backend=_FakeBackend(OPENCODE_OUTPUT),
+        lease_service=_FakeLeaseService(),
     )
     replay = await run_coding_turn_job(
         session_id=created.id,
@@ -150,6 +287,7 @@ async def test_job_skips_terminal_turn(session, monkeypatch):
         session_factory=_factory_for(session),
         provider=_FakeProvider(),
         backend=_FakeBackend(OPENCODE_OUTPUT),
+        lease_service=_FakeLeaseService(),
     )
 
     assert replay == {"status": "skipped", "reason": "completed"}
@@ -166,12 +304,11 @@ async def test_job_honors_cancel_signal(session, monkeypatch):
         session_factory=_factory_for(session),
         provider=_FakeProvider(),
         backend=_FakeBackend(OPENCODE_OUTPUT),
+        lease_service=_FakeLeaseService(),
     )
 
     assert result["status"] == "cancelled"
-    detail = await CodingSessionService(session).session_detail(
-        uid="user-1", session_id=created.id
-    )
+    detail = await CodingSessionService(session).session_detail(uid="user-1", session_id=created.id)
     assert detail["status"] == "cancelled"
     assert detail["turns"][0]["status"] == "cancelled"
 
@@ -195,6 +332,7 @@ async def test_wait_for_latest_turn_reports_terminal_and_timeout(session, monkey
         session_factory=_factory_for(session),
         provider=_FakeProvider(),
         backend=_FakeBackend(OPENCODE_OUTPUT),
+        lease_service=_FakeLeaseService(),
     )
     settled = await wait_for_latest_turn(
         uid="user-1",
@@ -205,6 +343,104 @@ async def test_wait_for_latest_turn_reports_terminal_and_timeout(session, monkey
     )
     assert settled["status"] == "idle"
     assert settled["turn"]["status"] == "completed"
+
+
+async def test_reconcile_republishes_pending_and_fails_stale_running(session):
+    created, pending = await _seed_pending_turn(session)
+    stale_session = await CodingSessionService(session).create_session(
+        uid="user-1",
+        project_id="project-1",
+        runtime_scope_id=SCOPE_KEY,
+        executor="opencode",
+        workdir_path=WORKDIR,
+    )
+    stale = await CodingSessionService(session).start_turn(stale_session, request_text="失联")
+    stale.started_at = stale.started_at.replace(year=2000)
+    await session.commit()
+    published = []
+
+    async def capture(**payload):
+        published.append(payload)
+
+    counts = await reconcile_coding_turns(
+        stale_seconds=1,
+        session_factory=_factory_for(session),
+        enqueue=capture,
+        lease_service=_FakeLeaseService(active=False),
+    )
+
+    assert counts == {"republished": 1, "failed": 1}
+    assert published == [{"session_id": created.id, "turn_id": pending.id, "plan_only": True}]
+    assert stale.status == "failed"
+    assert stale.error_code == "coding_worker_lost"
+    assert stale_session.status == "failed"
+
+
+async def test_job_prepare_failure_marks_turn_failed_immediately(session, monkeypatch):
+    monkeypatch.setattr(execution_module, "coding_cancel_requested", _async_false)
+    created, turn = await _seed_pending_turn(session)
+
+    async def fail_prepare(*_args, **_kwargs):
+        raise RuntimeError("credential unavailable")
+
+    monkeypatch.setattr(execution_module.CodingExecutionService, "prepare", fail_prepare)
+    result = await run_coding_turn_job(
+        session_id=created.id,
+        turn_id=turn.id,
+        session_factory=_factory_for(session),
+        lease_service=_FakeLeaseService(),
+    )
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "coding_prepare_failed"
+    detail = await CodingSessionService(session).session_detail(uid="user-1", session_id=created.id)
+    assert detail["status"] == "failed"
+    assert detail["turns"][0]["status"] == "failed"
+
+
+async def test_job_lost_ownership_cannot_persist_late_result(session, monkeypatch):
+    monkeypatch.setattr(execution_module, "coding_cancel_requested", _async_false)
+    created, turn = await _seed_pending_turn(session)
+    session_id = created.id
+
+    result = await run_coding_turn_job(
+        session_id=session_id,
+        turn_id=turn.id,
+        session_factory=_factory_for(session),
+        provider=_FakeProvider(),
+        backend=_FakeBackend(OPENCODE_OUTPUT),
+        lease_service=_FakeLeaseService(active=False),
+    )
+
+    assert result == {"status": "skipped", "reason": "ownership_lost"}
+    detail = await CodingSessionService(session).session_detail(uid="user-1", session_id=session_id)
+    assert detail["status"] == "running"
+    assert detail["turns"][0]["status"] == "running"
+    assert "PONG" not in json.dumps(detail, ensure_ascii=False)
+
+
+async def test_reconcile_keeps_stale_running_turn_with_active_owner(session):
+    stale_session = await CodingSessionService(session).create_session(
+        uid="user-1",
+        project_id="project-1",
+        runtime_scope_id=SCOPE_KEY,
+        executor="opencode",
+        workdir_path=WORKDIR,
+    )
+    stale = await CodingSessionService(session).start_turn(stale_session, request_text="仍在执行")
+    stale.started_at = stale.started_at.replace(year=2000)
+    await session.commit()
+
+    counts = await reconcile_coding_turns(
+        stale_seconds=1,
+        session_factory=_factory_for(session),
+        enqueue=_async_noop,
+        lease_service=_FakeLeaseService(active=True),
+    )
+
+    assert counts == {"republished": 0, "failed": 0}
+    assert stale.status == "running"
+    assert stale_session.status == "running"
 
 
 async def _async_false(*_args, **_kwargs):

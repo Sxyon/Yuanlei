@@ -1,20 +1,23 @@
 # Agent 专属沙盒与编码 CLI 协作
 
-状态：实现已接入，提案证据待补齐
+状态：核心双执行器 E2E 与异步 turn ownership 已实现；崩溃恢复真实集成与安全加固待迭代
 类型：新增业务能力
 主要 Owner：`backend/package/yuxi/agents/backends/sandbox/provider.py`
 
 ## 需求与失败场景
 
-线程级临时 Sandbox 和一次性 execute 无法支持数字员工跨对话复用受控开发环境，也不能表达 `(uid, agent, project)` 身份、生命周期策略、执行租约、终端会话与 opencode/codex 协作。直接把长期编码凭据注入 Sandbox 会暴露密钥并绕过服务端授权。
+线程级临时 Sandbox 和一次性 execute 无法支持数字员工跨对话复用受控开发环境，也不能表达 `(uid, agent, project)` 身份、生命周期策略、执行租约、终端会话与 opencode/codex 协作。第一阶段以可信开发部署中的项目专属 Sandbox 跑通 Agent 驱动的轮次级多轮协作为目标；共享 Sandbox、单轮执行中的实时 steer 和更强凭据交换不属于当前承诺。
 
 ## 必须保留的业务语义
 
 - 默认 Yuxi Agent 继续使用 ephemeral 行为；只有显式策略启用专属 Sandbox。
 - 专属 Sandbox 以 uid、Agent、Project 和 generation 形成稳定身份，任何替代入口都不能绕过 scope 校验。
 - 执行租约与生命周期状态有唯一 Owner，过期执行不能静默接管新 generation。
-- 编码凭据通过可信服务端引用和临时交换使用，不以明文进入模型、日志、持久工作区或普通环境变量。
+- 编码凭据由服务端解析并在 Sandbox 创建时通过进程环境注入 CLI；明文不得进入模型上下文、API 回显、事件、日志或持久 Workdir。短期凭据交换属于后续加固方向。
 - Sandbox 删除和回收不修改持久 Workdir 字节。
+- 编码会话绑定创建它的 Conversation 与 AgentRun；结果、事件和错误不得从相邻 Run 或会话猜测。
+- 第一阶段编码协作只运行在 `persistent` 或 `resident` 项目专属 Sandbox；普通 Agent 未启用该能力时继续使用上游线程级 ephemeral 行为。
+- Agent 通过 start、send、await、status 和 cancel 完成轮次级多轮协作。单个 turn 运行中的实时 steer 未实现，不构成当前能力。
 
 ## 与 Yuxi 的边界
 
@@ -26,8 +29,8 @@ Yuxi 继续拥有 Run、Workdir、Sandbox provider 和工具审批。元垒增�
 |---|---|---|
 | 身份、策略与租约 | Sandbox provider、sandbox lifecycle service | 校验 scope、generation 和默认 ephemeral |
 | 创建、回收与终端 | `docker/sandbox_provisioner/app.py` | 按策略回收并代理受控终端 |
-| 编码会话 | `yuxi.agents.coding` | 适配 CLI、事件和会话工具 |
-| 凭据 | coding credential service | 服务端引用、短期交换和脱敏 |
+| 编码会话 | `yuxi.coding` 与 coding services | 适配 CLI、事件和会话工具 |
+| 凭据 | coding credential service | 服务端引用、环境注入和持久事件脱敏 |
 | 持久化 | yuanlei schema migration | 专属 Sandbox、租约和会话事实 |
 
 ## 上游依赖
@@ -49,5 +52,6 @@ Yuxi 继续拥有 Run、Workdir、Sandbox provider 和工具审批。元垒增�
 
 - [Agent 专属沙盒与生命周期策略](../decisions/proposed/2026-09-18-agent-dedicated-sandbox-lifecycle.md)
 - [Agent 驱动编码 CLI 会话](../decisions/proposed/2026-09-18-agent-driven-coding-cli-sessions.md)
+- [Agent 编码协作核心链路收敛](../decisions/proposed/2026-09-20-agent-coding-core-convergence.md)
 - [编码 CLI 契约](../../../agents/coding-cli-contract.md)与[沙盒生命周期契约](../../../agents/sandbox-lifecycle-contract.md)
-- `backend/test/unit/services/test_sandbox_lifecycle_service.py` 与 integration、E2E 、`scripts/probes/` 拥有当前证据；依赖真实浏览器和账号的项目保持关联 Decision 中的 `Not run`。
+- `backend/test/e2e/test_agent_coding_collaboration_e2e.py` 已证明真实 OpenCode/Codex 两轮协作、会话归属和 Project Workdir 文件结果；unit、其他 integration/E2E 与 `scripts/probes/` 拥有其余当前证据。未验证范围以关联 Decision 的结果列为准。

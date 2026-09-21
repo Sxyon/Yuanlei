@@ -1,6 +1,8 @@
-# Agent 编码执行与专属沙盒：合并实施计划
+# Agent 编码执行与专属沙盒：M0–M10 历史实施记录
 
-版本：V0.1；状态：草稿；维护方式：随两份提案的评审结论更新，不独立发明需求
+> 本页冻结为 M0–M10 的历史实施记录，不再追加新阶段，也不作为当前完成依据。核心链路的当前范围、取舍与验收由[《Agent 编码协作核心链路收敛》](../yuanlei/decisions/proposed/2026-09-20-agent-coding-core-convergence.md)拥有。
+
+版本：V0.1；状态：历史冻结；维护方式：不再更新，当前事实以新的收敛 Decision 与源码证据为准
 
 关联提案（验收主张的唯一来源，本计划只做阶段映射）：
 
@@ -97,7 +99,7 @@ M0 契约探针与接口冻结
 - 进度（M6a，2026-09-18）：只读会话 API 落地——`GET /api/coding/sessions`（按用户/Conversation 列表）与 `GET /api/coding/sessions/{id}?after_seq=&event_limit=`（详情 + turn 时间线 + 增量事件回放，越权 404）；内置 `coding-executor` Skill（工具依赖 + 执行器选择与分轮推进流程）随内置 Skills 同步发布。
 - 进度（M6b-1，2026-09-18）：执行器设置落地——`resolve_settings` 合并 Agent `coding` 与项目覆盖，支持 `default_executor`（不在白名单自动回落 None）；`coding_session_start` 的 executor 可选，缺省用项目默认，不可用即显式失败；前端新增 `coding_session_api` 并在会话工具卡内按需拉取 turn 列表（消费 M6a 只读 API）。程序化通道预验证：真实沙盒内 `opencode serve` 经 provisioner 代理（`x-aio-proxy-port`）返回 200，SSE `/event` 流式可达（首事件 `server.connected`）。
 - 进度（M6b-2a，2026-09-18）：新增 `GET /api/coding/sessions/{id}/events/stream` SSE 尾随流（轮询持久事件、keep-alive、终态且追平后 `coding_end` 收尾，支持 `after_seq` 断线续读；生成器支持注入 session factory 便于测试）；前端会话卡在非终态时按 2s 轮询刷新 turn 列表（终态/卸载停止）。
-- 进度（M6b-3，2026-09-18）：异步 turn 与 supervisor 落地——`coding_session_start/send` 新增 `wait=false`：准备环境后创建 `pending` turn 入队并立即返回（要求 persistent/resident 专属沙盒，否则显式失败）；worker 新增 ARQ 任务 `process_coding_turn`（幂等跳过已终态/缺失 turn，执行前检查 Redis 取消信号，执行后若收到取消则 turn/会话落 `cancelled`）；`coding_session_await(session_id, timeout_seconds)` 轮询至最新 turn 终态或 `wait_timed_out`；`coding_session_control(cancel)` 对 running 会话发布 `coding:cancel:{session_id}` 信号；执行尾部抽取为共用 `_execute_turn_tail`（同步/异步同一路径）。设计约束已落实：异步 turn 不重复申请沙盒执行租约（串行由同 scope 的 Run 租约 + 单 active turn 保证），避免 await 与 supervisor 的租约死锁；mid-turn 进程级 kill 与 steer 仍待 SDK shell session 支持。
+- 进度（M6b-3，2026-09-18；2026-09-21 修正 ownership）：`coding_session_start/send` 新增 `wait=false`：准备环境后创建 `pending` turn 入队并立即返回（要求 persistent/resident 专属沙盒，否则显式失败）；worker 新增 ARQ 任务 `process_coding_turn`（幂等跳过已终态/缺失 turn，执行前检查 Redis 取消信号，执行后若收到取消则 turn/会话落 `cancelled`）；`coding_session_await(session_id, timeout_seconds)` 在后续 AgentRun 轮询至最新 turn 终态或 `wait_timed_out`，创建该 turn 的父 Run 内调用会明确返回 `deferred_until_parent_run_finishes`，避免与父 Run 沙盒租约互等；`coding_session_control(cancel)` 对 running 会话发布信号并终止 CLI 进程；执行尾部抽取为共用 `_execute_turn_tail`（同步/异步同一路径）。异步 turn 在父 Run 释放同 scope 租约后，每次投递以可关联 turn 的唯一 attempt owner 获取并续租同一沙盒执行 ownership；终态写入前使用租约行作 fencing guard，恢复器只收敛没有活跃 owner 的 stale running turn。mid-turn steer 仍待 SDK shell session 支持。
 - 进度（M6b-4，2026-09-18）：进程级取消落地——`CodingExecutionService.terminate_cli_processes` 在专属沙盒内 `pkill` 活跃 opencode/codex 进程（前提是单 active turn，由会话状态保证）；`coding_session_control(cancel)` 对 running 会话发布信号并立即终止进程，阻塞中的 `execute` 随即返回非零退出，执行尾部依据取消信号把 turn/会话收敛为 `cancelled`。
 - 待做（M6b 剩余）：mid-turn steer（需要 opencode `serve` 会话输入或 SDK shell session `write_to_process` 的协议接入，M6b-1 已证明 SSE 通道可达）、真实链路 E2E（专用 agent + 凭据，含 async 与 cancel）。完成后进入 M7 终端直连。
 - 证据：M5a 会话服务 4 用例 + 迁移/模型测试；M5b-1 执行服务 6 用例；全量单测 2396 passed（仅 3 个既有 xlrd 环境失败）。
@@ -133,7 +135,7 @@ M0 契约探针与接口冻结
 - 问题：编码凭据与模型供应商是两套独立配置，用户必须复制粘贴 key；同一渠道多 key 只能建多个供应商条目（普通用户还没有条目权限）；换渠道/换 key 后编码不会跟随；同执行器多行时生效项按字典序不可解释。
 - 决策与验收矩阵见[《编码凭据引用模型供应商》](../yuanlei/decisions/proposed/2026-09-20-coding-credential-provider-reference.md)。三模式：手动 / 引用·共用密钥 / 引用·单独密钥；引用为活引用，指纹纳入解析后的实际值与密钥短哈希，供应商换 key 自动触发沙盒重建；不做 agent 跟随、不阻断供应商删除/停用，改为读取自检 + 运行时结构化不可用原因。
 - 交付：yuanlei v6→v7（`source`/`model_provider_id`/`key_mode` + 同执行器多行收敛最新）；解析与自检、环境构建返回 unavailable/missing；工具层不可用报错；用户掩码选择器 `GET /api/user/coding-credentials/model-providers`；凭据卡三模式表单。
-- 运维与文档（2026-09-19 追加）：`scripts/init.sh`/`init.ps1` 新增 `--ensure-coding-secret`（生成/校验 32 字节 base64url，幂等），compose 对 `YUXI_CODING_CREDENTIAL_KEY` 改为缺值即启动失败；凭据接口 503 的可读明细直达前端（其他端点仍走通用文案）；新增[配置指南](../advanced/coding-execution-setup.md)、[配置参考](../advanced/coding-execution-reference.md)、[机制详解](../mechanisms/coding-execution.md)并注册导航。证据：`scripts/test_init_coding_secret.py` 2 用例、`api_boundary.test.js` 15 用例、docs build 通过。
+- 运维与文档（2026-09-19 追加）：`scripts/init.sh`/`init.ps1` 新增 `--ensure-coding-secret`（生成/校验 32 字节 base64url，幂等），compose 对 `YUXI_CODING_CREDENTIAL_KEY` 改为缺值即启动失败；凭据接口 503 的可读明细直达前端（其他端点仍走通用文案）；新增[配置指南](../../advanced/coding-execution-setup.md)、[配置参考](../../advanced/coding-execution-reference.md)、[机制详解](../../mechanisms/coding-execution.md)并注册导航。证据：`scripts/test_init_coding_secret.py` 2 用例、`api_boundary.test.js` 15 用例、docs build 通过。
 - 会话可观测（2026-09-19 追加）：聊天头部新增「沙盒」入口（状态/生命周期/最后活动 + 直达终端），后端新增 `GET /api/coding/threads/{id}/sandbox` 与 `POST /api/coding/threads/{id}/terminal`（预热+复用终端会话）；真实 HTTP 集成与浏览器断言通过。
 - 运行时修复（2026-09-19）：supervisor 调用不存在的 `provider.touch` 导致每分钟失败（已补 `ProvisionerSandboxProvider.touch` 并修 loguru `%s` 日志）；专属 scope key 超过上游 `agent_runs.runtime_scope_id` 的 64 上限且违反 `ck_agent_runs_nonterminal_shape`，改为 yuanlei v8 `agent_run_scopes` 映射（凭证/清理/租约/execution tree/Git worktree 全部走 `resolve_run_scope_key`）。证据：长 slug 专属 Agent 真实 HTTP 派发用例、provider.touch 单测、business 列宽幂等迁移集成用例；受影响 unit 344 passed、集成 24 passed（仅 2 个既有 project_git 失败）。
 - 证据：单测 11（引用解析/自检/去重/指纹）+ 路由 2 + 真实 PG 迁移 1（v6→v7 幂等与多行收敛）+ 真实 HTTP 集成 1（引用生命周期/停用自检/选择器掩码）；全量后端 2452 passed（另 3 个既有 xlrd 失败；`test_skill_service` 序列化用例在满负载下偶发计时失败、单文件复跑通过；`test_schema_migration_version.py` 的 2 个 `project_git` 业务迁移用例经 stash 对照确认在本改动前即失败）；web lint/unit（377）/build 通过；真实页面验证设置页三模式、共用密钥、停用自检（截图与脚本 `web/test/browser/codingCredentialReference.js`）。

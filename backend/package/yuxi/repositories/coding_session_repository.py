@@ -174,6 +174,15 @@ class CodingSessionRepository:
             select(CodingSessionTurn).where(CodingSessionTurn.id == str(turn_id))
         )
 
+    async def get_turn_for_update(self, turn_id: str) -> CodingSessionTurn | None:
+        """锁定并刷新 turn，避免恢复任务覆盖刚提交的执行结果。"""
+        return await self.db.scalar(
+            select(CodingSessionTurn)
+            .where(CodingSessionTurn.id == str(turn_id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
     async def latest_turn(self, *, session_id: str) -> CodingSessionTurn | None:
         return await self.db.scalar(
             select(CodingSessionTurn)
@@ -198,6 +207,16 @@ class CodingSessionRepository:
             .where(CodingSessionTurn.session_id == str(session_id))
             .order_by(CodingSessionTurn.seq.asc())
         )
+        return list(result.scalars().all())
+
+    async def list_turns_by_status(
+        self, *, status: str, started_before: datetime | None = None, limit: int = 200
+    ) -> list[CodingSessionTurn]:
+        """列出待补投或失联收敛的 turn。"""
+        query = select(CodingSessionTurn).where(CodingSessionTurn.status == str(status))
+        if started_before is not None:
+            query = query.where(CodingSessionTurn.started_at < started_before)
+        result = await self.db.execute(query.order_by(CodingSessionTurn.created_at.asc()).limit(limit))
         return list(result.scalars().all())
 
     async def list_for_uid(self, *, uid: str, limit: int = 50) -> list[CodingSession]:

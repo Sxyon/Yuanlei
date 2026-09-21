@@ -44,9 +44,7 @@ class CodingSessionService:
     ) -> list[dict]:
         """按用户（或 Conversation）列出会话摘要。"""
         if conversation_id is not None:
-            sessions = await self.repo.list_for_conversation(
-                conversation_id=int(conversation_id), uid=str(uid)
-            )
+            sessions = await self.repo.list_for_conversation(conversation_id=int(conversation_id), uid=str(uid))
         else:
             sessions = await self.repo.list_for_uid(uid=str(uid), limit=limit)
         return [_session_summary(session) for session in sessions]
@@ -64,9 +62,7 @@ class CodingSessionService:
         if session is None or session.uid != str(uid):
             return None
         turns = await self.repo.list_turns(session_id=session.id)
-        events = await self.repo.list_events(
-            session_id=session.id, after_seq=after_seq, limit=event_limit
-        )
+        events = await self.repo.list_events(session_id=session.id, after_seq=after_seq, limit=event_limit)
         detail = _session_summary(session)
         detail["turns"] = [
             {
@@ -139,9 +135,7 @@ class CodingSessionService:
         target = str(status)
         allowed = _ALLOWED_TRANSITIONS.get(session.status)
         if allowed is None or target not in allowed:
-            raise CodingSessionStateError(
-                f"illegal coding session transition: {session.status} -> {target}"
-            )
+            raise CodingSessionStateError(f"illegal coding session transition: {session.status} -> {target}")
         now = utc_now_naive()
         session.status = target
         session.updated_at = now
@@ -169,9 +163,7 @@ class CodingSessionService:
     ) -> CodingSessionTurn:
         """开启一轮：会话进入 running，创建 turn 与 turn_started 事件。"""
         if session.status not in {"pending", "idle"}:
-            raise CodingSessionStateError(
-                f"coding session is not ready for a new turn: {session.status}"
-            )
+            raise CodingSessionStateError(f"coding session is not ready for a new turn: {session.status}")
         if session.status == "pending":
             await self.transition(session, status="starting")
             await self.transition(session, status="idle")
@@ -190,24 +182,39 @@ class CodingSessionService:
         session: CodingSession,
         *,
         request_text: str,
+        plan_only: bool = False,
+        enqueueing_run_id: str | None = None,
     ) -> CodingSessionTurn:
         """异步模式：会话进入 running 并创建一个 pending turn 等待 worker 执行。"""
         if session.status not in {"pending", "idle"}:
-            raise CodingSessionStateError(
-                f"coding session is not ready for a new turn: {session.status}"
-            )
+            raise CodingSessionStateError(f"coding session is not ready for a new turn: {session.status}")
         if session.status == "pending":
             await self.transition(session, status="starting")
             await self.transition(session, status="idle")
         await self.transition(session, status="running")
         turn = await self.repo.add_turn(session, request_text=request_text, status="pending")
+        policy = dict(session.policy_json or {})
+        policy["pending_turn"] = {
+            "id": turn.id,
+            "plan_only": bool(plan_only),
+            "enqueueing_run_id": str(enqueueing_run_id) if enqueueing_run_id else None,
+        }
+        session.policy_json = policy
         await self.repo.append_event(
             session,
             kind="turn_queued",
             turn_id=turn.id,
-            payload={"seq": turn.seq},
+            payload={"seq": turn.seq, "plan_only": bool(plan_only)},
         )
         return turn
+
+    def clear_pending_turn(self, session: CodingSession, turn_id: str) -> None:
+        """清除与指定 turn 匹配的待执行策略快照。"""
+        policy = dict(session.policy_json or {})
+        marker = policy.get("pending_turn")
+        if isinstance(marker, dict) and marker.get("id") == str(turn_id):
+            policy.pop("pending_turn", None)
+            session.policy_json = policy
 
     async def finish_turn(
         self,
@@ -230,6 +237,7 @@ class CodingSessionService:
             error_code=error_code,
             error_message=error_message,
         )
+        self.clear_pending_turn(session, turn.id)
         if cli_session_ref:
             session.cli_session_ref = cli_session_ref
         await self.repo.append_event(

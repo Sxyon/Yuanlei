@@ -258,6 +258,14 @@ async def test_executor_environment_maps_image_contract():
         "CODEX_BASE_URL": "https://api.deepseek.com/v1",
         "CODEX_MODEL": "deepseek-flash",
     }
+    codex_root_env = coding_executor_environment(
+        executor="codex",
+        provider="deepseek",
+        api_key="sk-2",
+        base_url="https://api.deepseek.com",
+        model="deepseek-flash",
+    )
+    assert codex_root_env["CODEX_BASE_URL"] == "https://api.deepseek.com/v1"
 
     with pytest.raises(ValueError, match="unsupported coding executor"):
         coding_executor_environment(executor="aider", provider="sf", api_key="sk-x")

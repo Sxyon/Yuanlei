@@ -321,6 +321,10 @@ class _CreateRunDb:
         del stmt
         return _UserResult()
 
+    async def scalar(self, stmt):
+        del stmt
+        return None
+
     def add(self, item):
         self.added.append(item)
 

@@ -90,11 +90,7 @@ class SandboxLeaseService:
     ) -> AgentSandbox:
         """获取执行租约；被占用时按等待窗口轮询，超时抛 SandboxBusyError。"""
         ttl = int(ttl_seconds or sandbox_lease_seconds())
-        wait_seconds = (
-            int(wait_timeout_seconds)
-            if wait_timeout_seconds is not None
-            else sandbox_lease_wait_seconds()
-        )
+        wait_seconds = int(wait_timeout_seconds) if wait_timeout_seconds is not None else sandbox_lease_wait_seconds()
         loop = asyncio.get_running_loop()
         deadline = loop.time() + wait_seconds
         waiting_recorded = False
@@ -121,9 +117,7 @@ class SandboxLeaseService:
                     payload={
                         "holder_kind": holder.lease_owner_kind,
                         "holder_id": holder.lease_owner_id,
-                        "expires_at": holder.lease_expires_at.isoformat()
-                        if holder.lease_expires_at
-                        else None,
+                        "expires_at": holder.lease_expires_at.isoformat() if holder.lease_expires_at else None,
                     },
                     now=current_time,
                 )
@@ -153,7 +147,12 @@ class SandboxLeaseService:
         async with self._session() as (db, own):
             repo = AgentSandboxRepository(db)
             row = await repo.get_for_update(uid=uid, agent_slug=agent_slug, project_id=project_id)
-            if row is None or row.lease_owner_id != owner_id:
+            if (
+                row is None
+                or row.lease_owner_id != owner_id
+                or row.lease_expires_at is None
+                or row.lease_expires_at <= current_time
+            ):
                 return False
             row.lease_expires_at = current_time + timedelta(seconds=ttl)
             row.lease_heartbeat_at = current_time
@@ -162,6 +161,56 @@ class SandboxLeaseService:
             if own:
                 await db.commit()
             return True
+
+    async def owns_active(
+        self,
+        *,
+        uid: str,
+        agent_slug: str,
+        project_id: str,
+        owner_id: str,
+        now: datetime | None = None,
+    ) -> bool:
+        """锁定租约行并验证未过期 owner；供终态写入作为 fencing guard。"""
+        current_time = now or utc_now_naive()
+        async with self._session() as (db, _own):
+            row = await AgentSandboxRepository(db).get_for_update(
+                uid=uid,
+                agent_slug=agent_slug,
+                project_id=project_id,
+            )
+            return bool(
+                row is not None
+                and row.lease_owner_id == owner_id
+                and row.lease_expires_at is not None
+                and row.lease_expires_at > current_time
+            )
+
+    async def owns_active_prefix(
+        self,
+        *,
+        uid: str,
+        agent_slug: str,
+        project_id: str,
+        owner_kind: str,
+        owner_id_prefix: str,
+        now: datetime | None = None,
+    ) -> bool:
+        """验证指定类型与前缀的活跃 owner；供含 attempt token 的恢复扫描。"""
+        current_time = now or utc_now_naive()
+        async with self._session() as (db, _own):
+            row = await AgentSandboxRepository(db).get_for_update(
+                uid=uid,
+                agent_slug=agent_slug,
+                project_id=project_id,
+            )
+            return bool(
+                row is not None
+                and row.lease_owner_kind == owner_kind
+                and str(row.lease_owner_id or "").startswith(owner_id_prefix)
+                and row.lease_expires_at is not None
+                and row.lease_expires_at > current_time
+            )
 
     async def release(
         self,
@@ -201,16 +250,29 @@ class SandboxLeaseService:
         current_time = now or utc_now_naive()
         async with self._session() as (db, own):
             repo = AgentSandboxRepository(db)
-            rows = (
-                await db.execute(
-                    select(AgentSandbox).where(
-                        AgentSandbox.lease_owner_id.is_not(None),
-                        AgentSandbox.lease_expires_at.is_not(None),
-                        AgentSandbox.lease_expires_at < current_time,
+            candidate_ids = (
+                (
+                    await db.execute(
+                        select(AgentSandbox.id).where(
+                            AgentSandbox.lease_owner_id.is_not(None),
+                            AgentSandbox.lease_expires_at.is_not(None),
+                            AgentSandbox.lease_expires_at < current_time,
+                        )
                     )
                 )
-            ).scalars().all()
-            for row in rows:
+                .scalars()
+                .all()
+            )
+            reconciled = 0
+            for sandbox_id in candidate_ids:
+                row = await db.scalar(select(AgentSandbox).where(AgentSandbox.id == sandbox_id).with_for_update())
+                if (
+                    row is None
+                    or row.lease_owner_id is None
+                    or row.lease_expires_at is None
+                    or row.lease_expires_at >= current_time
+                ):
+                    continue
                 logger.warning(
                     "Reclaiming expired sandbox lease: sandbox=%s owner=%s:%s",
                     row.sandbox_id,
@@ -231,10 +293,11 @@ class SandboxLeaseService:
                     payload={"owner_kind": prior_owner_kind, "owner_id": prior_owner_id},
                     now=current_time,
                 )
+                reconciled += 1
             await db.flush()
             if own:
                 await db.commit()
-            return len(rows)
+            return reconciled
 
     async def _try_acquire(
         self,
@@ -279,7 +342,9 @@ class SandboxLeaseService:
                 await db.commit()
             return True, row
 
-    async def _append_event(self, *, sandbox_id: str, kind: str, actor_kind=None, actor_id=None, payload=None, now=None) -> None:
+    async def _append_event(
+        self, *, sandbox_id: str, kind: str, actor_kind=None, actor_id=None, payload=None, now=None
+    ) -> None:
         async with self._session() as (db, own):
             await AgentSandboxRepository(db).append_event(
                 sandbox_id=sandbox_id,

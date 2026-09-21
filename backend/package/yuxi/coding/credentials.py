@@ -9,6 +9,7 @@ import os
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -162,7 +163,16 @@ def coding_executor_environment(
     if normalized == "codex":
         env = {"CODEX_API_KEY": str(api_key)}
         if base_url:
-            env["CODEX_BASE_URL"] = str(base_url)
+            parsed = urlsplit(str(base_url).rstrip("/"))
+            env["CODEX_BASE_URL"] = urlunsplit(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path or "/v1",
+                    parsed.query,
+                    parsed.fragment,
+                )
+            )
         if model:
             env["CODEX_MODEL"] = str(model)
         if extra.get("config_toml"):

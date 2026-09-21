@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,12 +43,45 @@ MANIFEST_LIMIT_FIELDS = (
 
 
 @dataclass(frozen=True)
+class PreparedSandboxRuntime:
+    """只在 worker 内存中传递的专属 runtime 准备参数。"""
+
+    uid: str
+    agent_slug: str
+    project_id: str
+    workdir_path: str
+    policy: Any
+    credential_fingerprint: str | None
+    env_overrides: dict[str, str] = field(repr=False)
+
+
+@dataclass(frozen=True)
 class PreparedRunExecution:
     """返回同一次准备产生的执行 Context 与持久化清单。"""
 
     manifest: dict
     context: BaseContext
     backend_id: str
+    sandbox_runtime: PreparedSandboxRuntime | None = None
+
+
+async def ensure_prepared_sandbox_runtime(
+    db: AsyncSession,
+    prepared: PreparedRunExecution,
+) -> None:
+    """在调用方已经取得执行租约后创建、恢复或重建专属 runtime。"""
+    runtime = prepared.sandbox_runtime
+    if runtime is None:
+        return
+    await SandboxLifecycleService(db).ensure_ready(
+        uid=runtime.uid,
+        agent_slug=runtime.agent_slug,
+        project_id=runtime.project_id,
+        policy=runtime.policy,
+        workdir_path=runtime.workdir_path,
+        credential_fingerprint=runtime.credential_fingerprint,
+        env_overrides=runtime.env_overrides,
+    )
 
 
 def canonical_json(payload: Any) -> str:
@@ -185,6 +218,7 @@ async def prepare_run_execution(
         agent_slug=run.agent_slug,
         project_id=project_id,
     )
+    sandbox_runtime = None
     if run.run_type != "subagent" and policy.is_dedicated:
         expected_scope = SandboxScope.agent_project(
             uid=str(user.uid), agent_slug=run.agent_slug, project_id=project_id
@@ -196,12 +230,18 @@ async def prepare_run_execution(
             uid=str(user.uid),
             executors=list(coding_settings.executors),
         )
-        await SandboxLifecycleService(db).ensure_ready(
+        await SandboxLifecycleService(db).ensure_binding(
             uid=str(user.uid),
             agent_slug=run.agent_slug,
             project_id=project_id,
             policy=policy,
+        )
+        sandbox_runtime = PreparedSandboxRuntime(
+            uid=str(user.uid),
+            agent_slug=run.agent_slug,
+            project_id=project_id,
             workdir_path=workdir_binding.workdir_path,
+            policy=policy,
             credential_fingerprint=coding_environment.fingerprint,
             env_overrides=coding_environment.env,
         )
@@ -256,4 +296,9 @@ async def prepare_run_execution(
         code_revision=resolve_code_revision(),
         git_repositories=git_repositories,
     )
-    return PreparedRunExecution(manifest=manifest, context=context, backend_id=agent_item.backend_id)
+    return PreparedRunExecution(
+        manifest=manifest,
+        context=context,
+        backend_id=agent_item.backend_id,
+        sandbox_runtime=sandbox_runtime,
+    )

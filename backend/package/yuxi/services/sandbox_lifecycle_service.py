@@ -61,9 +61,7 @@ async def enforce_sandbox_quota(db: AsyncSession, *, uid: str, policy: SandboxPo
     """创建新专属沙盒前强制每用户配额；已有记录不计新增。"""
     if not policy.is_dedicated:
         return
-    rows = (
-        await db.execute(select(AgentSandbox).where(AgentSandbox.uid == str(uid)))
-    ).scalars().all()
+    rows = (await db.execute(select(AgentSandbox).where(AgentSandbox.uid == str(uid)))).scalars().all()
     dedicated_max, resident_max = await sandbox_quota_limits(db)
     if len(rows) >= dedicated_max:
         raise SandboxQuotaExceededError(
@@ -150,6 +148,52 @@ class SandboxLifecycleService:
     def provider(self):
         return self._provider if self._provider is not None else get_sandbox_provider()
 
+    async def ensure_binding(
+        self,
+        *,
+        uid: str,
+        agent_slug: str,
+        project_id: str,
+        policy: SandboxPolicy,
+    ) -> AgentSandbox:
+        """只物化专属沙盒持久绑定，不创建、释放或重建 runtime。"""
+        row, _created = await self._ensure_binding(
+            uid=uid,
+            agent_slug=agent_slug,
+            project_id=project_id,
+            policy=policy,
+        )
+        return row
+
+    async def _ensure_binding(
+        self,
+        *,
+        uid: str,
+        agent_slug: str,
+        project_id: str,
+        policy: SandboxPolicy,
+    ) -> tuple[AgentSandbox, bool]:
+        if not policy.is_dedicated:
+            raise ValueError("ensure_binding requires a dedicated sandbox policy")
+        scope = SandboxScope.agent_project(uid=uid, agent_slug=agent_slug, project_id=project_id)
+        row = await self.repo.get_for_update(uid=uid, agent_slug=agent_slug, project_id=project_id)
+        created = row is None
+        if row is None:
+            await enforce_sandbox_quota(db=self.db, uid=uid, policy=policy)
+            row = await self.repo.add(
+                uid=uid,
+                agent_slug=agent_slug,
+                project_id=project_id,
+                scope_key=scope.cache_key,
+                sandbox_id=scope.sandbox_id,
+                lifecycle=policy.lifecycle,
+                resume_policy=policy.resume_policy,
+                idle_timeout_seconds=policy.provisioner_idle_timeout,
+            )
+        else:
+            self._apply_policy(row, policy)
+        return row, created
+
     async def ensure_ready(
         self,
         *,
@@ -165,19 +209,13 @@ class SandboxLifecycleService:
         if not policy.is_dedicated:
             raise ValueError("ensure_ready requires a dedicated sandbox policy")
         scope = SandboxScope.agent_project(uid=uid, agent_slug=agent_slug, project_id=project_id)
-        row = await self.repo.get_for_update(uid=uid, agent_slug=agent_slug, project_id=project_id)
-        if row is None:
-            await enforce_sandbox_quota(db=self.db, uid=uid, policy=policy)
-            row = await self.repo.add(
-                uid=uid,
-                agent_slug=agent_slug,
-                project_id=project_id,
-                scope_key=scope.cache_key,
-                sandbox_id=scope.sandbox_id,
-                lifecycle=policy.lifecycle,
-                resume_policy=policy.resume_policy,
-                idle_timeout_seconds=policy.provisioner_idle_timeout,
-            )
+        row, created = await self._ensure_binding(
+            uid=uid,
+            agent_slug=agent_slug,
+            project_id=project_id,
+            policy=policy,
+        )
+        if created:
             return await self._rebuild(
                 row=row,
                 scope=scope,
@@ -188,7 +226,6 @@ class SandboxLifecycleService:
                 event_kind="created",
             )
 
-        self._apply_policy(row, policy)
         if row.status == "suspended":
             return await self._resume_or_raise(
                 row=row,
@@ -210,10 +247,7 @@ class SandboxLifecycleService:
                 credential_fingerprint=credential_fingerprint,
                 env_overrides=env_overrides,
             )
-        if (
-            credential_fingerprint is not None
-            and row.credential_fingerprint != credential_fingerprint
-        ):
+        if credential_fingerprint is not None and row.credential_fingerprint != credential_fingerprint:
             await self.suspend(
                 uid=uid,
                 agent_slug=agent_slug,

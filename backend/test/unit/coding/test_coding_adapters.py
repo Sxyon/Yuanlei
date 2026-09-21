@@ -114,9 +114,7 @@ def test_codex_command_builds_read_only_plan_and_resume():
     )
 
     assert plan == "codex exec --json --skip-git-repo-check -s read-only plan"
-    assert resume.startswith("codex exec resume 01a0-thread --json --skip-git-repo-check")
-    assert "-s workspace-write" in resume
-    assert "-m deepseek-flash" in resume
+    assert resume == "codex exec resume 01a0-thread --json --skip-git-repo-check continue"
 
 
 def test_codex_parse_and_extract_result():
