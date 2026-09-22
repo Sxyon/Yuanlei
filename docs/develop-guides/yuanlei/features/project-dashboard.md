@@ -1,6 +1,6 @@
 # 项目自定义 Dashboard
 
-状态：提案中（阶段 A 持久化与服务骨架已实现；页面编辑、bridge 与 E2E 待收敛）
+状态：提案中（阶段 A、B 已实现；只读 bridge、前端页面与 E2E 待收敛）
 类型：新增能力
 主要 Owner：`docs/develop-guides/yuanlei/decisions/proposed/2026-09-21-project-dashboard.md`（实现 Owner 见该提案；页面资产当前由 `backend/package/yuxi/workspace/workdir.py` 拥有）
 
@@ -8,7 +8,9 @@
 
 每个 Project 需要由 Agent 生成和维护自己的 Dashboard 页面，把项目已有的智能体、会话、专属沙盒等事实组合成可展示界面。平台提供受控运行壳、只读数据桥和版本化的松散 JSON，项目拥有页面内容与组织方式；平台不预置项目中枢，也不替项目建蓝图、目标、任务、报告等实体。
 
-当前阶段仅提供 `project_documents` 的 HTTP 读写，以及未注册为 HTTP 路由的页面 revision/hash 对账服务。它不是用户可打开的 Dashboard：没有页面读写接口、受控 writer、Agent 工具、前端路由、iframe bridge 或首批项目数据投影。后续工作不得把现有迁移、表或 service 测试当作这些用户能力已经交付的证据。
+阶段 A、B 已提供 `project_documents` 的 HTTP 读写、`GET /api/projects/{project_id}/dashboard`、页面 revision/hash 对账、受控原子 writer 与 `dashboard_read`/`dashboard_write` Agent 工具。工具须显式加入 Agent 的已选工具配置；即使被选中，也只允许正在执行、属于当前用户的根 Project Run 使用，且没有浏览器写接口。
+
+它仍不是用户可打开的完整 Dashboard：没有前端路由与 iframe 运行壳、只读 bridge 或首批项目数据投影，也尚未通过真实 Agent 对话 E2E 验证。后续工作不得把迁移、表、service 或工具集成测试当作这些用户能力已经交付的证据。
 
 失败场景：页面文件按 last-write-wins 写入会让并发编辑静默覆盖；文件系统与 PostgreSQL 不能组成可回滚的同一事务，提交失败后旧 revision 可能被当成最新内容；iframe 里的页面若带同源身份或凭据，就能读取其他项目数据或主动访问网络；缺少首批项目数据投影会让项目页长期只显示静态内容。
 
@@ -37,7 +39,7 @@ Yuxi 继续拥有 Project、Conversation、Agent、AgentSandbox 生命周期、W
 | 松散 JSON | 新增 `project_documents` 表与 repository | `(project_id, key)` 唯一、行锁、单调 version 与结构化 409 |
 | 平台事实读投影 | 新增 Dashboard read service | 按 project、uid、agent_slug 过滤，裁剪内部字段，分页与响应上限 |
 | iframe 与 bridge | 前端 Dashboard frame | source 身份校验、协议版本、超时与响应上限 |
-| Agent 编辑能力 | 带 `project_id` 的 Agent Run 中可用的 writer 工具 | 读取当前 revision 与数据契约；只响应明确的 Dashboard 请求，提交必须携带 `expected_revision` |
+| Agent 编辑能力 | 显式选中工具的、带 `project_id` 的根 Agent Run | 读取当前 revision 与数据契约；只响应明确的 Dashboard 请求，提交必须携带 `expected_revision` |
 
 ## 上游依赖
 
@@ -58,4 +60,4 @@ Yuxi 继续拥有 Project、Conversation、Agent、AgentSandbox 生命周期、W
 
 - [项目自定义 Dashboard v0](../decisions/proposed/2026-09-21-project-dashboard.md)
 - 阶段 0 事实核查结论已写入该提案，可直接核对的 Owner 包括 `backend/package/yuxi/workspace/workdir.py`、`backend/package/yuxi/workspace/filesystem.py`、`backend/package/yuxi/repositories/project_repository.py`、`backend/package/yuxi/storage/postgres/manager.py`、`backend/package/yuxi/storage_migration.py`；相关既有回归在 `backend/test/unit/workspace/test_workdir.py`、`backend/test/unit/workspace/test_filesystem.py`。
-- 实现后的证据在同一记录的验收矩阵收敛，当前所有实现验收项为 `Not run`。
+- 实现后的证据在同一记录的验收矩阵收敛；阶段 A、B 的已验证项目标为 `Passed`，bridge、数据投影和真实 Agent 对话 E2E 保持 `Not run`。

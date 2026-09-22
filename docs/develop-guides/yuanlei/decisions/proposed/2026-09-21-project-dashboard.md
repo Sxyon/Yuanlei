@@ -41,7 +41,7 @@ PostgreSQL 拥有 revision 比较与冲突结果；Workdir 文件拥有页面字
 Dashboard writer 在单个数据库事务内按以下顺序提交，事务级 advisory lock 按 `project_id` 取得：
 
 1. 收敛：在锁内对账元数据与磁盘 hash。发现 `repair_required` 时先把磁盘当前内容采纳为 `revision + 1`（无元数据时为 1）并更新 `content_sha256`、`content_size`、`updated_at`，使元数据追上文件事实。
-2. 比较：请求必须携带 `expected_revision`（首次创建为 0）。收敛后的 revision 与 `expected_revision` 不同时返回 409 与当前 revision，不写文件。
+2. 比较：请求必须携带 `expected_revision`（首次创建为 0）。收敛后的 revision 与 `expected_revision` 不同时返回 409 与当前 revision，不写文件；若本次已收敛，收敛结果在返回 409 前提交，使修复对后续读取可见。
 3. 准备目录：入口父目录不存在时，在同一 Project Workdir 的 no-follow 边界内创建 `dashboard/`；已有对象必须是普通目录，符号链接或同名普通文件失败关闭。
 4. 替换：通过 Workdir 级原子提交入口替换入口文件，成功后回读字节、重算 hash 与大小。
 5. 推进：更新 `project_dashboards` 为 `revision + 1` 及新 hash、大小、操作者，随后提交事务。
@@ -99,7 +99,7 @@ bridge 不接受 `project_id` 参数：项目由页面壳路由固定，父窗�
 
 Dashboard writer 是平台提供的专用工具（服务能力），不是通用文件写工具。它提供读取当前页面、revision、hash 和可用 source 数据契约的读取动作，以及必须携带 `expected_revision` 的提交动作；提交内部执行第 4 节的锁定、比较、原子替换和回读。它是 v0 唯一承诺并发安全的 Dashboard 写入路径；通用文件工具或用户在 Workdir 中的直接修改视为外部变更，读取会以 hash 对账暴露 `repair_required`，不会被错误标记为正常 revision。
 
-v0 不新建“dashboard 编辑模式”或草稿 query。writer 只在已有 `project_id` 的 Agent Run 中可用；工具本身重新校验当前用户与 Project，并在描述中限定为用户明确请求创建或修改 Dashboard 时使用。Dashboard 页面的“生成/编辑”入口只打开现有 Project 对话，让用户给出具体目标。这条路径复用现有项目上下文，不把未实现的页面意图、自动提示词或长时编辑状态塞进路由。
+v0 不新建“dashboard 编辑模式”或草稿 query。`dashboard_read`、`dashboard_write` 是需显式加入 Agent 已选工具配置的内建工具；writer 只在已有 `project_id`、正在执行的根 Agent Run 中可用。工具从 Run、Conversation、Project 的当前数据库关联重建 uid 与 Project 授权，不信任运行时的单独字段，并在描述中限定为用户明确请求创建或修改 Dashboard 时使用。Dashboard 页面的“生成/编辑”入口只打开现有 Project 对话，让用户给出具体目标。这条路径复用现有项目上下文，不把未实现的页面意图、自动提示词或长时编辑状态塞进路由。
 
 冲突处理：`409` 返回当前 revision；Agent 重新读取页面与 JSON、显式合并用户请求后再提交，不自动重试旧内容。页面壳不提供自动刷新、模板或草稿参数。
 
@@ -146,22 +146,23 @@ v0 不引入 Redis 缓存、Redis 锁或 WebSocket 刷新，Dashboard 正确性�
 
 | 验收主张 | 失败面 | 语义 Owner | 直接证据 / 命令 | 负向案例 | 当前结果 |
 |---|---|---|---|---|---|
-| 不同 Project 展示各自页面，跨项目访问返回 404 | 串项目内容或通过参数放宽范围 | ProjectRepository + Dashboard service | 新增真实 HTTP integration：两个项目各自读回页面 | 以 A 项目路由读 B 页面返回 404 | Not run |
-| 旧 revision 不能覆盖新页面 | 两个编辑者互相覆盖 | Dashboard writer + `project_dashboards` | 新增 HTTP integration：同一 revision 并发提交，一个成功一个 409；磁盘字节等于成功者 | 失败响应后回读磁盘仍是新版本 | Not run |
-| 文件写后数据库提交失败的恢复 | 元数据与磁盘永久不一致或旧 revision 冒充最新 | Dashboard writer + 读接口 | 失败注入 integration：提交前中断事务后读取 | 读取返回 `repair_required`；下一次写入收敛为新 revision 且不损坏页面 | Not run |
+| 不同 Project 展示各自页面，跨项目访问返回 404 | 串项目内容或通过参数放宽范围 | ProjectRepository + Dashboard service | `test/integration/api/test_project_dashboard_api.py::test_project_dashboard_pages_are_project_scoped`、`::test_project_dashboard_read_reports_empty_ready_and_repair` | 以 A 项目路由读 B 页面返回 404 | Passed |
+| 旧 revision 不能覆盖新页面 | 两个编辑者互相覆盖 | Dashboard writer + `project_dashboards` | `test_project_dashboard_service.py::test_write_page_creates_revision_and_requires_expected_revision`、`::test_concurrent_writes_on_same_revision_keep_single_winner` | 失败响应后回读磁盘仍是成功者版本，元数据 revision 与磁盘一致 | Passed |
+| 文件写后数据库提交失败的恢复 | 元数据与磁盘永久不一致或旧 revision 冒充最新 | Dashboard writer + 读接口 | `test_project_dashboard_service.py::test_write_commit_failure_keeps_repair_state_and_next_write_converges` | 读取返回 `repair_required`；下一次写入收敛为新 revision 且不损坏页面 | Passed |
 | JSON 同版本并发写入不静默丢写 | 后写覆盖先写 | `project_documents` repository | `test/integration/services/test_project_document_service.py::test_document_versions_conflict_with_current_version`、`test/integration/api/test_project_document_api.py::test_project_document_versions_and_scope` | 一个成功一个 409，409 携带当前 version | Passed |
 | 并发创建同一 key 只产生一行 | 两条 version 1 | `project_documents` repository | `test/integration/services/test_project_document_service.py::test_concurrent_create_keeps_single_version_one_row` | 唯一约束与 advisory lock 生效，只有一行 version 1 | Passed |
-| 跨用户与不可见项目统一 404 | 存在性泄漏或越权读取 | Dashboard service | 已证文档读写：`test_project_document_service.py::test_document_requires_owned_selectable_project`、`test_project_document_api.py` 跨用户读写；页面与 bridge 读取在阶段 B/C 补齐 | 其他用户、隐式项目、已删除项目均返回 404，且不创建数据 | Not run |
-| 路径逃逸、符号链接、非 UTF-8、超限内容 fail-closed | 逃出 Workdir 或写出非法页面 | `Workdir`、Dashboard writer | 已证：key 校验 unit 与 HTTP 422、页面符号链接与非 UTF-8/超限的 `repair_required`（`test_page_read_back_rejects_unusable_page_bytes` 等）；写入路径拒绝与 `..`、反斜杠在阶段 B 与既有 `Workdir` 测试补齐 | 非法 key、符号链接、非 UTF-8、超限分别被拒绝；写入失败不损坏页面 | Not run |
+| 跨用户与不可见项目统一 404 | 存在性泄漏或越权读取 | Dashboard service | 已证文档读写（`test_project_document_service.py`、`test_project_document_api.py`）、页面 HTTP 跨用户 404（`test_project_dashboard_api.py`）与隐式 Project 的工具拒绝（`test_project_dashboard_tool.py`）；bridge source 在阶段 C 补齐 | 其他用户、隐式项目、已删除项目均返回 404 或结构化拒绝，且不创建数据 | Passed |
+| 路径逃逸、符号链接、非 UTF-8、超限内容 fail-closed | 逃出 Workdir 或写出非法页面 | `Workdir`、Dashboard writer | 已证：key 校验 unit 与 HTTP 422、页面读的符号链接与非 UTF-8/超限（`test_page_read_back_rejects_unusable_page_bytes`）、writer 对符号链接及非 UTF-8/超限既有入口的拒绝（`test_write_rejects_symlinked_entry_without_touching_target`、`test_write_rejects_unusable_entry_without_overwriting_it`）；`..`、反斜杠由既有 `Workdir` 边界测试拥有 | 非法 key、符号链接、非 UTF-8、超限分别被拒绝；写入失败不损坏页面 | Passed |
 | bridge 伪造消息、未知 source、超限请求被拒绝 | 第三方脚本或相邻 frame 借用 bridge | 前端 Dashboard frame | 前端 unit + 浏览器 E2E：伪造 `event.source`、未知 source、超大 params | 不发起后端查询，返回结构化错误 | Not run |
 | CSP 阻止页面网络外联 | 页面外带数据或加载外部资源 | 前端 Dashboard frame 与注入的 CSP | 浏览器 E2E：页面发起 fetch、img 外链、WebSocket | 请求未发出，控制台出现 CSP 违规 | Not run |
 | 首批数据按 project、uid、agent_slug 正确关联 | 跨项目或跨 Agent 串数据 | Dashboard read service | 新增 HTTP integration：`project.agents`、`project.conversations`、`project.sandboxes`、`project.agent_overview` 回读 | 传入其他项目的 agent_slug 返回空集，不返回相邻对象 | Not run |
 | 页面投影不泄漏内部字段 | 凭据、路径、资源引用或 uid 进入 iframe | Dashboard read service | 新增 integration：对投影做字段白名单断言 | 出现 `config_json`、`effective_context`、`sandbox_id`、`credential_fingerprint`、`workdir_path` 即失败 | Not run |
-| Agent 生成或编辑页面并回报 revision | Agent 绕过 writer 或写入不推进 revision | Dashboard writer 工具 | E2E：项目对话生成页面、打开页面、编辑后回读新 revision | 过期 revision 提交返回 409，页面字节保持新版本 | Not run |
+| Agent 生成或编辑页面并回报 revision | Agent 绕过 writer 或写入不推进 revision | Dashboard writer 工具 | 已证工具路径：`test_project_dashboard_tool.py`（Run→Project 解析、writer 复用、隐式项目拒绝）与工具 unit 的子智能体拒绝；真实项目对话生成页面的 E2E 在阶段 D | 过期 revision 提交返回 409，页面字节保持新版本 | Not run |
+| Dashboard 写能力只在带 Project 的 Agent Run 中生效，且无公开浏览器写接口 | 任意调用方写页面或绕过 revision | Dashboard writer 工具 + 路由范围 | `test/integration/services/test_project_dashboard_tool.py`、`test/unit/toolkits/test_dashboard_tools.py`；`/api/projects/{project_id}/dashboard` 只注册 GET | 非 project run、子智能体、隐式或不可见 Project 均被拒绝，HTTP 无写路由 | Passed |
 | 外部直接改写页面被识别为待修复 | 通用工具改文件后元数据静默过期 | 读接口 hash 对账 | `test_project_dashboard_service.py::test_page_read_back_reports_empty_ready_and_repair_states` | 返回 `repair_required`，不返回与旧 revision 对应的内容 | Passed |
 | 新库与从版本 8 升级的库都获得表且升级幂等 | 升级链缺失或重复执行失败 | `manager.py` + `storage_migration.py` | `test_project_dashboard_service.py::test_yuanlei_v8_to_v9_converges_dashboard_tables_idempotently`、`test/unit/services/test_storage_migration.py` 的升级链用例、真实库已记录 `yuanlei=9` | 重复升级无副作用，唯一与检查约束生效，已有数据不丢失 | Passed |
 
-阶段 A 已实现并取得上述证据：`project_documents`、`project_dashboards` 两类 yuanlei 事实、迁移链 8→9、文档 repository 与 advisory lock/行锁协议、文档 HTTP 读写接口、页面 hash/revision 对账读服务。它不构成可用 Dashboard：页面读服务尚未注册为 HTTP 路由，且不存在 writer、Agent 工具、前端页面、iframe bridge 或项目数据投影。其余验收项等待阶段 B、C、D；证据不足的条目保持 `Not run`，不因代码存在或 HTTP 200 改为通过。
+阶段 A 与阶段 B 已实现并取得上述证据：`project_documents`、`project_dashboards` 两类 yuanlei 事实与迁移链 8→9；文档 repository、advisory lock/行锁协议与 HTTP 读写接口；Workdir 原子替换入口与 `dashboard/` 目录安全创建；Dashboard writer 的收敛、`expected_revision` 比较、原子替换、回读与提交失败后的 repair 收敛；页面 GET 路由；带 Project 运行中可用的 Dashboard 读写 Agent 工具（子智能体禁用，重新授权，无浏览器写接口）。前端 Dashboard 页面、iframe bridge、项目数据投影与真实 Agent 对话 E2E 仍属阶段 C、D；证据不足的条目保持 `Not run`，不因代码存在或 HTTP 200 改为通过。
 
 ## 风险
 

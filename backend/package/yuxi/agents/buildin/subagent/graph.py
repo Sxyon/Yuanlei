@@ -33,6 +33,8 @@ _SUBAGENT_DISABLED_TOOLS = frozenset(
         "present_artifacts",
         "ask_user_question",
         "install_skill",
+        "dashboard_read",
+        "dashboard_write",
         "git_list_project_repositories",
         "git_prepare_worktree",
         "git_push_branch",

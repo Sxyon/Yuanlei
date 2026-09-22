@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import uuid
@@ -9,11 +10,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from yuxi.services.project_dashboard_service import MAX_PAGE_BYTES, get_project_dashboard_view
+from yuxi.services.project_dashboard_service import (
+    MAX_PAGE_BYTES,
+    get_project_dashboard_view,
+    write_project_dashboard_view,
+)
 from yuxi.storage.postgres.manager import YUANLEI_SCHEMA_VERSION, PostgresManager
 from yuxi.storage.postgres.models_business import User
 from yuxi.workspace import filesystem as workspace_filesystem_module
@@ -300,3 +306,319 @@ async def test_page_read_back_rejects_unusable_page_bytes(tmp_path: Path, monkey
             assert oversized["state"] == "repair_required"
             assert oversized["sha256"] is None
             assert oversized["html"] is None
+
+
+async def test_write_page_creates_revision_and_requires_expected_revision(tmp_path: Path, monkeypatch) -> None:
+    """首次创建推进 revision；过期 expected_revision 返回 409 且不覆盖页面。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_write") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+
+            first = await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=0,
+                html="<html><body>v1</body></html>",
+                db=session,
+                user=user,
+            )
+            assert first["state"] == "ready"
+            assert first["revision"] == 1
+            assert page_path.read_bytes() == b"<html><body>v1</body></html>"
+
+            with pytest.raises(HTTPException) as stale:
+                await write_project_dashboard_view(
+                    project_id="project-owner",
+                    expected_revision=0,
+                    html="<html><body>stale</body></html>",
+                    db=session,
+                    user=user,
+                )
+            assert stale.value.status_code == 409
+            assert stale.value.detail == {"code": "revision_conflict", "current_revision": 1}
+            assert page_path.read_bytes() == b"<html><body>v1</body></html>"
+
+            second = await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=1,
+                html="<html><body>v2</body></html>",
+                db=session,
+                user=user,
+            )
+            assert second["revision"] == 2
+
+            ready = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert ready["state"] == "ready"
+            assert ready["revision"] == 2
+            assert ready["html"] == "<html><body>v2</body></html>"
+
+
+async def test_write_after_external_change_converges_then_requires_latest_revision(tmp_path: Path, monkeypatch) -> None:
+    """外部改写先被采纳为新 revision，提交者必须基于冲突返回的 revision 重新提交。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_external") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+            await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=0,
+                html="<html><body>v1</body></html>",
+                db=session,
+                user=user,
+            )
+
+            external = b"<html><body>external</body></html>"
+            page_path.write_bytes(external)
+            with pytest.raises(HTTPException) as conflict:
+                await write_project_dashboard_view(
+                    project_id="project-owner",
+                    expected_revision=1,
+                    html="<html><body>v2</body></html>",
+                    db=session,
+                    user=user,
+                )
+            assert conflict.value.detail == {"code": "revision_conflict", "current_revision": 2}
+            assert page_path.read_bytes() == external
+
+            adopted = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert adopted["state"] == "ready"
+            assert adopted["revision"] == 2
+            assert adopted["sha256"] == hashlib.sha256(external).hexdigest()
+            assert adopted["html"] == external.decode("utf-8")
+
+            converged = await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=2,
+                html="<html><body>v2</body></html>",
+                db=session,
+                user=user,
+            )
+            assert converged["revision"] == 3
+            ready = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert ready["state"] == "ready"
+            assert ready["revision"] == 3
+            assert ready["html"] == "<html><body>v2</body></html>"
+
+
+async def test_write_commit_failure_keeps_repair_state_and_next_write_converges(tmp_path: Path, monkeypatch) -> None:
+    """文件写入后数据库提交失败：磁盘保留完整新页面，读视图暴露待修复，下一次写入收敛。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_commit") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+            original_commit = session.commit
+            injected = False
+
+            async def commit_with_one_failure() -> None:
+                nonlocal injected
+                if not injected:
+                    injected = True
+                    raise RuntimeError("injected commit failure")
+                await original_commit()
+
+            monkeypatch.setattr(session, "commit", commit_with_one_failure)
+            with pytest.raises(RuntimeError, match="injected commit failure"):
+                await write_project_dashboard_view(
+                    project_id="project-owner",
+                    expected_revision=0,
+                    html="<html><body>v1</body></html>",
+                    db=session,
+                    user=user,
+                )
+            await session.rollback()
+            user = await _load_user(session, "uid-owner")
+
+            on_disk = b"<html><body>v1</body></html>"
+            assert page_path.read_bytes() == on_disk
+            async with manager.async_engine.connect() as connection:
+                rows = await connection.scalar(
+                    text("SELECT count(*) FROM project_dashboards WHERE project_id = 'project-owner'")
+                )
+            assert rows == 0
+
+            repair = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert repair["state"] == "repair_required"
+            assert repair["revision"] == 0
+            assert repair["sha256"] == hashlib.sha256(on_disk).hexdigest()
+            assert repair["html"] is None
+
+            recovered = await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=1,
+                html="<html><body>v2</body></html>",
+                db=session,
+                user=user,
+            )
+            assert recovered["revision"] == 2
+            ready = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert ready["state"] == "ready"
+            assert ready["revision"] == 2
+            assert ready["html"] == "<html><body>v2</body></html>"
+
+
+async def test_concurrent_writes_on_same_revision_keep_single_winner(tmp_path: Path, monkeypatch) -> None:
+    """同一 revision 的并发提交至多一个成功，磁盘内容属于成功者。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_race") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as setup:
+            user = await _load_user(setup, "uid-owner")
+            await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=0,
+                html="<html><body>v1</body></html>",
+                db=setup,
+                user=user,
+            )
+
+        async def attempt(session: AsyncSession, html: str) -> tuple[str, dict]:
+            session_user = await _load_user(session, "uid-owner")
+            result = await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=1,
+                html=html,
+                db=session,
+                user=session_user,
+            )
+            return html, result
+
+        async with sessions() as session_a, sessions() as session_b:
+            outcomes = await asyncio.gather(
+                attempt(session_a, "<html><body>a</body></html>"),
+                attempt(session_b, "<html><body>b</body></html>"),
+                return_exceptions=True,
+            )
+
+        successes = [outcome for outcome in outcomes if isinstance(outcome, tuple)]
+        conflicts = [outcome for outcome in outcomes if isinstance(outcome, HTTPException)]
+        assert len(successes) == 1
+        assert len(conflicts) == 1
+        assert conflicts[0].status_code == 409
+        assert conflicts[0].detail == {"code": "revision_conflict", "current_revision": 2}
+
+        winner_html, winner_result = successes[0]
+        assert winner_result["revision"] == 2
+        assert page_path.read_bytes() == winner_html.encode("utf-8")
+        async with manager.async_engine.connect() as connection:
+            revision = await connection.scalar(
+                text("SELECT revision FROM project_dashboards WHERE project_id = 'project-owner'")
+            )
+        assert revision == 2
+
+
+async def test_write_rejects_symlinked_entry_without_touching_target(tmp_path: Path, monkeypatch) -> None:
+    """入口为符号链接时 writer fail-closed，目标文件与元数据都不改变。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_symlink") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+            await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=0,
+                html="<html><body>v1</body></html>",
+                db=session,
+                user=user,
+            )
+
+            outside = tmp_path / "outside.html"
+            outside.write_bytes(b"<html>secret</html>")
+            page_path.unlink()
+            page_path.symlink_to(outside)
+
+            with pytest.raises(HTTPException) as invalid:
+                await write_project_dashboard_view(
+                    project_id="project-owner",
+                    expected_revision=1,
+                    html="<html><body>v2</body></html>",
+                    db=session,
+                    user=user,
+                )
+            assert invalid.value.detail == {"code": "invalid_page_path"}
+            assert outside.read_bytes() == b"<html>secret</html>"
+            async with manager.async_engine.connect() as connection:
+                revision = await connection.scalar(
+                    text("SELECT revision FROM project_dashboards WHERE project_id = 'project-owner'")
+                )
+            assert revision == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_bytes",
+    [b"\xff\xfe\x00", b"a" * (MAX_PAGE_BYTES + 1)],
+    ids=["non_utf8", "oversized"],
+)
+async def test_write_rejects_unusable_entry_without_overwriting_it(
+    tmp_path: Path, monkeypatch, invalid_bytes: bytes
+) -> None:
+    """已有不可读取的普通文件也必须 fail-closed，不能被 writer 静默替换。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_unusable_write") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+            await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=0,
+                html="<html><body>v1</body></html>",
+                db=session,
+                user=user,
+            )
+            page_path.write_bytes(invalid_bytes)
+
+            with pytest.raises(HTTPException) as invalid:
+                await write_project_dashboard_view(
+                    project_id="project-owner",
+                    expected_revision=1,
+                    html="<html><body>v2</body></html>",
+                    db=session,
+                    user=user,
+                )
+            assert invalid.value.detail == {"code": "invalid_page_content"}
+            assert page_path.read_bytes() == invalid_bytes
+            view = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert view["state"] == "repair_required"
+            async with manager.async_engine.connect() as connection:
+                revision = await connection.scalar(
+                    text("SELECT revision FROM project_dashboards WHERE project_id = 'project-owner'")
+                )
+            assert revision == 1

@@ -68,6 +68,10 @@ class Workdir:
     def write_file(self, path: str, content: bytes) -> dict:
         return self.workspace.write_authorized_file(self.resolve_path(path), content)
 
+    def replace_file(self, path: str, content: bytes) -> dict:
+        """在 Workdir 内原子创建或替换普通文件。"""
+        return self.workspace.replace_authorized_file(self.resolve_path(path), content)
+
     def stat(self, path: str) -> dict:
         return self.workspace.stat_authorized_path(self.resolve_path(path), root=self.root_path)
 
