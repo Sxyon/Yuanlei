@@ -5,22 +5,22 @@ import markdownItTaskCheckbox from 'markdown-it-task-checkbox'
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   lang: 'zh-CN',
-  title: "Yuxi",
-  description: "Yuxi 是一个可私有部署的多租户知识智能体平台，统一 RAG、知识图谱、LangGraph 多智能体、MCP/Skills、沙盒与权限管理。",
-  base: '/Yuxi/',
+  title: "Yuanlei",
+  description: "Yuanlei AI 时代的 **个人** / **企业** 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。",
+  base: '/Yuanlei/',
   srcExclude: ['vibe/**'],
   sitemap: {
-    hostname: 'https://xerrors.github.io/Yuxi/'
+    hostname: 'https://sxyon.github.io/Yuanlei/'
   },
   head: [
-    ['link', { rel: 'icon', href: '/Yuxi/favicon.svg' }],
-    ['link', { rel: 'alternate icon', href: '/Yuxi/favicon.ico' }],
+    ['link', { rel: 'icon', href: '/Yuanlei/favicon.svg' }],
+    ['link', { rel: 'alternate icon', href: '/Yuanlei/favicon.ico' }],
     ['meta', { name: 'theme-color', content: '#F3BA32' }],
-    ['meta', { name: 'keywords', content: 'Yuxi, AI Agent, RAG, knowledge graph, LangGraph, MCP, self-hosted, multi-agent, knowledge base' }],
+    ['meta', { name: 'keywords', content: 'Yuanlei, Yuxi, AI Agent, RAG, knowledge graph, LangGraph, MCP, self-hosted, multi-agent, knowledge base' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: 'Yuxi' }],
-    ['meta', { property: 'og:title', content: 'Yuxi · 让知识真正参与每一次行动' }],
-    ['meta', { property: 'og:description', content: '可私有部署的多租户知识智能体平台，统一知识、工具、多智能体执行与团队治理。' }],
+    ['meta', { property: 'og:site_name', content: 'Yuanlei' }],
+    ['meta', { property: 'og:title', content: 'Yuanlei · 您的总裁办、CEO办公室' }],
+    ['meta', { property: 'og:description', content: '可私有部署的，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。' }],
     ['meta', { property: 'og:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
@@ -45,14 +45,14 @@ export default defineConfig({
       { text: '快速开始', link: '/intro/quick-start' },
       { text: '智能体开发', link: '/agents/agents-config' },
       { text: '机制详解', link: '/mechanisms/' },
-      { text: 'English', link: 'https://github.com/xerrors/Yuxi/blob/main/README.en.md' }
+      { text: 'English', link: 'https://github.com/sxyon/Yuanlei/blob/main/README.en.md' }
     ],
 
     sidebar: [
       {
         text: '简介',
         items: [
-          { text: '认识 Yuxi', link: '/intro/project-overview' },
+          { text: '认识 Yuanlei', link: '/intro/project-overview' },
           { text: '快速开始', link: '/intro/quick-start' },
           { text: 'Project Git 仓库', link: '/intro/project-git' },
           { text: '命令行工具', link: '/intro/cli' },
@@ -139,7 +139,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/xerrors/Yuxi' }
+      { icon: 'github', link: 'https://github.com/sxyon/Yuanlei' }
     ],
 
     footer: {
@@ -148,7 +148,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/xerrors/Yuxi/edit/main/docs/:path',
+      pattern: 'https://github.com/sxyon/Yuanlei/main/docs/:path',
       text: '在 GitHub 上编辑此页'
     },
 
