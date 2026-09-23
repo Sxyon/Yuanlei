@@ -5,7 +5,7 @@ import { withBase } from 'vitepress'
 const GITHUB = 'https://github.com/sxyon/Yuanlei'
 const DEMO = 'https://www.bilibili.com/video/BV1erE26iEgv/'
 const OSS_ASSET_BASE = 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home'
-const MASCOT_IMAGE = `${OSS_ASSET_BASE}/yuxi-mascot-cutout.png`
+const BRAND_MARK = '/favicon.svg'
 
 const docPaths = [
   {
@@ -13,9 +13,9 @@ const docPaths = [
     desc: '准备 Docker 与模型 API，启动完整服务并完成第一次登录。',
     link: '/intro/quick-start',
     action: '打开快速开始',
-    character: `${OSS_ASSET_BASE}/characters/deploy-run.png`,
-    characterWidth: 1221,
-    characterHeight: 1289,
+    character: '/home/yuanlei-icon-deploy.svg',
+    characterWidth: 256,
+    characterHeight: 256,
     pose: 'run',
     featured: true
   },
@@ -24,9 +24,9 @@ const docPaths = [
     desc: '创建知识库、上传文档，并验证检索和知识图谱。',
     link: '/intro/knowledge-base',
     action: '学习知识库',
-    character: `${OSS_ASSET_BASE}/characters/knowledge-think.png`,
-    characterWidth: 1024,
-    characterHeight: 1536,
+    character: '/home/yuanlei-icon-knowledge.svg',
+    characterWidth: 256,
+    characterHeight: 256,
     pose: 'think'
   },
   {
@@ -34,9 +34,9 @@ const docPaths = [
     desc: '组合模型、Skills、MCP、Tools 与 SubAgents。',
     link: '/agents/agents-config',
     action: '进入智能体开发',
-    character: `${OSS_ASSET_BASE}/characters/agent-confident.png`,
-    characterWidth: 1145,
-    characterHeight: 1374,
+    character: '/home/yuanlei-icon-agent.svg',
+    characterWidth: 256,
+    characterHeight: 256,
     pose: 'confident'
   },
   {
@@ -44,9 +44,9 @@ const docPaths = [
     desc: '查看 Run、Sandbox、文件系统和知识能力的真实链路。',
     link: '/mechanisms/',
     action: '阅读机制详解',
-    character: `${OSS_ASSET_BASE}/characters/runtime-peek.png`,
-    characterWidth: 1024,
-    characterHeight: 1536,
+    character: '/home/yuanlei-icon-runtime.svg',
+    characterWidth: 256,
+    characterHeight: 256,
     pose: 'peek'
   }
 ]
@@ -209,20 +209,20 @@ function getPalette() {
 
   return dark
     ? {
-        amber: '#f3ba32',
-        amberDeep: '#d89420',
-        paper: '#202824',
-        structure: '#c4d0cb',
-        soft: '#81958c',
-        offset: '#101613'
+        accent: '#28d7e5',
+        accentDeep: '#4c7dff',
+        paper: '#111831',
+        structure: '#dce5f7',
+        soft: '#7f90b6',
+        offset: '#080e20'
       }
     : {
-        amber: '#f3ba32',
-        amberDeep: '#d89420',
-        paper: '#fffdf8',
-        structure: '#455c55',
-        soft: '#879991',
-        offset: '#d6ddd9'
+        accent: '#28d7e5',
+        accentDeep: '#4c7dff',
+        paper: '#f7faff',
+        structure: '#273457',
+        soft: '#7180a1',
+        offset: '#dbe3f4'
       }
 }
 
@@ -241,7 +241,7 @@ function drawSignal(ctx, points, progress, palette) {
   trail.forEach((offset, index) => {
     const point = pointOnPath(points, Math.max(0, progress - offset))
     const size = index === 0 ? 4 : 2
-    drawRect(ctx, point[0], point[1], size, size, index === 0 ? palette.amberDeep : palette.amber, 1 - index * 0.28)
+    drawRect(ctx, point[0], point[1], size, size, index === 0 ? palette.accentDeep : palette.accent, 1 - index * 0.28)
   })
 }
 
@@ -292,7 +292,7 @@ function drawCircuit(ctx, phase, palette) {
     for (let trail = 0; trail < 5; trail += 1) {
       const point = track[(head - trail + track.length) % track.length]
       const size = trail === 0 ? 3 : 2
-      drawRect(ctx, point[0], point[1], size, size, streamIndex === 0 ? palette.amber : palette.structure, 1 - trail * 0.17)
+      drawRect(ctx, point[0], point[1], size, size, streamIndex === 0 ? palette.accent : palette.structure, 1 - trail * 0.17)
     }
   })
 }
@@ -305,7 +305,7 @@ function drawDocument(ctx, alpha, palette) {
   drawRect(ctx, 23, 35, 5, 5, palette.offset, alpha)
   drawRect(ctx, 16, 42, 8, 1, palette.soft, alpha)
   drawRect(ctx, 16, 46, 10, 1, palette.soft, alpha)
-  drawRect(ctx, 16, 50, 6, 1, palette.amberDeep, alpha)
+  drawRect(ctx, 16, 50, 6, 1, palette.accentDeep, alpha)
 }
 
 /** 绘制知识图谱来源。 */
@@ -328,7 +328,7 @@ function drawGraph(ctx, alpha, palette) {
   drawRect(ctx, 136, 37, 3, 3, palette.paper, alpha)
   drawRect(ctx, 141, 42, 7, 7, palette.structure, alpha)
   drawRect(ctx, 143, 44, 3, 3, palette.paper, alpha)
-  drawRect(ctx, 149, 44, 6, 6, palette.amberDeep, alpha)
+  drawRect(ctx, 149, 44, 6, 6, palette.accentDeep, alpha)
 }
 
 /** 绘制记忆来源。 */
@@ -336,7 +336,7 @@ function drawMemory(ctx, alpha, palette) {
   drawRect(ctx, 15, 119, 23, 13, palette.offset, alpha)
   drawRect(ctx, 12, 116, 23, 13, palette.structure, alpha)
   drawRect(ctx, 14, 118, 19, 9, palette.paper, alpha)
-  drawRect(ctx, 18, 122, 10, 2, palette.amberDeep, alpha)
+  drawRect(ctx, 18, 122, 10, 2, palette.accentDeep, alpha)
   drawRect(ctx, 30, 119, 2, 2, palette.structure, alpha)
 }
 
@@ -394,10 +394,10 @@ function drawScene(phase) {
   const insight = phase >= 0.32 && phase <= 0.62
     ? Math.sin(((phase - 0.32) / 0.3) * Math.PI)
     : 0
-  drawRect(context, 78, 6, 4, 11, palette.amberDeep, insight)
-  drawRect(context, 74, 10, 12, 4, palette.amberDeep, insight)
-  drawRect(context, 89, 11, 3, 3, palette.amber, insight)
-  drawRect(context, 68, 7, 3, 3, palette.amber, insight)
+  drawRect(context, 78, 6, 4, 11, palette.accentDeep, insight)
+  drawRect(context, 74, 10, 12, 4, palette.accentDeep, insight)
+  drawRect(context, 89, 11, 3, 3, palette.accent, insight)
+  drawRect(context, 68, 7, 3, 3, palette.accent, insight)
   drawRect(context, 93, 17, 2, 2, palette.structure, insight)
 }
 
@@ -474,20 +474,20 @@ onBeforeUnmount(() => {
             <img
               class="yx-lockup__light"
               :src="withBase('/home/yuxi-lockup-on-light.svg')"
-              alt="Yuxi"
-              width="240"
-              height="79"
+              alt="元垒 Yuanlei"
+              width="280"
+              height="70"
             >
             <img
               class="yx-lockup__dark"
               :src="withBase('/home/yuxi-lockup-on-dark.svg')"
-              alt="Yuxi"
-              width="240"
-              height="79"
+              alt="元垒 Yuanlei"
+              width="280"
+              height="70"
             >
           </div>
-          <h1>让知识真正参与<br>每一次行动</h1>
-          <p>把团队知识、工具与多智能体执行接进一个可私有部署的工作台。</p>
+          <h1>一砖一瓦，构筑<br>自己的 AI 世界</h1>
+          <p>面向个人与企业的 AI 中枢，把参谋决策、督查汇报、执行协同汇入同一个可私有部署的工作台。</p>
           <div class="yx-actions">
             <a class="yx-button yx-button--primary" :href="withBase('/intro/quick-start')">开始部署</a>
             <a class="yx-button yx-button--secondary" :href="GITHUB" target="_blank" rel="noreferrer">查看 GitHub</a>
@@ -495,15 +495,15 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="yx-hero__visual">
-          <figure class="pixel-mascot" role="img" aria-label="Yuxi 在循环流动的文档、知识图谱、记忆与交付信号中持续工作">
+          <figure class="pixel-mascot" role="img" aria-label="元垒中枢协调文档、知识图谱、记忆与交付信号">
             <canvas ref="canvasRef" class="pixel-mascot__canvas" aria-hidden="true"></canvas>
             <img
               class="pixel-mascot__character"
-              :src="MASCOT_IMAGE"
+              :src="withBase(BRAND_MARK)"
               alt=""
               aria-hidden="true"
-              width="1172"
-              height="1342"
+              width="512"
+              height="512"
               draggable="false"
             >
           </figure>
@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
               </span>
               <span class="yx-path__action">{{ path.action }} <span aria-hidden="true">→</span></span>
               <img
-                v-lazy-image="path.character"
+                v-lazy-image="withBase(path.character)"
                 class="yx-path__character"
                 :width="path.characterWidth"
                 :height="path.characterHeight"
@@ -645,7 +645,7 @@ onBeforeUnmount(() => {
         <div class="yx-shell">
           <header v-reveal class="yx-heading">
             <h2>一条完整的知识智能体链路</h2>
-            <p>Yuxi 把知识、执行、交付和团队治理放在同一套可部署边界内。</p>
+            <p>元垒把知识、参谋、督查、执行和团队治理放在同一套可部署边界内。</p>
           </header>
 
           <ol class="yx-workflow">
@@ -659,7 +659,7 @@ onBeforeUnmount(() => {
             <div class="yx-capabilities__intro">
               <span>可私有部署</span>
               <h3>数据、模型与权限由你的团队掌握</h3>
-              <a :href="withBase('/intro/project-overview')">认识 Yuxi <span aria-hidden="true">→</span></a>
+              <a :href="withBase('/intro/project-overview')">认识元垒 <span aria-hidden="true">→</span></a>
             </div>
             <dl>
               <div v-for="group in capabilityGroups" :key="group.label">
@@ -691,7 +691,7 @@ onBeforeUnmount(() => {
             <pre><code><span># 获取当前发布版本</span>
 git clone --branch v0.7.3 --depth 1 \
   https://github.com/sxyon/Yuanlei.git
-cd Yuxi
+cd Yuanlei
 
 <span># 初始化并启动</span>
 ./scripts/init.sh
@@ -715,8 +715,8 @@ docker compose up --build -d</code></pre>
             rel="noreferrer"
           >
             <img
-              src="https://contrib.rocks/image?repo=xerrors/Yuxi&max=60&columns=12"
-              alt="Yuxi 贡献者头像墙"
+              src="https://contrib.rocks/image?repo=sxyon/Yuanlei&max=60&columns=12"
+              alt="元垒贡献者头像墙"
               width="812"
               height="268"
               loading="lazy"
@@ -726,7 +726,7 @@ docker compose up --build -d</code></pre>
           <div v-reveal class="yx-community__footer">
             <div>
             <h2>继续探索，也欢迎一起构建</h2>
-            <p>查看演示、提交 Issue，或从贡献指南开始参与 Yuxi。</p>
+            <p>查看演示、提交 Issue，或从贡献指南开始参与元垒。</p>
             </div>
             <div class="yx-community__actions">
               <a class="yx-button yx-button--primary" :href="DEMO" target="_blank" rel="noreferrer">观看演示</a>
@@ -741,15 +741,15 @@ docker compose up --build -d</code></pre>
 
 <style scoped>
 .yx-home {
-  --yx-amber: #f3ba32;
-  --yx-amber-strong: #925f08;
-  --yx-amber-soft: #fff2c9;
-  --yx-ink: #272c2a;
-  --yx-ink-soft: #59605d;
-  --yx-paper: #f7f6f1;
-  --yx-surface: #fffefa;
-  --yx-line: #dcded8;
-  --yx-shadow: rgb(47 44 32 / 12%);
+  --yx-accent: #28d7e5;
+  --yx-accent-strong: #087b8a;
+  --yx-accent-soft: #dffafd;
+  --yx-ink: #111831;
+  --yx-ink-soft: #4c5873;
+  --yx-paper: #f4f7fc;
+  --yx-surface: #fff;
+  --yx-line: #d7dfef;
+  --yx-shadow: rgb(17 24 49 / 14%);
   --yx-focus: var(--yx-ink);
   --yx-radius: 22px;
   --yx-shell: 1180px;
@@ -813,7 +813,7 @@ docker compose up --build -d</code></pre>
 
 .yx-kicker {
   margin: 0 0 12px;
-  color: var(--yx-amber-strong);
+  color: var(--yx-accent-strong);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .12em;
@@ -826,7 +826,7 @@ docker compose up --build -d</code></pre>
   align-items: center;
   padding: 56px 0;
   background:
-    radial-gradient(circle at 12% 16%, rgb(243 186 50 / 20%), transparent 28%),
+    radial-gradient(circle at 12% 16%, rgb(40 215 229 / 18%), transparent 28%),
     var(--yx-paper);
 }
 
@@ -837,7 +837,7 @@ docker compose up --build -d</code></pre>
   width: min(54vw, 760px);
   aspect-ratio: 1;
   border-radius: 50%;
-  background: var(--yx-amber-soft);
+  background: var(--yx-accent-soft);
   content: "";
   pointer-events: none;
 }
@@ -853,7 +853,7 @@ docker compose up --build -d</code></pre>
 
 .yx-lockup {
   display: block;
-  width: 190px;
+  width: 280px;
   margin-bottom: 34px;
 }
 
@@ -927,7 +927,7 @@ docker compose up --build -d</code></pre>
 }
 
 .yx-capabilities a:focus-visible {
-  outline-color: var(--yx-amber);
+  outline-color: var(--yx-accent);
 }
 
 .yx-home .yx-button--primary {
@@ -979,10 +979,10 @@ docker compose up --build -d</code></pre>
 
 .pixel-mascot__character {
   position: absolute;
-  left: 20%;
-  top: 16%;
-  width: 60%;
-  height: 74%;
+  left: 25%;
+  top: 25%;
+  width: 50%;
+  height: 50%;
   object-fit: contain;
   transform-origin: 50% 95%;
   animation: mascot-sway 7.2s ease-in-out infinite;
@@ -1029,7 +1029,7 @@ docker compose up --build -d</code></pre>
   padding: 38px;
   background: #e6ebe6;
   border-color: #d4dbd4;
-  color: #272c2a;
+  color: #111831;
 }
 
 .yx-path--featured::before {
@@ -1040,14 +1040,14 @@ docker compose up --build -d</code></pre>
   width: 78%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: rgb(243 186 50 / 16%);
+  background: rgb(40 215 229 / 14%);
   content: '';
 }
 
 .yx-path:hover {
   z-index: 1;
   transform: translateY(-4px);
-  border-color: var(--yx-amber-strong);
+  border-color: var(--yx-accent-strong);
   box-shadow: 0 24px 48px -34px var(--yx-shadow);
 }
 
@@ -1201,8 +1201,8 @@ docker compose up --build -d</code></pre>
   border: 1px solid rgb(39 44 42 / 14%);
   border-radius: calc(var(--yx-radius) + 8px);
   background:
-    radial-gradient(circle at 82% 8%, rgb(243 186 50 / 18%), transparent 38%),
-    color-mix(in srgb, var(--yx-paper) 90%, var(--yx-amber));
+    radial-gradient(circle at 82% 8%, rgb(40 215 229 / 16%), transparent 38%),
+    color-mix(in srgb, var(--yx-paper) 90%, var(--yx-accent));
   box-shadow: 0 34px 90px -48px var(--yx-shadow);
 }
 
@@ -1240,8 +1240,8 @@ docker compose up --build -d</code></pre>
 
 .yx-providers {
   overflow: hidden;
-  color: #272c2a;
-  background: var(--yx-amber);
+  color: #111831;
+  background: var(--yx-accent);
 }
 
 .yx-providers .yx-heading {
@@ -1250,7 +1250,7 @@ docker compose up --build -d</code></pre>
 
 .yx-providers .yx-heading h2,
 .yx-providers .yx-heading > p:last-child {
-  color: #272c2a;
+  color: #111831;
 }
 
 .yx-marquee {
@@ -1260,7 +1260,7 @@ docker compose up --build -d</code></pre>
 }
 
 .yx-marquee:focus-visible {
-  outline: 2px solid #272c2a;
+  outline: 2px solid #111831;
   outline-offset: 6px;
 }
 
@@ -1299,7 +1299,7 @@ docker compose up --build -d</code></pre>
   padding: 0 20px;
   border: 1px solid rgb(39 44 42 / 13%);
   border-radius: 999px;
-  color: #272c2a;
+  color: #111831;
   background: #fffefa;
   box-shadow: 0 16px 34px -24px rgb(39 44 42 / 46%);
   white-space: nowrap;
@@ -1363,8 +1363,8 @@ docker compose up --build -d</code></pre>
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: #272c2a;
-  background: var(--yx-amber);
+  color: #111831;
+  background: var(--yx-accent);
   content: "→";
   font-size: 14px;
 }
@@ -1393,12 +1393,12 @@ docker compose up --build -d</code></pre>
   margin-top: 64px;
   padding: clamp(34px, 6vw, 68px);
   border-radius: var(--yx-radius);
-  color: #f1f0ea;
-  background: #272c2a;
+  color: #f4f8ff;
+  background: #111831;
 }
 
 .yx-capabilities__intro > span {
-  color: var(--yx-amber);
+  color: var(--yx-accent);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .1em;
@@ -1407,7 +1407,7 @@ docker compose up --build -d</code></pre>
 .yx-capabilities h3 {
   max-width: 12ch;
   margin: 14px 0 26px;
-  color: #f1f0ea;
+  color: #f4f8ff;
   font-size: clamp(28px, 3.8vw, 45px);
   line-height: 1.18;
   letter-spacing: -.035em;
@@ -1427,18 +1427,18 @@ docker compose up --build -d</code></pre>
 
 .yx-capabilities dl > div {
   padding-top: 18px;
-  border-top: 1px solid rgb(241 240 234 / 22%);
+  border-top: 1px solid rgb(244 248 255 / 22%);
 }
 
 .yx-capabilities dt {
-  color: var(--yx-amber);
+  color: var(--yx-accent);
   font-size: 13px;
   font-weight: 700;
 }
 
 .yx-capabilities dd {
   margin: 8px 0 0;
-  color: #f1f0ea;
+  color: #f4f8ff;
   font-size: 15px;
 }
 
@@ -1465,7 +1465,7 @@ docker compose up --build -d</code></pre>
 }
 
 .yx-inline-links a {
-  color: var(--yx-amber-strong);
+  color: var(--yx-accent-strong);
   font-size: 14px;
   font-weight: 700;
   text-decoration: underline;
@@ -1475,9 +1475,9 @@ docker compose up --build -d</code></pre>
 
 .yx-terminal {
   overflow: hidden;
-  border: 1px solid #414743;
+  border: 1px solid #2e3b60;
   border-radius: var(--yx-radius);
-  background: #202523;
+  background: #0d142c;
   box-shadow: 0 30px 80px -42px var(--yx-shadow);
 }
 
@@ -1487,8 +1487,8 @@ docker compose up --build -d</code></pre>
   align-items: center;
   justify-content: space-between;
   padding: 0 22px;
-  border-bottom: 1px solid #414743;
-  color: #aeb4b0;
+  border-bottom: 1px solid #2e3b60;
+  color: #a7b5d3;
   font-size: 12px;
 }
 
@@ -1496,7 +1496,7 @@ docker compose up --build -d</code></pre>
   margin: 0;
   padding: 30px;
   overflow-x: auto;
-  color: #f1f0ea;
+  color: #f4f8ff;
   font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 14px;
   line-height: 1.8;
@@ -1508,7 +1508,7 @@ docker compose up --build -d</code></pre>
 }
 
 .yx-terminal code span {
-  color: #d6a934;
+  color: #69e6ee;
 }
 
 .yx-community {
@@ -1542,7 +1542,7 @@ docker compose up --build -d</code></pre>
 
 .yx-contributors:hover {
   transform: translateY(-3px);
-  border-color: var(--yx-amber-strong);
+  border-color: var(--yx-accent-strong);
 }
 
 .yx-contributors:focus-visible {
@@ -1781,34 +1781,34 @@ docker compose up --build -d</code></pre>
 
 <style>
 html.dark .yx-home {
-  --yx-amber-strong: #f3ba32;
-  --yx-amber-soft: #39311d;
-  --yx-ink: #f1f0ea;
-  --yx-ink-soft: #b9bcb7;
-  --yx-paper: #151918;
-  --yx-surface: #202523;
-  --yx-line: #3d433f;
+  --yx-accent-strong: #69e6ee;
+  --yx-accent-soft: #142f43;
+  --yx-ink: #f4f8ff;
+  --yx-ink-soft: #a7b5d3;
+  --yx-paper: #090f22;
+  --yx-surface: #111831;
+  --yx-line: #2e3b60;
   --yx-shadow: rgb(0 0 0 / 30%);
-  --yx-focus: var(--yx-amber);
+  --yx-focus: var(--yx-accent);
 }
 
 html.dark .yx-path--featured {
-  color: #f4f2ea;
-  background: #2b302b;
-  border-color: #4a514b;
+  color: #f4f8ff;
+  background: #17213f;
+  border-color: #34446d;
 }
 
 html.dark .yx-path--featured::before {
-  background: rgb(243 186 50 / 12%);
+  background: rgb(40 215 229 / 12%);
 }
 
 html.dark .yx-path--featured .yx-path__body strong,
 html.dark .yx-path--featured .yx-path__action {
-  color: #f4f2ea;
+  color: #f4f8ff;
 }
 
 html.dark .yx-path--featured .yx-path__body > span {
-  color: #c3c8c2;
+  color: #a7b5d3;
 }
 
 html.dark .yx-lockup__light {

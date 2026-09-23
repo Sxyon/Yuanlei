@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="yuanlei-knowledge-title">
+  <title id="yuanlei-knowledge-title">元垒知识图标</title>
+  <circle cx="128" cy="128" r="112" fill="#142F43"/>
+  <path fill="#28D7E5" d="M38 62h66c14 0 24 5 24 19v123c-8-12-20-18-38-18H38z"/>
+  <path fill="#4C7DFF" d="M218 62h-66c-14 0-24 5-24 19v123c8-12 20-18 38-18h52z"/>
+  <path fill="#F4F8FF" d="M56 88h48v10H56zM56 112h48v10H56zM152 88h48v10h-48zM152 112h48v10h-48z" opacity=".92"/>
+  <path fill="#F4F8FF" d="m128 98 15 15-15 15-15-15z"/>
+</svg>

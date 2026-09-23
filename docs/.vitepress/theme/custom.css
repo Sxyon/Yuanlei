@@ -4,38 +4,38 @@
 
 /* VitePress 主题色覆盖 */
 :root {
-  --vp-c-brand-1: #8a5900;
-  --vp-c-brand-2: #6f4700;
-  --vp-c-brand-3: #f3ba32;
-  --vp-c-brand-soft: rgb(243 186 50 / 16%);
-  --vp-c-brand-light: #f3ba32;
-  --vp-c-brand-lighter: #ffd66b;
-  --vp-c-brand-lightest: #fff1c2;
-  --vp-c-brand-dark: #b87900;
-  --vp-c-brand-darker: #8a5900;
-  --vp-c-brand-darkest: #5e3d00;
-  --vp-button-brand-text: #272c2a;
-  --vp-button-brand-bg: #f3ba32;
-  --vp-button-brand-hover-text: #272c2a;
-  --vp-button-brand-hover-bg: #e4aa1a;
-  --vp-button-brand-active-text: #272c2a;
-  --vp-button-brand-active-bg: #d59c0e;
-  --vp-c-tip-1: #8a5900;
-  --vp-c-tip-2: rgb(243 186 50 / 42%);
-  --vp-c-tip-3: rgb(243 186 50 / 16%);
-  --vp-c-tip-soft: rgb(243 186 50 / 12%);
+  --vp-c-brand-1: #087b8a;
+  --vp-c-brand-2: #146bba;
+  --vp-c-brand-3: #28d7e5;
+  --vp-c-brand-soft: rgb(40 215 229 / 16%);
+  --vp-c-brand-light: #28d7e5;
+  --vp-c-brand-lighter: #69e6ee;
+  --vp-c-brand-lightest: #dffafd;
+  --vp-c-brand-dark: #4c7dff;
+  --vp-c-brand-darker: #315cce;
+  --vp-c-brand-darkest: #213f8e;
+  --vp-button-brand-text: #111831;
+  --vp-button-brand-bg: #28d7e5;
+  --vp-button-brand-hover-text: #111831;
+  --vp-button-brand-hover-bg: #69e6ee;
+  --vp-button-brand-active-text: #f4f8ff;
+  --vp-button-brand-active-bg: #315cce;
+  --vp-c-tip-1: #087b8a;
+  --vp-c-tip-2: rgb(40 215 229 / 42%);
+  --vp-c-tip-3: rgb(40 215 229 / 16%);
+  --vp-c-tip-soft: rgb(40 215 229 / 12%);
 }
 
 /* 深色模式覆盖 */
 .dark {
-  --vp-c-brand-1: #f3ba32;
-  --vp-c-brand-2: #ffd66b;
-  --vp-c-brand-3: #f3ba32;
-  --vp-c-brand-soft: rgb(243 186 50 / 18%);
-  --vp-c-tip-1: #f3ba32;
-  --vp-c-tip-2: rgb(243 186 50 / 52%);
-  --vp-c-tip-3: rgb(243 186 50 / 20%);
-  --vp-c-tip-soft: rgb(243 186 50 / 14%);
+  --vp-c-brand-1: #69e6ee;
+  --vp-c-brand-2: #28d7e5;
+  --vp-c-brand-3: #4c7dff;
+  --vp-c-brand-soft: rgb(40 215 229 / 18%);
+  --vp-c-tip-1: #69e6ee;
+  --vp-c-tip-2: rgb(40 215 229 / 52%);
+  --vp-c-tip-3: rgb(40 215 229 / 20%);
+  --vp-c-tip-soft: rgb(40 215 229 / 14%);
 }
 
 /* 为导航标识预留稳定方形空间，避免首次绘制时发生尺寸推断。 */
