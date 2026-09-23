@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="yuanlei-deploy-title">
+  <title id="yuanlei-deploy-title">元垒部署图标</title>
+  <circle cx="128" cy="128" r="112" fill="#142F43"/>
+  <path fill="#4C7DFF" d="M40 178h62v26H40zM154 178h62v26h-62z"/>
+  <path fill="#28D7E5" d="M58 136h50v26H58zM148 136h50v26h-50zM78 94h42v26H78zM136 94h42v26h-42z"/>
+  <path fill="#F4F8FF" d="m128 45 37 38h-23v63h-28V83H91z"/>
+</svg>

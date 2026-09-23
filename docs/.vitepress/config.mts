@@ -15,19 +15,19 @@ export default defineConfig({
   head: [
     ['link', { rel: 'icon', href: '/Yuanlei/favicon.svg' }],
     ['link', { rel: 'alternate icon', href: '/Yuanlei/favicon.ico' }],
-    ['meta', { name: 'theme-color', content: '#F3BA32' }],
+    ['meta', { name: 'theme-color', content: '#111831' }],
     ['meta', { name: 'keywords', content: 'Yuanlei, Yuxi, AI Agent, RAG, knowledge graph, LangGraph, MCP, self-hosted, multi-agent, knowledge base' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:site_name', content: 'Yuanlei' }],
     ['meta', { property: 'og:title', content: 'Yuanlei · 您的总裁办、CEO办公室' }],
     ['meta', { property: 'og:description', content: '可私有部署的，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。' }],
-    ['meta', { property: 'og:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }],
+    ['meta', { property: 'og:image', content: 'https://sxyon.github.io/Yuanlei/home/yuanlei-web-og-1200x630-v1.0.0.png' }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:title', content: 'Yuxi · Self-hosted knowledge agent platform' }],
-    ['meta', { name: 'twitter:description', content: 'RAG, knowledge graphs, multi-agent execution, MCP/Skills, sandboxed artifacts, and access control in one workspace.' }],
-    ['meta', { name: 'twitter:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }]
+    ['meta', { name: 'twitter:title', content: 'Yuanlei · 个人与企业的 AI 中枢系统' }],
+    ['meta', { name: 'twitter:description', content: '面向个人与企业的 AI 中枢，集参谋与决策、督查与汇报、执行与协同于一体。' }],
+    ['meta', { name: 'twitter:image', content: 'https://sxyon.github.io/Yuanlei/home/yuanlei-web-og-1200x630-v1.0.0.png' }]
   ],
   ignoreDeadLinks: [
     /localhost/
@@ -144,7 +144,7 @@ export default defineConfig({
 
     footer: {
       message: '本项目基于 MIT License 开源，欢迎使用和贡献。',
-      copyright: 'Copyright © 2025-present Yuxi'
+      copyright: 'Copyright © 2025-present Yuanlei'
     },
 
     editLink: {

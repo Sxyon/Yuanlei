@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="yuanlei-og-title yuanlei-og-desc">
+  <title id="yuanlei-og-title">元垒 Open Graph 分享图</title>
+  <desc id="yuanlei-og-desc">深海靛背景上的元垒品牌标识与个人、企业 AI 中枢定位。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#0A1025"/>
+      <stop offset="1" stop-color="#121F45"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop stop-color="#28D7E5" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#28D7E5" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0H0v42" fill="none" stroke="#6A87D9" stroke-opacity=".1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="930" cy="315" r="290" fill="url(#glow)"/>
+  <circle cx="930" cy="315" r="226" fill="none" stroke="#4C7DFF" stroke-opacity=".3" stroke-width="2"/>
+  <circle cx="930" cy="315" r="174" fill="none" stroke="#28D7E5" stroke-opacity=".35" stroke-width="2" stroke-dasharray="8 14"/>
+  <path d="M704 315h452M930 89v452" stroke="#4C7DFF" stroke-opacity=".22" stroke-width="2"/>
+  <g transform="translate(770 155) scale(5)">
+    <path fill="#28D7E5" d="M10 26V10h16v8h-8v8zM54 38v16H38v-8h8v-8z"/>
+    <path fill="#4C7DFF" d="M38 10h16v16h-8v-8h-8zM26 54H10V38h8v8h8z"/>
+    <path fill="#F4F8FF" d="m32 24 8 8-8 8-8-8z"/>
+  </g>
+  <g font-family="Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif">
+    <g transform="translate(76 70)">
+      <rect width="70" height="70" rx="16" fill="#111831" stroke="#34446D" stroke-width="2"/>
+      <path fill="#28D7E5" d="M12 30V12h18v9h-9v9zM58 40v18H40v-9h9v-9z"/>
+      <path fill="#4C7DFF" d="M40 12h18v18h-9v-9h-9zM30 58H12V40h9v9h9z"/>
+      <path fill="#F4F8FF" d="m35 26 9 9-9 9-9-9z"/>
+    </g>
+    <text x="166" y="125" fill="#F4F8FF" font-size="42" font-weight="780" letter-spacing="4">元垒</text>
+    <text x="76" y="255" fill="#F4F8FF" font-size="70" font-weight="820">个人 / 企业的</text>
+    <text x="76" y="339" fill="#28D7E5" font-size="70" font-weight="820">AI 中枢系统</text>
+    <text x="80" y="412" fill="#B9C6E2" font-size="30" font-weight="560">您的总裁办、CEO 办公室</text>
+    <text x="80" y="480" fill="#DCE5F7" font-size="23" font-weight="600" letter-spacing="1.5">参谋与决策  ·  督查与汇报  ·  执行与协同</text>
+  </g>
+  <rect x="76" y="545" width="500" height="2" fill="#4C7DFF" fill-opacity=".45"/>
+  <rect x="76" y="545" width="168" height="2" fill="#28D7E5"/>
+</svg>
