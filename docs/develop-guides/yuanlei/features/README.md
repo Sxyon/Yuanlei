@@ -19,4 +19,4 @@
 - [输入区组合态与发送锁](input-send-lock.md)：已实现；属于局部产品交互差异。
 - [Runtime cleanup 事务外执行](runtime-cleanup.md)：提案语义已接入，仍有幂等收敛证据待补。
 - [Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)：实现已接入，提案中的浏览器与真实账号证据待补。
-- [项目自定义 Dashboard](project-dashboard.md)：阶段 A、B 已实现（JSON 文档、页面 revision、受控 writer、页面读接口与 Agent 读写工具）；只读 bridge 与首批项目数据展示待实现。
+- [项目自定义 Dashboard](project-dashboard.md)：已实现静态 Dashboard v0；含文档与页面 revision、受控 writer、Agent 读写工具和无脚本页面壳。

@@ -1,9 +1,20 @@
-from typing import Any
+from typing import Any, get_args, get_origin
+
+from langgraph.prebuilt.tool_node import ToolRuntime
 
 from yuxi.utils import logger
 
 # 工具元数据缓存
 _metadata_cache: list[dict] = []
+
+
+def _is_injected_tool_runtime(name: str, annotation: Any) -> bool:
+    """仅识别 ToolNode 注入的 runtime，保留同名业务参数。"""
+    return name == "runtime" and (
+        annotation is ToolRuntime
+        or get_origin(annotation) is ToolRuntime
+        or ToolRuntime in get_args(annotation)
+    )
 
 
 def _extract_tool_info(tool_obj) -> dict:
@@ -19,7 +30,24 @@ def _extract_tool_info(tool_obj) -> dict:
 
     if hasattr(tool_obj, "args_schema") and tool_obj.args_schema:
         schema = tool_obj.args_schema
-        if hasattr(schema, "schema"):
+        model_fields = getattr(schema, "model_fields", None)
+        if isinstance(model_fields, dict):
+            for arg_name, field_info in model_fields.items():
+                # ToolRuntime 是 ToolNode 的执行期注入，不是 Agent 可配置参数；
+                # 不能为展示元数据序列化它，也不能从实际 tool schema 移除它。
+                if _is_injected_tool_runtime(arg_name, field_info.annotation):
+                    continue
+                info["args"].append(
+                    {
+                        "name": arg_name,
+                        "type": getattr(field_info.annotation, "__name__", str(field_info.annotation)),
+                        "description": field_info.description or "",
+                    }
+                )
+            return info
+        if hasattr(schema, "model_json_schema"):
+            schema = schema.model_json_schema()
+        elif hasattr(schema, "schema"):
             schema = schema.schema()
         for arg_name, arg_info in schema.get("properties", {}).items():
             info["args"].append(

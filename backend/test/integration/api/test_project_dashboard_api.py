@@ -101,6 +101,20 @@ async def test_project_dashboard_pages_are_project_scoped(test_client, admin_hea
         await _delete_project(test_client, admin_headers, beta_id, beta_directory)
 
 
+async def test_project_dashboard_exposes_no_browser_writer_or_source_api(test_client, admin_headers):
+    """静态 Dashboard 不提供浏览器写入或 iframe 数据 source 路由。"""
+    project_id, directory = await _create_project(test_client, admin_headers, "static-surface")
+    dashboard_url = f"/api/projects/{project_id}/dashboard"
+    try:
+        source = await test_client.get(f"{dashboard_url}/sources/project.summary", headers=admin_headers)
+        assert source.status_code == 404
+
+        write = await test_client.put(dashboard_url, headers=admin_headers, json={"html": "<html></html>"})
+        assert write.status_code == 405
+    finally:
+        await _delete_project(test_client, admin_headers, project_id, directory)
+
+
 async def test_project_dashboard_read_reports_empty_ready_and_repair(test_client, admin_headers, standard_user):
     """HTTP 读接口暴露 empty/ready/repair_required，且跨用户不可见。"""
     project_id, directory = await _create_project(test_client, admin_headers, "states")

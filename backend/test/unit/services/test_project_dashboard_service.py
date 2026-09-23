@@ -20,6 +20,29 @@ def test_page_html_rejects_empty_or_non_document():
             _encode_page_html(html)
 
 
+def test_page_html_rejects_scripts():
+    with pytest.raises(ValueError, match="不能包含脚本"):
+        _encode_page_html("<html><script>fetch('https://example.com')</script></html>")
+
+
+@pytest.mark.parametrize(
+    "html",
+    (
+        '<html><meta http-equiv="refresh" content="0; url=https://example.com"></html>',
+        '<html><a href="https://example.com">leave</a></html>',
+        '<html><a href="/projects/other">leave</a></html>',
+        '<html><svg><a href="https://example.com">leave</a></svg></html>',
+    ),
+)
+def test_page_html_rejects_navigation(html):
+    with pytest.raises(ValueError, match="跳转|导航"):
+        _encode_page_html(html)
+
+
+def test_page_html_allows_fragment_links():
+    assert _encode_page_html('<html><a href="#summary">summary</a></html>')
+
+
 def test_page_html_rejects_oversized_content():
     with pytest.raises(ValueError):
         _encode_page_html("<html>" + "a" * MAX_PAGE_BYTES + "</html>")

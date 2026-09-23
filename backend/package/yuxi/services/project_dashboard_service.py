@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from fastapi import HTTPException
@@ -17,6 +18,27 @@ from yuxi.workspace.errors import FileTransferLimitError
 
 PAGE_ENTRY_PATH = "/dashboard/index.html"
 MAX_PAGE_BYTES = 1024 * 1024
+_HREF_ATTRIBUTE_PATTERN = re.compile(
+    r'''\b(?:href|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))''',
+    re.IGNORECASE,
+)
+
+
+def _validate_static_page_html(html: str) -> None:
+    """拒绝会执行脚本或让 iframe 导航离开静态页面的标记。"""
+    if not isinstance(html, str) or not html.strip():
+        raise ValueError("页面 HTML 不能为空")
+    lowered = html.lower()
+    if "<html" not in lowered and "<!doctype html" not in lowered:
+        raise ValueError("页面必须包含 <html> 或 <!doctype html>")
+    if "<script" in lowered:
+        raise ValueError("第一版 Dashboard 仅支持静态 HTML 和 CSS，不能包含脚本")
+    if re.search(r"<\s*meta\b", html, re.IGNORECASE):
+        raise ValueError("第一版 Dashboard 不支持 meta 标签或自动跳转")
+    for match in _HREF_ATTRIBUTE_PATTERN.finditer(html):
+        destination = next((value for value in match.groups() if value is not None), "").strip()
+        if not destination.startswith("#"):
+            raise ValueError("第一版 Dashboard 仅支持页内锚点，不能包含页面导航")
 
 
 def _read_page_snapshot(workdir: Workdir) -> dict[str, Any]:
@@ -57,6 +79,19 @@ def _read_page_snapshot(workdir: Workdir) -> dict[str, Any]:
             "exists": True,
             "usable": False,
             "unusable_reason": "content",
+            "sha256": None,
+            "size": None,
+            "html": None,
+        }
+    try:
+        _validate_static_page_html(html)
+    except ValueError:
+        return {
+            "exists": True,
+            "usable": False,
+            # 内容可读、路径可信，但旧页面不符合 v0 静态策略。它不能被
+            # 返回给 iframe，却可由持有当前 revision 的受控 writer 覆盖修复。
+            "unusable_reason": "static_policy",
             "sha256": None,
             "size": None,
             "html": None,
@@ -127,11 +162,7 @@ async def get_project_dashboard_view(*, project_id: str, db: AsyncSession, user:
 
 def _encode_page_html(html: str) -> bytes:
     """校验页面内容并返回 UTF-8 字节。"""
-    if not isinstance(html, str) or not html.strip():
-        raise ValueError("页面 HTML 不能为空")
-    lowered = html.lower()
-    if "<html" not in lowered and "<!doctype html" not in lowered:
-        raise ValueError("页面必须包含 <html> 或 <!doctype html>")
+    _validate_static_page_html(html)
     raw = html.encode("utf-8")
     if len(raw) > MAX_PAGE_BYTES:
         raise ValueError(f"页面 HTML 超过 {MAX_PAGE_BYTES} 字节上限")
@@ -206,10 +237,13 @@ async def write_project_dashboard_view(
     snapshot = _read_page_snapshot(workdir)
     # 非 UTF-8、超限、符号链接等既有入口不是可安全覆盖的页面；保留其字节，
     # 让读取端暴露 repair_required，避免 writer 把异常状态静默伪装成正常版本。
+    # 仅“可读但不符合静态策略”的旧页面可以由基于当前 revision 的新内容修复；
+    # 它从不作为可见内容返回，也不会被采纳为普通 revision。
     if snapshot["exists"] and not snapshot["usable"]:
         if snapshot["unusable_reason"] == "path":
             raise _page_path_invalid()
-        raise _page_content_unusable()
+        if snapshot["unusable_reason"] != "static_policy":
+            raise _page_content_unusable()
     disk_changed = snapshot["usable"] and (
         row is None or snapshot["sha256"] != row.content_sha256 or snapshot["size"] != int(row.content_size)
     )

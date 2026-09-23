@@ -6,6 +6,7 @@ import json
 import os
 import uuid
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +17,7 @@ from yuxi.agents.toolkits.buildin import dashboard_tools
 from yuxi.agents.toolkits.buildin.dashboard_tools import dashboard_read, dashboard_write
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import AgentRun, Conversation, Message, Project, User
+from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.workspace import filesystem as workspace_filesystem_module
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -81,6 +83,8 @@ async def _seed_run(
     selection_status: str = "selectable",
     workdir_path: str = "projects/p1",
     run_status: str = "running",
+    worker_id: str = "worker-current",
+    lease_expires_at=None,
 ) -> None:
     """创建 User → Project → Conversation → Run 的最小持久化链路。"""
     async with sessions() as session:
@@ -127,6 +131,9 @@ async def _seed_run(
                 input_payload={},
                 status=run_status,
                 run_type="chat",
+                worker_id=worker_id,
+                heartbeat_at=utc_now_naive(),
+                lease_expires_at=lease_expires_at or utc_now_naive() + timedelta(minutes=5),
             )
         )
         await session.commit()
@@ -149,7 +156,11 @@ async def test_dashboard_tool_reads_and_writes_only_run_project(tmp_path, monkey
             workdir_path=workdir_rel,
         )
         monkeypatch.setattr(dashboard_tools, "pg_manager", manager)
-        runtime = SimpleNamespace(context=SimpleNamespace(run_id="run-1", uid="uid-owner", is_subagent_runtime=False))
+        runtime = SimpleNamespace(
+            context=SimpleNamespace(
+                run_id="run-1", uid="uid-owner", worker_id="worker-current", is_subagent_runtime=False
+            )
+        )
 
         empty = json.loads(await dashboard_read.coroutine(runtime=runtime))
         assert empty["state"] == "empty"
@@ -202,7 +213,9 @@ async def test_dashboard_tool_rejects_project_outside_editable_scope(tmp_path, m
         )
         monkeypatch.setattr(dashboard_tools, "pg_manager", manager)
         runtime = SimpleNamespace(
-            context=SimpleNamespace(run_id="run-implicit", uid="uid-owner", is_subagent_runtime=False)
+            context=SimpleNamespace(
+                run_id="run-implicit", uid="uid-owner", worker_id="worker-current", is_subagent_runtime=False
+            )
         )
 
         payload = json.loads(await dashboard_read.coroutine(runtime=runtime))
@@ -232,7 +245,9 @@ async def test_dashboard_tool_reauthorizes_running_owner_scope(tmp_path, monkeyp
         monkeypatch.setattr(dashboard_tools, "pg_manager", manager)
 
         pending_runtime = SimpleNamespace(
-            context=SimpleNamespace(run_id="run-1", uid="uid-owner", is_subagent_runtime=False)
+            context=SimpleNamespace(
+                run_id="run-1", uid="uid-owner", worker_id="worker-current", is_subagent_runtime=False
+            )
         )
         pending = json.loads(await dashboard_read.coroutine(runtime=pending_runtime))
         assert pending == {
@@ -241,10 +256,56 @@ async def test_dashboard_tool_reauthorizes_running_owner_scope(tmp_path, monkeyp
         }
 
         spoofed_runtime = SimpleNamespace(
-            context=SimpleNamespace(run_id="run-1", uid="uid-other", is_subagent_runtime=False)
+            context=SimpleNamespace(
+                run_id="run-1", uid="uid-other", worker_id="worker-current", is_subagent_runtime=False
+            )
         )
         spoofed = json.loads(await dashboard_read.coroutine(runtime=spoofed_runtime))
         assert spoofed == {
             "error_code": "invalid_request",
             "message": "当前运行无权访问项目 Dashboard",
         }
+
+
+@pytest.mark.parametrize(
+    ("runtime_worker_id", "lease_expires_at"),
+    (
+        ("worker-replaced", None),
+        ("worker-current", utc_now_naive() - timedelta(seconds=1)),
+    ),
+    ids=["owner_mismatch", "lease_expired"],
+)
+async def test_dashboard_tool_rejects_non_owner_or_expired_lease(
+    tmp_path, monkeypatch, runtime_worker_id, lease_expires_at
+) -> None:
+    """失去当前 attempt ownership 的 worker 不能读取或写入 Dashboard。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_tool_lease") as (manager, sessions):
+        await _seed_run(
+            sessions,
+            uid="uid-owner",
+            project_id="project-owner",
+            thread_id="thread-1",
+            run_id="run-1",
+            workdir_path=workdir_rel,
+            lease_expires_at=lease_expires_at,
+        )
+        monkeypatch.setattr(dashboard_tools, "pg_manager", manager)
+        runtime = SimpleNamespace(
+            context=SimpleNamespace(
+                run_id="run-1", uid="uid-owner", worker_id=runtime_worker_id, is_subagent_runtime=False
+            )
+        )
+
+        payload = json.loads(await dashboard_write.coroutine(
+            html="<html><body>blocked</body></html>", expected_revision=0, runtime=runtime
+        ))
+        assert payload == {
+            "error_code": "invalid_request",
+            "message": "只有当前有效 AgentRun lease owner 可以访问项目 Dashboard",
+        }
+        assert not (workspace_root / workdir_rel / "dashboard" / "index.html").exists()

@@ -86,6 +86,12 @@
                       <template #overlay>
                         <a-menu>
                           <a-menu-item
+                            key="dashboard"
+                            :icon="h(LayoutDashboard, { size: 14 })"
+                            @click="emit('open-project-dashboard', group.project)"
+                            >项目 Dashboard</a-menu-item
+                          >
+                          <a-menu-item
                             key="git"
                             :icon="h(GitFork, { size: 14 })"
                             @click="emit('manage-project-git', group.project)"
@@ -199,6 +205,7 @@ import {
   FolderClosed,
   FolderOpen,
   GitFork,
+  LayoutDashboard,
   Loader2,
   MoreVertical,
   Plus,
@@ -231,6 +238,7 @@ const emit = defineEmits([
   'rename-project',
   'delete-project',
   'manage-project-git',
+  'open-project-dashboard',
   'create-project-chat',
   'retry-projects'
 ])

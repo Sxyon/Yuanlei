@@ -414,6 +414,75 @@ async def test_write_after_external_change_converges_then_requires_latest_revisi
             assert ready["html"] == "<html><body>v2</body></html>"
 
 
+@pytest.mark.parametrize(
+    "unsafe_html",
+    (
+        b'<html><meta http-equiv="refresh" content="0; url=https://example.com"></html>',
+        b'<html><a href="https://example.com">leave</a></html>',
+    ),
+    ids=["meta_refresh", "external_link"],
+)
+async def test_external_navigation_markup_requires_repair(tmp_path: Path, monkeypatch, unsafe_html: bytes) -> None:
+    """外部导航页不可渲染，但持当前 revision 的写入能以安全页修复它。"""
+    workspace_root = tmp_path / "workspace"
+    workdir_rel = "projects/p1"
+    page_path = workspace_root / workdir_rel / "dashboard" / "index.html"
+    (workspace_root / workdir_rel).mkdir(parents=True)
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: workspace_root)
+
+    async with _scoped_database("pytest_dashboard_navigation") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner", workdir_path=workdir_rel)
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+            await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=0,
+                html="<html><body>v1</body></html>",
+                db=session,
+                user=user,
+            )
+            page_path.write_bytes(unsafe_html)
+            await session.execute(
+                text(
+                    "UPDATE project_dashboards "
+                    "SET content_sha256 = :sha256, content_size = :size "
+                    "WHERE project_id = :project_id"
+                ),
+                {
+                    "sha256": hashlib.sha256(unsafe_html).hexdigest(),
+                    "size": len(unsafe_html),
+                    "project_id": "project-owner",
+                },
+            )
+            await session.commit()
+
+            view = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert view["state"] == "repair_required"
+            assert view["html"] is None
+            with pytest.raises(HTTPException) as conflict:
+                await write_project_dashboard_view(
+                    project_id="project-owner",
+                    expected_revision=0,
+                    html="<html><body>v2</body></html>",
+                    db=session,
+                    user=user,
+                )
+            assert conflict.value.detail == {"code": "revision_conflict", "current_revision": 1}
+
+            repaired = await write_project_dashboard_view(
+                project_id="project-owner",
+                expected_revision=1,
+                html="<html><body>v2</body></html>",
+                db=session,
+                user=user,
+            )
+            assert repaired["revision"] == 2
+            ready = await get_project_dashboard_view(project_id="project-owner", db=session, user=user)
+            assert ready["state"] == "ready"
+            assert ready["html"] == "<html><body>v2</body></html>"
+
+
 async def test_write_commit_failure_keeps_repair_state_and_next_write_converges(tmp_path: Path, monkeypatch) -> None:
     """文件写入后数据库提交失败：磁盘保留完整新页面，读视图暴露待修复，下一次写入收敛。"""
     workspace_root = tmp_path / "workspace"
