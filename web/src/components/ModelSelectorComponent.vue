@@ -115,12 +115,28 @@
               >{{ getStatusIcon(model.spec) }}</span
             >
             <span
-              v-if="getModelInfo(model).vision"
+              v-if="getModelInfo(model).imageInput === 'supported'"
               class="model-signal-icon"
               role="img"
               aria-label="支持图像输入"
-              title="支持图像输入"
+              :title="getImageCapabilityTitle(model)"
               ><Eye :size="13"
+            /></span>
+            <span
+              v-else-if="getModelInfo(model).imageInput === 'unsupported'"
+              class="model-signal-icon model-signal-icon--unsupported"
+              role="img"
+              aria-label="不支持图像输入"
+              :title="getImageCapabilityTitle(model)"
+              ><EyeOff :size="13"
+            /></span>
+            <span
+              v-else-if="modelType === 'chat'"
+              class="model-signal-icon model-signal-icon--unknown"
+              role="img"
+              aria-label="图像输入能力未知"
+              :title="getImageCapabilityTitle(model)"
+              ><CircleHelp :size="13"
             /></span>
             <span
               v-if="getModelInfo(model).isOneMillionContext"
@@ -155,7 +171,7 @@
           </template>
           <template v-if="hasModelMetadata">
             <span v-if="userStore.isAdmin">。 </span>
-            部分信息（价格、能力等）来自
+            部分信息（价格、上下文等）来自
             <a href="https://models.dev" target="_blank" rel="noreferrer" @click.stop>models.dev</a>
             填补。仅供参考，可能和官网有偏差。
           </template>
@@ -180,7 +196,7 @@ import { RouterLink } from 'vue-router'
 import ActionDropdown from '@/components/common/ActionDropdown.vue'
 import ActionTrigger from '@/components/common/ActionTrigger.vue'
 import { modelProviderApi } from '@/apis/system_api'
-import { Eye, RefreshCw, X, Check } from '@lucide/vue'
+import { Eye, EyeOff, CircleHelp, RefreshCw, X, Check } from '@lucide/vue'
 import { useModelStatus } from '@/composables/useModelStatus'
 import { useUserStore } from '@/stores/user'
 import { loadModelMetadataCatalog, resolveModelDisplayMetadata } from '@/utils/modelMetadata'
@@ -330,7 +346,26 @@ const buildModelMetadataBySpec = (modelsByProvider, providers) => {
   }, {})
 }
 
-const getModelInfo = (model) => modelMetadataBySpec.value[model.spec] || {}
+const getModelInfo = (model) => ({
+  ...(modelMetadataBySpec.value[model.spec] || {}),
+  imageInput: model.capabilities?.input?.image || 'unknown'
+})
+
+const getImageCapabilityTitle = (model) => {
+  const status = getModelInfo(model).imageInput
+  const source = model.capabilities?.provenance?.source
+  const labels = {
+    supported: '后端已确认支持原生图片输入',
+    unsupported: '后端已确认不支持图片输入',
+    unknown: '后端尚未确认图片输入能力'
+  }
+  const toolCalling = model.capabilities?.tool_calling?.chat_completions
+  const toolCallingNote = {
+    responses_required: '；当前 Agent 需要 Responses 协议才能调用工具',
+    reasoning_effort_none: '；Chat Completions 工具调用要求 reasoning_effort=none'
+  }[toolCalling] || ''
+  return `${labels[status]}${source ? `（${source}）` : ''}${toolCallingNote}`
+}
 
 /** 先展开再加载，关闭后完成请求不会重新打开弹层。 */
 const handleOpenChange = (open) => {
@@ -610,6 +645,14 @@ const handleClear = () => {
 .model-signal-icon {
   display: inline-flex;
   align-items: center;
+}
+
+.model-signal-icon--unsupported {
+  color: var(--gray-400);
+}
+
+.model-signal-icon--unknown {
+  color: var(--color-warning-600);
 }
 
 .model-metadata-source {

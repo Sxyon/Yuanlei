@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import re
 import time
@@ -11,6 +13,8 @@ from threading import Event, Lock
 from urllib.parse import parse_qs, urlparse
 
 EXPECTED_OUTPUT = "DETERMINISTIC_AGENT_E2E_OK"
+NATIVE_IMAGE_INPUT_MARKER = "DETERMINISTIC_NATIVE_IMAGE_INPUT"
+NATIVE_IMAGE_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 EXPECTED_AUTHORIZATION = "Bearer ci-replay-key"
 EXPECTED_MODEL = "deterministic-chat"
 EXPECTED_PRELOADED_SKILL_MARKER = "# 图片生成技能"
@@ -41,6 +45,8 @@ def _validate_request(authorization: str | None, request: dict) -> str | None:
     serialized_messages = json.dumps(messages, ensure_ascii=False)
     if EXPECTED_OUTPUT not in serialized_messages:
         return "expected_input_missing"
+    if NATIVE_IMAGE_INPUT_MARKER in serialized_messages and not _has_valid_user_png(messages):
+        return "native_image_missing"
     if EXPECTED_PRELOADED_SKILL_MARKER not in serialized_messages:
         return "preloaded_skill_missing"
     tools = request.get("tools")
@@ -88,6 +94,32 @@ def _validate_request(authorization: str | None, request: dict) -> str | None:
     ):
         return "tool_execution_result_missing"
     return None
+
+
+def _has_valid_user_png(messages: list[dict]) -> bool:
+    """确认标记请求的图片确实到达 User Chat Completions payload。"""
+    for message in messages:
+        if (
+            not isinstance(message, dict)
+            or message.get("role") != "user"
+            or not isinstance(message.get("content"), list)
+        ):
+            continue
+        for block in message["content"]:
+            if not isinstance(block, dict) or block.get("type") != "image_url":
+                continue
+            image_url = block.get("image_url")
+            url = image_url.get("url") if isinstance(image_url, dict) else image_url
+            prefix = "data:image/png;base64,"
+            if not isinstance(url, str) or not url.startswith(prefix):
+                continue
+            try:
+                content = base64.b64decode(url[len(prefix) :], validate=True)
+            except (ValueError, binascii.Error):
+                continue
+            if content.startswith(b"\x89PNG\r\n\x1a\n") and content.endswith(b"IEND\xaeB`\x82"):
+                return True
+    return False
 
 
 def _stream_payloads(model: str, messages: list[dict]) -> list[dict]:

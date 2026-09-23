@@ -60,6 +60,9 @@ def load_chat_model(fully_specified_name: str | None, *, session_id: str | None 
             "yuxi_provider_type": info.provider_type,
             "yuxi_model_id": info.model_id,
             "yuxi_model_spec": info.spec,
+            "yuxi_protocol": info.protocol,
+            "yuxi_capabilities": info.capabilities,
+            "yuxi_request_body_overrides": info.request_body_overrides,
         }
     )
     kwargs["metadata"] = metadata

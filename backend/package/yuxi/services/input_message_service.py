@@ -8,6 +8,13 @@ from typing import Any
 
 from langchain.messages import HumanMessage
 
+from yuxi.models.image_input import (
+    image_mime_type_from_base64,
+    validate_image_base64,
+    validate_image_mime_type,
+    validate_image_url,
+)
+
 
 @dataclass(frozen=True)
 class AgentRunInputMessage:
@@ -29,16 +36,24 @@ class AgentRunInputMessage:
         return replace(self, extra_metadata=dict(metadata))
 
 
-def build_chat_input_message(query: str, image_content: str | None = None) -> AgentRunInputMessage:
+def build_chat_input_message(
+    query: str,
+    image_content: str | None = None,
+    image_mime_type: str | None = None,
+) -> AgentRunInputMessage:
     if image_content:
+        mime_type = validate_image_mime_type(image_mime_type or "image/jpeg")
+        validate_image_base64(image_content, mime_type)
         langchain_message = HumanMessage(
             content=[
                 {"type": "text", "text": query},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_content}"}},
+                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_content}"}},
             ]
         )
         message_type = "multimodal_image"
     else:
+        if image_mime_type is not None:
+            raise ValueError("图片 MIME 类型不能脱离图片内容单独提供")
         langchain_message = HumanMessage(content=query)
         message_type = "text"
 
@@ -115,6 +130,7 @@ def _normalize_openai_image_url_part(image_url: object) -> dict[str, Any]:
 
     if not isinstance(url, str) or not url:
         raise ValueError("image_url content part 必须包含 image_url.url")
+    validate_image_url(url)
     normalized["url"] = url
     return normalized
 
@@ -137,21 +153,64 @@ def build_resume_input_message(resume: object) -> AgentRunInputMessage:
 def restore_chat_input_message(*, content: str, image_content: str | None, metadata: dict) -> AgentRunInputMessage:
     raw_message = metadata.get("raw_message")
     if isinstance(raw_message, dict):
+        restored_raw_message = _repair_legacy_image_mime(raw_message, image_content)
         try:
-            langchain_message = HumanMessage.model_validate(raw_message)
+            langchain_message = HumanMessage.model_validate(restored_raw_message)
         except Exception as exc:
             raise ValueError("invalid raw_message for chat input message") from exc
-        raw_content = raw_message.get("content")
+        raw_content = restored_raw_message.get("content")
         message_type = "multimodal_image" if image_content or _has_image_url_content_part(raw_content) else "text"
+        extra_metadata = dict(metadata)
+        if restored_raw_message is not raw_message:
+            extra_metadata["raw_message"] = restored_raw_message
         return AgentRunInputMessage(
             content=content,
             message_type=message_type,
             image_content=image_content,
             langchain_message=langchain_message,
-            extra_metadata=dict(metadata),
+            extra_metadata=extra_metadata,
         )
 
     return build_chat_input_message(content, image_content)
+
+
+def _repair_legacy_image_mime(raw_message: dict, image_content: str | None) -> dict:
+    """恢复旧版直接图片入口误标为 JPEG 的历史 PNG 消息。"""
+    if not image_content:
+        return raw_message
+
+    parts = raw_message.get("content")
+    if not isinstance(parts, list):
+        return raw_message
+
+    legacy_url = f"data:image/jpeg;base64,{image_content}"
+    actual_mime = None
+    repaired_parts = list(parts)
+    changed = False
+    for index, part in enumerate(parts):
+        if not isinstance(part, dict) or part.get("type") != "image_url":
+            continue
+        image_url = part.get("image_url")
+        url = image_url.get("url") if isinstance(image_url, dict) else image_url
+        if url != legacy_url:
+            continue
+        actual_mime = actual_mime or image_mime_type_from_base64(image_content)
+        if actual_mime == "image/jpeg":
+            continue
+        repaired_part = dict(part)
+        repaired_url = f"data:{actual_mime};base64,{image_content}"
+        if isinstance(image_url, dict):
+            repaired_image_url = dict(image_url)
+            repaired_image_url["url"] = repaired_url
+        else:
+            repaired_image_url = repaired_url
+        repaired_part["image_url"] = repaired_image_url
+        repaired_parts[index] = repaired_part
+        changed = True
+
+    if not changed:
+        return raw_message
+    return {**raw_message, "content": repaired_parts}
 
 
 def _has_image_url_content_part(content: object) -> bool:

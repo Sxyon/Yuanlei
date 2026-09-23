@@ -794,7 +794,7 @@ async def test_stream_agent_run_events_compacts_verbose_false(monkeypatch: pytes
                                 "role": "user",
                                 "content": "写一个冒泡排序",
                                 "type": "human",
-                                "image_content": "base64-image-data",
+                                "image_content": "aW1hZ2UtZGF0YQ==",
                                 "extra_metadata": {
                                     "request_id": "req-1",
                                     "attachments": [],

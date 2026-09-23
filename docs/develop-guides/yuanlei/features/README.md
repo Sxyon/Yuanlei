@@ -12,6 +12,7 @@
 ## 当前功能
 
 - [元垒品牌视觉身份](brand-identity.md)：已实现；文档站与 Web favicon 使用元垒专属图形和青蓝色系。
+- [LLM 原生图片输入与能力感知](native-llm-image-input.md)：已实现一期；按渠道和协议解析图片能力，保留 MIME 并原生发送，未知/不支持状态显式拒绝。
 - [Project Git 多仓库与任务 worktree](project-git-worktrees.md)：已接入；按根任务显式分配仍有未闭合证据。
 - [项目数字员工](project-agents.md)：已实现；拥有项目绑定、配置覆盖和执行范围约束。
 - [Git 工具错误与 DeepSeek 兼容](git-tool-compatibility.md)：已实现；收敛可恢复业务错误并稳定 Git 身份字段。

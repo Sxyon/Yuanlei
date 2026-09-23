@@ -146,6 +146,7 @@ export const agentApi = {
       thread_id: data.thread_id,
       meta: data.meta || {},
       image_content: data.image_content || null,
+      image_mime_type: data.image_mime_type || null,
       model_spec: data.model_spec || null,
       tool_approval_mode: data.tool_approval_mode ?? null,
       resume: data.resume ?? null,

@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from yuxi.models.providers.capabilities import resolve_model_capabilities
 from yuxi.storage.redis import sync_redis_client
 from yuxi.utils.logging_config import logger
 
@@ -43,6 +44,8 @@ class ModelInfo:
     # Embedding 专属
     dimension: int | None = None
     batch_size: int = 40
+    protocol: str = "openai_chat_completions"
+    capabilities: dict[str, Any] = field(default_factory=dict)
 
     @property
     def spec(self) -> str:
@@ -62,10 +65,20 @@ class ModelInfo:
             "request_body_overrides": self.request_body_overrides,
             "dimension": self.dimension,
             "batch_size": self.batch_size,
+            "protocol": self.protocol,
+            "capabilities": self.capabilities,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> ModelInfo:
+        capability_profile = data.get("capabilities")
+        if not isinstance(capability_profile, dict):
+            capability_profile = resolve_model_capabilities(
+                data["provider_id"],
+                data["provider_type"],
+                {"id": data["model_id"]},
+                data.get("base_url", ""),
+            ).to_dict()
         return cls(
             provider_id=data["provider_id"],
             model_id=data["model_id"],
@@ -79,6 +92,8 @@ class ModelInfo:
             request_body_overrides=data.get("request_body_overrides", {}),
             dimension=data.get("dimension"),
             batch_size=data.get("batch_size", 40),
+            protocol=data.get("protocol", capability_profile.get("protocol", "openai_chat_completions")),
+            capabilities=capability_profile,
         )
 
 
@@ -149,6 +164,12 @@ class ModelCache:
             for model in provider.enabled_models or []:
                 model_type = model.get("type", "chat")
                 base_url = model.get("base_url_override") or self._get_base_url_for_type(provider, model_type)
+                profile = resolve_model_capabilities(
+                    provider.provider_id,
+                    provider.provider_type,
+                    model,
+                    base_url,
+                )
 
                 info = ModelInfo(
                     provider_id=provider.provider_id,
@@ -163,6 +184,8 @@ class ModelCache:
                     request_body_overrides=dict(model.get("request_body_overrides") or {}),
                     dimension=model.get("dimension"),
                     batch_size=model.get("batch_size", 40),
+                    protocol=profile.protocol,
+                    capabilities=profile.to_dict(),
                 )
                 new_cache[info.spec] = info
 

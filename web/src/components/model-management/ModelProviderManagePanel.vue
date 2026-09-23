@@ -54,6 +54,11 @@ const MODALITY_DISPLAY = {
   pdf: { icon: FileText, label: 'PDF 文档输入' }
 }
 const REQUEST_BODY_OVERRIDES_PLACEHOLDER = '{\n  "enable_thinking": false\n}'
+const IMAGE_INPUT_OVERRIDE_OPTIONS = [
+  { value: 'auto', label: '自动检测 / 未知时拒绝' },
+  { value: 'supported', label: '明确支持' },
+  { value: 'unsupported', label: '明确不支持' }
+]
 
 // Provider form state
 const showProviderModal = ref(false)
@@ -89,6 +94,8 @@ const editingModel = ref({
   base_url_override: null,
   request_body_overrides: {},
   request_body_overrides_text: '{}',
+  capabilities: {},
+  image_input_override: 'auto',
   context_length: null,
   dimension: null,
   batch_size: null,
@@ -517,6 +524,15 @@ const normalizeModel = (model = {}) => ({
     !Array.isArray(model.request_body_overrides)
       ? model.request_body_overrides
       : {},
+  capabilities:
+    model.capabilities && typeof model.capabilities === 'object' && !Array.isArray(model.capabilities)
+      ? model.capabilities
+      : {},
+  image_input_override:
+    ['supported', 'unsupported'].includes(model.capabilities?.input?.image)
+      ? model.capabilities.input.image
+      : 'auto',
+  input_modalities: Array.isArray(model.input_modalities) ? [...model.input_modalities] : undefined,
   context_length: model.context_length || null,
   dimension: model.dimension || null,
   batch_size: model.batch_size || null,
@@ -604,6 +620,8 @@ const openCreateModal = (provider) => {
     base_url_override: null,
     request_body_overrides: {},
     request_body_overrides_text: '{}',
+    capabilities: {},
+    image_input_override: 'auto',
     context_length: null,
     dimension: null,
     batch_size: null,
@@ -621,6 +639,19 @@ const buildModelConfigPayload = () => {
   )
   const modelPayload = { ...editingModel.value }
   delete modelPayload.request_body_overrides_text
+  const imageInputOverride = modelPayload.image_input_override
+  delete modelPayload.image_input_override
+  const configuredCapabilities = { ...(modelPayload.capabilities || {}) }
+  const inputCapabilities = { ...(configuredCapabilities.input || {}) }
+  if (imageInputOverride === 'supported' || imageInputOverride === 'unsupported') {
+    inputCapabilities.image = imageInputOverride
+  } else {
+    delete inputCapabilities.image
+  }
+  if (Object.keys(inputCapabilities).length) configuredCapabilities.input = inputCapabilities
+  else delete configuredCapabilities.input
+  if (Object.keys(configuredCapabilities).length) modelPayload.capabilities = configuredCapabilities
+  else delete modelPayload.capabilities
   return {
     ...modelPayload,
     request_body_overrides: requestBodyOverrides
@@ -1289,14 +1320,29 @@ defineExpose({
 
         <div class="form-row">
           <label class="form-label">
-            <span>协议覆盖</span>
+            <span>协议覆盖（当前不切换运行协议）</span>
             <a-input v-model:value="editingModel.protocol_override" placeholder="可选" />
+            <small class="form-help">
+              当前 adapter 仍由供应商类型选择；填写此项不会启用 Responses 或其他尚未接入的协议。
+            </small>
           </label>
           <label class="form-label">
             <span>Base URL 覆盖</span>
             <a-input v-model:value="editingModel.base_url_override" placeholder="可选" />
           </label>
         </div>
+
+        <label v-if="editingModel.type === 'chat'" class="form-label full-width">
+          <span>图片输入能力覆盖</span>
+          <a-select
+            v-model:value="editingModel.image_input_override"
+            :options="IMAGE_INPUT_OVERRIDE_OPTIONS"
+          />
+          <small class="form-help">
+            自动检测只采用当前渠道明确返回的模态或精确模型资料；无法确认时会在发出请求前拒绝图片，
+            不会自动转 OCR。
+          </small>
+        </label>
 
         <label class="form-label full-width">
           <span>模型请求参数 JSON</span>

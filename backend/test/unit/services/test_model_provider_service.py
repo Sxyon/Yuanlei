@@ -147,6 +147,24 @@ def test_normalize_payload_accepts_anthropic_provider_type():
     assert payload["enabled_models"][0]["id"] == "mimo-v2.5-pro"
 
 
+def test_normalize_payload_rejects_unverified_native_tool_image_override():
+    with pytest.raises(ValueError, match="tool_result 必须是 lift_to_user"):
+        _normalize_payload(
+            {
+                "provider_id": "openai-local",
+                "display_name": "OpenAI Local",
+                "base_url": "https://api.openai.com/v1",
+                "enabled_models": [
+                    {
+                        "id": "gpt-6-sol",
+                        "type": "chat",
+                        "capabilities": {"image": {"tool_result": "native"}},
+                    }
+                ],
+            }
+        )
+
+
 def test_normalize_payload_rejects_unknown_enabled_model_type():
     with pytest.raises(ValueError, match="type 必须是"):
         _normalize_payload(
@@ -196,6 +214,25 @@ def test_normalize_remote_model_preserves_detailed_model_config():
     assert model["input_modalities"] == ["text", "audio", "image", "video"]
     assert model["max_completion_tokens"] == 65536
     assert model["raw_metadata"]["supported_parameters"] == ["temperature", "tools"]
+
+
+def test_normalize_remote_model_does_not_invent_modalities_when_missing():
+    model = _normalize_remote_model({"id": "provider/model", "architecture": {}})
+
+    assert "input_modalities" not in model
+    assert "output_modalities" not in model
+
+
+def test_normalize_remote_model_preserves_explicitly_empty_modalities():
+    model = _normalize_remote_model(
+        {
+            "id": "provider/model",
+            "architecture": {"input_modalities": [], "output_modalities": []},
+        }
+    )
+
+    assert model["input_modalities"] == []
+    assert model["output_modalities"] == []
 
 
 def test_normalize_remote_model_uses_endpoint_model_type():

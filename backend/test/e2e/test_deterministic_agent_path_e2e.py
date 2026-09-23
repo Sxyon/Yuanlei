@@ -23,6 +23,8 @@ from test.live_api_cleanup import make_test_conversation_metadata, make_test_con
 pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.slow]
 
 EXPECTED_OUTPUT = "DETERMINISTIC_AGENT_E2E_OK"
+NATIVE_IMAGE_INPUT_MARKER = "DETERMINISTIC_NATIVE_IMAGE_INPUT"
+NATIVE_IMAGE_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 EXPECTED_PRELOADED_SKILL_MARKER = "# 图片生成技能"
 EXPECTED_PRELOADED_TOOL = "present_artifacts"
 EXPECTED_TOOL_CALL_ID = "call-preloaded-tool"
@@ -61,6 +63,17 @@ async def test_replay_rejects_requests_outside_deterministic_contract() -> None:
             {"Authorization": "Bearer ci-replay-key"},
             {**valid_body, "messages": [{"role": "user", "content": "wrong"}]},
             "expected_input_missing",
+        ),
+        (
+            {"Authorization": "Bearer ci-replay-key"},
+            {
+                **valid_body,
+                "messages": [
+                    *valid_body["messages"],
+                    {"role": "user", "content": NATIVE_IMAGE_INPUT_MARKER},
+                ],
+            },
+            "native_image_missing",
         ),
         (
             {"Authorization": "Bearer ci-replay-key"},
@@ -115,6 +128,7 @@ async def _create_provider(client: httpx.AsyncClient, headers: dict[str, str]) -
                     "display_name": "Deterministic chat",
                     "type": "chat",
                     "source": "manual",
+                    "capabilities": {"input": {"image": "supported"}},
                 }
             ],
             "is_enabled": True,
@@ -752,6 +766,95 @@ async def test_deterministic_agent_path_reaches_persisted_result(
         if thread_id:
             thread_delete = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
             assert thread_delete.status_code in {200, 404}, thread_delete.text
+        if agent_slug:
+            await delete_agent(e2e_client, e2e_headers, agent_slug)
+        await _delete_provider(e2e_client, e2e_headers)
+
+
+async def test_deterministic_agent_run_sends_native_user_image_to_provider(
+    e2e_client: httpx.AsyncClient,
+    e2e_headers: dict[str, str],
+) -> None:
+    """真实 API、PostgreSQL、Worker 与 Provider stub 闭环保留并发送图片。"""
+    me_response = await e2e_client.get("/api/auth/me", headers=e2e_headers)
+    assert me_response.status_code == 200, me_response.text
+    uid = str(me_response.json()["uid"])
+
+    await _create_provider(e2e_client, e2e_headers)
+    agent_slug: str | None = None
+    thread_id: str | None = None
+    run_id: str | None = None
+    run_completed = False
+    try:
+        agent_slug = await _create_agent(e2e_client, e2e_headers, uid)
+        thread_response = await e2e_client.post(
+            "/api/chat/thread",
+            json={
+                "agent_id": agent_slug,
+                "title": make_test_conversation_title("native-image-input"),
+                "metadata": make_test_conversation_metadata("native-image-input", e2e=True),
+            },
+            headers=e2e_headers,
+        )
+        assert thread_response.status_code == 200, thread_response.text
+        thread_payload = thread_response.json()
+        thread_id = str(thread_payload.get("thread_id") or thread_payload["id"])
+
+        request_id = f"deterministic-native-image-{uuid.uuid4()}"
+        response = await e2e_client.post(
+            "/api/agent/runs",
+            json={
+                "query": f"只输出 {EXPECTED_OUTPUT} {NATIVE_IMAGE_INPUT_MARKER}",
+                "agent_slug": agent_slug,
+                "thread_id": thread_id,
+                "image_content": NATIVE_IMAGE_BASE64,
+                "image_mime_type": "image/png",
+                "meta": {"request_id": request_id},
+            },
+            headers=e2e_headers,
+        )
+        assert response.status_code == 200, response.text
+        run_id = str(response.json()["run_id"])
+        await consume_events(e2e_client, e2e_headers, run_id)
+        run = await wait_for_run(e2e_client, e2e_headers, run_id)
+        assert run["status"] == "completed", run
+        assert run["request_id"] == request_id
+
+        result = await e2e_client.get(f"/api/agent/runs/{run_id}/result", headers=e2e_headers)
+        assert result.status_code == 200, result.text
+        assert result.json()["output"] == EXPECTED_OUTPUT
+
+        conn = await asyncpg.connect(postgres_dsn())
+        try:
+            row = await conn.fetchrow(
+                """
+                SELECT image_content, extra_metadata
+                FROM messages
+                WHERE run_id = $1 AND role = 'user' AND request_id = $2
+                """,
+                run_id,
+                request_id,
+            )
+            assert row, f"persisted image input missing for {run_id}"
+            assert row["image_content"] == NATIVE_IMAGE_BASE64
+            metadata = row["extra_metadata"]
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            raw_message = metadata["raw_message"]
+            assert any(
+                part.get("image_url", {}).get("url") == f"data:image/png;base64,{NATIVE_IMAGE_BASE64}"
+                for part in raw_message["content"]
+                if isinstance(part, dict)
+            )
+        finally:
+            await conn.close()
+        run_completed = True
+    finally:
+        if run_id and not run_completed:
+            await cancel_run(e2e_client, e2e_headers, run_id)
+        if thread_id:
+            response = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
+            assert response.status_code in {200, 404}, response.text
         if agent_slug:
             await delete_agent(e2e_client, e2e_headers, agent_slug)
         await _delete_provider(e2e_client, e2e_headers)

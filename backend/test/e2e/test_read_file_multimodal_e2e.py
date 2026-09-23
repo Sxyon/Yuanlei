@@ -110,7 +110,7 @@ async def _upload(
     return str(attachment["file_id"])
 
 
-async def _run(
+async def _run_result(
     client: httpx.AsyncClient,
     headers: dict[str, str],
     *,
@@ -118,7 +118,7 @@ async def _run(
     thread_id: str,
     query: str,
     attachment_file_id: str,
-) -> str:
+) -> dict:
     response = await client.post(
         "/api/agent/runs",
         json={
@@ -142,10 +142,30 @@ async def _run(
         payload = result.json()
         status = str(payload.get("status") or "")
         if status in {"completed", "failed", "cancelled", "interrupted"}:
-            assert status == "completed", payload
-            return str(payload.get("output") or "")
+            return payload
         await asyncio.sleep(2)
     pytest.fail(f"read_file E2E run timed out: {run_id}")
+
+
+async def _run(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    *,
+    agent_slug: str,
+    thread_id: str,
+    query: str,
+    attachment_file_id: str,
+) -> str:
+    result = await _run_result(
+        client,
+        headers,
+        agent_slug=agent_slug,
+        thread_id=thread_id,
+        query=query,
+        attachment_file_id=attachment_file_id,
+    )
+    assert result["status"] == "completed", result
+    return str(result.get("output") or "")
 
 
 def _write_test_image(path: Path) -> None:
@@ -213,7 +233,7 @@ async def test_read_file_image_and_document_real_agent_runs(
         await delete_agent(e2e_client, e2e_headers, slug)
 
 
-async def test_non_vision_model_uses_ocr_fallback(
+async def test_unknown_or_non_vision_model_rejects_image_without_ocr_fallback(
     tmp_path: Path,
     e2e_client: httpx.AsyncClient,
     e2e_headers: dict[str, str],
@@ -233,7 +253,7 @@ async def test_non_vision_model_uses_ocr_fallback(
         _write_ocr_test_image(image_path)
         thread_id = await _create_thread(e2e_client, e2e_headers, slug)
         image_file_id = await _upload(e2e_client, e2e_headers, thread_id=thread_id, file_path=image_path)
-        output = await _run(
+        result = await _run_result(
             e2e_client,
             e2e_headers,
             agent_slug=slug,
@@ -241,6 +261,7 @@ async def test_non_vision_model_uses_ocr_fallback(
             query="调用 read_file 读取 ocr-text.png 中的文字，只回答图片中的英文文字。",
             attachment_file_id=image_file_id,
         )
-        assert "OCR FALLBACK OK" in " ".join(output.upper().split()), output
+        assert result["status"] == "failed", result
+        assert "图片输入能力为" in result.get("error", {}).get("message", ""), result
     finally:
         await delete_agent(e2e_client, e2e_headers, slug)

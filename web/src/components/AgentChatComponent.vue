@@ -3432,6 +3432,7 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
   let text = userInput.value.trim()
   let titleBase = text
   const imageContent = image?.imageContent || null
+  const imageMimeType = image?.mimeType || null
   if (
     (!text && !image) ||
     !currentAgent.value ||
@@ -3566,6 +3567,7 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
         attachment_file_ids: pendingAttachmentFileIds
       },
       image_content: imageContent,
+      image_mime_type: imageMimeType,
       model_spec: modelSpec,
       tool_approval_mode: toolApprovalMode,
       queue_policy: queuePolicy
