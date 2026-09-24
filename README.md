@@ -12,36 +12,27 @@
 
 ## 元垒特性
 
-### Project Git 多仓库工作区
+### 以项目组织数字员工
 
-为项目绑定多个 Git 仓库，每个根任务获得独立 worktree 和任务分支；凭据使用 AES-256-GCM 加密，可信进程独占 fetch/push，Agent 只能通过需要人工审批的 `git_push_branch` 推送。用户可以选择参与本次任务的仓库，未被选择的仓库不会产生远端副作用。
+将 Agent 绑定到项目，组成在所属项目内工作的数字员工。项目可以覆盖模型和运行参数；请求接入与执行时都会校验项目范围，防止数字员工在其他项目运行。
 
-- 教程：[Project Git 配置](docs/intro/project-git.md)
-- 参考：[仓库、配置和分支](docs/advanced/project-git-reference.md)
+### 让项目进展有可查看的页面
 
-### 项目数字员工
+项目数字员工可以创建和维护项目 Dashboard。当前版本提供静态 HTML/CSS 页面，可在项目内查看；页面更新有版本校验，冲突或文件异常会明确提示。Dashboard 目前是展示页面，不承担自动督查或报告生成。
 
-把 Agent 绑定到项目，组成只在所属项目内工作的数字员工：绑定后运行边界 fail-closed，模型与运行参数支持项目级覆盖，同一绑定行是后续项目记忆、常驻沙盒与 Workflow 成员的挂载点。
+### 在项目中执行与协作
 
-### Git 工具错误自愈与 DeepSeek 兼容
+- **多仓库 Git 工作区**：项目可绑定多个仓库；根任务使用独立的 worktree 和分支，并选择本次任务要使用的仓库。凭据保留在可信服务端，推送需要人工批准。[配置教程](docs/intro/project-git.md) · [配置参考](docs/advanced/project-git-reference.md)
+- **Agent 编码协作**：启用项目专属 Sandbox 后，Agent 可通过编码 CLI 发起、继续、等待和取消多轮编码任务。当前支持按轮次协作；崩溃恢复的真实集成验证和安全加固仍在迭代。
+- **Git 错误恢复**：Git 工具的参数错误会返回给模型，便于修正后重试；分支名称和 Run 恢复时的资产校验也兼容相应边界。
 
-Git 工具的输入校验失败收敛为模型可见的 error ToolMessage，模型可以修正参数重试；分支 slug 大小写静默归一；Run manifest 指纹排除 worktree 运行时派生字段，恢复重试不再误判资产漂移。
+### 顺畅、安全地使用工作空间
 
-### 个人空间附件引用
+- 新对话可以从个人空间选择文件；首次发送前只保存待引用文件，仍可切换 Agent 和项目，发送时才创建对话并登记引用。
+- 中文输入法选字时按回车不会误发消息；手动发送锁开启后，回车用于换行。
+- 清理个人空间中的符号链接时保留链接目标；Sandbox 删除在数据库事务外执行，避免外部等待阻塞 Run 恢复。
 
-新对话引用个人空间文件时，选择器浏览个人空间而不是项目 Workdir；首次发送前引用只保留在前端缓存，发送时才落库，智能体与项目在发送前始终可以切换。
-
-### 输入区与工作区体验
-
-- 中文输入法组合态回车不触发发送，避免拼音候选误发。
-- 提供手动发送锁，锁定状态下回车改为换行。
-- 个人空间删除含符号链接的目录时，只删除链接目录项，链接目标保持不变。
-
-### Runtime cleanup 事务外执行
-
-Sandbox 删除等待从数据库事务中拆出：短事务预检、事务外删除、短事务复核并清除 fence，Run 恢复事务与 reconciler 不再被外部等待阻塞。
-
-完整清单、语义 Owner 和上游合并注意项见[元垒差异化功能索引](docs/develop-guides/yuanlei/features/README.md)；这些改动的原因与取舍见[元垒决策记录](docs/develop-guides/yuanlei/decisions/README.md)。
+各项能力的实现状态、边界和上游合并注意项见[元垒差异化功能索引](docs/develop-guides/yuanlei/features/README.md)；设计取舍见[元垒决策记录](docs/develop-guides/yuanlei/decisions/README.md)。
 
 ## 跟随 Yuxi 上游
 
@@ -77,12 +68,6 @@ Yuxi 提供的基础能力继续可用：
 
 </details>
 
-
-## 赞助商
-
-| 赞助商 | 介绍 |
-| :---: | :--- |
-| <img src="https://xerrors.oss-cn-shanghai.aliyuncs.com/github/%E4%B8%8B%E8%BD%BD.jpeg" alt="Fluxion AI LOGO" width="180" /> | Fluxion AI面向个人开发者、技术团队与企业，通过统一API接入并管理全球主流AI模型；通过多线路动态调度提升可用性，模型表现、响应时间与费用透明可查。根据不同模型与线路，API调用成本较官方或基准价格可降低40%—98%。专属链接[注册](https://fluxionai.space/register?source=github&campaign=yuxi&promo=YUXI) 获 $7 API 额度 |
 
 ## 技术栈
 

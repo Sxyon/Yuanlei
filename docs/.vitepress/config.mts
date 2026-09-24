@@ -6,7 +6,7 @@ import markdownItTaskCheckbox from 'markdown-it-task-checkbox'
 export default defineConfig({
   lang: 'zh-CN',
   title: "Yuanlei",
-  description: "Yuanlei AI 时代的 **个人** / **企业** 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。",
+  description: "Yuanlei AI 时代的 个人 / 企业 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。",
   base: '/Yuanlei/',
   srcExclude: ['vibe/**'],
   sitemap: {

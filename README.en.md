@@ -1,6 +1,8 @@
 # Yuanlei (元垒)
 
-Yuanlei is a personal fork of [Yuxi](https://github.com/xerrors/Yuxi): it keeps the multi-tenant knowledge base, knowledge graph, LangGraph multi-agent orchestration, MCP/Skills, sandbox and permission capabilities, and adds project-scoped Git workspaces, project digital employees and interaction refinements.
+Yuanlei (元垒) is an AI hub for **individuals** and **enterprises** in the AI era. It serves as your executive office or CEO office, bringing together advice and decision-making, oversight and reporting, and execution and collaboration.
+
+Yuanlei is developed from [Yuxi](https://github.com/xerrors/Yuxi). It retains Yuxi's multi-tenant knowledge base, knowledge graph, LangGraph multi-agent capabilities, MCP/Skills, sandboxes and access controls. Centered on projects, it fulfills three core responsibilities: advice and decision-making, oversight and reporting, and execution and collaboration.
 
 [![Release](https://img.shields.io/github/v/release/Sxyon/Yuanlei?color=046A82)](https://github.com/Sxyon/Yuanlei/releases/latest)
 [![License](https://img.shields.io/github/license/Sxyon/Yuanlei.svg?logo=github)](https://github.com/Sxyon/Yuanlei/blob/main/LICENSE)
@@ -10,36 +12,27 @@ Yuanlei is a personal fork of [Yuxi](https://github.com/xerrors/Yuxi): it keeps 
 
 ## Yuanlei features
 
-### Project Git workspaces
+### Organize digital employees around projects
 
-Bind multiple Git repositories to a project. Every root task gets an isolated worktree and task branch. Credentials are encrypted with AES-256-GCM, a trusted process owns fetch and push, and the agent can push only through a human-approved `git_push_branch` tool. Users choose which repositories join the current task; repositories without an allocation produce no remote side effects.
+Bind an agent to a project to make it a digital employee that works within that project. Each project can override model and runtime settings. The project scope is checked when a request enters the system and again when it runs.
 
-- Tutorial: [Project Git configuration](docs/intro/project-git.md)
-- Reference: [Repositories, credentials and branches](docs/advanced/project-git-reference.md)
+### Give each project a page for its progress
 
-### Project digital employees
+Project agents can create and maintain a project Dashboard. The current version displays a static HTML/CSS page within the project. Updates use revision checks, and conflicts or file errors are reported explicitly. The Dashboard is currently a display page; it does not generate reports or perform automated oversight.
 
-Bind agents to a project so they work only inside it. The run boundary fails closed for bound agents, model and runtime parameters can be overridden per project, and the binding row carries future project memory, persistent sandboxes and workflow membership.
+### Execute and collaborate within projects
 
-### Self-healing Git tool errors and DeepSeek compatibility
+- **Multi-repository Git workspaces:** Bind multiple repositories to a project. Each root task uses its own worktree and branch and selects the repositories it needs. Credentials stay with trusted server processes, and pushing requires human approval. [Configuration tutorial](docs/intro/project-git.md) · [Configuration reference](docs/advanced/project-git-reference.md)
+- **Agent coding collaboration:** With a dedicated project sandbox enabled, an agent can start, continue, await, and cancel multi-turn coding CLI tasks. Collaboration works turn by turn; integration checks for crash recovery and security hardening remain in progress.
+- **Git error recovery:** Git tool argument errors return to the model so it can correct and retry. Branch naming and Run asset checks also handle the relevant retry boundaries.
 
-Git tool validation failures become model-visible error ToolMessages so the model can correct and retry; branch slugs are normalized to lower case; the Run manifest fingerprint excludes runtime-derived worktree fields, so resume retries no longer misjudge asset drift.
+### Work with files and messages more smoothly
 
-### Personal-space attachment references
+- Select files from personal space in a new conversation. Until the first send, references remain pending and the agent or project can still be changed; sending creates the conversation and records the references.
+- Enter does not send a message while choosing Chinese IME candidates. With the manual send lock on, Enter inserts a newline.
+- Removing symlinks from personal space leaves their targets intact. Sandbox deletion runs outside the database transaction so external waits do not block Run recovery.
 
-When starting a new conversation, the attachment picker browses the user's personal space instead of the project workdir. References stay in frontend cache until the first send, so agent and project selection remains free until then.
-
-### Input and workspace experience
-
-- Enter during IME composition does not submit the message.
-- A manual send lock turns Enter into a newline while locked.
-- Deleting a personal-space directory that contains symlinks removes only the link entries and leaves targets untouched.
-
-### Runtime cleanup outside the database transaction
-
-Sandbox deletion no longer runs inside the database transaction: a short pre-check, an out-of-transaction delete, and a short re-check that clears the fence. Run recovery and the reconciler are no longer blocked by external waits.
-
-See the [feature index](docs/develop-guides/yuanlei/features/README.md) for owners and upstream merge notes, and the [decision records](docs/develop-guides/yuanlei/decisions/README.md) for rationale.
+See the [feature index](docs/develop-guides/yuanlei/features/README.md) for implementation status, boundaries, and upstream merge notes, and the [decision records](docs/develop-guides/yuanlei/decisions/README.md) for design choices.
 
 ## Tracking upstream Yuxi
 
@@ -61,6 +54,19 @@ The capabilities inherited from Yuxi remain available:
 - **Multi-agent and extension ecosystem**: SubAgents, Skills, MCP, Tools and agent configuration.
 - **Sandbox workspace and artifacts**: isolated filesystem, generated files, in-browser preview and download.
 - **Team governance and operations**: multi-tenancy, user and department permissions, model configuration, API keys and dashboard.
+
+<details>
+<summary><strong>View upstream feature screenshots</strong></summary>
+
+![Yuxi unified agent workspace](https://xerrors.oss-cn-shanghai.aliyuncs.com/github/image-20260825145022410.png)
+
+![Yuxi knowledge base and RAG](https://xerrors.oss-cn-shanghai.aliyuncs.com/github/image-20260830144756161.png)
+
+![Yuxi multi-agent orchestration](https://xerrors.oss-cn-shanghai.aliyuncs.com/github/image-20260825152252874.png)
+
+![Yuxi sandbox workspace and file artifacts](https://xerrors.oss-cn-shanghai.aliyuncs.com/github/image-20260825152123583.png)
+
+</details>
 
 ## Tech stack
 
@@ -111,7 +117,7 @@ When upgrading from an older upstream layout to the current Yuanlei baseline, re
 - [Upstream sync](docs/develop-guides/yuanlei/upstream-sync.md): four-phase merge process and conflict rules.
 - [Feature index](docs/develop-guides/yuanlei/features/README.md): features Yuanlei adds or changes.
 - [Repository conventions](AGENTS.md) and [architecture](ARCHITECTURE.md): read before contributing.
-- Upstream documentation site: <https://xerrors.github.io/Yuxi/>.
+- Upstream documentation site: <https://xerrors.github.io/Yuxi/> (quick start, model configuration, knowledge bases, agents and deployment).
 - Upstream releases: <https://github.com/xerrors/Yuxi/releases>.
 
 ## Contributing
@@ -123,3 +129,12 @@ Issues, documentation improvements, bug fixes and features are welcome. See [CON
 Yuanlei is built on Yuxi and licensed under the MIT License; see [LICENSE](LICENSE). Third-party components pulled in by Docker Compose keep their own licenses; check upstream licenses and source obligations against the actual image versions before redistribution or commercial deployment, as described in the [production deployment guide](docs/advanced/deployment.md).
 
 Thanks to [xerrors/Yuxi](https://github.com/xerrors/Yuxi) and its contributors for the underlying platform.
+
+Yuxi's implementation and documentation draw on these open-source projects:
+
+- [LightRAG](https://github.com/HKUDS/LightRAG): early ideas for graph construction and retrieval;
+- [DeepAgents](https://github.com/langchain-ai/deepagents): deep agent framework;
+- [DeerFlow](https://github.com/bytedance/deer-flow): sandbox agent architecture;
+- [RAGFlow](https://github.com/infiniflow/ragflow): document chunking strategy;
+- [LangGraph](https://github.com/langchain-ai/langgraph): agent orchestration;
+- [QwenPaw](https://github.com/agentscope-ai/QwenPaw): model configuration and personal file area design.
