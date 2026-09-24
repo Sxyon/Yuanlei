@@ -12,6 +12,8 @@ class SandboxRecord:
     status: str | None = None
     generation: str | None = None
     workdir_path: str | None = None
+    lifecycle: str | None = None
+    idle_timeout_seconds: int | None = None
 
 
 class ProvisionerClient:
@@ -53,19 +55,26 @@ class ProvisionerClient:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
+        payload = {
+            "sandbox_id": sandbox_id,
+            "thread_id": thread_id,
+            "workdir_path": workdir_path,
+            "uid": uid,
+            "env": env or {},
+            "inherit_env": inherit_env,
+        }
+        if lifecycle is not None:
+            payload["lifecycle"] = lifecycle
+        if idle_timeout_seconds is not None:
+            payload["idle_timeout_seconds"] = idle_timeout_seconds
         response = self._request(
             "POST",
             "/api/sandboxes",
             timeout=self._create_timeout,
-            json={
-                "sandbox_id": sandbox_id,
-                "thread_id": thread_id,
-                "workdir_path": workdir_path,
-                "uid": uid,
-                "env": env or {},
-                "inherit_env": inherit_env,
-            },
+            json=payload,
         )
         if response.status_code >= 400:
             raise RuntimeError(f"failed to create sandbox {sandbox_id}: {response.status_code} {response.text}")
@@ -79,6 +88,14 @@ class ProvisionerClient:
             raise RuntimeError(f"failed to discover sandbox {sandbox_id}: {response.status_code} {response.text}")
         return self._record_from_payload(response.json())
 
+    def list(self) -> list[SandboxRecord]:
+        """读取权威 inventory；该端点不刷新 idle 活动，供生命周期对账使用。"""
+        response = self._request("GET", "/api/sandboxes")
+        if response.status_code >= 400:
+            raise RuntimeError(f"failed to list sandboxes: {response.status_code} {response.text}")
+        payload = response.json()
+        return [self._record_from_payload(item) for item in payload.get("sandboxes", [])]
+
     @staticmethod
     def _record_from_payload(payload: dict) -> SandboxRecord:
         """把 provisioner wire payload 转为内部 Sandbox 记录。"""
@@ -88,6 +105,8 @@ class ProvisionerClient:
             status=payload.get("status"),
             generation=payload.get("generation"),
             workdir_path=payload.get("workdir_path"),
+            lifecycle=payload.get("lifecycle"),
+            idle_timeout_seconds=payload.get("idle_timeout_seconds"),
         )
 
     def touch(self, sandbox_id: str) -> bool:

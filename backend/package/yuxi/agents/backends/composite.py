@@ -12,7 +12,7 @@ from deepagents.middleware.filesystem import (
 from yuxi.agents.backends.paths import runtime_workdir_path
 from yuxi.agents.skills.service import refresh_user_skill_projection_async
 
-from .sandbox import ProvisionerSandboxBackend
+from .sandbox import ProvisionerSandboxBackend, SandboxScope
 
 # Yuxi 在 DeepAgents 内建排除集之上额外豁免知识库文档工具结果，
 # 避免 read_file/offload 循环：该工具自带分页与引用语义。
@@ -60,6 +60,7 @@ class _BackendScope:
     runtime_scope_id: str
     workdir_relative_path: str
     uid: str
+    sandbox_scope: SandboxScope
 
     @property
     def workdir_path(self) -> str:
@@ -88,6 +89,7 @@ class _BackendScope:
             runtime_scope_id=runtime_scope_id,
             workdir_relative_path=relative_path,
             uid=uid,
+            sandbox_scope=SandboxScope.from_runtime_scope(uid=uid, runtime_scope_id=runtime_scope_id),
         )
 
     def create_backend(self) -> CompositeBackend:
@@ -101,6 +103,7 @@ class _BackendScope:
                 uid=self.uid,
                 workdir_path=self.workdir_relative_path,
                 create_if_missing=True,
+                scope=self.sandbox_scope,
             ),
             routes={},
             artifacts_root=f"{self.workdir_path.rstrip('/')}/outputs",

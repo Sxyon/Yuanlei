@@ -49,9 +49,7 @@ class UpstreamReportRepositoryTest(unittest.TestCase):
         self._configure(self.upstream)
         (self.upstream / "README.md").write_text("# Yuxi\n", encoding="utf-8")
         (self.upstream / "README.en.md").write_text("# Yuxi EN\n", encoding="utf-8")
-        (self.upstream / "shared.py").write_text(
-            "# yuanlei coupling\nvalue = 1\n", encoding="utf-8"
-        )
+        (self.upstream / "shared.py").write_text("value = 1\n", encoding="utf-8")
         (self.upstream / "upstream_only.py").write_text("x = 1\n", encoding="utf-8")
         self._git(self.upstream, "add", "-A")
         self._git(self.upstream, "commit", "-m", "init")
@@ -144,31 +142,24 @@ class UpstreamReportRepositoryTest(unittest.TestCase):
         problems = check(self.fork, self.ref)
         self.assertTrue(any("merge-base" in problem for problem in problems))
 
-    def test_report_marks_overlap_and_yuanlei_coupling(self) -> None:
-        (self.fork / "shared.py").write_text(
-            "# yuanlei coupling\nvalue = 2\n", encoding="utf-8"
-        )
+    def test_report_marks_overlap_without_name_marker(self) -> None:
+        (self.fork / "shared.py").write_text("value = 2\n", encoding="utf-8")
         self._git(self.fork, "add", "-A")
         self._git(self.fork, "commit", "-m", "yuanlei changes shared.py")
-        (self.upstream / "shared.py").write_text(
-            "# yuanlei coupling\nvalue = 3\n", encoding="utf-8"
-        )
+        (self.upstream / "shared.py").write_text("value = 3\n", encoding="utf-8")
         (self.upstream / "upstream_only.py").write_text("x = 3\n", encoding="utf-8")
         self._commit_upstream("upstream changes shared.py")
         self._git(self.fork, "fetch", "origin")
 
         report = build_report(self.fork, self.ref, commit_limit=10)
         self.assertIn("shared.py", report.overlap)
-        self.assertIn("shared.py", report.coupled)
-        self.assertNotIn("upstream_only.py", report.coupled)
+        self.assertNotIn("upstream_only.py", report.overlap)
         rendered = render_report(report, commit_limit=10, file_limit=100)
         self.assertIn("## 共同修改", rendered)
-        self.assertIn("## 高危：上游触碰的 yuanlei 耦合文件", rendered)
+        self.assertNotIn("yuanlei 耦合文件", rendered)
 
     def test_report_detects_rename_conflict(self) -> None:
-        (self.fork / "shared.py").write_text(
-            "# yuanlei coupling\nvalue = 8\n", encoding="utf-8"
-        )
+        (self.fork / "shared.py").write_text("value = 8\n", encoding="utf-8")
         self._git(self.fork, "add", "-A")
         self._git(self.fork, "commit", "-m", "yuanlei changes shared.py")
         self._git(self.upstream, "mv", "shared.py", "renamed.py")

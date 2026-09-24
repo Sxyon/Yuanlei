@@ -35,7 +35,12 @@ from yuxi.agents.backends.paths import (
 from yuxi.utils.logging_config import logger
 from yuxi.workspace.errors import FileTransferLimitError
 
-from .provider import get_sandbox_provider, sandbox_id_for_thread, sandbox_provisioner_token
+from .provider import (
+    SandboxScope,
+    get_sandbox_provider,
+    sandbox_id_for_thread,
+    sandbox_provisioner_token,
+)
 
 _USER_DATA_ROOT = "/" + VIRTUAL_PATH_PREFIX.strip("/")
 _SKILLS_ROOT = "/" + VIRTUAL_SKILLS_PATH.strip("/")
@@ -181,6 +186,7 @@ class ProvisionerSandboxBackend(BaseSandbox):
         inherit_env: bool = True,
         create_if_missing: bool = True,
         workdir_path: str | None = None,
+        scope: SandboxScope | None = None,
     ):
         self._thread_id = str(thread_id or "").strip()
         if not self._thread_id:
@@ -188,6 +194,9 @@ class ProvisionerSandboxBackend(BaseSandbox):
         self._uid = str(uid or "").strip()
         if not self._uid:
             raise ValueError("uid is required for ProvisionerSandboxBackend")
+        self._scope = scope or SandboxScope.thread(uid=self._uid, thread_id=self._thread_id)
+        if self._scope.uid != self._uid:
+            raise ValueError("sandbox scope uid does not match backend uid")
 
         self._inherit_env = inherit_env
         self._create_if_missing = create_if_missing
@@ -276,15 +285,14 @@ class ProvisionerSandboxBackend(BaseSandbox):
 
     def _get_connection(self) -> Any:
         """发现当前 runtime scope 对应的 sandbox 连接。"""
-        connection = self._provider.get(
-            self._thread_id,
-            uid=self._uid,
+        connection = self._provider.get_scope(
+            self._scope,
             create_if_missing=self._create_if_missing,
             inherit_env=self._inherit_env,
             workdir_path=self._workdir_path,
         )
         if connection is None:
-            raise RuntimeError(f"sandbox is unavailable for thread {self._thread_id}")
+            raise RuntimeError(f"sandbox is unavailable for scope {self._scope.cache_key}")
         return connection
 
     def _get_client(self) -> Any:
@@ -1219,7 +1227,7 @@ finally:
                     with suppress(FileNotFoundError):
                         os.unlink(target_path)
                     raise
-                logger.error("Failed to remove sandbox file snapshot %s: %s", export_path, exc)
+                logger.error("Failed to remove sandbox file snapshot {}: {}", export_path, exc)
 
     def download_files(self, paths: list[str]) -> list[FileDownloadResponse]:
         """Download file payloads as raw bytes from the sandbox file API."""

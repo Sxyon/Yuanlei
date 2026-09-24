@@ -10,6 +10,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.models.providers.builtin import BUILTIN_PROVIDERS
+from yuxi.models.providers.capabilities import normalize_input_modality, resolve_model_capabilities
 from yuxi.models.providers.repository import (
     create_model_provider,
     delete_model_provider,
@@ -67,6 +68,39 @@ def _normalize_model_item(model: dict[str, Any]) -> dict[str, Any]:
     normalized["source"] = source
     normalized["display_name"] = str(model.get("display_name") or model.get("name") or model_id)
     normalized["extra"] = _normalize_dict(model.get("extra"))
+    if "capabilities" in model:
+        capabilities = model.get("capabilities")
+        if not isinstance(capabilities, dict):
+            raise ValueError(f"模型 {model_id} 的 capabilities 必须是 JSON 对象")
+        unsupported_capabilities = set(capabilities) - {"input", "image"}
+        if unsupported_capabilities:
+            unsupported_fields = ", ".join(sorted(unsupported_capabilities))
+            raise ValueError(f"模型 {model_id} 的 capabilities 含不支持字段: {unsupported_fields}")
+        input_capabilities = capabilities.get("input", {})
+        image_capabilities = capabilities.get("image", {})
+        if not isinstance(input_capabilities, dict) or not isinstance(image_capabilities, dict):
+            raise ValueError(f"模型 {model_id} 的 capabilities.input 与 capabilities.image 必须是 JSON 对象")
+        if set(input_capabilities) - {"image"} or set(image_capabilities) - {"tool_result"}:
+            raise ValueError(f"模型 {model_id} 的 capabilities 含不支持的模态或 tool result 字段")
+        image_input = input_capabilities.get("image")
+        if image_input not in (None, "supported", "unsupported"):
+            raise ValueError(f"模型 {model_id} 的 capabilities.input.image 必须是 supported 或 unsupported")
+        tool_image_result = image_capabilities.get("tool_result")
+        if tool_image_result not in (None, "lift_to_user", "unsupported", "unknown"):
+            raise ValueError(
+                f"模型 {model_id} 的 capabilities.image.tool_result 必须是 lift_to_user、unsupported 或 unknown"
+            )
+        normalized["capabilities"] = {
+            **({"input": {"image": image_input}} if image_input else {}),
+            **({"image": {"tool_result": tool_image_result}} if tool_image_result else {}),
+        }
+    if "input_modalities" in model:
+        input_modalities = model.get("input_modalities")
+        if not isinstance(input_modalities, list) or any(
+            not isinstance(item, str) or not item.strip() for item in input_modalities
+        ):
+            raise ValueError(f"模型 {model_id} 的 input_modalities 必须是非空字符串列表")
+        normalized["input_modalities"] = list(input_modalities)
     if "request_body_overrides" in model:
         overrides = model.get("request_body_overrides")
         if not isinstance(overrides, dict):
@@ -244,8 +278,52 @@ def _models_url(base_url: str, endpoint: str | None = None) -> str:
     return f"{base}/{endpoint.lstrip('/')}"
 
 
-def _normalize_remote_model(raw_model: dict[str, Any], model_type: str = "chat") -> dict[str, Any]:
+def _extract_input_modalities(raw_model: dict[str, Any]) -> list[str] | None:
+    """从常见供应商模型目录结构读取显式输入模态声明。"""
+    architecture = _normalize_dict(raw_model.get("architecture"))
+    modalities = _normalize_dict(raw_model.get("modalities"))
+    input_config = _normalize_dict(raw_model.get("input"))
+    capabilities = _normalize_dict(raw_model.get("capabilities"))
+    capability_input = _normalize_dict(capabilities.get("input"))
+    candidates = (
+        raw_model.get("input_modalities"),
+        raw_model.get("inputModalities"),
+        raw_model.get("supported_input_modalities"),
+        raw_model.get("supportedInputModalities"),
+        architecture.get("input_modalities"),
+        architecture.get("inputModalities"),
+        modalities.get("input"),
+        input_config.get("modalities"),
+        input_config.get("input_modalities"),
+        capability_input.get("modalities"),
+    )
+    for candidate in candidates:
+        if not isinstance(candidate, list) or any(not isinstance(item, (str, dict)) for item in candidate):
+            continue
+        result = []
+        valid_declarations = 0
+        for item in candidate:
+            name = item if isinstance(item, str) else item.get("type") or item.get("modality") or item.get("name")
+            if isinstance(name, str) and name.strip():
+                valid_declarations += 1
+                modality = normalize_input_modality(name)
+                if modality not in result:
+                    result.append(modality)
+        if not candidate or valid_declarations:
+            return result
+    return None
+
+
+def _normalize_remote_model(
+    raw_model: dict[str, Any],
+    model_type: str = "chat",
+    provider_type: str = "openai",
+) -> dict[str, Any]:
     model_id = str(raw_model.get("id") or "").strip()
+    if not model_id and provider_type == "gemini":
+        model_id = str(raw_model.get("name") or "").strip()
+        if model_id.startswith("models/"):
+            model_id = model_id.removeprefix("models/")
     if not model_id:
         return {}
 
@@ -256,21 +334,29 @@ def _normalize_remote_model(raw_model: dict[str, Any], model_type: str = "chat")
     normalized = {
         "id": model_id,
         "object": raw_model.get("object"),
-        "created": raw_model.get("created"),
+        "created": raw_model.get("created") or raw_model.get("created_at"),
         "owned_by": raw_model.get("owned_by"),
         "type": normalized_type,
-        "display_name": raw_model.get("name") or model_id,
+        "display_name": raw_model.get("display_name")
+        or raw_model.get("displayName")
+        or raw_model.get("name")
+        or model_id,
         "description": raw_model.get("description"),
-        "context_length": raw_model.get("context_length") or top_provider.get("context_length"),
-        "max_completion_tokens": top_provider.get("max_completion_tokens"),
-        "input_modalities": architecture.get("input_modalities") or [],
-        "output_modalities": architecture.get("output_modalities") or [],
+        "context_length": (
+            raw_model.get("context_length") or raw_model.get("inputTokenLimit") or top_provider.get("context_length")
+        ),
+        "max_completion_tokens": top_provider.get("max_completion_tokens") or raw_model.get("outputTokenLimit"),
         "supported_parameters": raw_model.get("supported_parameters") or [],
         "pricing": raw_model.get("pricing") or {},
         "default_parameters": raw_model.get("default_parameters") or {},
         "raw_metadata": raw_model,
         "extra": {},
     }
+    input_modalities = _extract_input_modalities(raw_model)
+    if input_modalities is not None:
+        normalized["input_modalities"] = input_modalities
+    if isinstance(architecture.get("output_modalities"), list):
+        normalized["output_modalities"] = list(architecture["output_modalities"])
     return {key: value for key, value in normalized.items() if value is not None}
 
 
@@ -373,14 +459,19 @@ async def _fetch_models_from_endpoint(
     response.raise_for_status()
     payload = response.json()
 
-    raw_models = payload.get("data") if isinstance(payload, dict) else payload
+    raw_models = payload
+    if isinstance(payload, dict):
+        raw_models = next(
+            (payload.get(key) for key in ("data", "models", "items", "results") if isinstance(payload.get(key), list)),
+            None,
+        )
     if not isinstance(raw_models, list):
-        raise ValueError(f"{endpoint} 响应必须是列表或包含 data 列表")
+        raise ValueError(f"{endpoint} 响应必须是列表或包含 data/models/items/results 列表")
 
     models = []
     for raw_model in raw_models:
         if isinstance(raw_model, dict):
-            normalized = _normalize_remote_model(raw_model, model_type)
+            normalized = _normalize_remote_model(raw_model, model_type, provider.provider_type)
             if normalized:
                 models.append(normalized)
     return models
@@ -395,7 +486,13 @@ async def fetch_remote_models(provider: ModelProvider) -> list[dict[str, Any]]:
     headers = dict(provider.headers_json or {})
     api_key = resolve_api_key(provider)
     if api_key:
-        headers.setdefault("Authorization", f"Bearer {api_key}")
+        if provider.provider_type == "anthropic":
+            headers.setdefault("x-api-key", api_key)
+            headers.setdefault("anthropic-version", "2023-06-01")
+        elif provider.provider_type == "gemini":
+            headers.setdefault("x-goog-api-key", api_key)
+        else:
+            headers.setdefault("Authorization", f"Bearer {api_key}")
 
     capabilities = set(provider.capabilities or [])
     endpoint_specs = [
@@ -421,6 +518,13 @@ async def fetch_remote_models(provider: ModelProvider) -> list[dict[str, Any]]:
                 if model_key in seen_ids:
                     continue
                 seen_ids.add(model_key)
+                profile = resolve_model_capabilities(
+                    provider.provider_id,
+                    provider.provider_type,
+                    model,
+                    provider.base_url,
+                )
+                model["resolved_capabilities"] = profile.to_dict()
                 models.append(model)
     return models
 

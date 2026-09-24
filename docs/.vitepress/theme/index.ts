@@ -1,6 +1,6 @@
 import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'
-import YuxiHome from './components/YuxiHome.vue'
+import YuanleiHome from './components/YuanleiHome.vue'
 import './custom.css'
 
 export default {
@@ -9,7 +9,7 @@ export default {
   // 同时保留 VitePress 的顶部导航、搜索、暗黑切换与页脚。
   Layout() {
     return h(DefaultTheme.Layout, null, {
-      'home-hero-before': () => h(YuxiHome)
+      'home-hero-before': () => h(YuanleiHome)
     })
   }
 }

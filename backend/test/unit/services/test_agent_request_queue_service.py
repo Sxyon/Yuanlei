@@ -29,6 +29,7 @@ from yuxi.storage.postgres.models_business import AgentRunRequest, Base, Message
 from yuxi.utils.datetime_utils import utc_now_naive
 
 pytestmark = [pytest.mark.unit]
+_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 
 
 # ── finalize ordering ──
@@ -1552,7 +1553,7 @@ async def test_intake_persists_multimodal_input_and_effective_config(
             request_id="multimodal-request",
             agent_slug="main",
             thread_id="t1",
-            input_message=build_chat_input_message("看图", "base64-image"),
+            input_message=build_chat_input_message("看图", _PNG_BASE64, "image/png"),
             model_spec=requested_model,
             tool_approval_mode="always_trust",
             request_metadata={
@@ -1581,10 +1582,15 @@ async def test_intake_persists_multimodal_input_and_effective_config(
         }
     )
     assert message.message_type == "multimodal_image"
-    assert message.image_content == "base64-image"
+    assert message.image_content == _PNG_BASE64
     assert message.extra_metadata["raw_message"]["content"] == [
         {"type": "text", "text": "看图"},
-        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,base64-image"}},
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{_PNG_BASE64}",
+            },
+        },
     ]
     assert message.extra_metadata["source"] == "agent_call"
     assert message.extra_metadata["agent_invocation_meta"] == {"trace_id": "trace-1"}

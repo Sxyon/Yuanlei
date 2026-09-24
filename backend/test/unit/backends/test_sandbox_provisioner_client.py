@@ -147,3 +147,93 @@ def test_sandbox_provisioner_token_is_required(monkeypatch):
 
     with pytest.raises(ValueError, match="at least 32 characters"):
         sandbox_provisioner_token()
+
+
+def test_provisioner_client_forwards_lifecycle_policy_on_create(monkeypatch):
+    calls = []
+
+    def fake_request(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "sandbox_id": "sandbox-1",
+                "sandbox_url": "http://sandbox",
+                "lifecycle": "persistent",
+                "idle_timeout_seconds": 1800,
+            },
+        )
+
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.provisioner_client.httpx.request", fake_request)
+    client = ProvisionerClient(
+        "http://sandbox-provisioner:8002",
+        token="test-provisioner-token-that-is-long-enough",
+    )
+
+    record = client.create(
+        "sandbox-1",
+        "thread-1",
+        "user-1",
+        lifecycle="persistent",
+        idle_timeout_seconds=1800,
+    )
+
+    assert calls[0]["json"]["lifecycle"] == "persistent"
+    assert calls[0]["json"]["idle_timeout_seconds"] == 1800
+    assert record.lifecycle == "persistent"
+    assert record.idle_timeout_seconds == 1800
+
+
+def test_provisioner_client_omits_policy_fields_by_default(monkeypatch):
+    calls = []
+
+    def fake_request(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"sandbox_id": "sandbox-1", "sandbox_url": "http://sandbox"},
+        )
+
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.provisioner_client.httpx.request", fake_request)
+    client = ProvisionerClient(
+        "http://sandbox-provisioner:8002",
+        token="test-provisioner-token-that-is-long-enough",
+    )
+
+    client.create("sandbox-1", "thread-1", "user-1")
+
+    assert "lifecycle" not in calls[0]["json"]
+    assert "idle_timeout_seconds" not in calls[0]["json"]
+
+
+def test_provisioner_client_lists_sandbox_inventory(monkeypatch):
+    def fake_request(**kwargs):
+        assert kwargs["url"] == "http://sandbox-provisioner:8002/api/sandboxes"
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "sandboxes": [
+                    {
+                        "sandbox_id": "sandbox-1",
+                        "sandbox_url": "http://sandbox-1",
+                        "status": "Running",
+                        "generation": "gen-1",
+                        "lifecycle": "resident",
+                        "idle_timeout_seconds": 0,
+                    }
+                ],
+                "count": 1,
+            },
+        )
+
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.provisioner_client.httpx.request", fake_request)
+    client = ProvisionerClient(
+        "http://sandbox-provisioner:8002",
+        token="test-provisioner-token-that-is-long-enough",
+    )
+
+    records = client.list()
+
+    assert [record.sandbox_id for record in records] == ["sandbox-1"]
+    assert records[0].lifecycle == "resident"
+    assert records[0].idle_timeout_seconds == 0

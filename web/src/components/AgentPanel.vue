@@ -1323,6 +1323,7 @@ watch(
 
   :deep(.preview-header) {
     min-height: 32px;
+    background: var(--gray-0);
   }
 }
 
@@ -1333,7 +1334,7 @@ watch(
   gap: 8px;
   padding: 4px 12px;
   min-height: var(--header-height);
-  background: var(--gray-25);
+  background: var(--gray-0);
   border-bottom: 1px solid var(--gray-100);
   flex-shrink: 0;
 }

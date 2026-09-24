@@ -1,6 +1,8 @@
 # 元垒（Yuanlei）
 
-元垒是一个基于 [Yuxi](https://github.com/xerrors/Yuxi) 的个人化改造版本：保留上游的多租户知识库、知识图谱、LangGraph 多智能体、MCP/Skills、沙盒与权限能力，并围绕「项目」补齐 Git 多仓库工作区、项目数字员工和更贴合个人协作习惯的交互。
+元垒（Yuanlei）是 AI 时代的 **个人** / **企业** 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。
+
+元垒是一个基于 [Yuxi](https://github.com/xerrors/Yuxi) 的二次开发改造版本：保留上游的多租户知识库、知识图谱、LangGraph 多智能体、MCP/Skills、沙盒与权限能力，并围绕「项目」实现参谋与决策、督查与汇报、执行与协同 三大核心职责。
 
 [![Release](https://img.shields.io/github/v/release/Sxyon/Yuanlei?color=046A82)](https://github.com/Sxyon/Yuanlei/releases/latest)
 [![License](https://img.shields.io/github/license/Sxyon/Yuanlei.svg?logo=github)](https://github.com/Sxyon/Yuanlei/blob/main/LICENSE)
@@ -47,7 +49,7 @@ Sandbox 删除等待从数据库事务中拆出：短事务预检、事务外删
 
 | 项目 | 版本 | 上游基线 |
 |---|---|---|
-| 元垒 | 0.1.0 | Yuxi v0.7.3 @ 5a1bdc3c（2026-09-18） |
+| 元垒 | 0.1.0 | Yuxi v0.7.3 @ dee83624（2026-09-24） |
 
 - 上游 README 原文镜像：[README.yuxi.md](README.yuxi.md) · [README.yuxi.en.md](README.yuxi.en.md)
 - 同步基线单一事实源：[baseline.json](docs/develop-guides/yuanlei/baseline.json)

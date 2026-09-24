@@ -26,6 +26,10 @@ class AgentProjectScopeDenied(ValueError):
     """项目数字员工被要求在其绑定项目之外运行。"""
 
 
+# 覆盖层中按整段管理、可整体恢复继承的执行配置段。
+_OVERRIDE_SECTION_FIELDS = frozenset({"sandbox", "coding"})
+
+
 async def ensure_agent_project_scope(*, db: AsyncSession, agent_slug: str, project_id: str | None) -> None:
     """校验项目排他智能体的运行范围；没有任何绑定的智能体维持全局行为。"""
     bound_project_ids = await ProjectAgentRepository(db).list_project_ids_for_agent(agent_slug)
@@ -252,7 +256,13 @@ async def update_project_agent_view(
         resource_access=resource_access,
     )
     if reset_fields:
-        declared = filter_declared_config({"context": {field: None for field in reset_fields}}, backend.context_schema)
+        reset_sections = [field for field in reset_fields if field in _OVERRIDE_SECTION_FIELDS]
+        for section in reset_sections:
+            overrides.pop(section, None)
+        context_fields = [field for field in reset_fields if field not in _OVERRIDE_SECTION_FIELDS]
+        declared = filter_declared_config(
+            {"context": {field: None for field in context_fields}}, backend.context_schema
+        )
         declared_fields = set((declared.get("context") or {}).keys())
         override_context = overrides.get("context")
         if isinstance(override_context, dict):

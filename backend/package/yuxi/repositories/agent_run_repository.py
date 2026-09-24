@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yuxi.repositories.agent_run_scope_repository import AgentRunScopeRepository
 from yuxi.storage.postgres.models_business import (
     AGENT_RUN_TERMINAL_STATUSES,
     AUDIT_MESSAGE_TYPES,
@@ -687,6 +688,13 @@ class AgentRunRepository:
         cancelled: list[tuple[str, str]] = []
         pending_parent_ids = [root_run.id]
         seen_ids: set[str] = set()
+        root_scope_row = await AgentRunScopeRepository(self.db).get(str(root_run.id))
+        root_scope_key = (
+            str(root_scope_row.scope_key)
+            if root_scope_row is not None
+            else str(root_run.runtime_scope_id)
+        )
+        scope_run_ids = await AgentRunScopeRepository(self.db).list_run_ids(scope_key=root_scope_key)
         while pending_parent_ids:
             parent_ids = pending_parent_ids
             pending_parent_ids = []
@@ -695,7 +703,10 @@ class AgentRunRepository:
                 .where(
                     AgentRun.created_by_run_id.in_(parent_ids),
                     AgentRun.uid == str(root_run.uid),
-                    AgentRun.runtime_scope_id == str(root_run.runtime_scope_id),
+                    or_(
+                        AgentRun.runtime_scope_id == root_scope_key,
+                        AgentRun.id.in_(scope_run_ids),
+                    ),
                     AgentRun.status.notin_(TERMINAL_RUN_STATUSES),
                 )
                 .order_by(AgentRun.created_at.asc(), AgentRun.id.asc())

@@ -45,7 +45,9 @@ class _OwnedAsyncHttpClient:
 
 
 def _install_async_file_client(monkeypatch, backend, file_client):
-    backend._provider = SimpleNamespace(get=lambda *_args, **_kwargs: SimpleNamespace(sandbox_url="http://sandbox"))
+    backend._provider = SimpleNamespace(
+        get_scope=lambda *_args, **_kwargs: SimpleNamespace(sandbox_url="http://sandbox")
+    )
     http_client = _OwnedAsyncHttpClient()
     monkeypatch.setattr(sandbox_backend_module.httpx, "AsyncClient", lambda **_kwargs: http_client)
 
@@ -106,6 +108,35 @@ def test_create_agent_composite_backend_uses_sandbox_filesystem(monkeypatch):
     assert backend.default._create_if_missing is True
     assert backend.routes == {}
     assert backend.artifacts_root == f"{WORKDIR_PATH}/outputs"
+
+
+def test_create_agent_composite_backend_uses_dedicated_sandbox_scope(monkeypatch):
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+    context = SimpleNamespace(
+        uid="user-1",
+        thread_id="thread-1",
+        runtime_scope_id="agent-project:user-1:coder:project-1",
+        workdir_relative_path=WORKDIR_RELATIVE_PATH,
+    )
+
+    backend = create_agent_composite_backend(context)
+
+    assert isinstance(backend.default, ProvisionerSandboxBackend)
+    assert backend.default._scope.kind == "agent_project"
+    assert backend.default._scope.cache_key == "agent-project:user-1:coder:project-1"
+
+
+def test_create_agent_composite_backend_rejects_scope_uid_mismatch(monkeypatch):
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+    context = SimpleNamespace(
+        uid="user-2",
+        thread_id="thread-1",
+        runtime_scope_id="agent-project:user-1:coder:project-1",
+        workdir_relative_path=WORKDIR_RELATIVE_PATH,
+    )
+
+    with pytest.raises(ValueError, match="uid"):
+        create_agent_composite_backend(context)
 
 
 def test_create_agent_composite_backend_derives_virtual_workdir_from_relative_path(monkeypatch):
@@ -821,8 +852,8 @@ def test_provisioner_uses_runtime_scope_directly(monkeypatch) -> None:
     provider_calls = []
 
     class FakeProvider:
-        def get(self, thread_id, **kwargs):
-            provider_calls.append((thread_id, kwargs))
+        def get_scope(self, scope, **kwargs):
+            provider_calls.append((scope, kwargs))
             return SimpleNamespace(sandbox_url="http://sandbox")
 
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: FakeProvider())
@@ -836,17 +867,14 @@ def test_provisioner_uses_runtime_scope_directly(monkeypatch) -> None:
     client = backend._get_client()
 
     assert client.url == "http://sandbox"
-    assert provider_calls == [
-        (
-            "child-thread",
-            {
-                "uid": "user-1",
-                "create_if_missing": True,
-                "inherit_env": True,
-                "workdir_path": None,
-            },
-        )
-    ]
+    assert len(provider_calls) == 1
+    scope, kwargs = provider_calls[0]
+    assert scope.cache_key == "user-1::child-thread"
+    assert kwargs == {
+        "create_if_missing": True,
+        "inherit_env": True,
+        "workdir_path": None,
+    }
 
 
 def test_provisioner_denies_reads_outside_allowed_roots(monkeypatch) -> None:
@@ -1713,3 +1741,51 @@ def test_workdir_paths_are_workspace_relative_and_reject_symlinks(monkeypatch, t
     (projects / file_id).write_text("file", encoding="utf-8")
     with pytest.raises(ValueError, match="符号链接或非目录组件"):
         paths.user_workdir_host_dir("user-1", f"projects/{file_id}")
+
+
+def test_provider_touch_delegates_to_provisioner_client():
+    """生命周期 supervisor 依赖 provider.touch 保活；必须透传并按存活返回布尔。"""
+
+    class _Client:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def touch(self, sandbox_id: str) -> bool:
+            self.calls.append(sandbox_id)
+            return sandbox_id == "alive-sandbox"
+
+    client = _Client()
+    provider = _make_provider(client)
+
+    assert provider.touch("alive-sandbox") is True
+    assert provider.touch("gone-sandbox") is False
+    assert client.calls == ["alive-sandbox", "gone-sandbox"]
+
+
+def test_dedicated_scope_refuses_lazy_create_without_env():
+    """专属沙盒禁止旁路懒创建：必须由生命周期带 env_overrides 创建。"""
+    from yuxi.agents.backends.sandbox.provider import SandboxScope
+
+    class _Client:
+        def __init__(self):
+            self.create_calls = 0
+
+        def create(self, *_args, **_kwargs):
+            self.create_calls += 1
+            raise AssertionError("lazy create must not reach provisioner")
+
+        def discover(self, _sandbox_id):
+            return None
+
+    provider = _make_provider(_Client())
+    scope = SandboxScope.agent_project(uid="user-1", agent_slug="coder", project_id="project-1")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="ensure_ready"):
+        provider.get_scope(scope, create_if_missing=True, workdir_path="projects/project-1")
+
+    connection = provider.get_scope(
+        scope, create_if_missing=False, workdir_path="projects/project-1"
+    )
+    assert connection is None

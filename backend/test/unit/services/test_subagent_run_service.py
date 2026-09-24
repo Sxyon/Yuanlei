@@ -259,6 +259,11 @@ def _patch_run_record_creation(
     missing_subagent: bool = False,
     active_run=None,
 ):
+    async def _inherit(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(service_module, "inherit_run_scope", _inherit)
+
     db.active_run = active_run
 
     async def get_system_options(_option, _db=None):
@@ -771,7 +776,7 @@ async def test_subagent_run_service_create_run_record_persists_subagent_context(
     assert db.created_run_kwargs["created_by_run_id"] == "parent-run"
     assert db.created_run_kwargs["subagent_thread_relation_id"] == 77
     assert db.created_run_kwargs["conversation_thread_id"] == "child-thread"
-    assert db.created_run_kwargs["runtime_scope_id"] == "parent-thread"
+    assert db.created_run_kwargs["runtime_scope_id"] == "child-thread"
     assert db.created_run_kwargs["input_message_id"] == 10
     assert db.created_run_kwargs["input_payload"] == {
         "model_spec": expected_model,

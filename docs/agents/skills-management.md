@@ -108,7 +108,9 @@ API/worker 启动时同步文件、元数据和依赖，保留数据库中的启
 
 系统启动时会同步仓库内置 Skills。`html-preview` 用于在普通 Markdown 难以清晰表达指标、对比、流程、时间线或层级关系时，指导 Agent 输出静态 `html:preview` 围栏；普通 HTML 源码仍使用 `html` 代码块。前端会把该围栏清洗后放入 sandboxed iframe 预览，不依赖额外工具。
 
-未显式配置 Skills 的 Agent 按现有资源规则自动获得该 Skill；使用显式 Skills 允许列表的 Agent 需要选择 `html-preview`。内置 `deep-research` 已声明该依赖。
+未显式配置 Skills 的 Agent 按现有资源规则自动获得该 Skill；使用显式 Skills 允许列表的 Agent 需要选择 `html-preview`。
+
+内置 `deep-research` 不依赖 `html-preview`。它默认在当前 Workdir 的 `outputs/` 目录生成独立、响应式的 HTML 阅读文档，并通过交付物入口展示；用户明确指定其他格式时除外。宽屏报告可以提供侧栏目录，窄屏隐藏或折叠侧栏；报告可以按内容需要使用外部图片等公开资源，来源以普通链接呈现。
 
 安装前仍应审查 Skill 的提示词、脚本、依赖和网络行为。不要把数据库密码、云平台密钥或 `SANDBOX_PROVISIONER_TOKEN` 放进 Skill 或 Agent 环境。
 

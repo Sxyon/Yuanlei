@@ -21,6 +21,7 @@ from yuxi.agents.middlewares import (
     ImageInputCompatibilityMiddleware,
     NetworkRetryMiddleware,
     TokenUsageMiddleware,
+    ToolErrorGuardMiddleware,
     create_summary_middleware_from_context,
 )
 from yuxi.agents.middlewares.skills import SkillsMiddleware
@@ -33,9 +34,17 @@ _SUBAGENT_DISABLED_TOOLS = frozenset(
         "present_artifacts",
         "ask_user_question",
         "install_skill",
+        "dashboard_read",
+        "dashboard_write",
         "git_list_project_repositories",
         "git_prepare_worktree",
         "git_push_branch",
+        "coding_session_start",
+        "coding_session_send",
+        "coding_session_status",
+        "coding_session_await",
+        "coding_session_control",
+        "coding_session_list",
     }
 )
 # 默认审批模式额外隐藏敏感 backend 工具，避免子智能体绕过主线程逐项审批。
@@ -99,6 +108,8 @@ async def _build_middlewares(context, backend, tool_approval_mode: str):
     # tool_approval_mode is normalized once by the caller (get_graph / SubAgentBackend.get_graph).
 
     return [
+        # 子 Agent 的工具异常也在最外层隔离，避免打断父对话。
+        ToolErrorGuardMiddleware(),
         create_agent_filesystem_middleware(
             getattr(context, "tool_token_limit", DEFAULT_TOOL_RESULT_EVICTION_K_TOKENS) * 1024,
             backend=backend,

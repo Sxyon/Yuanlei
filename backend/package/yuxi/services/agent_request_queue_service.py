@@ -21,6 +21,8 @@ from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.agent_run_request_repository import AgentRunRequestRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.services.agent_run_service import enqueue_agent_run
+from yuxi.services.sandbox_lifecycle_service import resolve_dispatch_runtime_scope
+from yuxi.services.run_scope_service import bind_run_scope
 from yuxi.services.workdir_service import (
     WorkdirBinding,
     resolve_conversation_workdir_binding,
@@ -595,6 +597,13 @@ async def _dispatch_locked_head(
     repo = AgentRunRequestRepository(db)
     run_repo = AgentRunRepository(db)
     run_id = str(uuid.uuid4())
+    runtime_scope_id = await resolve_dispatch_runtime_scope(
+        db=db,
+        uid=str(head.uid),
+        agent_slug=head.agent_slug,
+        project_id=workdir_binding.project_id,
+        conversation_thread_id=head.conversation_thread_id,
+    )
     try:
         async with db.begin_nested():
             await run_repo.create_run(
@@ -612,6 +621,14 @@ async def _dispatch_locked_head(
                 conversation_id=workdir_binding.conversation_id,
                 run_type="chat",
                 input_message_id=head.input_message_id,
+            )
+            # 专属沙盒 scope key 必须等于线程 id 之外的值时走 yuanlei 映射，
+            # 上游 agent_runs.runtime_scope_id 保持线程 id 以满足 shape 约束。
+            await bind_run_scope(
+                db,
+                run_id=run_id,
+                scope_key=runtime_scope_id,
+                conversation_thread_id=head.conversation_thread_id,
             )
             msg = await db.get(Message, head.input_message_id)
             if msg:

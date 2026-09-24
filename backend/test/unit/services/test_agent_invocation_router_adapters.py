@@ -6,8 +6,70 @@ import importlib
 import pytest
 from fastapi import HTTPException
 
+from yuxi.models.image_input import MAX_IMAGE_BASE64_LENGTH
+
+_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+
 call_router = importlib.import_module("server.routers.agent_invocation_call_router")
 eval_router = importlib.import_module("server.routers.agent_invocation_eval_router")
+agent_router = importlib.import_module("server.routers.agent_router")
+
+
+@pytest.mark.asyncio
+async def test_agent_run_route_preserves_image_mime_and_rejects_bad_base64(monkeypatch: pytest.MonkeyPatch):
+    """主 Agent Run 接口保留上传 MIME，并在排队前拒绝坏图片。"""
+    calls = []
+
+    async def fake_submit_agent_request(*, request_input, **_kwargs):
+        calls.append(request_input)
+        return {"run_id": "run-1", "status": "dispatched"}
+
+    monkeypatch.setattr(agent_router, "submit_agent_request", fake_submit_agent_request)
+    user = SimpleNamespace(uid="user-1")
+    await agent_router.create_agent_run(
+        agent_router.AgentRunCreate(
+            query="看图",
+            agent_slug="default-chatbot",
+            thread_id="thread-1",
+            image_content=_PNG_BASE64,
+            image_mime_type="image/png",
+        ),
+        current_user=user,
+        db=object(),
+    )
+
+    raw_message = calls[0].input_message.raw_message()
+    assert raw_message["content"][1]["image_url"]["url"] == f"data:image/png;base64,{_PNG_BASE64}"
+
+    with pytest.raises(HTTPException) as raised:
+        await agent_router.create_agent_run(
+            agent_router.AgentRunCreate(
+                query="看图",
+                agent_slug="default-chatbot",
+                thread_id="thread-1",
+                image_content="not base64",
+                image_mime_type="image/png",
+            ),
+            current_user=user,
+            db=object(),
+        )
+    assert raised.value.status_code == 422
+    assert len(calls) == 1
+
+    with pytest.raises(HTTPException) as oversized:
+        await agent_router.create_agent_run(
+            agent_router.AgentRunCreate(
+                query="看图",
+                agent_slug="default-chatbot",
+                thread_id="thread-1",
+                image_content="A" * (MAX_IMAGE_BASE64_LENGTH + 1),
+                image_mime_type="image/png",
+            ),
+            current_user=user,
+            db=object(),
+        )
+    assert oversized.value.status_code == 422
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio
@@ -157,6 +219,8 @@ async def test_eval_adapter_submits_evaluation_origin_and_waits(monkeypatch: pyt
             agent_slug="default-chatbot",
             evaluation={"dataset_name": "dataset", "ignored": "nope"},
             meta={"request_id": "eval-1"},
+            image_content=_PNG_BASE64,
+            image_mime_type="image/png",
         ),
         current_user=SimpleNamespace(uid="user-1"),
         db=object(),
@@ -167,6 +231,9 @@ async def test_eval_adapter_submits_evaluation_origin_and_waits(monkeypatch: pyt
     assert request_input.origin.channel == "api"
     assert request_input.origin.external_id == "eval-1"
     assert request_input.origin.metadata == {"agent_invocation_meta": {"evaluation": {"dataset_name": "dataset"}}}
+    assert request_input.input_message.raw_message()["content"][1]["image_url"]["url"] == (
+        f"data:image/png;base64,{_PNG_BASE64}"
+    )
     assert result["output"] == "ok"
 
 

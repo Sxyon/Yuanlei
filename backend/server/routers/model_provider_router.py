@@ -236,9 +236,10 @@ async def get_v2_models(
                     "display_name": m.display_name,
                     "dimension": m.dimension,
                     "batch_size": m.batch_size,
+                    "capabilities": m.capabilities,
                 }
                 for m in models
-            ]
+            ],
         }
 
     return {"success": True, "data": result}

@@ -20,6 +20,7 @@
           </div>
         </div>
         <div class="header__right">
+          <ConversationSandboxChip v-if="currentChatId" :thread-id="currentChatId" />
           <button
             v-if="messageDebugEnabled"
             type="button"
@@ -875,6 +876,7 @@ import {
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import ConversationSandboxChip from '@/components/ConversationSandboxChip.vue'
 import AgentInputArea from '@/components/AgentInputArea.vue'
 import ContextUsageRing from '@/components/ContextUsageRing.vue'
 import ToolApprovalModeSelector from '@/components/ToolApprovalModeSelector.vue'
@@ -3430,6 +3432,7 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
   let text = userInput.value.trim()
   let titleBase = text
   const imageContent = image?.imageContent || null
+  const imageMimeType = image?.mimeType || null
   if (
     (!text && !image) ||
     !currentAgent.value ||
@@ -3564,6 +3567,7 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
         attachment_file_ids: pendingAttachmentFileIds
       },
       image_content: imageContent,
+      image_mime_type: imageMimeType,
       model_spec: modelSpec,
       tool_approval_mode: toolApprovalMode,
       queue_policy: queuePolicy

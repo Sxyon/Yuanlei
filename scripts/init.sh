@@ -15,6 +15,17 @@ generate_hex() {
     fi
 }
 
+generate_base64url_32() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("="))'
+    else
+        echo "Cannot generate a 32-byte base64url key: openssl or python3 is required." >&2
+        return 1
+    fi
+}
+
 set_env_value() {
     local name="$1"
     local value="$2"
@@ -72,6 +83,33 @@ security_secret_is_valid() {
     done
 }
 
+coding_secret_is_valid() {
+    local value="$1"
+    shift
+    security_secret_is_valid "$value" "$@" || return 1
+    if command -v python3 >/dev/null 2>&1; then
+        CODING_SECRET_VALUE="$value" python3 - <<'PY' || return 1
+import base64
+import os
+
+value = os.environ["CODING_SECRET_VALUE"]
+try:
+    raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if len(raw) == 32 else 1)
+PY
+    else
+        case "$value" in
+            *[!A-Za-z0-9_-]*) return 1 ;;
+        esac
+        if [ "${#value}" -ne 43 ] && [ "${#value}" -ne 44 ]; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
 read_security_secret() {
     local name="$1"
     shift
@@ -111,10 +149,11 @@ ensure_security_secret() {
 }
 
 validate_security_env() {
-    local jwt_secret api_key_secret sandbox_secret
+    local jwt_secret api_key_secret sandbox_secret coding_secret
     jwt_secret=$(get_env_value "JWT_SECRET_KEY")
     api_key_secret=$(get_env_value "API_KEY_DERIVATION_SECRET")
     sandbox_secret=$(get_env_value "SANDBOX_PROVISIONER_TOKEN")
+    coding_secret=$(get_env_value "YUXI_CODING_CREDENTIAL_KEY")
 
     security_secret_is_valid "$jwt_secret" || {
         echo "JWT_SECRET_KEY must contain at least 32 non-whitespace characters." >&2
@@ -128,6 +167,10 @@ validate_security_env() {
         echo "SANDBOX_PROVISIONER_TOKEN must be at least 32 characters and independent from other security secrets." >&2
         return 1
     }
+    if [ -n "$coding_secret" ] && ! coding_secret_is_valid "$coding_secret" "$jwt_secret" "$api_key_secret" "$sandbox_secret"; then
+        echo "YUXI_CODING_CREDENTIAL_KEY must be a 32-byte base64url key and independent from other security secrets." >&2
+        return 1
+    fi
 }
 
 ensure_required_api_env() {
@@ -167,6 +210,32 @@ ensure_sandbox_env() {
     ensure_security_secret "SANDBOX_PROVISIONER_TOKEN" "JWT_SECRET_KEY" "API_KEY_DERIVATION_SECRET"
 }
 
+ensure_coding_env() {
+    local current jwt_secret api_key_secret sandbox_secret
+    current=$(get_env_value "YUXI_CODING_CREDENTIAL_KEY")
+    jwt_secret=$(get_env_value "JWT_SECRET_KEY")
+    api_key_secret=$(get_env_value "API_KEY_DERIVATION_SECRET")
+    sandbox_secret=$(get_env_value "SANDBOX_PROVISIONER_TOKEN")
+    if coding_secret_is_valid "$current" "$jwt_secret" "$api_key_secret" "$sandbox_secret"; then
+        return
+    fi
+
+    echo "YUXI_CODING_CREDENTIAL_KEY is missing or invalid in .env; generating a 32-byte base64url key."
+    local generated
+    generated=$(generate_base64url_32) || return 1
+    set_env_value "YUXI_CODING_CREDENTIAL_KEY" "$generated"
+    echo "Generated YUXI_CODING_CREDENTIAL_KEY and saved it to .env (restart api/worker to apply)."
+}
+
+if [ "${1:-}" = "--ensure-coding-secret" ]; then
+    if [ ! -f ".env" ]; then
+        echo ".env does not exist" >&2
+        exit 1
+    fi
+    ensure_coding_env
+    exit 0
+fi
+
 if [ "${1:-}" = "--validate-security-env" ]; then
     if [ ! -f ".env" ]; then
         echo ".env does not exist" >&2
@@ -196,6 +265,7 @@ if [ -f ".env" ]; then
     ensure_required_api_env
     ensure_jwt_env
     ensure_sandbox_env
+    ensure_coding_env
     validate_security_env
     chmod 600 .env
 else
@@ -255,6 +325,7 @@ else
     read_security_secret "SANDBOX_PROVISIONER_TOKEN" "$JWT_SECRET_KEY" "$API_KEY_DERIVATION_SECRET"
     SANDBOX_PROVISIONER_TOKEN="$SECURITY_SECRET_VALUE"
     YUXI_GIT_CREDENTIAL_KEY=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n')
+    YUXI_CODING_CREDENTIAL_KEY=$(generate_base64url_32)
 
     # Create .env file
     cat > .env << EOF
@@ -282,6 +353,7 @@ API_KEY_DERIVATION_SECRET=${API_KEY_DERIVATION_SECRET}
 YUXI_INSTANCE_ID=${YUXI_INSTANCE_ID}
 SANDBOX_PROVISIONER_TOKEN=${SANDBOX_PROVISIONER_TOKEN}
 YUXI_GIT_CREDENTIAL_KEY=${YUXI_GIT_CREDENTIAL_KEY}
+YUXI_CODING_CREDENTIAL_KEY=${YUXI_CODING_CREDENTIAL_KEY}
 YUXI_GIT_BRANCH_PREFIX=codex/
 YUXI_GIT_ALLOWED_GITEA_ORIGINS=
 EOF

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="yuanlei-runtime-title">
+  <title id="yuanlei-runtime-title">元垒运行边界图标</title>
+  <circle cx="128" cy="128" r="112" fill="#142F43"/>
+  <rect x="40" y="52" width="176" height="152" rx="22" fill="#111831" stroke="#4C7DFF" stroke-width="10"/>
+  <path fill="#28D7E5" d="m70 98 29 30-29 30-14-14 16-16-16-16z"/>
+  <path fill="#F4F8FF" d="M108 146h78v18h-78z"/>
+  <circle cx="67" cy="78" r="7" fill="#28D7E5"/>
+  <circle cx="91" cy="78" r="7" fill="#4C7DFF"/>
+  <circle cx="115" cy="78" r="7" fill="#F4F8FF"/>
+</svg>

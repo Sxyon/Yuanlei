@@ -1,0 +1,35 @@
+"""编码执行器（opencode/codex）域：凭据加密、指纹与脱敏原语。"""
+
+from .credentials import (
+    KEY_VERSION,
+    VALID_EXECUTORS,
+    CodingCredentialOwner,
+    CodingNotConfiguredError,
+    EncryptedCodingCredential,
+    coding_executor_environment,
+    credential_fingerprint,
+    redact_credential_values,
+)
+from .terminal_ticket import (
+    DEFAULT_TICKET_TTL_SECONDS,
+    TerminalTicketError,
+    TerminalTicketNotConfiguredError,
+    issue_terminal_ticket,
+    verify_terminal_ticket,
+)
+
+__all__ = [
+    "DEFAULT_TICKET_TTL_SECONDS",
+    "KEY_VERSION",
+    "VALID_EXECUTORS",
+    "CodingCredentialOwner",
+    "CodingNotConfiguredError",
+    "EncryptedCodingCredential",
+    "TerminalTicketError",
+    "TerminalTicketNotConfiguredError",
+    "coding_executor_environment",
+    "credential_fingerprint",
+    "issue_terminal_ticket",
+    "redact_credential_values",
+    "verify_terminal_ticket",
+]

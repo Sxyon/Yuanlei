@@ -238,6 +238,100 @@ async def test_yuanlei_v2_to_v3_upgrade_creates_project_agents_idempotently():
     assert "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug" in statements
 
 
+def test_agent_sandbox_schema_owns_owner_foreign_keys_and_uniques():
+    """专属沙盒表在数据库层拒绝悬空归属并保证每 (uid, agent, project) 单条记录。"""
+    assert "agent_sandboxes" in BusinessBase.metadata.tables
+    table = BusinessBase.metadata.tables["agent_sandboxes"]
+    foreign_keys = {constraint.name for constraint in table.foreign_key_constraints}
+    assert foreign_keys == {
+        "fk_agent_sandboxes_uid_users",
+        "fk_agent_sandboxes_agent_slug",
+        "fk_agent_sandboxes_project_id",
+    }
+    constraint_names = {constraint.name for constraint in table.constraints}
+    assert {
+        "uq_agent_sandboxes_owner",
+        "uq_agent_sandboxes_scope_key",
+        "uq_agent_sandboxes_sandbox_id",
+    }.issubset(constraint_names)
+    assert "ix_agent_sandboxes_status" in {index.name for index in table.indexes}
+
+    events = BusinessBase.metadata.tables["agent_sandbox_events"]
+    assert "ix_agent_sandbox_events_sandbox_created" in {index.name for index in events.indexes}
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v3_to_v4_upgrade_creates_agent_sandboxes_idempotently():
+    """专属沙盒表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v3_to_v4()
+        await manager.upgrade_yuanlei_schema_v3_to_v4()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS agent_sandboxes" in statements
+    assert "REFERENCES users(uid) ON DELETE CASCADE" in statements
+    assert "REFERENCES agents(slug) ON DELETE CASCADE" in statements
+    assert "REFERENCES projects(id) ON DELETE CASCADE" in statements
+    assert "UNIQUE (uid, agent_slug, project_id)" in statements
+    assert "UNIQUE (scope_key)" in statements
+    assert "UNIQUE (sandbox_id)" in statements
+    assert "CREATE INDEX IF NOT EXISTS ix_agent_sandboxes_status" in statements
+    assert "CREATE TABLE IF NOT EXISTS agent_sandbox_events" in statements
+    assert "ix_agent_sandbox_events_sandbox_created" in statements
+
+
+def test_coding_credential_schema_owns_user_foreign_key_and_unique_indexes():
+    """编码凭据表按作用域保证唯一并拒绝悬空用户归属。"""
+    assert "coding_credentials" in BusinessBase.metadata.tables
+    table = BusinessBase.metadata.tables["coding_credentials"]
+    foreign_keys = {constraint.name for constraint in table.foreign_key_constraints}
+    assert foreign_keys == {"fk_coding_credentials_uid_users"}
+    index_names = {index.name for index in table.indexes}
+    assert {"uq_coding_credentials_user", "uq_coding_credentials_global"}.issubset(index_names)
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v4_to_v5_upgrade_creates_coding_credentials_idempotently():
+    """编码凭据表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v4_to_v5()
+        await manager.upgrade_yuanlei_schema_v4_to_v5()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS coding_credentials" in statements
+    assert "REFERENCES users(uid) ON DELETE CASCADE" in statements
+    assert "uq_coding_credentials_user" in statements
+    assert "uq_coding_credentials_global" in statements
+
+
+def test_coding_session_schema_owns_identity_and_seq_uniques():
+    """会话表拥有用户/项目归属与 turn/事件 seq 唯一约束。"""
+    assert {"coding_sessions", "coding_session_turns", "coding_session_events"}.issubset(
+        BusinessBase.metadata.tables
+    )
+    sessions = BusinessBase.metadata.tables["coding_sessions"]
+    foreign_keys = {constraint.name for constraint in sessions.foreign_key_constraints}
+    assert foreign_keys == {"fk_coding_sessions_uid_users", "fk_coding_sessions_project_id"}
+    turns = BusinessBase.metadata.tables["coding_session_turns"]
+    assert "uq_coding_session_turns_seq" in {constraint.name for constraint in turns.constraints}
+    events = BusinessBase.metadata.tables["coding_session_events"]
+    assert "uq_coding_session_events_seq" in {constraint.name for constraint in events.constraints}
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v5_to_v6_upgrade_creates_coding_sessions_idempotently():
+    """编码会话三表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v5_to_v6()
+        await manager.upgrade_yuanlei_schema_v5_to_v6()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS coding_sessions" in statements
+    assert "CREATE TABLE IF NOT EXISTS coding_session_turns" in statements
+    assert "CREATE TABLE IF NOT EXISTS coding_session_events" in statements
+    assert "UNIQUE (session_id, seq)" in statements
+
+
 @pytest.mark.asyncio
 async def test_ensure_business_schema_cleans_duplicate_active_agent_runs_before_unique_index():
     async with _recording_manager() as (manager, connection):

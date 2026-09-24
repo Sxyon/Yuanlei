@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 3
+YUANLEI_SCHEMA_VERSION = 9
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -196,7 +196,7 @@ PROJECT_GIT_SCHEMA_STATEMENTS = (
         repository_id VARCHAR(64) NOT NULL,
         project_id VARCHAR(64) NOT NULL,
         uid VARCHAR(64) NOT NULL,
-        runtime_scope_id VARCHAR(64) NOT NULL,
+        runtime_scope_id VARCHAR(191) NOT NULL,
         task_key VARCHAR(64) NOT NULL,
         selection_source VARCHAR(16) NOT NULL,
         task_purpose TEXT NOT NULL,
@@ -335,6 +335,233 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id ON project_agents(project_id)",
     "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug ON project_agents(agent_slug)",
+)
+AGENT_SANDBOX_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS agent_sandboxes (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL CONSTRAINT fk_agent_sandboxes_uid_users
+            REFERENCES users(uid) ON DELETE CASCADE,
+        agent_slug VARCHAR(80) NOT NULL CONSTRAINT fk_agent_sandboxes_agent_slug
+            REFERENCES agents(slug) ON DELETE CASCADE,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_agent_sandboxes_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        scope_key VARCHAR(191) NOT NULL,
+        sandbox_id VARCHAR(64) NOT NULL,
+        generation VARCHAR(128),
+        lifecycle VARCHAR(20) NOT NULL DEFAULT 'persistent',
+        resume_policy VARCHAR(20) NOT NULL DEFAULT 'auto',
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        idle_timeout_seconds INTEGER,
+        credential_fingerprint VARCHAR(128),
+        lease_owner_kind VARCHAR(32),
+        lease_owner_id VARCHAR(64),
+        lease_expires_at TIMESTAMP WITHOUT TIME ZONE,
+        lease_heartbeat_at TIMESTAMP WITHOUT TIME ZONE,
+        last_activity_at TIMESTAMP WITHOUT TIME ZONE,
+        last_keepalive_at TIMESTAMP WITHOUT TIME ZONE,
+        suspended_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        error_message TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_agent_sandboxes_owner UNIQUE (uid, agent_slug, project_id),
+        CONSTRAINT uq_agent_sandboxes_scope_key UNIQUE (scope_key),
+        CONSTRAINT uq_agent_sandboxes_sandbox_id UNIQUE (sandbox_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_agent_sandboxes_status ON agent_sandboxes(status)",
+    """
+    CREATE TABLE IF NOT EXISTS agent_sandbox_events (
+        id VARCHAR(64) PRIMARY KEY,
+        sandbox_id VARCHAR(64) NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        actor_kind VARCHAR(32),
+        actor_id VARCHAR(64),
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    (
+        "CREATE INDEX IF NOT EXISTS ix_agent_sandbox_events_sandbox_created "
+        "ON agent_sandbox_events(sandbox_id, created_at)"
+    ),
+)
+AGENT_RUN_SCOPE_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS agent_run_scopes (
+        run_id VARCHAR(64) PRIMARY KEY
+            CONSTRAINT fk_agent_run_scopes_run_id REFERENCES agent_runs(id) ON DELETE CASCADE,
+        scope_key VARCHAR(191) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW() NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_agent_run_scopes_scope_key ON agent_run_scopes(scope_key)",
+)
+PROJECT_DOCUMENT_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS project_documents (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_project_documents_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        key VARCHAR(120) NOT NULL,
+        content JSONB NOT NULL DEFAULT '{}'::jsonb,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by VARCHAR(64),
+        updated_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_project_documents_project_key UNIQUE (project_id, key),
+        CONSTRAINT ck_project_documents_version CHECK (version > 0)
+    )
+    """,
+)
+PROJECT_DASHBOARD_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS project_dashboards (
+        project_id VARCHAR(64) PRIMARY KEY CONSTRAINT fk_project_dashboards_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        revision BIGINT NOT NULL DEFAULT 1,
+        content_sha256 VARCHAR(64) NOT NULL,
+        content_size INTEGER NOT NULL,
+        updated_by VARCHAR(64),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_project_dashboards_revision CHECK (revision > 0)
+    )
+    """,
+)
+CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS coding_credentials (
+        id VARCHAR(64) PRIMARY KEY,
+        scope VARCHAR(16) NOT NULL DEFAULT 'user',
+        uid VARCHAR(64) CONSTRAINT fk_coding_credentials_uid_users
+            REFERENCES users(uid) ON DELETE CASCADE,
+        executor VARCHAR(16) NOT NULL,
+        provider VARCHAR(64) NOT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'manual',
+        model_provider_id VARCHAR(100),
+        key_mode VARCHAR(16),
+        base_url VARCHAR(512),
+        model VARCHAR(255),
+        api_key_cipher BYTEA,
+        nonce BYTEA,
+        key_version INTEGER,
+        extra_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by VARCHAR(64),
+        updated_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_coding_credentials_user "
+        "ON coding_credentials(uid, executor, provider) WHERE scope = 'user'"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_coding_credentials_global "
+        "ON coding_credentials(executor, provider) WHERE scope = 'global'"
+    ),
+)
+CODING_CREDENTIAL_REFERENCE_STATEMENTS = (
+    (
+        "ALTER TABLE IF EXISTS coding_credentials "
+        "ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual'"
+    ),
+    (
+        "ALTER TABLE IF EXISTS coding_credentials "
+        "ADD COLUMN IF NOT EXISTS model_provider_id VARCHAR(100)"
+    ),
+    "ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS key_mode VARCHAR(16)",
+    # 同一 scope 同一执行器只保留最近更新的一条生效记录，其余软删并清理密文。
+    """
+    WITH ranked AS (
+        SELECT id, row_number() OVER (
+            PARTITION BY scope, COALESCE(uid, ''), executor
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        ) AS rank
+        FROM coding_credentials
+        WHERE status = 'active'
+    )
+    UPDATE coding_credentials AS credential
+    SET status = 'deleted',
+        api_key_cipher = NULL,
+        nonce = NULL,
+        key_version = NULL,
+        updated_at = NOW()
+    FROM ranked
+    WHERE credential.id = ranked.id AND ranked.rank > 1
+    """,
+)
+CODING_SESSION_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS coding_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL CONSTRAINT fk_coding_sessions_uid_users
+            REFERENCES users(uid) ON DELETE CASCADE,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_coding_sessions_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        conversation_id INTEGER,
+        parent_run_id VARCHAR(64),
+        runtime_scope_id VARCHAR(191) NOT NULL,
+        executor VARCHAR(16) NOT NULL,
+        mode VARCHAR(16) NOT NULL DEFAULT 'headless',
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        title VARCHAR(255),
+        workdir_path VARCHAR(512) NOT NULL,
+        worktree_ref VARCHAR(255),
+        sandbox_id VARCHAR(64),
+        sandbox_generation VARCHAR(128),
+        credential_fingerprint VARCHAR(128),
+        cli_session_ref VARCHAR(191),
+        policy_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        budget_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        usage_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        last_activity_at TIMESTAMP WITHOUT TIME ZONE,
+        suspended_at TIMESTAMP WITHOUT TIME ZONE,
+        terminal_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        error_message TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_coding_sessions_uid_status ON coding_sessions(uid, status)",
+    "CREATE INDEX IF NOT EXISTS ix_coding_sessions_conversation ON coding_sessions(conversation_id)",
+    """
+    CREATE TABLE IF NOT EXISTS coding_session_turns (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) NOT NULL CONSTRAINT fk_coding_session_turns_session_id
+            REFERENCES coding_sessions(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        request_text TEXT NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        result_summary TEXT,
+        usage_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        started_at TIMESTAMP WITHOUT TIME ZONE,
+        ended_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        error_message TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_coding_session_turns_seq UNIQUE (session_id, seq)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS coding_session_events (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) NOT NULL CONSTRAINT fk_coding_session_events_session_id
+            REFERENCES coding_sessions(id) ON DELETE CASCADE,
+        turn_id VARCHAR(64),
+        seq INTEGER NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT uq_coding_session_events_seq UNIQUE (session_id, seq)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_coding_session_events_session_created ON coding_session_events(session_id, created_at)",
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -523,8 +750,14 @@ TASK_DURABLE_SCHEMA_STATEMENTS = (
     END $$
     """,
 )
+RUNTIME_SCOPE_WIDTH_STATEMENTS = (
+    # 专属沙盒 scope key（agent-project:{uid}:{slug}:{project_id}）可超过 64：
+    # 这两列承载 Run / Git worktree 的完整 runtime scope，必须容纳完整 key。
+    "ALTER TABLE IF EXISTS agent_runs ALTER COLUMN runtime_scope_id TYPE VARCHAR(191)",
+    "ALTER TABLE IF EXISTS project_git_worktrees ALTER COLUMN runtime_scope_id TYPE VARCHAR(191)",
+)
 RUNTIME_SCOPE_SCHEMA_STATEMENTS = (
-    "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS runtime_scope_id VARCHAR(64)",
+    "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS runtime_scope_id VARCHAR(191)",
     (
         "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS "
         "runtime_cleanup_pending BOOLEAN NOT NULL DEFAULT FALSE"
@@ -632,7 +865,7 @@ class PostgresManager(metaclass=SingletonMeta):
             )
 
             self._initialized = True
-            logger.info(f"PostgreSQL manager initialized for knowledge base: {db_url.split('@')[0]}://***")
+            logger.info("PostgreSQL manager initialized for knowledge base")
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL manager: {e}")
             # 不抛出异常，允许应用启动，但在使用时会报错
@@ -788,6 +1021,48 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_AGENT_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v3_to_v4(self) -> None:
+        """为 Agent 专属沙盒增加所有权、生命周期与事件表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in AGENT_SANDBOX_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v4_to_v5(self) -> None:
+        """为编码执行器增加用户级/全局凭据表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CODING_CREDENTIAL_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v5_to_v6(self) -> None:
+        """为编码执行器增加会话、turn 与归一事件表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CODING_SESSION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v6_to_v7(self) -> None:
+        """编码凭据支持引用模型供应商，并把同执行器多行收敛为最近更新的一条。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CODING_CREDENTIAL_REFERENCE_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v7_to_v8(self) -> None:
+        """新增 Run 执行 scope 映射表，承接专属沙盒 scope key。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in AGENT_RUN_SCOPE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v8_to_v9(self) -> None:
+        """新增项目命名 JSON 文档与 Dashboard revision 元数据表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in (*PROJECT_DOCUMENT_SCHEMA_STATEMENTS, *PROJECT_DASHBOARD_SCHEMA_STATEMENTS):
                 await conn.execute(text(statement))
 
     async def drop_tables(self):
@@ -1172,6 +1447,13 @@ class PostgresManager(metaclass=SingletonMeta):
             for stmt in stmts:
                 await conn.execute(text(stmt))
 
+    async def ensure_runtime_scope_width(self) -> None:
+        """把 Run / Git worktree 的 runtime_scope_id 扩到 191（存量库幂等）。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in RUNTIME_SCOPE_WIDTH_STATEMENTS:
+                await conn.execute(text(statement))
+
     async def ensure_business_schema(self):
         """确保业务 schema 包含后续新增字段（运行时 schema 演进）。"""
         self._check_initialized()
@@ -1200,6 +1482,9 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS last_viewed_run_id VARCHAR(64)",
             "ALTER TABLE IF EXISTS mcp_servers ADD COLUMN IF NOT EXISTS env JSONB",
+            # 专属沙盒的 scope key（agent-project:{uid}:{slug}:{project_id}）可超过 64；
+            # 这两列承载 Run / Git worktree 的 runtime scope，必须容纳完整 key。
+            *RUNTIME_SCOPE_WIDTH_STATEMENTS,
             *AGENT_RUN_CURSOR_SCHEMA_STATEMENTS,
             """
             CREATE TABLE IF NOT EXISTS agent_envs (

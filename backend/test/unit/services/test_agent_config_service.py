@@ -96,6 +96,113 @@ async def test_prepare_agent_config_write_does_not_load_resources_for_strategy_s
     assert resource_access == {}
 
 
+@pytest.mark.asyncio
+async def test_prepare_agent_config_write_accepts_execution_config(monkeypatch):
+    """合法的沙盒与编码配置原样通过写入边界。"""
+    monkeypatch.setattr(
+        agent_config_service,
+        "resolve_agent_resource_options",
+        AsyncMock(side_effect=AssertionError("resource options should not be loaded")),
+    )
+    config_json = {
+        "sandbox": {
+            "mode": "dedicated",
+            "lifecycle": "persistent",
+            "resume_policy": "auto",
+            "idle_suspend_seconds": 1800,
+        },
+        "coding": {"executors": ["opencode", "codex"], "default_executor": "codex"},
+    }
+
+    config, resource_access = await agent_config_service.prepare_agent_config_write(
+        config_json,
+        context_schema=None,
+        db=object(),
+        user=SimpleNamespace(role="user"),
+    )
+
+    assert config == config_json
+    assert resource_access == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config_json",
+    [
+        {"sandbox": {"mode": "wrong"}},
+        {"sandbox": {"lifecycle": "wrong"}},
+        {"sandbox": {"resume_policy": "wrong"}},
+        {"sandbox": {"idle_suspend_seconds": -1}},
+        {"sandbox": {"idle_suspend_seconds": True}},
+        {"sandbox": {"idle_suspend_seconds": "60"}},
+        {"sandbox": ["dedicated"]},
+    ],
+)
+async def test_prepare_agent_config_write_rejects_invalid_sandbox(monkeypatch, config_json):
+    """非法沙盒配置在写入边界失败，而不是拖到运行期解析。"""
+    monkeypatch.setattr(
+        agent_config_service,
+        "resolve_agent_resource_options",
+        AsyncMock(side_effect=AssertionError("resource options should not be loaded")),
+    )
+
+    with pytest.raises(ValueError):
+        await agent_config_service.prepare_agent_config_write(
+            config_json,
+            context_schema=None,
+            db=object(),
+            user=SimpleNamespace(role="user"),
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config_json",
+    [
+        {"coding": {"executors": ["unknown"]}},
+        {"coding": {"executors": "opencode"}},
+        {"coding": {"executors": ["opencode", 1]}},
+        {"coding": {"default_executor": "unknown"}},
+        {"coding": ["opencode"]},
+    ],
+)
+async def test_prepare_agent_config_write_rejects_invalid_coding(monkeypatch, config_json):
+    """非法编码执行器配置在写入边界失败。"""
+    monkeypatch.setattr(
+        agent_config_service,
+        "resolve_agent_resource_options",
+        AsyncMock(side_effect=AssertionError("resource options should not be loaded")),
+    )
+
+    with pytest.raises(ValueError):
+        await agent_config_service.prepare_agent_config_write(
+            config_json,
+            context_schema=None,
+            db=object(),
+            user=SimpleNamespace(role="user"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_prepare_agent_config_write_allows_project_default_executor_without_executors(monkeypatch):
+    """项目覆盖可单独声明默认执行器，执行器白名单由 Agent 基础层继承。"""
+    monkeypatch.setattr(
+        agent_config_service,
+        "resolve_agent_resource_options",
+        AsyncMock(side_effect=AssertionError("resource options should not be loaded")),
+    )
+
+    config, resource_access = await agent_config_service.prepare_agent_config_write(
+        {"coding": {"default_executor": "codex"}},
+        context_schema=None,
+        db=object(),
+        user=SimpleNamespace(role="user"),
+    )
+
+    assert config == {"coding": {"default_executor": "codex"}}
+    assert resource_access == {}
+
+
 @dataclass
 class ConfigContext:
     """覆盖保存资源字段的最小测试 Schema。"""

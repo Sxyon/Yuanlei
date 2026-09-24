@@ -148,7 +148,13 @@ class SkillsMiddleware(AgentMiddleware):
         gated: set[str] = set()
         for slug in effective_skills:
             gated.update(runtime_skills.get(slug, {}).get("tools", []))
-        return gated - base_tool_names
+        gated = gated - base_tool_names
+        # 编码工具由运行时按 Agent/项目声明的执行器显式注入，不受 Skill 激活门控。
+        if normalize_string_list(getattr(runtime_context, "coding_executors", None)):
+            from yuxi.agents.toolkits.buildin.coding_tools import CODING_TOOL_NAMES
+
+            gated = gated - set(CODING_TOOL_NAMES)
+        return gated
 
     async def _get_mcp_tools_from_context(
         self,

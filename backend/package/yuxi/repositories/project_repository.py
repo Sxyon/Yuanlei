@@ -25,6 +25,17 @@ class ProjectRepository:
         """按用户读取 Project。"""
         return await self.db.scalar(select(Project).where(Project.id == project_id, Project.uid == str(uid)))
 
+    async def get_active_selectable_for_user(self, project_id: str, uid: str) -> Project | None:
+        """按用户读取可管理的 active selectable Project，不持有行锁。"""
+        return await self.db.scalar(
+            select(Project).where(
+                Project.id == project_id,
+                Project.uid == str(uid),
+                Project.selection_status == "selectable",
+                Project.status == "active",
+            )
+        )
+
     async def lock_active_for_user(self, project_id: str, uid: str) -> Project | None:
         """锁定当前用户的 active Project。"""
         return await self.db.scalar(

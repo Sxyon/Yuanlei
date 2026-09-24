@@ -16,7 +16,9 @@ import {
   FileText,
   LayersPlus,
   LoaderCircle,
-  Zap
+  Zap,
+  EyeOff,
+  CircleHelp
 } from '@lucide/vue'
 
 import { modelProviderApi } from '@/apis/system_api'
@@ -40,10 +42,15 @@ const providers = ref([])
 const searchQuery = ref('')
 const modelTestLoadingBySpec = ref({})
 const modelTestResultBySpec = ref({})
+const runtimeModelBySpec = ref({})
+const runtimeCapabilitiesLoading = ref(false)
+const runtimeCapabilitiesLoadError = ref(false)
 
 const PROVIDER_TYPE_OPTIONS = [
-  { value: 'openai', label: 'OpenAI Completions API' },
-  { value: 'anthropic', label: 'Anthropic Messages API' }
+  { value: 'openai', label: 'OpenAI 兼容 Chat Completions' },
+  { value: 'openrouter', label: 'OpenRouter Chat Completions' },
+  { value: 'anthropic', label: 'Anthropic Messages' },
+  { value: 'gemini', label: 'Gemini GenerateContent' }
 ]
 
 const MODALITY_DISPLAY = {
@@ -51,9 +58,15 @@ const MODALITY_DISPLAY = {
   image: { icon: Image, label: '图像输入' },
   video: { icon: Video, label: '视频输入' },
   audio: { icon: AudioLines, label: '音频输入' },
+  file: { icon: FileText, label: '文件输入' },
   pdf: { icon: FileText, label: 'PDF 文档输入' }
 }
 const REQUEST_BODY_OVERRIDES_PLACEHOLDER = '{\n  "enable_thinking": false\n}'
+const IMAGE_INPUT_OVERRIDE_OPTIONS = [
+  { value: 'auto', label: '自动检测 / 未知时拒绝' },
+  { value: 'supported', label: '明确支持' },
+  { value: 'unsupported', label: '明确不支持' }
+]
 
 // Provider form state
 const showProviderModal = ref(false)
@@ -89,6 +102,8 @@ const editingModel = ref({
   base_url_override: null,
   request_body_overrides: {},
   request_body_overrides_text: '{}',
+  capabilities: {},
+  image_input_override: 'auto',
   context_length: null,
   dimension: null,
   batch_size: null,
@@ -200,6 +215,87 @@ const getModelTestTitle = (providerId, model) => {
 const getProviderModelInfo = (providerId, model) =>
   resolveModelDisplayMetadata(modelCatalogProviders.value, providerId, model)
 
+const getCapabilitySourceLabel = (source) => {
+  if (source === 'provider_models_endpoint') return '当前渠道模型目录'
+  if (source === 'openai_model_docs') return 'OpenAI 官方档案'
+  if (source === 'deepseek_vision_docs' || source === 'deepseek_models_docs') return 'DeepSeek 官方档案'
+  if (source === 'admin_override') return '管理员标记'
+  return '能力档案'
+}
+
+const loadRuntimeModelCapabilities = async () => {
+  runtimeCapabilitiesLoading.value = true
+  runtimeCapabilitiesLoadError.value = false
+  try {
+    const result = await modelProviderApi.getV2Models('chat')
+    runtimeModelBySpec.value = Object.values(result.data || {}).reduce((models, provider) => {
+      for (const model of provider.models || []) {
+        if (model.spec) models[model.spec] = model
+      }
+      return models
+    }, {})
+  } catch (error) {
+    runtimeCapabilitiesLoadError.value = true
+    console.warn('Failed to load runtime model capabilities:', error)
+  } finally {
+    runtimeCapabilitiesLoading.value = false
+  }
+}
+
+const getCapabilityIndicators = (providerId, model, resolvedCapabilities, state = {}) => {
+  const runtimeInput = resolvedCapabilities?.input || {}
+  const catalogModalities = getProviderModelInfo(providerId, model).inputModalities
+  const source = resolvedCapabilities?.provenance?.source
+  const inputSources = resolvedCapabilities?.provenance?.input_sources || {}
+  const modalities = ['image', 'audio', 'video', 'file', 'pdf']
+  return modalities.flatMap((modality) => {
+    const runtimeStatus = runtimeInput[modality] || 'unknown'
+    const modalitySource =
+      inputSources[modality] ||
+      (source === 'admin_override' && modality !== 'image' && runtimeStatus !== 'unknown'
+        ? 'provider_models_endpoint'
+        : source)
+    let status = runtimeStatus
+    if (runtimeStatus === 'unknown' && catalogModalities.includes(modality)) status = 'catalog'
+    if (modality !== 'image' && status !== 'supported' && status !== 'catalog') return []
+    const icon =
+      modality === 'image' && status === 'unsupported'
+        ? EyeOff
+        : modality === 'image' && status === 'unknown'
+          ? CircleHelp
+          : getModalityDisplay(modality).icon
+    let title
+    if (status === 'supported') {
+      title = `${getCapabilitySourceLabel(modalitySource)}声明支持原生${getModalityDisplay(modality).label}`
+    } else if (status === 'unsupported') {
+      title =
+        modalitySource === 'provider_models_endpoint'
+          ? `${getCapabilitySourceLabel(modalitySource)}未列出${getModalityDisplay(modality).label}`
+          : `${getCapabilitySourceLabel(modalitySource)}标记不支持${getModalityDisplay(modality).label}`
+    } else if (status === 'catalog') {
+      title = `模型目录记录${getModalityDisplay(modality).label}；当前渠道尚未确认`
+    } else if (!resolvedCapabilities && state.loading) {
+      title = '正在读取后端运行时能力档案'
+    } else if (!resolvedCapabilities && state.error) {
+      title = '后端运行时能力档案读取失败'
+    } else {
+      title = `当前渠道尚无${getModalityDisplay(modality).label}能力元数据`
+    }
+    return [{ modality, status, icon, title }]
+  })
+}
+
+const getModelCapabilityIndicators = (providerId, model) => {
+  const runtimeModel = runtimeModelBySpec.value[buildModelSpec(providerId, model.id)]
+  return getCapabilityIndicators(providerId, model, runtimeModel?.capabilities, {
+    loading: !runtimeModel && runtimeCapabilitiesLoading.value,
+    error: !runtimeModel && runtimeCapabilitiesLoadError.value
+  })
+}
+
+const getRemoteModelCapabilityIndicators = (providerId, model) =>
+  getCapabilityIndicators(providerId, model, model.resolved_capabilities)
+
 const getRemoteModelPriceDisplay = (providerId, model) =>
   formatModelPriceDisplay(getProviderModelInfo(providerId, model).price, priceCurrency.value)
 
@@ -250,19 +346,12 @@ const filteredRemoteModels = computed(() => {
 
 const remoteModelTypeOptions = computed(() => {
   if (!currentProviderForModels.value) return [{ label: '全部', value: 'all' }]
-  const providerId = currentProviderForModels.value.provider_id
-  const models = remoteModelsMap.value[providerId] || []
-  const counts = models.reduce((acc, model) => {
-    const type = model.type || 'chat'
-    acc[type] = (acc[type] || 0) + 1
-    return acc
-  }, {})
-  return [
-    { label: `全部 ${models.length}`, value: 'all' },
-    { label: `对话 ${counts.chat || 0}`, value: 'chat' },
-    { label: `向量 ${counts.embedding || 0}`, value: 'embedding' },
-    { label: `重排 ${counts.rerank || 0}`, value: 'rerank' }
-  ]
+  const caps = currentProviderForModels.value.capabilities || []
+  const options = [{ label: '全部', value: 'all' }]
+  if (caps.includes('chat')) options.push({ label: '聊天', value: 'chat' })
+  if (caps.includes('embedding')) options.push({ label: 'Embedding', value: 'embedding' })
+  if (caps.includes('rerank')) options.push({ label: 'Rerank', value: 'rerank' })
+  return options
 })
 
 // Model Config Modal 的 type 下拉选项：基于 provider.capabilities 限定
@@ -483,6 +572,7 @@ const openModelsModal = (provider) => {
   remoteModelTypeFilter.value[provider.provider_id] = 'all'
   showModelsModal.value = true
   loadModelMetadata()
+  void loadRuntimeModelCapabilities()
 }
 
 // ============ Remote Models Operations ============
@@ -490,12 +580,43 @@ const fetchRemoteModels = async (providerId) => {
   remoteLoading.value = true
   try {
     const result = await modelProviderApi.fetchRemoteModels(providerId)
+    const remoteModels = result.data || []
     remoteModelsMap.value = {
       ...remoteModelsMap.value,
-      [providerId]: result.data || []
+      [providerId]: remoteModels
     }
+    const runtimeModels = { ...runtimeModelBySpec.value }
+    const enabledModels =
+      providers.value.find((provider) => provider.provider_id === providerId)?.enabled_models || []
+    for (const model of remoteModels) {
+      const spec = buildModelSpec(providerId, model.id)
+      const existing = runtimeModels[spec]
+      if (model.type !== 'chat' || !model.resolved_capabilities) continue
+
+      let capabilities = model.resolved_capabilities
+      const configuredImage = enabledModels.find((enabled) => enabled.id === model.id)?.capabilities?.input?.image
+      if (configuredImage === 'supported' || configuredImage === 'unsupported') {
+        capabilities = {
+          ...capabilities,
+          input: {
+            ...capabilities.input,
+            image: configuredImage
+          },
+          provenance: {
+            ...capabilities.provenance,
+            source: 'admin_override',
+            input_sources: {
+              ...capabilities.provenance?.input_sources,
+              image: 'admin_override'
+            }
+          }
+        }
+      }
+      runtimeModels[spec] = { ...existing, spec, capabilities }
+    }
+    runtimeModelBySpec.value = runtimeModels
     remoteModelsLoaded.value[providerId] = true
-    message.success(`已获取 ${result.data?.length || 0} 个远端模型`)
+    message.success(`已获取 ${remoteModels.length} 个远端模型`)
   } catch (error) {
     message.error(error.message || '获取远端模型失败')
   } finally {
@@ -517,6 +638,15 @@ const normalizeModel = (model = {}) => ({
     !Array.isArray(model.request_body_overrides)
       ? model.request_body_overrides
       : {},
+  capabilities:
+    model.capabilities && typeof model.capabilities === 'object' && !Array.isArray(model.capabilities)
+      ? model.capabilities
+      : {},
+  image_input_override:
+    ['supported', 'unsupported'].includes(model.capabilities?.input?.image)
+      ? model.capabilities.input.image
+      : 'auto',
+  input_modalities: Array.isArray(model.input_modalities) ? [...model.input_modalities] : undefined,
   context_length: model.context_length || null,
   dimension: model.dimension || null,
   batch_size: model.batch_size || null,
@@ -577,6 +707,7 @@ const addModelFromRemote = async (providerId, remoteModel) => {
     if (currentProviderForModels.value?.provider_id === providerId) {
       currentProviderForModels.value = providers.value.find((p) => p.provider_id === providerId)
     }
+    await loadRuntimeModelCapabilities()
   } catch (error) {
     message.error(error.message || '添加模型失败')
   }
@@ -604,6 +735,8 @@ const openCreateModal = (provider) => {
     base_url_override: null,
     request_body_overrides: {},
     request_body_overrides_text: '{}',
+    capabilities: {},
+    image_input_override: 'auto',
     context_length: null,
     dimension: null,
     batch_size: null,
@@ -621,6 +754,19 @@ const buildModelConfigPayload = () => {
   )
   const modelPayload = { ...editingModel.value }
   delete modelPayload.request_body_overrides_text
+  const imageInputOverride = modelPayload.image_input_override
+  delete modelPayload.image_input_override
+  const configuredCapabilities = { ...(modelPayload.capabilities || {}) }
+  const inputCapabilities = { ...(configuredCapabilities.input || {}) }
+  if (imageInputOverride === 'supported' || imageInputOverride === 'unsupported') {
+    inputCapabilities.image = imageInputOverride
+  } else {
+    delete inputCapabilities.image
+  }
+  if (Object.keys(inputCapabilities).length) configuredCapabilities.input = inputCapabilities
+  else delete configuredCapabilities.input
+  if (Object.keys(configuredCapabilities).length) modelPayload.capabilities = configuredCapabilities
+  else delete modelPayload.capabilities
   return {
     ...modelPayload,
     request_body_overrides: requestBodyOverrides
@@ -667,6 +813,7 @@ const saveModelConfig = async () => {
     currentProviderForModels.value = providers.value.find(
       (p) => p.provider_id === currentProviderForModels.value.provider_id
     )
+    await loadRuntimeModelCapabilities()
   } catch (error) {
     message.error(error.message || '保存失败')
   } finally {
@@ -698,6 +845,7 @@ const removeModel = async (providerId, modelId) => {
         if (currentProviderForModels.value?.provider_id === providerId) {
           currentProviderForModels.value = providers.value.find((p) => p.provider_id === providerId)
         }
+        await loadRuntimeModelCapabilities()
       } catch (error) {
         message.error(error.message || '移除失败')
       }
@@ -718,12 +866,21 @@ defineExpose({
   <div class="model-provider-manage-panel">
     <PageShoulder v-model:search="searchQuery" search-placeholder="搜索供应商...">
       <template #actions>
+        <a-button
+          class="lucide-icon-btn"
+          @click="loadProviders"
+          :disabled="loading"
+          aria-label="刷新供应商"
+        >
+          <RefreshCw
+            :size="14"
+            class="page-shoulder-refresh-icon"
+            :class="{ 'is-spinning': loading }"
+          />
+        </a-button>
         <a-button type="primary" class="lucide-icon-btn" @click="openCreateProviderModal">
           <Plus :size="14" />
           新增供应商
-        </a-button>
-        <a-button class="lucide-icon-btn" @click="loadProviders" :loading="loading">
-          <RefreshCw :size="14" :class="{ spinning: loading }" />
         </a-button>
       </template>
     </PageShoulder>
@@ -1053,7 +1210,23 @@ defineExpose({
               :class="{ stale: isModelStale(model, currentProviderForModels.provider_id) }"
             >
               <div class="model-info">
-                <span class="model-name">{{ getModelDisplayName(model) }}</span>
+                <div class="model-name-line">
+                  <span class="model-name">{{ getModelDisplayName(model) }}</span>
+                  <a-tooltip
+                    v-for="capability in model.type === 'chat' ? getModelCapabilityIndicators(currentProviderForModels.provider_id, model) : []"
+                    :key="capability.modality"
+                    :title="capability.title"
+                  >
+                    <span
+                      class="model-capability-tag"
+                      :class="capability.status"
+                      role="img"
+                      :aria-label="capability.title"
+                    >
+                      <component :is="capability.icon" :size="13" />
+                    </span>
+                  </a-tooltip>
+                </div>
                 <span class="model-id">{{ getModelId(model) }}</span>
               </div>
               <span class="col-type">
@@ -1178,19 +1351,20 @@ defineExpose({
               <span class="remote-name">{{ getModelDisplayName(remoteModel) }}</span>
               <div class="remote-tags">
                 <template
-                  v-for="mod in getProviderModelInfo(
+                  v-for="capability in getRemoteModelCapabilityIndicators(
                     currentProviderForModels.provider_id,
                     remoteModel
-                  ).inputModalities"
-                  :key="mod"
+                  )"
+                  :key="capability.modality"
                 >
-                  <a-tooltip :title="getModalityDisplay(mod).label">
+                  <a-tooltip :title="capability.title">
                     <span
                       class="modality-tag"
+                      :class="capability.status"
                       role="img"
-                      :aria-label="getModalityDisplay(mod).label"
+                      :aria-label="capability.title"
                     >
-                      <component :is="getModalityDisplay(mod).icon" :size="13" />
+                      <component :is="capability.icon" :size="13" />
                     </span>
                   </a-tooltip>
                 </template>
@@ -1289,14 +1463,29 @@ defineExpose({
 
         <div class="form-row">
           <label class="form-label">
-            <span>协议覆盖</span>
+            <span>协议覆盖（当前不切换运行协议）</span>
             <a-input v-model:value="editingModel.protocol_override" placeholder="可选" />
+            <small class="form-help">
+              当前 adapter 仍由供应商类型选择；填写此项不会启用 Responses 或其他尚未接入的协议。
+            </small>
           </label>
           <label class="form-label">
             <span>Base URL 覆盖</span>
             <a-input v-model:value="editingModel.base_url_override" placeholder="可选" />
           </label>
         </div>
+
+        <label v-if="editingModel.type === 'chat'" class="form-label full-width">
+          <span>图片输入能力覆盖</span>
+          <a-select
+            v-model:value="editingModel.image_input_override"
+            :options="IMAGE_INPUT_OVERRIDE_OPTIONS"
+          />
+          <small class="form-help">
+            自动检测只采用当前渠道明确返回的模态或精确模型资料；无法确认时会在发出请求前拒绝图片，
+            不会自动转 OCR。
+          </small>
+        </label>
 
         <label class="form-label full-width">
           <span>模型请求参数 JSON</span>
@@ -1443,7 +1632,7 @@ defineExpose({
 .table-head,
 .table-row {
   display: grid;
-  grid-template-columns: 1fr 80px 70px 60px 150px;
+  grid-template-columns: minmax(0, 1fr) 80px 70px 60px 150px;
   gap: 8px;
   align-items: center;
 }
@@ -1480,7 +1669,16 @@ defineExpose({
   min-width: 0;
 }
 
+.model-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .model-name {
+  min-width: 0;
+  flex: 0 1 auto;
   font-weight: 500;
   color: var(--gray-900);
   overflow: hidden;
@@ -1500,6 +1698,36 @@ defineExpose({
 .col-type {
   display: flex;
   align-items: center;
+}
+
+.model-capability-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+
+  &.supported {
+    background: var(--color-success-50);
+    color: var(--color-success-700);
+  }
+
+  &.unsupported {
+    background: var(--gray-50);
+    color: var(--gray-500);
+  }
+
+  &.unknown {
+    background: var(--gray-50);
+    color: var(--gray-500);
+  }
+
+  &.catalog {
+    border: 1px dashed var(--gray-200);
+    color: var(--gray-600);
+  }
 }
 
 .col-context,
@@ -1677,6 +1905,22 @@ defineExpose({
   border-radius: 3px;
   background: var(--color-accent-50);
   color: var(--color-accent-700);
+
+  &.supported {
+    background: var(--color-success-50);
+    color: var(--color-success-700);
+  }
+
+  &.unsupported,
+  &.unknown {
+    background: var(--gray-50);
+    color: var(--gray-500);
+  }
+
+  &.catalog {
+    border: 1px dashed var(--gray-300);
+    color: var(--gray-600);
+  }
 }
 
 .dim-warning {
@@ -1842,7 +2086,7 @@ defineExpose({
 
   .table-head,
   .table-row {
-    grid-template-columns: 1fr 60px 60px;
+    grid-template-columns: minmax(0, 1fr) 60px 60px;
     font-size: 12px;
   }
 

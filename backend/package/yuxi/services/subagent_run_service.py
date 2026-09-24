@@ -23,6 +23,7 @@ from yuxi.agents.tool_approval import DEFAULT_TOOL_APPROVAL_MODE
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.services.run_scope_service import inherit_run_scope
 from yuxi.repositories.subagent_thread_repository import SubagentThreadRepository
 from yuxi.services.input_message_service import AgentRunInputMessage
 from yuxi.storage.postgres.models_business import Agent, AgentRun, SubagentThread
@@ -38,7 +39,7 @@ class SubagentStartResult:
     relation: SubagentThread
 
 
-@dataclass(frozen=True)
+@dataclass
 class SubagentRunBusy(Exception):
     thread_id: str
     active_run_id: str | None
@@ -249,10 +250,10 @@ class SubagentRunService:
             request_id=request_id,
             input_message=subagent_input_message,
         )
-        return await agent_run_service.persist_agent_run_record(
+        run, created = await agent_run_service.persist_agent_run_record(
             agent_slug=relation.subagent_slug,
             conversation_thread_id=relation.child_thread_id,
-            runtime_scope_id=getattr(creator_run, "runtime_scope_id", None) or creator_run.conversation_thread_id,
+            runtime_scope_id=relation.child_thread_id,
             current_uid=current_uid,
             db=self.db,
             request_id=request_id,
@@ -265,6 +266,14 @@ class SubagentRunService:
             source="subagent",
             channel="internal",
         )
+        if created:
+            await inherit_run_scope(
+                self.db,
+                parent_run=creator_run,
+                child_run_id=run.id,
+                child_conversation_thread_id=relation.child_thread_id,
+            )
+        return run, created
 
     async def _ensure_child_conversation(
         self,

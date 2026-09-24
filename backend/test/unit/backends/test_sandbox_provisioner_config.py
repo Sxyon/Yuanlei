@@ -4,6 +4,7 @@ import importlib.util
 import os
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -48,6 +49,7 @@ def _docker_backend(module, tmp_path, run_container):
     backend._sandbox_locks = {}
     backend._delete_slots = threading.BoundedSemaphore(16)
     backend._stop_timeout_seconds = 2
+    backend._container_limits = module.sandbox_container_limits()
     backend._container_port = 8080
     backend._network_prefix = "yuxi-know-sandbox"
     backend._network_pool = None
@@ -247,6 +249,96 @@ def test_sandbox_delete_concurrency_rejects_invalid_configuration():
         module.sandbox_delete_concurrency("0")
     with pytest.raises(RuntimeError, match="must be an integer"):
         module.sandbox_delete_concurrency("invalid")
+
+
+def test_sandbox_container_limits_defaults_and_environment_overrides(monkeypatch):
+    module = _load_module()
+    for name in ("SANDBOX_MEM_LIMIT", "SANDBOX_CPUS", "SANDBOX_PIDS_LIMIT"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert module.sandbox_container_limits() == {
+        "mem_limit": "2g",
+        "nano_cpus": 2_000_000_000,
+        "pids_limit": 512,
+    }
+
+    monkeypatch.setenv("SANDBOX_MEM_LIMIT", "512m")
+    monkeypatch.setenv("SANDBOX_CPUS", "1.5")
+    monkeypatch.setenv("SANDBOX_PIDS_LIMIT", "256")
+
+    assert module.sandbox_container_limits() == {
+        "mem_limit": "512m",
+        "nano_cpus": 1_500_000_000,
+        "pids_limit": 256,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mem_limit", "cpus", "pids_limit", "error_match"),
+    [
+        ("", "2", "512", "SANDBOX_MEM_LIMIT"),
+        ("lots", "2", "512", "SANDBOX_MEM_LIMIT"),
+        ("0g", "2", "512", "SANDBOX_MEM_LIMIT"),
+        ("2g", "nan", "512", "SANDBOX_CPUS"),
+        ("2g", "inf", "512", "SANDBOX_CPUS"),
+        ("2g", "1e-10", "512", "SANDBOX_CPUS"),
+        ("2g", "2", "0", "SANDBOX_PIDS_LIMIT"),
+        ("2g", "2", "many", "SANDBOX_PIDS_LIMIT"),
+    ],
+)
+def test_sandbox_container_limits_reject_invalid_configuration(
+    mem_limit, cpus, pids_limit, error_match
+):
+    """非法上限显式失败，不回退到默认值；每个案例覆盖一条守卫路径。"""
+    module = _load_module()
+
+    with pytest.raises(RuntimeError, match=error_match):
+        module.sandbox_container_limits(
+            mem_limit=mem_limit, cpus=cpus, pids_limit=pids_limit
+        )
+
+
+def test_sandbox_container_limits_reject_invalid_environment_at_startup(monkeypatch):
+    module = _load_module()
+    monkeypatch.setenv("SANDBOX_CPUS", "two")
+
+    with pytest.raises(RuntimeError, match="SANDBOX_CPUS"):
+        module.sandbox_container_limits()
+
+
+def test_docker_backend_init_fails_on_invalid_container_limits(monkeypatch):
+    """非法上限让构造期显式失败，不创建 docker client 也不带病启动。"""
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+    monkeypatch.setenv("SANDBOX_CPUS", "nan")
+    errors_module = ModuleType("docker.errors")
+    errors_module.DockerException = type("DockerException", (Exception,), {})
+    docker_module = ModuleType("docker")
+    docker_module.errors = errors_module
+    docker_module.from_env = lambda: pytest.fail(
+        "docker client was created before container limits were validated"
+    )
+    monkeypatch.setitem(sys.modules, "docker", docker_module)
+    monkeypatch.setitem(sys.modules, "docker.errors", errors_module)
+
+    with pytest.raises(RuntimeError, match="SANDBOX_CPUS"):
+        module.LocalContainerProvisionerBackend()
+
+
+def test_docker_create_applies_resource_limits_to_sandbox_container(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    _module, backend, captured = _docker_backend_with_running_container(
+        monkeypatch, tmp_path
+    )
+
+    backend.create("sandbox-1", "thread-1", "user-1")
+
+    run_kwargs = captured[0][1]
+    assert run_kwargs["mem_limit"] == "2g"
+    assert run_kwargs["nano_cpus"] == 2_000_000_000
+    assert run_kwargs["pids_limit"] == 512
 
 
 def test_normalize_env_converts_values_to_strings(monkeypatch):
@@ -454,6 +546,209 @@ def test_idle_reaper_does_not_delete_or_forget_new_generation(monkeypatch):
 
     assert backend.deleted == []
     assert reaper._last_activity_at["sandbox-1"][0] == "generation-2"
+
+
+def test_websocket_proxy_requires_bearer_token(monkeypatch):
+    token = "test-provisioner-token-that-is-long-enough"
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_PROVISIONER_TOKEN", token)
+    module = _load_module()
+
+    with TestClient(module.app) as client:
+        with pytest.raises(module.WebSocketDisconnect) as exc_info:
+            with client.websocket_connect("/api/sandboxes/missing/proxy/ws"):
+                pass
+
+    assert exc_info.value.code == 4401
+
+
+def test_create_request_validates_lifecycle_policy_fields(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+
+    request = module.CreateSandboxRequest(
+        sandbox_id="sandbox-1",
+        thread_id="thread-1",
+        uid="user-1",
+        lifecycle="persistent",
+        idle_timeout_seconds=0,
+    )
+    assert request.lifecycle == "persistent"
+    assert request.idle_timeout_seconds == 0
+
+    with pytest.raises(ValueError):
+        module.CreateSandboxRequest(
+            sandbox_id="sandbox-1",
+            thread_id="thread-1",
+            uid="user-1",
+            lifecycle="forever",
+        )
+    with pytest.raises(ValueError):
+        module.CreateSandboxRequest(
+            sandbox_id="sandbox-1",
+            thread_id="thread-1",
+            uid="user-1",
+            idle_timeout_seconds=-1,
+        )
+
+
+def test_create_sandbox_forwards_lifecycle_policy(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+    calls = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        return module.SandboxRecord(
+            sandbox_id="sandbox-1", sandbox_url="http://sandbox", status="Running"
+        )
+
+    remembered = []
+    monkeypatch.setattr(module, "backend_impl", SimpleNamespace(create=create))
+    monkeypatch.setattr(module.idle_reaper, "touch", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module.idle_reaper, "remember", remembered.append)
+
+    module.create_sandbox(
+        module.CreateSandboxRequest(
+            sandbox_id="sandbox-1",
+            thread_id="thread-1",
+            uid="user-1",
+            lifecycle="persistent",
+            idle_timeout_seconds=1800,
+        )
+    )
+
+    assert calls[0]["lifecycle"] == "persistent"
+    assert calls[0]["idle_timeout_seconds"] == 1800
+    assert [record.sandbox_id for record in remembered] == ["sandbox-1"]
+
+
+def test_memory_backend_record_carries_lifecycle_policy(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+    backend = module.MemoryProvisionerBackend()
+
+    record = backend.create(
+        "sandbox-1", "thread-1", "user-1", lifecycle="resident", idle_timeout_seconds=0
+    )
+    assert record.lifecycle == "resident"
+    assert record.idle_timeout_seconds == 0
+
+    legacy = backend.create("sandbox-2", "thread-1", "user-1")
+    assert legacy.lifecycle is None
+    assert legacy.idle_timeout_seconds is None
+
+
+def test_idle_reaper_respects_per_sandbox_policy(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_IDLE_TIMEOUT_SECONDS", "60")
+    monkeypatch.setenv("SANDBOX_EXEC_TIMEOUT_SECONDS", "1")
+    module = _load_module()
+    deleted = []
+
+    def delete(sandbox_id, *, expected_generation=None):
+        deleted.append(sandbox_id)
+
+    reaper = module.SandboxIdleReaper(SimpleNamespace(delete=delete))
+    reaper.remember(
+        module.SandboxRecord(
+            sandbox_id="resident", sandbox_url="", generation="g1", lifecycle="resident"
+        )
+    )
+    reaper.remember(
+        module.SandboxRecord(
+            sandbox_id="short",
+            sandbox_url="",
+            generation="g2",
+            lifecycle="persistent",
+            idle_timeout_seconds=5,
+        )
+    )
+    reaper.remember(
+        module.SandboxRecord(sandbox_id="default", sandbox_url="", generation="g3")
+    )
+    reaper.touch("resident", generation="g1")
+    reaper.touch("short", generation="g2")
+    reaper.touch("default", generation="g3")
+
+    stale_at = time.time() - 10
+    for sandbox_id in ("resident", "short", "default"):
+        generation = reaper._last_activity_at[sandbox_id][0]
+        reaper._last_activity_at[sandbox_id] = (generation, stale_at)
+
+    expired = {sandbox_id for sandbox_id, _ in reaper._collect_expired_sandboxes()}
+    assert expired == {"short"}
+
+    for sandbox_id, generation in (
+        ("short", "g2"),
+        ("resident", "g1"),
+        ("default", "g3"),
+    ):
+        reaper._delete_expired_sandbox(sandbox_id, generation)
+    assert deleted == ["short"]
+
+
+def test_idle_reaper_seeds_policy_from_backend_records(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+
+    class FakeBackend:
+        def list(self):
+            return [
+                module.SandboxRecord(
+                    sandbox_id="resident",
+                    sandbox_url="",
+                    generation="g1",
+                    lifecycle="resident",
+                ),
+                module.SandboxRecord(
+                    sandbox_id="short", sandbox_url="", generation="g2", idle_timeout_seconds=3
+                ),
+            ]
+
+        def delete(self, sandbox_id, *, expected_generation=None):
+            raise AssertionError("seed 不应触发删除")
+
+    reaper = module.SandboxIdleReaper(FakeBackend())
+    reaper._seed_existing()
+
+    assert reaper._idle_timeouts == {"resident": 0, "short": 3}
+
+
+def test_authenticated_management_api_exposes_lifecycle_policy(monkeypatch):
+    token = "test-provisioner-token-that-is-long-enough"
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setenv("SANDBOX_PROVISIONER_TOKEN", token)
+    module = _load_module()
+    headers = {"Authorization": f"Bearer {token}"}
+    sandbox_id = "sandbox-policy-test"
+
+    with TestClient(module.app) as client:
+        create_response = client.post(
+            "/api/sandboxes",
+            headers=headers,
+            json={
+                "sandbox_id": sandbox_id,
+                "thread_id": "thread-1",
+                "uid": "user-1",
+                "lifecycle": "resident",
+                "idle_timeout_seconds": 0,
+            },
+        )
+        get_response = client.get(f"/api/sandboxes/{sandbox_id}", headers=headers)
+        delete_response = client.delete(
+            f"/api/sandboxes/{sandbox_id}",
+            headers=headers,
+            params={"expected_generation": create_response.json()["generation"]},
+        )
+
+    assert create_response.status_code == 200
+    assert create_response.json()["lifecycle"] == "resident"
+    assert create_response.json()["idle_timeout_seconds"] == 0
+    assert get_response.status_code == 200
+    assert get_response.json()["lifecycle"] == "resident"
+    assert get_response.json()["idle_timeout_seconds"] == 0
+    assert delete_response.status_code == 200
 
 
 def test_operation_pins_drain_started_requests_and_block_new_requests_during_delete(monkeypatch):

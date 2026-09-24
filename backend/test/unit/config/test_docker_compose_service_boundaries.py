@@ -181,6 +181,32 @@ def test_default_agent_capacity_supports_one_hundred_concurrent_runs(filename: s
 
 
 @pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_sandbox_provisioner_exposes_resource_limit_environment(filename: str) -> None:
+    """单沙盒资源上界必须可由部署覆盖，缺失即回退到无上界创建。"""
+    environment = _load_compose(filename)["services"]["sandbox-provisioner"]["environment"]
+
+    assert "SANDBOX_MEM_LIMIT=${SANDBOX_MEM_LIMIT:-2g}" in environment
+    assert "SANDBOX_CPUS=${SANDBOX_CPUS:-2}" in environment
+    assert "SANDBOX_PIDS_LIMIT=${SANDBOX_PIDS_LIMIT:-512}" in environment
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_milvus_suite_has_log_rotation_and_cpus_bound(filename: str) -> None:
+    """milvus/etcd 日志轮转封顶；milvus 只保留 cpus 上界；不保留无效日志级别配置。"""
+    services = _load_compose(filename)["services"]
+
+    for service_name in ("milvus", "etcd"):
+        logging_config = services[service_name]["logging"]
+        assert logging_config["driver"] == "json-file"
+        assert logging_config["options"] == {"max-size": "50m", "max-file": "3"}
+
+    milvus = services["milvus"]
+    assert milvus["cpus"] == "${YUXI_MILVUS_CPUS:-2}"
+    assert "mem_limit" not in milvus
+    assert "MILVUS_LOG_LEVEL" not in milvus.get("environment", {})
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
 def test_worker_user_data_mount_is_writable_for_personal_skill_install(filename: str) -> None:
     """worker 需要在主 Agent 工具调用中原子安装个人 Skill。"""
     volumes = _load_compose(filename)["services"]["worker"].get("volumes") or []

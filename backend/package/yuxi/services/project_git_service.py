@@ -19,6 +19,7 @@ from yuxi.git.credentials import GitCredentialOwner, GitNotConfiguredError
 from yuxi.git.executor import GitExecutionError, GitExecutor
 from yuxi.git.hosting import create_git_hosting_provider
 from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
+from yuxi.services.run_scope_service import resolve_run_scope_key
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import (
@@ -679,7 +680,8 @@ async def push_project_git_branch(*, run_id: str, uid: str, repository_alias: st
         )
         if binding is None:
             raise PermissionError("Repository alias is not active for this Project")
-        worktree = await store.get_worktree(binding.id, run.runtime_scope_id, uid, lock=True)
+        run_scope_key = await resolve_run_scope_key(db, run)
+        worktree = await store.get_worktree(binding.id, run_scope_key, uid, lock=True)
         if worktree is None or worktree.status != "ready":
             raise PermissionError("Task worktree is not ready")
         connection = await store.get_connection(binding.connection_id, uid, active_only=True)

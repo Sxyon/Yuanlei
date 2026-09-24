@@ -13,9 +13,15 @@ from yuxi.config import get_legacy_storage_dir
 from yuxi.config.options import ensure_options_in_db
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.storage.postgres.manager import (
+    AGENT_SANDBOX_SCHEMA_STATEMENTS,
     BUSINESS_SCHEMA_VERSION,
+    CODING_CREDENTIAL_SCHEMA_STATEMENTS,
+    AGENT_RUN_SCOPE_SCHEMA_STATEMENTS,
+    CODING_SESSION_SCHEMA_STATEMENTS,
     KNOWLEDGE_SCHEMA_VERSION,
     PROJECT_AGENT_SCHEMA_STATEMENTS,
+    PROJECT_DASHBOARD_SCHEMA_STATEMENTS,
+    PROJECT_DOCUMENT_SCHEMA_STATEMENTS,
     PROJECT_GIT_SCHEMA_STATEMENTS,
     V071_WORKDIR_CUTOVER_STATEMENTS,
     YUANLEI_SCHEMA_VERSION,
@@ -109,7 +115,16 @@ async def _ensure_yuanlei_schema() -> None:
     # 不可独立的扩展内容：Project Git 与 ProjectAgent 外键依赖上游 business 域的
     # users/projects/agents，因此 yuanlei domain 必须在 business schema 收敛后执行。
     async with pg_manager.async_engine.begin() as connection:
-        for statement in (*PROJECT_GIT_SCHEMA_STATEMENTS, *PROJECT_AGENT_SCHEMA_STATEMENTS):
+        for statement in (
+            *PROJECT_GIT_SCHEMA_STATEMENTS,
+            *PROJECT_AGENT_SCHEMA_STATEMENTS,
+            *AGENT_SANDBOX_SCHEMA_STATEMENTS,
+            *CODING_CREDENTIAL_SCHEMA_STATEMENTS,
+            *CODING_SESSION_SCHEMA_STATEMENTS,
+            *AGENT_RUN_SCOPE_SCHEMA_STATEMENTS,
+            *PROJECT_DOCUMENT_SCHEMA_STATEMENTS,
+            *PROJECT_DASHBOARD_SCHEMA_STATEMENTS,
+        ):
             await connection.execute(text(statement))
 
 
@@ -151,7 +166,7 @@ async def main() -> None:
                 "yuanlei",
                 yuanlei_version,
                 YUANLEI_SCHEMA_VERSION,
-                upgrade_from=(1, 2),
+                upgrade_from=(1, 2, 3, 4, 5, 6, 7, 8),
             )
 
             if business_version is None:
@@ -169,14 +184,26 @@ async def main() -> None:
                 if business_version is None:
                     await pg_manager.setup_langgraph_checkpointer()
                 await pg_manager.record_schema_version("business", BUSINESS_SCHEMA_VERSION)
+            # 存量 business v7 库不经过 ensure_business_schema；这里无条件收敛
+            # runtime_scope_id 宽度，保证专属沙盒 scope key 可写入。
+            await pg_manager.ensure_runtime_scope_width()
 
             if yuanlei_version is None:
                 await _ensure_yuanlei_schema()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
-            elif yuanlei_version in {1, 2}:
+            elif yuanlei_version in {1, 2, 3, 4, 5, 6, 7, 8}:
                 if yuanlei_version == 1:
                     await pg_manager.upgrade_yuanlei_schema_v1_to_v2()
-                await pg_manager.upgrade_yuanlei_schema_v2_to_v3()
+                if yuanlei_version in {1, 2}:
+                    await pg_manager.upgrade_yuanlei_schema_v2_to_v3()
+                if yuanlei_version in {1, 2, 3}:
+                    await pg_manager.upgrade_yuanlei_schema_v3_to_v4()
+                if yuanlei_version in {1, 2, 3, 4}:
+                    await pg_manager.upgrade_yuanlei_schema_v4_to_v5()
+                await pg_manager.upgrade_yuanlei_schema_v5_to_v6()
+                await pg_manager.upgrade_yuanlei_schema_v6_to_v7()
+                await pg_manager.upgrade_yuanlei_schema_v7_to_v8()
+                await pg_manager.upgrade_yuanlei_schema_v8_to_v9()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             if knowledge_version is None:

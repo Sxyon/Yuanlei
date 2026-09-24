@@ -146,7 +146,7 @@ class BaseAgent:
         }
 
     async def stream_messages(
-        self, messages: list[str], *, context: BaseContext, callbacks=None, metadata=None, tags=None
+        self, messages: list[str], *, context: BaseContext, callbacks=None, metadata=None, tags=None, run_name=None
     ):
         graph = await self.get_graph(context=context)
         logger.debug(f"stream_messages: {context=}")
@@ -164,6 +164,9 @@ class BaseAgent:
             input_config["metadata"] = dict(metadata)
         if tags:
             input_config["tags"] = list(tags)
+        # run_name 让 Langfuse/LangSmith 等 tracer 用智能体名而非默认的 "LangGraph" 命名 trace
+        if run_name:
+            input_config["run_name"] = run_name
 
         async for msg, metadata in graph.astream(
             {"messages": messages},
@@ -174,7 +177,15 @@ class BaseAgent:
             yield msg, metadata
 
     async def _stream_input_with_state(
-        self, graph_input, *, context: BaseContext, callbacks=None, metadata=None, tags=None, on_prepared=None
+        self,
+        graph_input,
+        *,
+        context: BaseContext,
+        callbacks=None,
+        metadata=None,
+        tags=None,
+        run_name=None,
+        on_prepared=None,
     ):
         graph = await self.get_graph(context=context)
         logger.debug(f"stream_with_state: {context=}")
@@ -190,6 +201,8 @@ class BaseAgent:
             input_config["metadata"] = dict(metadata)
         if tags:
             input_config["tags"] = list(tags)
+        if run_name:
+            input_config["run_name"] = run_name
 
         async with await graph.astream_events(
             graph_input,
@@ -269,7 +282,7 @@ class BaseAgent:
                 yield event
 
     async def invoke_messages(
-        self, messages: list[str], *, context: BaseContext, callbacks=None, metadata=None, tags=None
+        self, messages: list[str], *, context: BaseContext, callbacks=None, metadata=None, tags=None, run_name=None
     ):
         graph = await self.get_graph(context=context)
         logger.debug(f"invoke_messages: {context}")
@@ -287,6 +300,8 @@ class BaseAgent:
             input_config["metadata"] = dict(metadata)
         if tags:
             input_config["tags"] = list(tags)
+        if run_name:
+            input_config["run_name"] = run_name
 
         msg = await graph.ainvoke(
             {"messages": messages},

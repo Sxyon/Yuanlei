@@ -73,6 +73,19 @@ const router = createRouter({
       ]
     },
     {
+      path: '/projects/:project_id/dashboard',
+      name: 'ProjectDashboard',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'ProjectDashboardComp',
+          component: () => import('../views/ProjectDashboardView.vue'),
+          meta: { keepAlive: false, requiresAuth: true }
+        }
+      ]
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: AppLayout,

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="yuanlei-agent-title">
+  <title id="yuanlei-agent-title">元垒 Agent 编排图标</title>
+  <circle cx="128" cy="128" r="112" fill="#142F43"/>
+  <path d="M71 72 112 113M185 72l-41 41M71 184l41-41M185 184l-41-41" fill="none" stroke="#7F90B6" stroke-width="10"/>
+  <rect x="42" y="43" width="58" height="58" rx="15" fill="#28D7E5"/>
+  <rect x="156" y="43" width="58" height="58" rx="15" fill="#4C7DFF"/>
+  <rect x="42" y="155" width="58" height="58" rx="15" fill="#4C7DFF"/>
+  <rect x="156" y="155" width="58" height="58" rx="15" fill="#28D7E5"/>
+  <path fill="#F4F8FF" d="m128 91 37 37-37 37-37-37z"/>
+</svg>

@@ -1,6 +1,8 @@
 # 元垒 Agent 开发约定
 
-元垒（Yuanlei）是 Yuxi 的 fork，基于 LangGraph、FastAPI、Vue 和多种持久化服务构建的知识库与多智能体平台。Docker Compose 是开发拓扑的事实来源；修改不熟悉的模块前先阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，再用符号搜索确认真实实现。
+元垒（Yuanlei）是 AI 时代的 **个人** / **企业** 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。
+
+Yuanlei 是基于 Yuxi 项目 Fork 二次开发，基于 LangGraph、FastAPI、Vue 和多种持久化服务构建的知识库与多智能体平台。Docker Compose 是开发拓扑的事实来源；修改不熟悉的模块前先阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，再用符号搜索确认真实实现。
 
 ## 每次任务先加载什么
 
@@ -23,6 +25,14 @@
 6. `docs/vibe/` 只用于本地临时计划，被 Git 忽略，不是组织记忆，也不能作为已完成事实的唯一来源。
 7. 只修改验收标准需要的范围；不顺手重构、格式化或添加想象中的配置、兼容层和扩展点。
 
+## 元垒差异语义纪律
+
+- 修改上游行为、元垒差异或同步冲突前，先在[差异化功能索引](docs/develop-guides/yuanlei/features/README.md)定位 Feature 与 Decision，区分新增能力、有意产品差异、上游缺陷修复和临时兼容；缺失记录时先补齐。
+- Feature 必须写明原始需求、失败场景、业务不变量、Yuxi 集成点、上游依赖、替换或删除条件和证据。源码与数据拥有当前事实，Feature 解释理由和生命周期，不复制实现或建立 claim ID。
+- Yuanlei 可以直接修改真实 Yuxi Owner；不得只为目录隔离引入抽象、插件或兼容层。实现可随上游结构调整，业务不变量的改变必须同步更新 Feature 与 Decision。
+- 上游同步按业务语义选择保留并迁移、采用上游替代、缩小差异或因需求过期删除；不得只凭文本冲突、`ours/theirs`、历史代码或测试变绿取舍。
+- 无法从 Feature、Decision、Git、源码和测试重建理由，且改动影响行为、数据、安全或兼容时，停止并请求确认；不得擅自删除、永久保留或改写。
+
 ## 不能破坏的系统事实
 
 - HTTP 路由保持薄；用例流程属于 `yuxi.services`，持久化查询属于 `yuxi.repositories`。
@@ -35,7 +45,7 @@
 - 权限在后端依赖与 repository 可见性查询处最终执行；前端守卫、prompt、schema omission 和 UI 隐藏不是授权边界。
 - Shipping 启动、路由注册和能力发现始终包含知识库、图谱与评估能力；附件解析入口只在真实解析动作发生时惰性加载 parser。
 - 沙盒虚拟路径、对象 URL 和宿主机路径不可混用；所有用户路径必须在 owning filesystem boundary 校验。
-- 本仓库是 Yuxi 上游的 fork：Yuanlei 新增持久化结构只进 `yuanlei` schema 域并升 `YUANLEI_SCHEMA_VERSION`，不回写上游 business/knowledge 域；改变上游行为前先查 [元垒决策记录](docs/develop-guides/yuanlei/decisions/README.md)；上游同步按 [上游同步流程](docs/develop-guides/yuanlei/upstream-sync.md) 的四阶段执行。
+- 本仓库是 Yuxi 上游的 fork：Yuanlei 新增持久化结构只进 `yuanlei` schema 域并升 `YUANLEI_SCHEMA_VERSION`，不回写上游 business/knowledge 域；上游同步按 [上游同步流程](docs/develop-guides/yuanlei/upstream-sync.md) 执行。
 
 ## 证据规则
 

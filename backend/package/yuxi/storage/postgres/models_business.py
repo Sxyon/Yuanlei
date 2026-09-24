@@ -325,7 +325,7 @@ class ProjectGitWorktree(Base):
     repository_id = Column(String(64), nullable=False, index=True)
     project_id = Column(String(64), nullable=False, index=True)
     uid = Column(String(64), nullable=False, index=True)
-    runtime_scope_id = Column(String(64), nullable=False, index=True)
+    runtime_scope_id = Column(String(191), nullable=False, index=True)
     task_key = Column(String(64), nullable=False)
     selection_source = Column(String(16), nullable=False)
     task_purpose = Column(Text, nullable=False)
@@ -637,6 +637,288 @@ class ProjectAgent(Base):
             "created_at": format_utc_datetime(self.created_at),
             "updated_at": format_utc_datetime(self.updated_at),
         }
+
+
+class AgentSandbox(Base):
+    """Agent 专属沙盒：绑定 (uid, agent, project) 的 runtime 所有权与生命周期（yuanlei 域）。"""
+
+    __tablename__ = "agent_sandboxes"
+    __table_args__ = (
+        UniqueConstraint("uid", "agent_slug", "project_id", name="uq_agent_sandboxes_owner"),
+        UniqueConstraint("scope_key", name="uq_agent_sandboxes_scope_key"),
+        UniqueConstraint("sandbox_id", name="uq_agent_sandboxes_sandbox_id"),
+        Index("ix_agent_sandboxes_status", "status"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="记录 UUID")
+    uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE", name="fk_agent_sandboxes_uid_users"),
+        nullable=False,
+        comment="所有者 uid",
+    )
+    agent_slug = Column(
+        String(80),
+        ForeignKey("agents.slug", ondelete="CASCADE", name="fk_agent_sandboxes_agent_slug"),
+        nullable=False,
+        comment="专属 Agent slug",
+    )
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_agent_sandboxes_project_id"),
+        nullable=False,
+        comment="绑定 Project ID",
+    )
+    scope_key = Column(String(191), nullable=False, comment="provider scope key")
+    sandbox_id = Column(String(64), nullable=False, comment="确定性沙盒 id")
+    generation = Column(String(128), nullable=True, comment="最近一次已知 runtime generation")
+    lifecycle = Column(String(20), nullable=False, default="persistent", comment="ephemeral/persistent/resident")
+    resume_policy = Column(String(20), nullable=False, default="auto", comment="auto/confirm")
+    status = Column(String(20), nullable=False, default="active", comment="active/reaping/suspended/error")
+    idle_timeout_seconds = Column(Integer, nullable=True, comment="按沙盒空闲阈值，0 表示不回收")
+    credential_fingerprint = Column(String(128), nullable=True, comment="最近注入凭据/环境指纹")
+    lease_owner_kind = Column(String(32), nullable=True, comment="run/coding_session/terminal")
+    lease_owner_id = Column(String(64), nullable=True, comment="租约持有者标识")
+    lease_expires_at = Column(DateTime, nullable=True, comment="租约到期时间")
+    lease_heartbeat_at = Column(DateTime, nullable=True, comment="租约最近心跳时间")
+    last_activity_at = Column(DateTime, nullable=True, comment="最近活动时间")
+    last_keepalive_at = Column(DateTime, nullable=True, comment="最近保活时间")
+    suspended_at = Column(DateTime, nullable=True, comment="最近 suspend 时间")
+    error_code = Column(String(64), nullable=True, comment="结构化错误码")
+    error_message = Column(Text, nullable=True, comment="错误详情（脱敏后）")
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class AgentSandboxEvent(Base):
+    """专属沙盒生命周期事件（yuanlei 域），供管理面板时间线与审计。"""
+
+    __tablename__ = "agent_sandbox_events"
+    __table_args__ = (
+        Index("ix_agent_sandbox_events_sandbox_created", "sandbox_id", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="事件 UUID")
+    sandbox_id = Column(String(64), nullable=False, comment="确定性沙盒 id")
+    kind = Column(String(32), nullable=False, comment="created/keepalive/suspend/rebuilt/released/error 等")
+    actor_kind = Column(String(32), nullable=True, comment="agent/user/supervisor")
+    actor_id = Column(String(64), nullable=True, comment="触发者标识")
+    payload_json = Column(JSON_VALUE, nullable=False, default=dict, comment="事件负载（脱敏）")
+    created_at = Column(DateTime, default=utc_now_naive)
+
+
+class AgentRunScope(Base):
+    """Run 的执行 scope 映射（yuanlei 域）。
+
+    上游 ck_agent_runs_nonterminal_shape 要求根 chat/resume run 的
+    runtime_scope_id 等于会话线程 id；专属沙盒的 agent-project scope key
+    存在本表，由 resolve_run_scope_key 统一解析。
+    """
+
+    __tablename__ = "agent_run_scopes"
+
+    run_id = Column(
+        String(64),
+        ForeignKey("agent_runs.id", ondelete="CASCADE", name="fk_agent_run_scopes_run_id"),
+        primary_key=True,
+    )
+    scope_key = Column(String(191), nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class ProjectDocument(Base):
+    """项目命名 JSON 文档：按 (project_id, key) 版本化持久化（yuanlei 域）。"""
+
+    __tablename__ = "project_documents"
+    __table_args__ = (
+        UniqueConstraint("project_id", "key", name="uq_project_documents_project_key"),
+        CheckConstraint("version > 0", name="ck_project_documents_version"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="文档 UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_project_documents_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    key = Column(String(120), nullable=False, comment="规范化文档 key")
+    content = Column(JSON_VALUE, nullable=False, comment="JSON 内容")
+    version = Column(Integer, nullable=False, default=1, comment="单调递增版本，从 1 开始")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    updated_by = Column(String(64), nullable=True, comment="最近更新者 uid")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class ProjectDashboard(Base):
+    """项目 Dashboard 入口页面的 revision 元数据（yuanlei 域）。"""
+
+    __tablename__ = "project_dashboards"
+    __table_args__ = (CheckConstraint("revision > 0", name="ck_project_dashboards_revision"),)
+
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_project_dashboards_project_id"),
+        primary_key=True,
+        comment="Project ID；每个项目至多一行",
+    )
+    revision = Column(BigInteger, nullable=False, default=1, comment="页面 revision，从 1 开始")
+    content_sha256 = Column(String(64), nullable=False, comment="最近一次受控写入的页面内容 SHA-256")
+    content_size = Column(Integer, nullable=False, comment="页面字节数")
+    updated_by = Column(String(64), nullable=True, comment="最近提交者 uid")
+    updated_at = Column(DateTime, default=utc_now_naive, nullable=False, comment="最近 revision 时间")
+
+
+class CodingCredential(Base):
+    """编码执行器（opencode/codex）的用户级或全局凭据（yuanlei 域）。"""
+
+    __tablename__ = "coding_credentials"
+    __table_args__ = (
+        Index(
+            "uq_coding_credentials_user",
+            "uid",
+            "executor",
+            "provider",
+            unique=True,
+            postgresql_where=text("scope = 'user'"),
+            sqlite_where=text("scope = 'user'"),
+        ),
+        Index(
+            "uq_coding_credentials_global",
+            "executor",
+            "provider",
+            unique=True,
+            postgresql_where=text("scope = 'global'"),
+            sqlite_where=text("scope = 'global'"),
+        ),
+    )
+
+    id = Column(String(64), primary_key=True, comment="凭据 UUID")
+    scope = Column(String(16), nullable=False, default="user", comment="user/global")
+    uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE", name="fk_coding_credentials_uid_users"),
+        nullable=True,
+        comment="所有者 uid；global 行为空",
+    )
+    executor = Column(String(16), nullable=False, comment="opencode/codex")
+    provider = Column(String(64), nullable=False, comment="供应商标识")
+    source = Column(
+        String(16),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+        comment="manual/model_provider",
+    )
+    model_provider_id = Column(String(100), nullable=True, comment="引用的模型供应商 provider_id")
+    key_mode = Column(String(16), nullable=True, comment="引用模式密钥来源：inherit/custom")
+    base_url = Column(String(512), nullable=True, comment="OpenAI 兼容/Responses 端点")
+    model = Column(String(255), nullable=True, comment="默认模型")
+    api_key_cipher = Column(LargeBinary, nullable=True, comment="AES-GCM 密文")
+    nonce = Column(LargeBinary, nullable=True, comment="AES-GCM nonce")
+    key_version = Column(Integer, nullable=True, comment="加密密钥版本")
+    extra_json = Column(JSON_VALUE, nullable=False, default=dict, comment="非密扩展配置")
+    status = Column(String(16), nullable=False, default="active", comment="active/deleted")
+    version = Column(Integer, nullable=False, default=1, comment="凭据版本，用于指纹")
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class CodingSession(Base):
+    """编码执行器会话：跨 Run 的多轮协作与产物所有权（yuanlei 域）。"""
+
+    __tablename__ = "coding_sessions"
+    __table_args__ = (
+        Index("ix_coding_sessions_uid_status", "uid", "status"),
+        Index("ix_coding_sessions_conversation", "conversation_id"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="会话 UUID")
+    uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE", name="fk_coding_sessions_uid_users"),
+        nullable=False,
+        comment="所有者 uid",
+    )
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_coding_sessions_project_id"),
+        nullable=False,
+        comment="绑定 Project ID",
+    )
+    conversation_id = Column(Integer, nullable=True, comment="创建会话的 Conversation（可空）")
+    parent_run_id = Column(String(64), nullable=True, comment="创建会话的根 Run id")
+    runtime_scope_id = Column(String(191), nullable=False, comment="沙盒 runtime scope key")
+    executor = Column(String(16), nullable=False, comment="opencode/codex")
+    mode = Column(String(16), nullable=False, default="headless", comment="headless/session/terminal")
+    status = Column(String(32), nullable=False, default="pending", comment="会话状态机")
+    title = Column(String(255), nullable=True)
+    workdir_path = Column(String(512), nullable=False, comment="UserWorkspace 相对 Workdir")
+    worktree_ref = Column(String(255), nullable=True, comment="可选 Git worktree 引用")
+    sandbox_id = Column(String(64), nullable=True)
+    sandbox_generation = Column(String(128), nullable=True)
+    credential_fingerprint = Column(String(128), nullable=True)
+    cli_session_ref = Column(String(191), nullable=True, comment="CLI 原生会话引用")
+    policy_json = Column(JSON_VALUE, nullable=False, default=dict)
+    budget_json = Column(JSON_VALUE, nullable=False, default=dict)
+    usage_json = Column(JSON_VALUE, nullable=False, default=dict)
+    last_activity_at = Column(DateTime, nullable=True)
+    suspended_at = Column(DateTime, nullable=True)
+    terminal_at = Column(DateTime, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class CodingSessionTurn(Base):
+    """编码会话内的一次「发消息 → CLI 执行到停止」（yuanlei 域）。"""
+
+    __tablename__ = "coding_session_turns"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_coding_session_turns_seq"),)
+
+    id = Column(String(64), primary_key=True, comment="turn UUID")
+    session_id = Column(
+        String(64),
+        ForeignKey("coding_sessions.id", ondelete="CASCADE", name="fk_coding_session_turns_session_id"),
+        nullable=False,
+        comment="所属会话",
+    )
+    seq = Column(Integer, nullable=False, comment="会话内递增序号")
+    request_text = Column(Text, nullable=False, comment="本轮输入")
+    status = Column(String(16), nullable=False, default="pending", comment="pending/running/completed/failed/cancelled")
+    result_summary = Column(Text, nullable=True)
+    usage_json = Column(JSON_VALUE, nullable=False, default=dict)
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+
+
+class CodingSessionEvent(Base):
+    """编码会话归一化事件（yuanlei 域）；seq 在会话内递增，供 SSE 回放。"""
+
+    __tablename__ = "coding_session_events"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_coding_session_events_seq"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="事件 UUID")
+    session_id = Column(
+        String(64),
+        ForeignKey("coding_sessions.id", ondelete="CASCADE", name="fk_coding_session_events_session_id"),
+        nullable=False,
+        comment="所属会话",
+    )
+    turn_id = Column(String(64), nullable=True, comment="所属 turn（可空）")
+    seq = Column(Integer, nullable=False, comment="会话内递增序号")
+    kind = Column(String(32), nullable=False, comment="session_status/output_delta/tool_call/usage/error 等")
+    payload_json = Column(JSON_VALUE, nullable=False, default=dict)
+    created_at = Column(DateTime, default=utc_now_naive)
 
 
 class Skill(Base):
@@ -1414,7 +1696,12 @@ class AgentRun(Base):
 
     id = Column(String(64), primary_key=True, comment="Run ID (UUID)")
     conversation_thread_id = Column(String(64), index=True, nullable=False, comment="Conversation thread ID snapshot")
-    runtime_scope_id = Column(String(64), index=True, nullable=False, comment="Root conversation runtime scope")
+    runtime_scope_id = Column(
+        String(191),
+        index=True,
+        nullable=False,
+        comment="Root conversation runtime scope；专属沙盒为 agent-project scope key",
+    )
     runtime_cleanup_pending = Column(
         Boolean,
         nullable=False,

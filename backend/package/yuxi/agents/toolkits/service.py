@@ -1,9 +1,20 @@
-from typing import Any
+from typing import Any, get_args, get_origin
+
+from langgraph.prebuilt.tool_node import ToolRuntime
 
 from yuxi.utils import logger
 
 # 工具元数据缓存
 _metadata_cache: list[dict] = []
+
+
+def _is_injected_tool_runtime(name: str, annotation: Any) -> bool:
+    """仅识别 ToolNode 注入的 runtime，保留同名业务参数。"""
+    return name == "runtime" and (
+        annotation is ToolRuntime
+        or get_origin(annotation) is ToolRuntime
+        or ToolRuntime in get_args(annotation)
+    )
 
 
 def _extract_tool_info(tool_obj) -> dict:
@@ -19,7 +30,24 @@ def _extract_tool_info(tool_obj) -> dict:
 
     if hasattr(tool_obj, "args_schema") and tool_obj.args_schema:
         schema = tool_obj.args_schema
-        if hasattr(schema, "schema"):
+        model_fields = getattr(schema, "model_fields", None)
+        if isinstance(model_fields, dict):
+            for arg_name, field_info in model_fields.items():
+                # ToolRuntime 是 ToolNode 的执行期注入，不是 Agent 可配置参数；
+                # 不能为展示元数据序列化它，也不能从实际 tool schema 移除它。
+                if _is_injected_tool_runtime(arg_name, field_info.annotation):
+                    continue
+                info["args"].append(
+                    {
+                        "name": arg_name,
+                        "type": getattr(field_info.annotation, "__name__", str(field_info.annotation)),
+                        "description": field_info.description or "",
+                    }
+                )
+            return info
+        if hasattr(schema, "model_json_schema"):
+            schema = schema.model_json_schema()
+        elif hasattr(schema, "schema"):
             schema = schema.schema()
         for arg_name, arg_info in schema.get("properties", {}).items():
             info["args"].append(
@@ -92,6 +120,14 @@ def get_tool_instances_by_category(category: str) -> list[Any]:
         if tool_category == category:
             tools.append(tool)
     return tools
+
+
+def _find_selected_tool(selected_tools: list[Any], name: str):
+    """按名称查找已选工具实例；供运行时注入做同实例幂等判断。"""
+    for tool in selected_tools:
+        if getattr(tool, "name", None) == name:
+            return tool
+    return None
 
 
 async def resolve_configured_runtime_tools(context) -> list[Any]:
@@ -171,9 +207,27 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
         )
 
         for git_tool in (git_list_project_repositories, git_prepare_worktree, git_push_branch):
-            if git_tool.name in selected_tool_names:
+            existing = _find_selected_tool(selected_tools, git_tool.name)
+            if existing is not None:
+                # 同一实例可能已被 Skill 门控注册（@tool 懒加载后进入全局注册表），保持一致不重复添加。
+                if existing is git_tool:
+                    continue
                 raise RuntimeError(f"工具名冲突：运行时 Git 工具 {git_tool.name} 已被其他来源占用")
             selected_tools.append(git_tool)
             selected_tool_names.add(git_tool.name)
+
+    if getattr(context, "coding_executors", None):
+        from yuxi.agents.toolkits.buildin.coding_tools import CODING_TOOLS
+
+        for coding_tool in CODING_TOOLS:
+            existing = _find_selected_tool(selected_tools, coding_tool.name)
+            if existing is not None:
+                # 首次运行懒加载后编码工具会进入全局注册表，Skill 门控可能已注册同一实例；
+                # 名称相同且实例一致时直接跳过，避免重复注入引发假冲突。
+                if existing is coding_tool:
+                    continue
+                raise RuntimeError(f"工具名冲突：编码执行器工具 {coding_tool.name} 已被其他来源占用")
+            selected_tools.append(coding_tool)
+            selected_tool_names.add(coding_tool.name)
 
     return selected_tools

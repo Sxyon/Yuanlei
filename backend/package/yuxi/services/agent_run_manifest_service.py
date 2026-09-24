@@ -11,16 +11,23 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.backends.paths import runtime_workdir_path
+from yuxi.agents.backends.sandbox import SandboxScope
 from yuxi.agents.buildin import get_agent_backend
 from yuxi.agents.context import BaseContext, prepare_agent_runtime_context
 from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
+from yuxi.services.coding_credential_service import CodingCredentialService
+from yuxi.services.run_scope_service import resolve_run_scope_key
 from yuxi.services.project_agent_service import ensure_agent_project_scope, load_project_agent_override
+from yuxi.services.sandbox_lifecycle_service import (
+    SandboxLifecycleService,
+    resolve_agent_sandbox_policy,
+)
 from yuxi.services.workdir_service import AuthorizedWorkdir
 from yuxi.storage.postgres.models_business import AgentRun, User
 
@@ -36,12 +43,45 @@ MANIFEST_LIMIT_FIELDS = (
 
 
 @dataclass(frozen=True)
+class PreparedSandboxRuntime:
+    """只在 worker 内存中传递的专属 runtime 准备参数。"""
+
+    uid: str
+    agent_slug: str
+    project_id: str
+    workdir_path: str
+    policy: Any
+    credential_fingerprint: str | None
+    env_overrides: dict[str, str] = field(repr=False)
+
+
+@dataclass(frozen=True)
 class PreparedRunExecution:
     """返回同一次准备产生的执行 Context 与持久化清单。"""
 
     manifest: dict
     context: BaseContext
     backend_id: str
+    sandbox_runtime: PreparedSandboxRuntime | None = None
+
+
+async def ensure_prepared_sandbox_runtime(
+    db: AsyncSession,
+    prepared: PreparedRunExecution,
+) -> None:
+    """在调用方已经取得执行租约后创建、恢复或重建专属 runtime。"""
+    runtime = prepared.sandbox_runtime
+    if runtime is None:
+        return
+    await SandboxLifecycleService(db).ensure_ready(
+        uid=runtime.uid,
+        agent_slug=runtime.agent_slug,
+        project_id=runtime.project_id,
+        policy=runtime.policy,
+        workdir_path=runtime.workdir_path,
+        credential_fingerprint=runtime.credential_fingerprint,
+        env_overrides=runtime.env_overrides,
+    )
 
 
 def canonical_json(payload: Any) -> str:
@@ -166,6 +206,45 @@ async def prepare_run_execution(
     backend = get_agent_backend(agent_item.backend_id)
     project_id = workdir_binding.project_id
     await ensure_agent_project_scope(db=db, agent_slug=run.agent_slug, project_id=project_id)
+    policy = await resolve_agent_sandbox_policy(
+        db=db,
+        agent_config=agent_item.config_json,
+        agent_slug=run.agent_slug,
+        project_id=project_id,
+    )
+    persisted_scope = await resolve_run_scope_key(db, run)
+    coding_settings = await CodingCredentialService(db).resolve_settings(
+        agent_config=agent_item.config_json,
+        agent_slug=run.agent_slug,
+        project_id=project_id,
+    )
+    sandbox_runtime = None
+    if run.run_type != "subagent" and policy.is_dedicated:
+        expected_scope = SandboxScope.agent_project(
+            uid=str(user.uid), agent_slug=run.agent_slug, project_id=project_id
+        ).cache_key
+        if persisted_scope != expected_scope:
+            raise RuntimeError("Run runtime scope 与 Agent 专属沙盒策略不一致，请重新发起请求")
+        credential_service = CodingCredentialService(db)
+        coding_environment = await credential_service.build_coding_environment(
+            uid=str(user.uid),
+            executors=list(coding_settings.executors),
+        )
+        await SandboxLifecycleService(db).ensure_binding(
+            uid=str(user.uid),
+            agent_slug=run.agent_slug,
+            project_id=project_id,
+            policy=policy,
+        )
+        sandbox_runtime = PreparedSandboxRuntime(
+            uid=str(user.uid),
+            agent_slug=run.agent_slug,
+            project_id=project_id,
+            workdir_path=workdir_binding.workdir_path,
+            policy=policy,
+            credential_fingerprint=coding_environment.fingerprint,
+            env_overrides=coding_environment.env,
+        )
 
     context = backend.context_schema()
     configured = (agent_item.config_json or {}).get("context") or {}
@@ -182,11 +261,12 @@ async def prepare_run_execution(
             "run_id": run.id,
             "request_id": run.request_id,
             "worker_id": worker_id,
-            "runtime_scope_id": run.runtime_scope_id or run.conversation_thread_id,
+            "runtime_scope_id": persisted_scope or run.conversation_thread_id,
             "workdir_relative_path": workdir_binding.workdir_path,
             "workdir_path": runtime_workdir_path(workdir_binding.workdir_path),
             "git_repositories": list(git_repositories or []),
             "project_git_enabled": bool(project_git_enabled),
+            "coding_executors": list(coding_settings.executors),
         }
     )
     if payload.get("model_spec"):
@@ -216,4 +296,9 @@ async def prepare_run_execution(
         code_revision=resolve_code_revision(),
         git_repositories=git_repositories,
     )
-    return PreparedRunExecution(manifest=manifest, context=context, backend_id=agent_item.backend_id)
+    return PreparedRunExecution(
+        manifest=manifest,
+        context=context,
+        backend_id=agent_item.backend_id,
+        sandbox_runtime=sandbox_runtime,
+    )

@@ -92,7 +92,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '^/api': {
           target: env.VITE_API_URL || 'http://api:5050',
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
         },
         '^/minio/public/': {
           target: env.VITE_MINIO_URL || 'http://minio:9000',

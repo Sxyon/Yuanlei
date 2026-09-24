@@ -37,6 +37,8 @@ def create_tool_approval_middleware(
             "write_file": {"allowed_decisions": _ALLOWED_DECISIONS, "when": write_requires_approval},
             "edit_file": {"allowed_decisions": _ALLOWED_DECISIONS, "when": write_requires_approval},
             "execute": {"allowed_decisions": _ALLOWED_DECISIONS},
+            # 编码会话启动属于任务级计划审批：默认模式下先让用户确认 executor 与任务。
+            "coding_session_start": {"allowed_decisions": _ALLOWED_DECISIONS},
         }
     )
     return HumanInTheLoopMiddleware(interrupt_on=interrupt_on)

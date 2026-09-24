@@ -64,6 +64,50 @@ def test_model_cache_prefers_model_base_url_override(monkeypatch):
     assert saved_cache["alibaba-cn:qwen3-rerank"].base_url == "https://invalid.example/rerank"
 
 
+def test_model_cache_rebuilds_gpt6_capability_profile(monkeypatch):
+    saved_cache = {}
+
+    class Provider:
+        is_enabled = True
+        provider_id = "openai"
+        api_key = "sk-test"
+        api_key_env = None
+        provider_type = "openai"
+        base_url = "https://api.openai.com/v1"
+        embedding_base_url = None
+        rerank_base_url = None
+        headers_json = {}
+        extra_json = {}
+        enabled_models = [{"id": "gpt-6-sol", "type": "chat"}]
+
+    cache = ModelCache()
+    monkeypatch.setattr(cache, "_save_cache", lambda data: saved_cache.update(data))
+
+    cache.rebuild([Provider()])
+
+    info = saved_cache["openai:gpt-6-sol"]
+    assert info.protocol == "openai_chat_completions"
+    assert info.capabilities["input"]["image"] == "supported"
+    assert info.capabilities["tool_calling"]["chat_completions"] == "reasoning_effort_none"
+
+
+def test_model_info_upgrades_legacy_redis_record_without_capabilities():
+    info = ModelInfo.from_dict(
+        {
+            "provider_id": "openai",
+            "model_id": "gpt-6-luna",
+            "model_type": "chat",
+            "display_name": "GPT-6 Luna",
+            "api_key": "sk-test",
+            "base_url": "https://api.openai.com/v1",
+            "provider_type": "openai",
+        }
+    )
+
+    assert info.capabilities["input"]["image"] == "supported"
+    assert info.protocol == info.capabilities["protocol"]
+
+
 def test_model_cache_loads_from_redis_and_uses_local_ttl(monkeypatch: pytest.MonkeyPatch):
     redis = _FakeRedis()
     _patch_redis(monkeypatch, redis)

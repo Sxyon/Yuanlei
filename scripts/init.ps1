@@ -1,7 +1,7 @@
 # Yuxi Initialization Script for PowerShell
 # This script helps set up the environment for the Yuxi project
 
-param([switch]$ValidateSecurityEnv)
+param([switch]$ValidateSecurityEnv, [switch]$EnsureCodingSecret)
 
 function New-RandomHex($ByteCount) {
     $bytes = [byte[]]::new($ByteCount)
@@ -12,6 +12,17 @@ function New-RandomHex($ByteCount) {
     } finally {
         $rng.Dispose()
     }
+}
+
+function New-RandomBase64Url32 {
+    $bytes = [byte[]]::new(32)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    return [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
 }
 
 function Test-EnvValue($Name) {
@@ -111,6 +122,10 @@ function Assert-SecuritySecrets {
     if (-not (Test-SecuritySecretValue $sandboxSecret @($jwtSecret, $apiKeySecret))) {
         throw "SANDBOX_PROVISIONER_TOKEN must be at least 32 characters and independent from other security secrets."
     }
+    $codingSecret = Get-EnvValue "YUXI_CODING_CREDENTIAL_KEY"
+    if (-not [string]::IsNullOrEmpty($codingSecret) -and -not (Test-CodingSecretValue $codingSecret @($jwtSecret, $apiKeySecret, $sandboxSecret))) {
+        throw "YUXI_CODING_CREDENTIAL_KEY must be a 32-byte base64url key and independent from other security secrets."
+    }
 }
 
 function Ensure-RequiredApiEnv {
@@ -148,6 +163,42 @@ function Ensure-SandboxEnv {
     Ensure-SecuritySecret "SANDBOX_PROVISIONER_TOKEN" @("JWT_SECRET_KEY", "API_KEY_DERIVATION_SECRET")
 }
 
+function Test-CodingSecretValue($Value, [string[]]$OtherValues = @()) {
+    if (-not (Test-SecuritySecretValue $Value $OtherValues)) {
+        return $false
+    }
+    try {
+        $normalized = $Value.Replace("-", "+").Replace("_", "/")
+        $normalized = $normalized.PadRight($normalized.Length + (4 - $normalized.Length % 4) % 4, "=")
+        return ([Convert]::FromBase64String($normalized)).Length -eq 32
+    } catch {
+        return $false
+    }
+}
+
+function Ensure-CodingSecret {
+    $current = Get-EnvValue "YUXI_CODING_CREDENTIAL_KEY"
+    $otherValues = @(
+        (Get-EnvValue "JWT_SECRET_KEY"),
+        (Get-EnvValue "API_KEY_DERIVATION_SECRET"),
+        (Get-EnvValue "SANDBOX_PROVISIONER_TOKEN")
+    )
+    if (Test-CodingSecretValue $current $otherValues) {
+        return
+    }
+    Write-Host "YUXI_CODING_CREDENTIAL_KEY is missing or invalid in .env; generating a 32-byte base64url key." -ForegroundColor Yellow
+    Set-EnvValue "YUXI_CODING_CREDENTIAL_KEY" (New-RandomBase64Url32)
+    Write-Host "Generated YUXI_CODING_CREDENTIAL_KEY and saved it to .env (restart api/worker to apply)." -ForegroundColor Green
+}
+
+if ($EnsureCodingSecret) {
+    if (-not (Test-Path ".env")) {
+        throw ".env does not exist"
+    }
+    Ensure-CodingSecret
+    exit 0
+}
+
 if ($ValidateSecurityEnv) {
     if (-not (Test-Path ".env")) {
         throw ".env does not exist"
@@ -175,6 +226,7 @@ if (Test-Path ".env") {
     Ensure-RequiredApiEnv
     Ensure-JwtEnv
     Ensure-SandboxEnv
+    Ensure-CodingSecret
     Assert-SecuritySecrets
 } else {
     Write-Host "📝 .env file not found. Let's set up your environment variables." -ForegroundColor Yellow
@@ -231,6 +283,9 @@ if (Test-Path ".env") {
         $API_KEY_DERIVATION_SECRET
     )
 
+    $YUXI_CODING_CREDENTIAL_KEY = New-RandomBase64Url32
+    Write-Host "Generated YUXI_CODING_CREDENTIAL_KEY and saved it to .env." -ForegroundColor Green
+
     # Create .env file
     $envContent = @"
 # SiliconFlow API Key (required)
@@ -256,6 +311,7 @@ JWT_SECRET_KEY=$JWT_SECRET_KEY
 API_KEY_DERIVATION_SECRET=$API_KEY_DERIVATION_SECRET
 YUXI_INSTANCE_ID=$YUXI_INSTANCE_ID
 SANDBOX_PROVISIONER_TOKEN=$SANDBOX_PROVISIONER_TOKEN
+YUXI_CODING_CREDENTIAL_KEY=$YUXI_CODING_CREDENTIAL_KEY
 "@
 
     $envContent | Out-File -FilePath ".env" -Encoding UTF8
@@ -271,6 +327,7 @@ SANDBOX_PROVISIONER_TOKEN=$SANDBOX_PROVISIONER_TOKEN
     Remove-Variable -Name "API_KEY_DERIVATION_SECRET" -ErrorAction SilentlyContinue
     Remove-Variable -Name "YUXI_INSTANCE_ID" -ErrorAction SilentlyContinue
     Remove-Variable -Name "SANDBOX_PROVISIONER_TOKEN" -ErrorAction SilentlyContinue
+    Remove-Variable -Name "YUXI_CODING_CREDENTIAL_KEY" -ErrorAction SilentlyContinue
 }
 
 Write-Host ""

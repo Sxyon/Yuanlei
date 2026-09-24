@@ -12,15 +12,15 @@ import time
 import weakref
 from collections.abc import AsyncIterator
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib import request
 
 import httpx
 from dotenv import dotenv_values
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -292,6 +292,59 @@ def sandbox_container_stop_timeout_seconds(value: str | None = None) -> int:
     return timeout_seconds
 
 
+def sandbox_container_limits(
+    mem_limit: str | None = None,
+    cpus: str | None = None,
+    pids_limit: str | None = None,
+) -> dict:
+    """解析单沙盒容器的 mem/cpu/pids 上限，非法配置显式失败而不回退默认。"""
+    raw_mem = (
+        os.getenv("SANDBOX_MEM_LIMIT", "2g") if mem_limit is None else mem_limit
+    ).strip()
+    # 本配置只接受纯字节数或 k/m/g 单位后缀（窄于 Docker 完整格式），
+    # 提前拒绝，避免运行期才暴露。
+    if not re.fullmatch(r"[1-9][0-9]*([kKmMgG][bB]?)?", raw_mem):
+        raise RuntimeError(
+            f"SANDBOX_MEM_LIMIT must be bytes or a k/m/g value, got {raw_mem!r}"
+        )
+
+    raw_cpus = (
+        os.getenv("SANDBOX_CPUS", "2") if cpus is None else cpus
+    ).strip()
+    # nan/inf/溢出在 int() 转换处失败；小于 1e-9 核会截断为 0 并被
+    # docker-py 的 `if nano_cpus` 静默丢弃，两者都必须在启动期拒绝。
+    try:
+        nano_cpus = int(float(raw_cpus) * 1_000_000_000)
+    except (ValueError, OverflowError) as exc:
+        raise RuntimeError(
+            f"SANDBOX_CPUS must be a finite number, got {raw_cpus!r}"
+        ) from exc
+    if nano_cpus < 1:
+        raise RuntimeError(
+            f"SANDBOX_CPUS must be > 0 with at least 1 nano-cpu, got {raw_cpus!r}"
+        )
+
+    raw_pids = (
+        os.getenv("SANDBOX_PIDS_LIMIT", "512")
+        if pids_limit is None
+        else pids_limit
+    ).strip()
+    try:
+        pids = int(raw_pids)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"SANDBOX_PIDS_LIMIT must be an integer, got {raw_pids!r}"
+        ) from exc
+    if pids < 1:
+        raise RuntimeError(f"SANDBOX_PIDS_LIMIT must be >= 1, got {raw_pids!r}")
+
+    return {
+        "mem_limit": raw_mem,
+        "nano_cpus": nano_cpus,
+        "pids_limit": pids,
+    }
+
+
 def provisioner_token() -> str:
     token = os.getenv("SANDBOX_PROVISIONER_TOKEN", "").strip()
     if len(token) < 32:
@@ -327,6 +380,10 @@ class CreateSandboxRequest(BaseModel):
     uid: str
     env: dict[str, str] = Field(default_factory=dict)
     inherit_env: bool = True
+    # 按沙盒生命周期策略：None 表示沿用全局 idle TTL（兼容旧客户端）。
+    lifecycle: Literal["ephemeral", "persistent", "resident"] | None = None
+    # None=全局默认；0=永不回收（resident）；>0=该沙盒的空闲阈值。
+    idle_timeout_seconds: int | None = Field(default=None, ge=0)
 
 
 class SandboxResponse(BaseModel):
@@ -335,6 +392,8 @@ class SandboxResponse(BaseModel):
     status: str | None = None
     generation: str | None = None
     workdir_path: str | None = None
+    lifecycle: str | None = None
+    idle_timeout_seconds: int | None = None
 
 
 class DeleteSandboxResponse(BaseModel):
@@ -365,6 +424,8 @@ class SandboxRecord:
     status: str | None = None
     generation: str | None = None
     workdir_path: str | None = None
+    lifecycle: str | None = None
+    idle_timeout_seconds: int | None = None
 
 
 class SandboxGenerationMismatchError(RuntimeError):
@@ -466,6 +527,8 @@ class MemoryProvisionerBackend:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
         _ = thread_id
         _ = uid
@@ -481,6 +544,11 @@ class MemoryProvisionerBackend:
                     raise ValueError(
                         "sandbox workdir identity does not match existing generation"
                     )
+                if lifecycle is not None and existing.lifecycle != lifecycle:
+                    logger.warning(
+                        "sandbox %s lifecycle policy differs from request; keep existing",
+                        sandbox_id,
+                    )
                 return existing
             record = SandboxRecord(
                 sandbox_id=sandbox_id,
@@ -488,6 +556,8 @@ class MemoryProvisionerBackend:
                 status="Running",
                 generation=secrets.token_hex(16),
                 workdir_path=normalized_workdir_path,
+                lifecycle=lifecycle,
+                idle_timeout_seconds=idle_timeout_seconds,
             )
             self._records[sandbox_id] = record
             return record
@@ -559,6 +629,7 @@ class LocalContainerProvisionerBackend:
         self._sandbox_locks = weakref.WeakValueDictionary()
         self._delete_slots = threading.BoundedSemaphore(sandbox_delete_concurrency())
         self._stop_timeout_seconds = sandbox_container_stop_timeout_seconds()
+        self._container_limits = sandbox_container_limits()
         self._container_port = int(os.getenv("SANDBOX_CONTAINER_PORT", "8080"))
         self._sandbox_image = os.getenv(
             "SANDBOX_IMAGE",
@@ -912,12 +983,17 @@ class LocalContainerProvisionerBackend:
     def _to_record(self, container, sandbox_id: str) -> SandboxRecord:
         state = (container.attrs.get("State") or {}).get("Status")
         labels = getattr(container, "labels", None) or {}
+        raw_idle_timeout = str(labels.get("idle-timeout-seconds") or "").strip()
         return SandboxRecord(
             sandbox_id=sandbox_id,
             sandbox_url=self._sandbox_url(container),
             status=state or "unknown",
             generation=str(getattr(container, "id", "") or "") or None,
             workdir_path=str(labels.get("workdir-path") or "").strip() or None,
+            lifecycle=str(labels.get("lifecycle") or "").strip() or None,
+            idle_timeout_seconds=int(raw_idle_timeout)
+            if raw_idle_timeout.isdigit()
+            else None,
         )
 
     def _get_container(self, sandbox_id: str):
@@ -938,6 +1014,8 @@ class LocalContainerProvisionerBackend:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
         with self._sandbox_lock(sandbox_id):
             safe_thread_id = self._validate_thread_id(thread_id)
@@ -965,6 +1043,14 @@ class LocalContainerProvisionerBackend:
                 if existing_ephemeral != ephemeral_storage:
                     raise ValueError(
                         "sandbox storage identity does not match existing generation"
+                    )
+                existing_lifecycle = (
+                    str(labels.get("lifecycle") or "").strip() or None
+                )
+                if lifecycle is not None and existing_lifecycle != lifecycle:
+                    logger.warning(
+                        "sandbox %s lifecycle policy differs from request; keep existing",
+                        sandbox_id,
                     )
                 if ephemeral_storage and not self._has_no_persistent_file_mounts(
                     existing
@@ -1050,24 +1136,31 @@ class LocalContainerProvisionerBackend:
             network_name = self._ensure_network(sandbox_id)
 
             container_name = self._container_name(sandbox_id)
+            container_labels = {
+                "app": "yuxi-sandbox",
+                "sandbox-id": sandbox_id,
+                "thread-id": safe_thread_id,
+                "uid": safe_uid,
+                "workdir-path": safe_workdir_path or "",
+                "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
+                "managed-by": "yuxi-sandbox-provisioner",
+            }
+            if lifecycle is not None:
+                container_labels["lifecycle"] = lifecycle
+            if idle_timeout_seconds is not None:
+                container_labels["idle-timeout-seconds"] = str(idle_timeout_seconds)
             run_kwargs = {
                 "name": container_name,
                 "detach": True,
-                "labels": {
-                    "app": "yuxi-sandbox",
-                    "sandbox-id": sandbox_id,
-                    "thread-id": safe_thread_id,
-                    "uid": safe_uid,
-                    "workdir-path": safe_workdir_path or "",
-                    "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
-                    "managed-by": "yuxi-sandbox-provisioner",
-                },
+                "labels": container_labels,
                 "volumes": {},
                 "network": network_name,
                 "security_opt": ["seccomp=unconfined"],
                 # The sandbox image expects /home/gem to be writable during boot.
                 # Keep it ephemeral and mount persistent user-data underneath it.
                 "tmpfs": {"/home/gem": "rw,exec,mode=777"},
+                # 单次执行的资源上界，防止一次命令吃满宿主机。
+                **self._container_limits,
             }
             if not ephemeral_storage and user_skills is not None:
                 run_kwargs["volumes"][str(user_skills)] = {
@@ -1280,6 +1373,8 @@ class KubernetesProvisionerBackend:
         *,
         inherit_env: bool,
         workdir_path: str | None = None,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ):
         pod_name = self._pod_name(sandbox_id)
         sandbox_env = merged_sandbox_env(self._sandbox_env, env) if inherit_env else {}
@@ -1319,6 +1414,16 @@ class KubernetesProvisionerBackend:
                     "uid": uid,
                     "workdir-path": workdir_path or "",
                     "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
+                    **(
+                        {"lifecycle": lifecycle}
+                        if lifecycle is not None
+                        else {}
+                    ),
+                    **(
+                        {"idle-timeout-seconds": str(idle_timeout_seconds)}
+                        if idle_timeout_seconds is not None
+                        else {}
+                    ),
                 },
             ),
             spec=self._client.V1PodSpec(
@@ -1539,6 +1644,8 @@ class KubernetesProvisionerBackend:
         *,
         workdir_path: str | None = None,
         inherit_env: bool = True,
+        lifecycle: str | None = None,
+        idle_timeout_seconds: int | None = None,
     ) -> SandboxRecord:
         from kubernetes.client.rest import ApiException
 
@@ -1560,6 +1667,11 @@ class KubernetesProvisionerBackend:
                     workdir_path=safe_workdir_path,
                     ephemeral_storage=ephemeral_storage,
                 ):
+                    if lifecycle is not None and discovered.lifecycle != lifecycle:
+                        logger.warning(
+                            "sandbox %s lifecycle policy differs from request; keep existing",
+                            sandbox_id,
+                        )
                     return discovered
                 raise ValueError("sandbox identity does not match existing generation")
 
@@ -1573,6 +1685,8 @@ class KubernetesProvisionerBackend:
                         env or {},
                         inherit_env=inherit_env,
                         workdir_path=safe_workdir_path,
+                        lifecycle=lifecycle,
+                        idle_timeout_seconds=idle_timeout_seconds,
                     ),
                 )
             except ApiException as exc:
@@ -1685,12 +1799,17 @@ class KubernetesProvisionerBackend:
         else:
             sandbox_url = f"http://{self._node_host}:{node_port}"
 
+        raw_idle_timeout = str(annotations.get("idle-timeout-seconds") or "").strip()
         return SandboxRecord(
             sandbox_id=sandbox_id,
             sandbox_url=sandbox_url,
             status=(pod.status.phase if pod and pod.status else "Unknown"),
             generation=str(getattr(pod.metadata, "uid", "") or "") or None,
             workdir_path=safe_workdir_path,
+            lifecycle=str(annotations.get("lifecycle") or "").strip() or None,
+            idle_timeout_seconds=int(raw_idle_timeout)
+            if raw_idle_timeout.isdigit()
+            else None,
         )
 
     def list(self) -> list[SandboxRecord]:
@@ -1707,6 +1826,7 @@ class KubernetesProvisionerBackend:
                 continue
             annotations = pod.metadata.annotations or {}
             workdir_path = str(annotations.get("workdir-path") or "").strip() or None
+            raw_idle_timeout = str(annotations.get("idle-timeout-seconds") or "").strip()
             records.append(
                 SandboxRecord(
                     sandbox_id=sandbox_id,
@@ -1714,6 +1834,10 @@ class KubernetesProvisionerBackend:
                     status=(pod.status.phase if pod.status else "Unknown"),
                     generation=str(getattr(pod.metadata, "uid", "") or "") or None,
                     workdir_path=workdir_path,
+                    lifecycle=str(annotations.get("lifecycle") or "").strip() or None,
+                    idle_timeout_seconds=int(raw_idle_timeout)
+                    if raw_idle_timeout.isdigit()
+                    else None,
                 )
             )
         return records
@@ -1760,6 +1884,7 @@ class SandboxIdleReaper:
         self._operation_pins = operation_pins or SandboxOperationPins()
         self._lock = threading.Lock()
         self._last_activity_at: dict[str, tuple[str | None, float]] = {}
+        self._idle_timeouts: dict[str, int | None] = {}
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._exec_timeout_seconds = int(
@@ -1790,6 +1915,20 @@ class SandboxIdleReaper:
             )
             self._last_activity_at[sandbox_id] = (observed_generation, time.time())
 
+    @staticmethod
+    def _record_timeout(record: SandboxRecord) -> int | None:
+        """从记录解析空闲阈值；None 表示沿用全局阈值，0 表示永不回收。"""
+        if record.idle_timeout_seconds is not None:
+            return record.idle_timeout_seconds
+        if record.lifecycle == "resident":
+            return 0
+        return None
+
+    def remember(self, record: SandboxRecord) -> None:
+        """登记沙盒的生命周期策略，供回收判定使用。"""
+        with self._lock:
+            self._idle_timeouts[record.sandbox_id] = self._record_timeout(record)
+
     def forget(
         self, sandbox_id: str, *, expected_generation: str | None = None
     ) -> None:
@@ -1800,6 +1939,7 @@ class SandboxIdleReaper:
             if expected_generation is not None and current[0] != expected_generation:
                 return
             self._last_activity_at.pop(sandbox_id, None)
+            self._idle_timeouts.pop(sandbox_id, None)
 
     def _seed_existing(self) -> None:
         try:
@@ -1814,25 +1954,39 @@ class SandboxIdleReaper:
                 self._last_activity_at.setdefault(
                     record.sandbox_id, (record.generation, now)
                 )
+                self._idle_timeouts.setdefault(
+                    record.sandbox_id, self._record_timeout(record)
+                )
 
     def _collect_expired_sandboxes(self) -> list[tuple[str, str | None]]:
         if self._idle_timeout_seconds <= 0:
             return []
-        cutoff = time.time() - self._idle_timeout_seconds
+        now = time.time()
+        expired: list[tuple[str, str | None]] = []
         with self._lock:
-            return [
-                (sandbox_id, generation)
-                for sandbox_id, (generation, last_at) in self._last_activity_at.items()
-                if last_at <= cutoff
-            ]
+            for sandbox_id, (generation, last_at) in self._last_activity_at.items():
+                timeout = self._timeouts_or_global(sandbox_id)
+                if timeout <= 0:
+                    continue
+                if last_at <= now - timeout:
+                    expired.append((sandbox_id, generation))
+        return expired
+
+    def _timeouts_or_global(self, sandbox_id: str) -> int:
+        timeout = self._idle_timeouts.get(sandbox_id)
+        if timeout is None:
+            return self._idle_timeout_seconds
+        return timeout
 
     def _delete_expired_sandbox(self, sandbox_id: str, generation: str | None) -> None:
         self._operation_pins.begin_delete(sandbox_id)
         try:
-            cutoff = time.time() - self._idle_timeout_seconds
             with self._lock:
                 current = self._last_activity_at.get(sandbox_id)
-                if current is None or current[0] != generation or current[1] > cutoff:
+                if current is None or current[0] != generation:
+                    return
+                timeout = self._timeouts_or_global(sandbox_id)
+                if timeout <= 0 or current[1] > time.time() - timeout:
                     return
             self._backend.delete(sandbox_id, expected_generation=generation)
             logger.info(f"Deleted idle sandbox: {sandbox_id}")
@@ -1911,6 +2065,8 @@ def sandbox_response(record: SandboxRecord) -> SandboxResponse:
         status=record.status,
         generation=record.generation,
         workdir_path=record.workdir_path,
+        lifecycle=record.lifecycle,
+        idle_timeout_seconds=record.idle_timeout_seconds,
     )
 
 
@@ -1949,6 +2105,8 @@ def create_sandbox(payload: CreateSandboxRequest):
                     payload.env,
                     workdir_path=payload.workdir_path,
                     inherit_env=payload.inherit_env,
+                    lifecycle=payload.lifecycle,
+                    idle_timeout_seconds=payload.idle_timeout_seconds,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1960,6 +2118,7 @@ def create_sandbox(payload: CreateSandboxRequest):
             sandbox_operation_pins.release(payload.sandbox_id)
     finally:
         sandbox_quiescence_gate.release_create()
+    idle_reaper.remember(record)
     idle_reaper.touch(record.sandbox_id, generation=record.generation)
     return sandbox_response(record)
 
@@ -1979,6 +2138,7 @@ def get_sandbox(sandbox_id: str):
 
         if record is None:
             raise HTTPException(status_code=404, detail="sandbox not found")
+        idle_reaper.remember(record)
         idle_reaper.touch(record.sandbox_id, generation=record.generation)
     finally:
         sandbox_operation_pins.release(sandbox_id)
@@ -2000,6 +2160,7 @@ def touch_sandbox(sandbox_id: str):
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         if record is None:
             raise HTTPException(status_code=404, detail="sandbox not found")
+        idle_reaper.remember(record)
         idle_reaper.touch(sandbox_id, generation=record.generation)
     finally:
         sandbox_operation_pins.release(sandbox_id)
@@ -2207,9 +2368,95 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
         for key, value in upstream_response.headers.items()
         if key.lower() in PROXY_RESPONSE_HEADERS
     }
+    idle_reaper.remember(record)
     idle_reaper.touch(sandbox_id, generation=record.generation)
     return StreamingResponse(
         response_body(),
         status_code=upstream_response.status_code,
         headers=response_headers,
     )
+
+
+def _websocket_connect(ws_url: str, headers: dict[str, str]):
+    """兼容 websockets 12-15 的头部参数命名差异。"""
+    import websockets
+
+    try:
+        return websockets.connect(
+            ws_url, additional_headers=headers, open_timeout=10, max_size=8 * 1024 * 1024
+        )
+    except TypeError:
+        return websockets.connect(
+            ws_url, extra_headers=headers, open_timeout=10, max_size=8 * 1024 * 1024
+        )
+
+
+@app.websocket("/api/sandboxes/{sandbox_id}/proxy/ws")
+async def proxy_sandbox_websocket(websocket: WebSocket, sandbox_id: str):
+    """终端 WebSocket 代理：Bearer 鉴权后双向转发到沙盒 nginx。"""
+    authorization = websocket.headers.get("authorization")
+    expected = f"Bearer {provisioner_token()}"
+    if not authorization or not secrets.compare_digest(authorization, expected):
+        await websocket.close(code=4401)
+        return
+    try:
+        record = await asyncio.to_thread(backend_impl.discover, sandbox_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to discover sandbox {sandbox_id} for WebSocket: {exc}")
+        await websocket.close(code=4404)
+        return
+    if record is None:
+        await websocket.close(code=4404)
+        return
+
+    await websocket.accept()
+    base = record.sandbox_url.rstrip("/")
+    if base.startswith("https://"):
+        ws_url = "wss://" + base[len("https://") :] + "/v1/shell/ws"
+    elif base.startswith("http://"):
+        ws_url = "ws://" + base[len("http://") :] + "/v1/shell/ws"
+    else:
+        ws_url = base + "/v1/shell/ws"
+    query = websocket.url.query
+    if query:
+        ws_url = f"{ws_url}?{query}"
+    idle_reaper.remember(record)
+    idle_reaper.touch(sandbox_id, generation=record.generation)
+
+    async def client_to_upstream(upstream) -> None:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            if message.get("text") is not None:
+                await upstream.send(message["text"])
+            elif message.get("bytes") is not None:
+                await upstream.send(message["bytes"])
+
+    async def upstream_to_client(upstream) -> None:
+        async for payload in upstream:
+            if isinstance(payload, (bytes, bytearray)):
+                await websocket.send_bytes(bytes(payload))
+            else:
+                await websocket.send_text(str(payload))
+
+    try:
+        async with _websocket_connect(ws_url, {}) as upstream:
+            tasks = {
+                asyncio.create_task(client_to_upstream(upstream)),
+                asyncio.create_task(upstream_to_client(upstream)),
+            }
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            for task in done:
+                with suppress(Exception):
+                    task.result()
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Sandbox terminal WebSocket failed for {sandbox_id}: {exc}")
+    finally:
+        with suppress(Exception):
+            await websocket.close()

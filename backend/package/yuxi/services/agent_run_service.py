@@ -33,6 +33,7 @@ from yuxi.config.options import system_options
 from yuxi.models.providers.cache import model_cache
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_output_repository import AgentRunOutputRepository
+from yuxi.services.run_scope_service import inherit_run_scope
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES, AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.services.input_message_service import (
@@ -47,7 +48,6 @@ from yuxi.services.project_agent_service import (
 from yuxi.services.run_queue_service import (
     build_run_event_envelope,
     get_arq_pool,
-    get_last_run_stream_seq,
     list_recent_run_stream_events,
     list_run_stream_events,
     normalize_after_seq,
@@ -118,7 +118,14 @@ async def resolve_agent_run_model_spec(
 
     info = model_cache.get_model_info(model_spec)
     if not info or info.model_type != "chat":
-        raise HTTPException(status_code=422, detail=f"未找到可用聊天模型: '{model_spec}'")
+        # dict detail 带 code/message 属于用户可见业务错误契约，前端按形态透传 message；message 不得包含敏感信息。
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "chat_model_not_found",
+                "message": f"未找到可用聊天模型: '{model_spec}'",
+            },
+        )
     return model_spec
 
 
@@ -476,6 +483,7 @@ async def create_resume_run_view(
     run, created = await persist_agent_run_record(
         agent_slug=agent_slug,
         conversation_thread_id=thread_id,
+        runtime_scope_id=thread_id,
         current_uid=current_uid,
         db=db,
         request_id=request_id,
@@ -490,6 +498,12 @@ async def create_resume_run_view(
         origin_metadata=origin_metadata,
     )
     if created:
+        await inherit_run_scope(
+            db,
+            parent_run=parent_run,
+            child_run_id=run.id,
+            child_conversation_thread_id=thread_id,
+        )
         await _commit_and_enqueue(db, run.id)
 
     return _build_run_response(run)
@@ -1005,11 +1019,7 @@ async def stream_agent_run_events(
                 and not bool(getattr(run, "runtime_cleanup_pending", False))
                 and not events
             ):
-                terminal_seq = last_seq
-                if terminal_seq in {"", "0-0"}:
-                    terminal_seq = await get_last_run_stream_seq(run_id)
-                if terminal_seq in {"", "0-0"}:
-                    terminal_seq = None
+                # 数据库补发通知没有 Redis ID，不能复用已消费事件的游标。
                 terminal_envelope = build_run_event_envelope(
                     run_id=run_id,
                     thread_id=run.conversation_thread_id,
@@ -1022,7 +1032,6 @@ async def stream_agent_run_events(
                 yield format_sse(
                     terminal_envelope,
                     event="end",
-                    event_id=terminal_seq,
                 )
                 return
 

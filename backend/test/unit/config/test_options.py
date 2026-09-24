@@ -23,6 +23,30 @@ def test_system_chat_model_preserves_saved_selection(key):
     assert options.system_options.resolve({key: saved_model})[key] == saved_model
 
 
+def test_system_sandbox_quota_defaults_and_save_validation():
+    """沙盒配额默认值可解析，且保存时校验常驻不超过专属上限。"""
+    resolved = options.system_options.resolve({})
+    assert resolved["sandbox_dedicated_max_per_user"] == 3
+    assert resolved["sandbox_resident_max_per_user"] == 1
+
+    field = next(
+        item for item in options.system_options.fields if item["key"] == "sandbox_dedicated_max_per_user"
+    )
+    assert options.normalize_option_value(field, "5") == 5
+    with pytest.raises(ValueError, match="整数"):
+        options.normalize_option_value(field, "abc")
+    with pytest.raises(ValueError, match="非负"):
+        options.normalize_option_value(field, -1)
+
+    with pytest.raises(ValueError, match="常驻沙盒上限"):
+        options._validate_system_options_quota(
+            {"sandbox_dedicated_max_per_user": 1, "sandbox_resident_max_per_user": 2}
+        )
+    options._validate_system_options_quota(
+        {"sandbox_dedicated_max_per_user": 3, "sandbox_resident_max_per_user": 1}
+    )
+
+
 class FakeRedis:
     def __init__(self):
         self.values: dict[str, str] = {}

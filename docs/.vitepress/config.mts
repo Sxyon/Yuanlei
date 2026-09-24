@@ -5,29 +5,29 @@ import markdownItTaskCheckbox from 'markdown-it-task-checkbox'
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   lang: 'zh-CN',
-  title: "Yuxi",
-  description: "Yuxi 是一个可私有部署的多租户知识智能体平台，统一 RAG、知识图谱、LangGraph 多智能体、MCP/Skills、沙盒与权限管理。",
-  base: '/Yuxi/',
+  title: "Yuanlei",
+  description: "Yuanlei AI 时代的 **个人** / **企业** 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。",
+  base: '/Yuanlei/',
   srcExclude: ['vibe/**'],
   sitemap: {
-    hostname: 'https://xerrors.github.io/Yuxi/'
+    hostname: 'https://sxyon.github.io/Yuanlei/'
   },
   head: [
-    ['link', { rel: 'icon', href: '/Yuxi/favicon.svg' }],
-    ['link', { rel: 'alternate icon', href: '/Yuxi/favicon.ico' }],
-    ['meta', { name: 'theme-color', content: '#F3BA32' }],
-    ['meta', { name: 'keywords', content: 'Yuxi, AI Agent, RAG, knowledge graph, LangGraph, MCP, self-hosted, multi-agent, knowledge base' }],
+    ['link', { rel: 'icon', href: '/Yuanlei/favicon.svg' }],
+    ['link', { rel: 'alternate icon', href: '/Yuanlei/favicon.ico' }],
+    ['meta', { name: 'theme-color', content: '#111831' }],
+    ['meta', { name: 'keywords', content: 'Yuanlei, Yuxi, AI Agent, RAG, knowledge graph, LangGraph, MCP, self-hosted, multi-agent, knowledge base' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: 'Yuxi' }],
-    ['meta', { property: 'og:title', content: 'Yuxi · 让知识真正参与每一次行动' }],
-    ['meta', { property: 'og:description', content: '可私有部署的多租户知识智能体平台，统一知识、工具、多智能体执行与团队治理。' }],
-    ['meta', { property: 'og:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }],
+    ['meta', { property: 'og:site_name', content: 'Yuanlei' }],
+    ['meta', { property: 'og:title', content: 'Yuanlei · 您的总裁办、CEO办公室' }],
+    ['meta', { property: 'og:description', content: '可私有部署的，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。' }],
+    ['meta', { property: 'og:image', content: 'https://sxyon.github.io/Yuanlei/home/yuanlei-web-og-1200x630-v1.0.0.png' }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:title', content: 'Yuxi · Self-hosted knowledge agent platform' }],
-    ['meta', { name: 'twitter:description', content: 'RAG, knowledge graphs, multi-agent execution, MCP/Skills, sandboxed artifacts, and access control in one workspace.' }],
-    ['meta', { name: 'twitter:image', content: 'https://xerrors.oss-cn-shanghai.aliyuncs.com/github/yuxi/docs/home/yuxi-web-og-1200x630-v1.0.0.png' }]
+    ['meta', { name: 'twitter:title', content: 'Yuanlei · 个人与企业的 AI 中枢系统' }],
+    ['meta', { name: 'twitter:description', content: '面向个人与企业的 AI 中枢，集参谋与决策、督查与汇报、执行与协同于一体。' }],
+    ['meta', { name: 'twitter:image', content: 'https://sxyon.github.io/Yuanlei/home/yuanlei-web-og-1200x630-v1.0.0.png' }]
   ],
   ignoreDeadLinks: [
     /localhost/
@@ -45,14 +45,14 @@ export default defineConfig({
       { text: '快速开始', link: '/intro/quick-start' },
       { text: '智能体开发', link: '/agents/agents-config' },
       { text: '机制详解', link: '/mechanisms/' },
-      { text: 'English', link: 'https://github.com/xerrors/Yuxi/blob/main/README.en.md' }
+      { text: 'English', link: 'https://github.com/sxyon/Yuanlei/blob/main/README.en.md' }
     ],
 
     sidebar: [
       {
         text: '简介',
         items: [
-          { text: '认识 Yuxi', link: '/intro/project-overview' },
+          { text: '认识 Yuanlei', link: '/intro/project-overview' },
           { text: '快速开始', link: '/intro/quick-start' },
           { text: 'Project Git 仓库', link: '/intro/project-git' },
           { text: '命令行工具', link: '/intro/cli' },
@@ -82,6 +82,7 @@ export default defineConfig({
           { text: '阅读路径', link: '/mechanisms/' },
           { text: 'Agent 运行时上下文', link: '/mechanisms/agent-runtime' },
           { text: '沙盒与文件系统', link: '/mechanisms/sandbox' },
+          { text: '编码执行（opencode/codex）', link: '/mechanisms/coding-execution' },
           { text: '上下文压缩', link: '/mechanisms/context-compression' },
           { text: '知识库', link: '/mechanisms/knowledge-base' }
         ]
@@ -91,6 +92,8 @@ export default defineConfig({
         items: [
           { text: '配置系统详解', link: '/advanced/configuration' },
           { text: 'Project Git 配置与分支', link: '/advanced/project-git-reference' },
+          { text: '编码执行配置指南', link: '/advanced/coding-execution-setup' },
+          { text: '编码执行配置参考', link: '/advanced/coding-execution-reference' },
           { text: 'Agent 并发容量', link: '/advanced/agent-concurrency-capacity' },
           { text: 'Langfuse 集成', link: '/advanced/langfuse-integration' },
           { text: '文档解析', link: '/advanced/document-processing' },
@@ -136,16 +139,16 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/xerrors/Yuxi' }
+      { icon: 'github', link: 'https://github.com/sxyon/Yuanlei' }
     ],
 
     footer: {
       message: '本项目基于 MIT License 开源，欢迎使用和贡献。',
-      copyright: 'Copyright © 2025-present Yuxi'
+      copyright: 'Copyright © 2025-present Yuanlei'
     },
 
     editLink: {
-      pattern: 'https://github.com/xerrors/Yuxi/edit/main/docs/:path',
+      pattern: 'https://github.com/sxyon/Yuanlei/main/docs/:path',
       text: '在 GitHub 上编辑此页'
     },
 

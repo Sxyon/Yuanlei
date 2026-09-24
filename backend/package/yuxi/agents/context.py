@@ -201,6 +201,11 @@ class BaseContext:
         metadata={"name": "Project Git Capability", "configurable": False, "hide": True},
     )
 
+    coding_executors: list[str] = field(
+        default_factory=list,
+        metadata={"name": "Coding Executors", "configurable": False, "hide": True},
+    )
+
     system_prompt: str = field(
         default="You are a helpful assistant.",
         metadata={"name": "系统提示词", "description": "用来描述智能体的角色和行为", "kind": "prompt"},
