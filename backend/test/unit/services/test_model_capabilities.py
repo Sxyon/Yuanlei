@@ -65,6 +65,51 @@ def test_official_deepseek_v41_flash_names_resolve_native_image(model_id: str):
     assert profile.tool_image_result == "lift_to_user"
 
 
+def test_official_deepseek_v4_pro_resolves_as_text_only():
+    profile = resolve_model_capabilities(
+        "deepseek",
+        "openai",
+        {"id": "deepseek-v4-pro"},
+        "https://api.deepseek.com/v1",
+    )
+
+    assert profile.image_input == "unsupported"
+    assert profile.source == "deepseek_models_docs"
+    assert profile.tool_image_result == "unsupported"
+
+
+def test_deepseek_v4_pro_image_capability_does_not_leak_to_proxy_channels():
+    profile = resolve_model_capabilities(
+        "deepseek",
+        "openai",
+        {"id": "deepseek-v4-pro"},
+        "https://proxy.example/v1",
+    )
+
+    assert profile.image_input == "unknown"
+    assert profile.source == "unknown"
+
+
+def test_channel_declared_modalities_override_official_model_profile():
+    profile = resolve_model_capabilities(
+        "deepseek",
+        "openai",
+        {"id": "deepseek-flash", "input_modalities": ["text", "audio"]},
+        "https://api.deepseek.com/v1",
+    )
+
+    assert profile.input_modalities == {
+        "text": "supported",
+        "image": "unsupported",
+        "audio": "supported",
+        "video": "unsupported",
+        "file": "unsupported",
+        "pdf": "unsupported",
+    }
+    assert profile.source == "provider_models_endpoint"
+    assert profile.tool_image_result == "unsupported"
+
+
 def test_provider_modalities_distinguish_absent_from_explicitly_empty():
     absent = resolve_model_capabilities("gateway", "openai", {"id": "model"}, "https://gateway.example/v1")
     explicit_empty = resolve_model_capabilities(
@@ -101,6 +146,28 @@ def test_admin_override_precedes_official_and_channel_metadata():
     assert profile.source == "admin_override"
 
 
+def test_image_override_preserves_other_modality_provenance():
+    profile = resolve_model_capabilities(
+        "gateway",
+        "openai",
+        {
+            "id": "model",
+            "input_modalities": ["text", "image", "audio", "video"],
+            "capabilities": {"input": {"image": "unsupported"}},
+        },
+        "https://gateway.example/v1",
+    )
+
+    assert profile.input_modalities["image"] == "unsupported"
+    assert profile.input_modalities["audio"] == "supported"
+    assert profile.input_modalities["video"] == "supported"
+    assert profile.input_sources["image"] == "admin_override"
+    assert profile.input_sources["audio"] == "provider_models_endpoint"
+    assert profile.input_sources["video"] == "provider_models_endpoint"
+    assert profile.to_dict()["provenance"]["input_sources"]["audio"] == "provider_models_endpoint"
+    assert profile.to_dict()["provenance"]["input_sources"]["image"] == "admin_override"
+
+
 def test_native_tool_result_override_stays_unknown_until_adapter_is_proven():
     profile = resolve_model_capabilities(
         "openai",
@@ -124,5 +191,6 @@ def test_profile_serializes_protocol_status_and_provenance():
         "provenance": {
             "source": "unknown",
             "matched_key": "gateway:openai_chat_completions:model",
+            "input_sources": {"image": "unknown"},
         },
     }

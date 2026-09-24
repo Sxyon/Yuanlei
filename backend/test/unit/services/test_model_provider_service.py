@@ -1,6 +1,7 @@
 import os
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
@@ -9,6 +10,7 @@ from yuxi.models.providers.builtin import BUILTIN_PROVIDERS
 from yuxi.models.providers.service import (
     _normalize_payload,
     _normalize_remote_model,
+    _fetch_models_from_endpoint,
     _validate_request_body_overrides_scope,
     check_credential_status,
     fetch_remote_models,
@@ -235,11 +237,138 @@ def test_normalize_remote_model_preserves_explicitly_empty_modalities():
     assert model["output_modalities"] == []
 
 
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        (
+            {"input_modalities": ["text", "vision", "speech", "video", "document"]},
+            ["text", "image", "audio", "video", "file"],
+        ),
+        ({"inputModalities": ["text", "image", "audio", "video", "file"]}, ["text", "image", "audio", "video", "file"]),
+        ({"modalities": {"input": ["text", "image", "audio"]}}, ["text", "image", "audio"]),
+        ({"input": {"modalities": ["text", "image"]}}, ["text", "image"]),
+        ({"capabilities": {"input": {"modalities": ["text", "image"]}}}, ["text", "image"]),
+        ({"architecture": {"input_modalities": [{"type": "text"}, {"modality": "vision"}]}}, ["text", "image"]),
+    ],
+)
+def test_normalize_remote_model_accepts_common_protocol_modality_shapes(metadata, expected):
+    model = _normalize_remote_model({"id": "model", **metadata})
+
+    assert model["input_modalities"] == expected
+
+
+def test_normalize_remote_model_keeps_explicit_empty_input_from_protocol_shape():
+    model = _normalize_remote_model({"id": "model", "modalities": {"input": []}})
+
+    assert model["input_modalities"] == []
+
+
+def test_normalize_remote_model_does_not_treat_ambiguous_or_output_modalities_as_input():
+    model = _normalize_remote_model(
+        {
+            "id": "model",
+            "modalities": ["text", "image"],
+            "output_modalities": ["image"],
+        }
+    )
+
+    assert "input_modalities" not in model
+
+
+def test_normalize_remote_model_does_not_treat_malformed_input_entries_as_empty_declaration():
+    model = _normalize_remote_model({"id": "model", "input_modalities": [{}]})
+
+    assert "input_modalities" not in model
+
+
 def test_normalize_remote_model_uses_endpoint_model_type():
     model = _normalize_remote_model({"id": "BAAI/bge-m3", "object": "model"}, "embedding")
 
     assert model["id"] == "BAAI/bge-m3"
     assert model["type"] == "embedding"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_type_arg", "payload", "expected_id"),
+    [
+        ("openai", {"data": [{"id": "model-a"}]}, "model-a"),
+        ("anthropic", {"data": [{"id": "model-b", "display_name": "Model B"}]}, "model-b"),
+        (
+            "gemini",
+            {"models": [{"name": "models/gemini-3", "displayName": "Gemini 3", "inputModalities": ["text", "image"]}]},
+            "gemini-3",
+        ),
+    ],
+)
+async def test_fetch_models_normalizes_provider_protocol_envelopes(provider_type_arg, payload, expected_id):
+    class Provider:
+        base_url = "https://provider.example/v1"
+        provider_type = provider_type_arg
+
+    async def responder(request):
+        return httpx.Response(200, json=payload)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(responder)) as client:
+        models = await _fetch_models_from_endpoint(client, Provider(), {}, "/models", "chat")
+
+    assert models[0]["id"] == expected_id
+    if provider_type_arg == "gemini":
+        assert models[0]["display_name"] == "Gemini 3"
+        assert models[0]["input_modalities"] == ["text", "image"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_requests_only_the_configured_directory_endpoint():
+    requests = []
+
+    async def responder(request):
+        requests.append((request.method, str(request.url)))
+        return httpx.Response(200, json={"data": [{"id": "model"}]})
+
+    class Provider:
+        base_url = "https://provider.example/v1"
+        provider_type = "openai"
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(responder)) as client:
+        await _fetch_models_from_endpoint(client, Provider(), {}, "/models", "chat")
+
+    assert requests == [("GET", "https://provider.example/v1/models")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_type_arg", "expected_auth"),
+    [
+        ("openai", {"Authorization": "Bearer test-key"}),
+        ("anthropic", {"x-api-key": "test-key", "anthropic-version": "2023-06-01"}),
+        ("gemini", {"x-goog-api-key": "test-key"}),
+    ],
+)
+async def test_fetch_remote_models_uses_provider_protocol_auth_headers(monkeypatch, provider_type_arg, expected_auth):
+    captured = []
+
+    async def fake_fetch(client, provider, headers, endpoint, model_type):
+        captured.append(headers)
+        return [{"id": "model", "type": model_type}]
+
+    monkeypatch.setattr("yuxi.models.providers.service._fetch_models_from_endpoint", fake_fetch)
+
+    class Provider:
+        provider_id = "channel"
+        provider_type = provider_type_arg
+        base_url = "https://provider.example/v1"
+        api_key = "test-key"
+        api_key_env = None
+        headers_json = {}
+        capabilities = ["chat"]
+        models_endpoint = "/models"
+        embedding_models_endpoint = None
+        rerank_models_endpoint = None
+
+    await fetch_remote_models(Provider())
+
+    assert captured[0] == expected_auth
 
 
 @pytest.mark.asyncio
@@ -253,6 +382,8 @@ async def test_fetch_remote_models_loads_embedding_only_when_capability_enabled(
     monkeypatch.setattr("yuxi.models.providers.service._fetch_models_from_endpoint", fake_fetch)
 
     class Provider:
+        provider_id = "remote-provider"
+        provider_type = "openai"
         base_url = "https://example.com/v1"
         api_key = None
         api_key_env = None
@@ -266,6 +397,32 @@ async def test_fetch_remote_models_loads_embedding_only_when_capability_enabled(
 
     assert calls == [("/models", "chat"), ("/embeddings/models", "embedding")]
     assert [model["type"] for model in models] == ["chat", "embedding"]
+    assert all("resolved_capabilities" in model for model in models)
+
+
+@pytest.mark.asyncio
+async def test_fetch_remote_models_resolves_curated_deepseek_image_capability(monkeypatch):
+    async def fake_fetch(client, provider, headers, endpoint, model_type):
+        return [{"id": "deepseek-flash", "type": "chat"}]
+
+    monkeypatch.setattr("yuxi.models.providers.service._fetch_models_from_endpoint", fake_fetch)
+
+    class Provider:
+        provider_id = "deepseek"
+        provider_type = "openai"
+        base_url = "https://api.deepseek.com"
+        api_key = None
+        api_key_env = None
+        headers_json = {}
+        capabilities = ["chat"]
+        models_endpoint = "/models"
+        embedding_models_endpoint = None
+        rerank_models_endpoint = None
+
+    models = await fetch_remote_models(Provider())
+
+    assert models[0]["resolved_capabilities"]["input"]["image"] == "supported"
+    assert models[0]["resolved_capabilities"]["provenance"]["source"] == "deepseek_vision_docs"
 
 
 def test_normalize_payload_rejects_ollama_provider_type():
@@ -334,6 +491,18 @@ def test_normalize_payload_accepts_manual_source():
     )
 
     assert payload["enabled_models"][0]["source"] == "manual"
+
+
+def test_normalize_payload_rejects_empty_declared_input_modality():
+    with pytest.raises(ValueError, match="input_modalities 必须是非空字符串列表"):
+        _normalize_payload(
+            {
+                "provider_id": "invalid-modalities",
+                "display_name": "Invalid Modalities",
+                "base_url": "https://example.com/v1",
+                "enabled_models": [{"id": "model", "type": "chat", "input_modalities": [""]}],
+            }
+        )
 
 
 def test_normalize_payload_rejects_invalid_source():

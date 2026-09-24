@@ -13,14 +13,18 @@ const getModelMetadata = (providers, providerId, modelId) => {
 
 export const resolveModelDisplayMetadata = (providers, providerId, model = {}) => {
   const catalogModel = getModelMetadata(providers, providerId, model.id || model.model_id)
-  const returnedInputModalities =
-    model.input_modalities ||
-    model.architecture?.input_modalities ||
-    model.raw_metadata?.architecture?.input_modalities ||
-    []
-  const inputModalities = returnedInputModalities.length
-    ? returnedInputModalities
-    : catalogModel?.modalities?.input || []
+  const returnedInputModalities = [
+    model.input_modalities,
+    model.inputModalities,
+    model.architecture?.input_modalities,
+    model.architecture?.inputModalities,
+    model.modalities?.input,
+    model.raw_metadata?.input_modalities,
+    model.raw_metadata?.inputModalities,
+    model.raw_metadata?.architecture?.input_modalities,
+    model.raw_metadata?.modalities?.input
+  ].find(Array.isArray)
+  const inputModalities = returnedInputModalities ?? catalogModel?.modalities?.input ?? []
   const context = model.context_length || catalogModel?.limit?.context || null
   const cost = normalizeRemotePrice(model.pricing) || catalogModel?.cost
 
