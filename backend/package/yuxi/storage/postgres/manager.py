@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 9
+YUANLEI_SCHEMA_VERSION = 10
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -429,6 +429,139 @@ PROJECT_DASHBOARD_SCHEMA_STATEMENTS = (
         CONSTRAINT ck_project_dashboards_revision CHECK (revision > 0)
     )
     """,
+)
+# 元垒项目治理域：议题/决策/任务/汇报与来源归一化。渠道只能产生 proposed，
+# 只有经审核写入 review_owner_uid/reviewed_at 才成为 canonical；外部镜像不得反向写。
+GOVERNANCE_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS governance_topics (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_governance_topics_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        title VARCHAR(512) NOT NULL,
+        summary TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'proposed',
+        source_channel VARCHAR(32) NOT NULL,
+        source_external_id VARCHAR(191),
+        source_url VARCHAR(1024),
+        created_by VARCHAR(64),
+        review_owner_uid VARCHAR(64),
+        reviewed_at TIMESTAMP WITHOUT TIME ZONE,
+        review_note TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT ck_governance_topics_status
+            CHECK (status IN ('proposed', 'canonical', 'rejected')),
+        CONSTRAINT ck_governance_topics_source_channel
+            CHECK (source_channel IN ('project', 'multica', 'github', 'gitea')),
+        CONSTRAINT ck_governance_topics_source_shape CHECK (
+            (source_channel = 'project' AND source_external_id IS NULL AND source_url IS NULL)
+            OR (source_channel <> 'project' AND source_external_id IS NOT NULL)
+        ),
+        CONSTRAINT ck_governance_topics_review_shape CHECK (
+            (status = 'proposed' AND review_owner_uid IS NULL AND reviewed_at IS NULL)
+            OR (status IN ('canonical', 'rejected')
+                AND review_owner_uid IS NOT NULL AND reviewed_at IS NOT NULL)
+        )
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_governance_topics_project_id ON governance_topics(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_governance_topics_status ON governance_topics(status)",
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_topics_source_external "
+        "ON governance_topics(project_id, source_channel, source_external_id) "
+        "WHERE source_external_id IS NOT NULL"
+    ),
+    """
+    CREATE TABLE IF NOT EXISTS governance_decisions (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_governance_decisions_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        topic_id VARCHAR(64) CONSTRAINT fk_governance_decisions_topic_id
+            REFERENCES governance_topics(id) ON DELETE SET NULL,
+        title VARCHAR(512) NOT NULL,
+        conclusion TEXT NOT NULL,
+        rationale TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'proposed',
+        decided_by VARCHAR(64),
+        decided_at TIMESTAMP WITHOUT TIME ZONE,
+        created_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT ck_governance_decisions_status
+            CHECK (status IN ('proposed', 'implemented')),
+        CONSTRAINT ck_governance_decisions_decision_shape CHECK (
+            (status = 'proposed' AND decided_by IS NULL AND decided_at IS NULL)
+            OR (status = 'implemented' AND decided_by IS NOT NULL AND decided_at IS NOT NULL)
+        )
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_governance_decisions_project_id ON governance_decisions(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_governance_decisions_topic_id ON governance_decisions(topic_id)",
+    """
+    CREATE TABLE IF NOT EXISTS governance_tasks (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_governance_tasks_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        topic_id VARCHAR(64) CONSTRAINT fk_governance_tasks_topic_id
+            REFERENCES governance_topics(id) ON DELETE SET NULL,
+        decision_id VARCHAR(64) CONSTRAINT fk_governance_tasks_decision_id
+            REFERENCES governance_decisions(id) ON DELETE SET NULL,
+        assignee_agent_slug VARCHAR(80) CONSTRAINT fk_governance_tasks_assignee_agent_slug
+            REFERENCES agents(slug) ON DELETE SET NULL,
+        title VARCHAR(512) NOT NULL,
+        description TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'proposed',
+        source_channel VARCHAR(32) NOT NULL,
+        source_external_id VARCHAR(191),
+        source_url VARCHAR(1024),
+        created_by VARCHAR(64),
+        review_owner_uid VARCHAR(64),
+        reviewed_at TIMESTAMP WITHOUT TIME ZONE,
+        review_note TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT ck_governance_tasks_status
+            CHECK (status IN ('proposed', 'canonical', 'rejected')),
+        CONSTRAINT ck_governance_tasks_source_channel
+            CHECK (source_channel IN ('project', 'multica', 'github', 'gitea')),
+        CONSTRAINT ck_governance_tasks_source_shape CHECK (
+            (source_channel = 'project' AND source_external_id IS NULL AND source_url IS NULL)
+            OR (source_channel <> 'project' AND source_external_id IS NOT NULL)
+        ),
+        CONSTRAINT ck_governance_tasks_review_shape CHECK (
+            (status = 'proposed' AND review_owner_uid IS NULL AND reviewed_at IS NULL)
+            OR (status IN ('canonical', 'rejected')
+                AND review_owner_uid IS NOT NULL AND reviewed_at IS NOT NULL)
+        )
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_governance_tasks_project_id ON governance_tasks(project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_governance_tasks_topic_id ON governance_tasks(topic_id)",
+    "CREATE INDEX IF NOT EXISTS ix_governance_tasks_decision_id ON governance_tasks(decision_id)",
+    "CREATE INDEX IF NOT EXISTS ix_governance_tasks_status ON governance_tasks(status)",
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_tasks_source_external "
+        "ON governance_tasks(project_id, source_channel, source_external_id) "
+        "WHERE source_external_id IS NOT NULL"
+    ),
+    """
+    CREATE TABLE IF NOT EXISTS governance_reports (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_governance_reports_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        title VARCHAR(512) NOT NULL,
+        summary TEXT,
+        content JSONB NOT NULL DEFAULT '{}'::jsonb,
+        source_run_id VARCHAR(64) CONSTRAINT fk_governance_reports_source_run_id
+            REFERENCES agent_runs(id) ON DELETE SET NULL,
+        artifact_path VARCHAR(512),
+        created_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_governance_reports_project_id ON governance_reports(project_id)",
 )
 CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     """
@@ -1063,6 +1196,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in (*PROJECT_DOCUMENT_SCHEMA_STATEMENTS, *PROJECT_DASHBOARD_SCHEMA_STATEMENTS):
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v9_to_v10(self) -> None:
+        """新增项目治理域四表：议题/决策/任务/汇报与来源归一化。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in GOVERNANCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):
