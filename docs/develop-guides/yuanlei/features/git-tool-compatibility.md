@@ -11,7 +11,7 @@ Git 工具的可恢复业务错误会被默认 ToolNode 策略升级为整个 Ru
 ## 必须保留的业务语义
 
 - 可恢复的 Git 业务错误以结构化 ToolMessage 返回模型，不杀死整个 Run。
-- 权限、未知异常和系统错误保持 fail-closed，不被通用捕获伪装为业务失败。
+- Git 工具的未知异常和系统错误保持 fail-closed，不被上游通用 `ToolErrorGuardMiddleware` 伪装为业务失败；已知的 HTTP 与权限业务异常仍由 Git 专用中间件收敛。
 - 分支 slug 在校验前做确定性小写归一，非法字符和边界继续拒绝。
 - manifest 指纹只包含稳定身份字段，运行时派生路径不改变同一授权事实。
 
@@ -24,7 +24,7 @@ Yuxi 拥有 ToolNode、middleware 装配和 manifest 主契约。元垒只收敛
 | 集成角色 | 当前 Owner | Yuanlei 语义 |
 |---|---|---|
 | Git 工具错误转换 | `GitToolErrorMiddleware` | 只处理约定的 422 与 PermissionError |
-| Middleware 装配 | chatbot/subagent graph | 确保 Git 工具经过收敛层 |
+| Middleware 装配 | chatbot graph、`ToolErrorGuardMiddleware` | Git 专用收敛位于内层；通用兜底放行 Git 未知异常 |
 | 分支名称 | `workspace.git_paths` | 先归一再执行安全校验 |
 | manifest | `agent_run_manifest_service` | 稳定身份与运行时派生字段分离 |
 
@@ -47,4 +47,5 @@ Yuxi 拥有 ToolNode、middleware 装配和 manifest 主契约。元垒只收敛
 
 - [Git 工具业务异常收敛](../decisions/implemented/2026-09-16-git-tool-business-error-containment.md)
 - [DeepSeek Git 工具错误](../decisions/implemented/2026-09-17-deepseek-git-tool-error.md)
+- [2026-09-24 上游同步与 Git 错误边界](../decisions/implemented/2026-09-24-upstream-sync-tool-error-boundary.md)
 - `backend/test/unit/middlewares/test_git_tool_error_middleware.py`、Git path/ref 测试和 manifest service 测试拥有正向与负向证据。

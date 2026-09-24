@@ -18,6 +18,7 @@ from yuxi.agents.middlewares import (
     NetworkRetryMiddleware,
     SteerMiddleware,
     TokenUsageMiddleware,
+    ToolErrorGuardMiddleware,
     create_memory_middleware,
     create_summary_middleware_from_context,
 )
@@ -35,6 +36,8 @@ from .state import ChatBotState
 async def _build_middlewares(context, backend):
     """构建中间件列表"""
     middlewares = [
+        # 最外层隔离普通工具异常，保留取消与 interrupt 的传播。
+        ToolErrorGuardMiddleware(),
         SteerMiddleware(),
         create_agent_filesystem_middleware(
             getattr(context, "tool_token_limit", DEFAULT_TOOL_RESULT_EVICTION_K_TOKENS) * 1024,

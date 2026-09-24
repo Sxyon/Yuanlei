@@ -93,4 +93,14 @@ defineProps({
 .text-muted {
   color: var(--gray-400);
 }
+
+:deep(.page-shoulder-refresh-icon.is-spinning) {
+  animation: page-shoulder-refresh-spin 0.9s linear infinite;
+}
+
+@keyframes page-shoulder-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 </style>

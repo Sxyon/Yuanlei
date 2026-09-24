@@ -21,6 +21,7 @@ from yuxi.agents.middlewares import (
     ImageInputCompatibilityMiddleware,
     NetworkRetryMiddleware,
     TokenUsageMiddleware,
+    ToolErrorGuardMiddleware,
     create_summary_middleware_from_context,
 )
 from yuxi.agents.middlewares.skills import SkillsMiddleware
@@ -107,6 +108,8 @@ async def _build_middlewares(context, backend, tool_approval_mode: str):
     # tool_approval_mode is normalized once by the caller (get_graph / SubAgentBackend.get_graph).
 
     return [
+        # 子 Agent 的工具异常也在最外层隔离，避免打断父对话。
+        ToolErrorGuardMiddleware(),
         create_agent_filesystem_middleware(
             getattr(context, "tool_token_limit", DEFAULT_TOOL_RESULT_EVICTION_K_TOKENS) * 1024,
             backend=backend,

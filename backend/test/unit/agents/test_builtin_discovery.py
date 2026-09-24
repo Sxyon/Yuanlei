@@ -197,6 +197,6 @@ def test_shipping_skills_keep_required_dependencies():
         "search_file",
         "download_kb_file",
     ]
-    assert found["deep-research"]["skill_dependencies"] == ["html-preview"]
+    assert found["deep-research"]["skill_dependencies"] == []
     assert found["mysql-reporter"]["mcp_dependencies"] == []
     assert found["html-preview"]["version"] == "2026.07.23"

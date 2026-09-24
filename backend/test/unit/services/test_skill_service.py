@@ -568,8 +568,8 @@ def test_html_preview_builtin_skill_spec(builtin_skill_specs):
     assert "普通 `html` 代码块" in content
 
 
-def test_deep_research_builtin_skill_includes_html_preview_dependency(builtin_skill_specs):
-    assert builtin_skill_specs["deep-research"]["skill_dependencies"] == ["html-preview"]
+def test_deep_research_builtin_skill_has_no_html_preview_dependency(builtin_skill_specs):
+    assert builtin_skill_specs["deep-research"]["skill_dependencies"] == []
 
 
 def test_knowledge_base_builtin_skill_spec(builtin_skill_specs):

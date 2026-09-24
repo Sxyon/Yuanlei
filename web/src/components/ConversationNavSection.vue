@@ -54,8 +54,7 @@
                     </button>
                     <span
                       v-if="
-                        group.threadStatus === 'loading' &&
-                        !isProjectExpanded(group.project.id)
+                        group.threadStatus === 'loading' && !isProjectExpanded(group.project.id)
                       "
                       class="project-status project-status-loading"
                       role="status"
@@ -253,7 +252,8 @@ const groupedNavigation = computed(() =>
 )
 const projectGroups = computed(() =>
   groupedNavigation.value.groups.map((group) => {
-    const visibleCount = projectVisibleCounts.value[group.project.id] ?? INITIAL_PROJECT_CONVERSATIONS
+    const visibleCount =
+      projectVisibleCounts.value[group.project.id] ?? INITIAL_PROJECT_CONVERSATIONS
     return {
       ...group,
       visibleCount,
@@ -370,7 +370,6 @@ const confirmDeleteProject = (project) => {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding-right: 2px;
   scrollbar-width: thin;
 }
 .project-history-group {
@@ -383,7 +382,7 @@ const confirmDeleteProject = (project) => {
   position: relative;
   display: flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 30px;
   border-radius: 8px;
   color: var(--gray-800);
   &:hover,
@@ -408,7 +407,7 @@ const confirmDeleteProject = (project) => {
   flex: 1;
   align-items: center;
   gap: 7px;
-  height: 34px;
+  height: 30px;
   padding: 0 4px 0 7px;
   border: 0;
   background: transparent;

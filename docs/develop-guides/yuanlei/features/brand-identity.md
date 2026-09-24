@@ -42,4 +42,4 @@
 ## 决策与证据
 
 - [品牌图形与文档站视觉身份](../decisions/implemented/2026-09-22-yuanlei-brand-identity.md) 记录视觉方向、替代方案、验证与尚未完成的公开发布证据。
-- [文档站 favicon](../../../public/favicon.svg)、[主题装配](../../../.vitepress/theme/index.ts) 与 [首页组件](../../../.vitepress/theme/components/YuanleiHome.vue) 是当前实现的可定位证据入口。
+- [文档站 favicon](../../../public/favicon.svg)、[主题装配](../../../.vitepress/theme/index.ts) 与首页组件 `docs/.vitepress/theme/components/YuanleiHome.vue` 是当前实现的可定位证据入口。

@@ -39,7 +39,7 @@ class SubagentStartResult:
     relation: SubagentThread
 
 
-@dataclass(frozen=True)
+@dataclass
 class SubagentRunBusy(Exception):
     thread_id: str
     active_run_id: str | None

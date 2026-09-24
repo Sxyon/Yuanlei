@@ -142,7 +142,9 @@ async def ensure_builtin_mcp_servers_in_db() -> None:
                         sse_read_timeout=config.get("sse_read_timeout"),
                         tags=config.get("tags"),
                         icon=config.get("icon"),
-                        enabled=0,
+                        # 内置定义可用 enabled 声明默认启停；未声明时保持停用，
+                        # 由管理员按需启用（如对外部服务 DeepWiki）。
+                        enabled=config.get("enabled", 0),
                         created_by="system",
                         updated_by="system",
                     )
@@ -157,6 +159,11 @@ async def ensure_builtin_mcp_servers_in_db() -> None:
                 if getattr(existing, field) != next_value:
                     setattr(existing, field, next_value)
                     server_changed = True
+            # 内置连接与启停都由代码声明，启动时收敛，避免手工改动造成漂移。
+            wanted_enabled = config.get("enabled")
+            if wanted_enabled is not None and existing.enabled != wanted_enabled:
+                existing.enabled = wanted_enabled
+                server_changed = True
             if existing.created_by != "system":
                 existing.created_by = "system"
                 server_changed = True

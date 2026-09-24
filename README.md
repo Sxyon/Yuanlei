@@ -49,7 +49,7 @@ Sandbox 删除等待从数据库事务中拆出：短事务预检、事务外删
 
 | 项目 | 版本 | 上游基线 |
 |---|---|---|
-| 元垒 | 0.1.0 | Yuxi v0.7.3 @ 5a1bdc3c（2026-09-18） |
+| 元垒 | 0.1.0 | Yuxi v0.7.3 @ dee83624（2026-09-24） |
 
 - 上游 README 原文镜像：[README.yuxi.md](README.yuxi.md) · [README.yuxi.en.md](README.yuxi.en.md)
 - 同步基线单一事实源：[baseline.json](docs/develop-guides/yuanlei/baseline.json)

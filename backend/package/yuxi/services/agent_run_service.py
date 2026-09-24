@@ -48,7 +48,6 @@ from yuxi.services.project_agent_service import (
 from yuxi.services.run_queue_service import (
     build_run_event_envelope,
     get_arq_pool,
-    get_last_run_stream_seq,
     list_recent_run_stream_events,
     list_run_stream_events,
     normalize_after_seq,
@@ -119,7 +118,14 @@ async def resolve_agent_run_model_spec(
 
     info = model_cache.get_model_info(model_spec)
     if not info or info.model_type != "chat":
-        raise HTTPException(status_code=422, detail=f"未找到可用聊天模型: '{model_spec}'")
+        # dict detail 带 code/message 属于用户可见业务错误契约，前端按形态透传 message；message 不得包含敏感信息。
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "chat_model_not_found",
+                "message": f"未找到可用聊天模型: '{model_spec}'",
+            },
+        )
     return model_spec
 
 
@@ -1013,11 +1019,7 @@ async def stream_agent_run_events(
                 and not bool(getattr(run, "runtime_cleanup_pending", False))
                 and not events
             ):
-                terminal_seq = last_seq
-                if terminal_seq in {"", "0-0"}:
-                    terminal_seq = await get_last_run_stream_seq(run_id)
-                if terminal_seq in {"", "0-0"}:
-                    terminal_seq = None
+                # 数据库补发通知没有 Redis ID，不能复用已消费事件的游标。
                 terminal_envelope = build_run_event_envelope(
                     run_id=run_id,
                     thread_id=run.conversation_thread_id,
@@ -1030,7 +1032,6 @@ async def stream_agent_run_events(
                 yield format_sse(
                     terminal_envelope,
                     event="end",
-                    event_id=terminal_seq,
                 )
                 return
 
