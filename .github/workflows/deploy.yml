@@ -65,7 +65,9 @@ jobs:
 
   # 部署工作
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
