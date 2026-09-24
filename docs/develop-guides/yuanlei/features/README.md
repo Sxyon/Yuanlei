@@ -24,3 +24,4 @@
 - [Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)：实现已接入，提案中的浏览器与真实账号证据待补。
 - [项目自定义 Dashboard](project-dashboard.md)：已实现静态 Dashboard v0；含文档与页面 revision、受控 writer、Agent 读写工具和无脚本页面壳。
 - [项目治理域数据模型](project-governance.md)：已实现；议题/决策/任务/汇报四类结构化事实与多渠道来源归一化、proposed→审核→canonical 生命周期。
+- [项目蓝图 Workdir 事实源](project-blueprint.md)：已实现；项目蓝图固定在 Workdir `.yuanlei/blueprint/` 目录，可读写、可 diff，Agent 起草、人可编辑。
