@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 10
+YUANLEI_SCHEMA_VERSION = 11
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -562,6 +562,71 @@ GOVERNANCE_SCHEMA_STATEMENTS = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS ix_governance_reports_project_id ON governance_reports(project_id)",
+)
+# 元垒外部执行器委派域：委派事实与入向同步游标。本地 dispatch_state 与远端
+# remote_status 投影分离；投递意图先持久化，结果只引用发起 Run。
+CHANNEL_DELEGATION_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS channel_delegations (
+        id VARCHAR(64) PRIMARY KEY,
+        operation_id VARCHAR(128) NOT NULL,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_channel_delegations_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        initiator_run_id VARCHAR(64) CONSTRAINT fk_channel_delegations_initiator_run_id
+            REFERENCES agent_runs(id) ON DELETE SET NULL,
+        executor_key VARCHAR(32) NOT NULL,
+        task TEXT NOT NULL,
+        request_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        session_id VARCHAR(64),
+        turn_id VARCHAR(64),
+        external_ref VARCHAR(191),
+        external_url VARCHAR(1024),
+        dispatch_state VARCHAR(16) NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        remote_status VARCHAR(32),
+        remote_status_synced_at TIMESTAMP WITHOUT TIME ZONE,
+        result_summary TEXT,
+        result_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        artifact_path VARCHAR(512),
+        owner_token VARCHAR(128),
+        lease_expires_at TIMESTAMP WITHOUT TIME ZONE,
+        error_code VARCHAR(64),
+        last_error_at TIMESTAMP WITHOUT TIME ZONE,
+        created_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT ck_channel_delegations_dispatch_state
+            CHECK (dispatch_state IN ('pending', 'dispatched', 'collecting', 'reclaimed', 'failed')),
+        CONSTRAINT ck_channel_delegations_executor_key
+            CHECK (executor_key IN ('opencode', 'codex', 'multica'))
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_delegations_operation_id ON channel_delegations(operation_id)",
+    "CREATE INDEX IF NOT EXISTS ix_channel_delegations_project_id ON channel_delegations(project_id)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_channel_delegations_state_lease "
+        "ON channel_delegations(dispatch_state, lease_expires_at)"
+    ),
+    """
+    CREATE TABLE IF NOT EXISTS channel_sync_cursors (
+        id VARCHAR(64) PRIMARY KEY,
+        channel VARCHAR(32) NOT NULL,
+        project_id VARCHAR(64) NOT NULL CONSTRAINT fk_channel_sync_cursors_project_id
+            REFERENCES projects(id) ON DELETE CASCADE,
+        cursor_value VARCHAR(512),
+        last_synced_at TIMESTAMP WITHOUT TIME ZONE,
+        owner_token VARCHAR(128),
+        lease_expires_at TIMESTAMP WITHOUT TIME ZONE,
+        last_error TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        CONSTRAINT ck_channel_sync_cursors_channel CHECK (channel IN ('multica'))
+    )
+    """,
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_sync_cursors_scope "
+        "ON channel_sync_cursors(channel, project_id)"
+    ),
 )
 CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     """
@@ -1203,6 +1268,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in GOVERNANCE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v10_to_v11(self) -> None:
+        """新增外部执行器委派事实与入向同步游标表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in CHANNEL_DELEGATION_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

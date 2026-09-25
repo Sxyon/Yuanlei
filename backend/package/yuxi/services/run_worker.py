@@ -70,7 +70,9 @@ from yuxi.services.sandbox_lease_service import (
     renew_sandbox_lease_for_run,
     sandbox_scope_from_key,
 )
+from yuxi.services.channel_sync_service import reconcile_channel_sync
 from yuxi.services.coding_execution_service import reconcile_coding_turns, run_coding_turn_job
+from yuxi.services.delegation_service import reconcile_delegations
 from yuxi.services.task_queue_service import (
     TASK_RECONCILIATION_HEALTH_KEY,
     TASK_RECONCILIATION_HEALTH_TTL_SECONDS,
@@ -104,6 +106,8 @@ _RECONCILIATION_TASK_KEY = "agent_run_reconciliation_task"
 _TASK_RECONCILIATION_TASK_KEY = "durable_task_reconciliation_task"
 _SANDBOX_LIFECYCLE_TASK_KEY = "sandbox_lifecycle_task"
 _CODING_TURN_RECONCILIATION_TASK_KEY = "coding_turn_reconciliation_task"
+_DELEGATION_RECONCILIATION_TASK_KEY = "delegation_reconciliation_task"
+_CHANNEL_SYNC_RECONCILIATION_TASK_KEY = "channel_sync_reconciliation_task"
 
 
 def worker_max_jobs() -> int:
@@ -1773,6 +1777,34 @@ async def _reconcile_coding_turns_forever() -> None:
             logger.opt(exception=True).error("Failed to reconcile coding turns")
 
 
+async def _reconcile_delegations_forever() -> None:
+    """周期收敛外部执行器委派：重投 pending、复位 collecting、刷新远端投影。"""
+    while True:
+        await asyncio.sleep(RUN_RECONCILIATION_SECONDS)
+        try:
+            counts = await reconcile_delegations()
+            if any(counts.values()):
+                logger.info("Reconciled delegations: {}", counts)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.opt(exception=True).error("Failed to reconcile delegations")
+
+
+async def _reconcile_channel_sync_forever() -> None:
+    """周期收敛 Multica 入向同步游标；无凭据时不做外部请求。"""
+    while True:
+        await asyncio.sleep(RUN_RECONCILIATION_SECONDS)
+        try:
+            counts = await reconcile_channel_sync()
+            if counts["imported"] or counts["failed"] or counts["released"]:
+                logger.info("Reconciled channel sync: {}", counts)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.opt(exception=True).error("Failed to reconcile channel sync")
+
+
 async def _publish_task_reconciliation_health() -> None:
     """续租 worker 的 Durable Task 收敛与 pending 补发能力。"""
     redis = await get_redis_client()
@@ -1833,6 +1865,8 @@ async def _worker_startup(ctx):
     await recover_scheduled_dispatches()
     await claim_and_dispatch_due_jobs()
     await reconcile_coding_turns()
+    await reconcile_delegations()
+    await reconcile_channel_sync()
     await _publish_reconciliation_health()
     try:
         await run_sandbox_lifecycle_tick()
@@ -1842,6 +1876,8 @@ async def _worker_startup(ctx):
     ctx[_TASK_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_durable_tasks_forever())
     ctx[_SANDBOX_LIFECYCLE_TASK_KEY] = asyncio.create_task(_reconcile_sandbox_lifecycle_forever())
     ctx[_CODING_TURN_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_coding_turns_forever())
+    ctx[_DELEGATION_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_delegations_forever())
+    ctx[_CHANNEL_SYNC_RECONCILIATION_TASK_KEY] = asyncio.create_task(_reconcile_channel_sync_forever())
 
 
 async def _worker_shutdown(ctx):
@@ -1853,6 +1889,8 @@ async def _worker_shutdown(ctx):
             ctx.pop(_TASK_RECONCILIATION_TASK_KEY, None),
             ctx.pop(_SANDBOX_LIFECYCLE_TASK_KEY, None),
             ctx.pop(_CODING_TURN_RECONCILIATION_TASK_KEY, None),
+            ctx.pop(_DELEGATION_RECONCILIATION_TASK_KEY, None),
+            ctx.pop(_CHANNEL_SYNC_RECONCILIATION_TASK_KEY, None),
         ]
         reconciliation_tasks = [task for task in reconciliation_tasks if task is not None]
         for task in reconciliation_tasks:
