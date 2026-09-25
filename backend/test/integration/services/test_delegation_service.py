@@ -26,6 +26,7 @@ from yuxi.delegation.multica import MulticaExecutor, MulticaIssue
 from yuxi.repositories.channel_delegation_repository import ChannelDelegationRepository
 from yuxi.services.channel_sync_service import ChannelSyncService
 from yuxi.services.delegation_service import DelegationService
+from yuxi.services.governance_service import create_governance_topic
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import (
     AgentRun,
@@ -167,11 +168,11 @@ class _FakeMulticaClient:
     async def search_issues(self, *, query: str, limit: int = 20) -> list[MulticaIssue]:
         return [issue for issue in self.issues if query in issue.description][:limit]
 
-    async def list_issues(self, *, updated_after: str | None, limit: int = 50) -> list[MulticaIssue]:
+    async def list_issues(self, *, updated_after: str | None, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
         issues = list(self.issues)
         if updated_after:
             issues = [issue for issue in issues if (issue.updated_at or "") > updated_after]
-        return issues[:limit]
+        return issues[offset : offset + limit]
 
 
 async def test_dispatch_persists_intent_unified_view_and_executor_unavailable() -> None:
@@ -357,3 +358,57 @@ async def test_multica_inbound_sync_only_proposed_and_deduped_by_cursor() -> Non
             assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 2
             cursor = await service.get_cursor(project_id="project-owner")
             assert cursor is not None and cursor["cursor"] == "2026-09-25T00:00:02Z"
+
+
+async def test_multica_inbound_sync_pages_past_limit_without_cursor_skip() -> None:
+    """待取回项超过单页 limit 时，有界分页取回全部且游标不跳过后续项。"""
+    async with _scoped_database("pytest_channel_sync_pages") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            client = _FakeMulticaClient()
+            for index in range(3):
+                await client.create_issue(title=f"远端议题{index}", description="来自 Multica")
+            service = ChannelSyncService(db, client=client)
+
+            result = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
+            assert result["imported"] == 3
+            assert result["skipped"] == 0
+            assert result["cursor"] == "2026-09-25T00:00:03Z"
+            assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 3
+
+            follow_up = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
+            assert follow_up["imported"] == 0
+            assert follow_up["skipped"] == 0
+
+
+async def test_multica_inbound_sync_full_duplicate_page_advances_cursor() -> None:
+    """整页命中重复时仍把游标推进到该页最大 updated_at，下一次不再重取整页。"""
+    async with _scoped_database("pytest_channel_sync_dupe") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            client = _FakeMulticaClient()
+            await client.create_issue(title="远端议题一", description="来自 Multica")
+            await client.create_issue(title="远端议题二", description="来自 Multica")
+            actor = await _load_user(db)
+            for issue in client.issues:
+                await create_governance_topic(
+                    project_id="project-owner",
+                    title=issue.title,
+                    summary=issue.description,
+                    source_channel="multica",
+                    source_external_id=issue.identifier,
+                    source_url=issue.url,
+                    db=db,
+                    user=actor,
+                )
+            service = ChannelSyncService(db, client=client)
+
+            first = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
+            assert first["imported"] == 0
+            assert first["skipped"] == 2
+            cursor = await service.get_cursor(project_id="project-owner")
+            assert cursor is not None and cursor["cursor"] == "2026-09-25T00:00:02Z"
+
+            second = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
+            assert second["imported"] == 0
+            assert second["skipped"] == 0

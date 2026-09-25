@@ -39,7 +39,7 @@
 | 入向同步游标 | 新增 `ChannelSyncService` + `channel_sync_cursors`（yuanlei 域） | 游标、去重与失败重试的确定性 Owner，worker 周期驱动 |
 | 委派事实 | 新增 `channel_delegations`（yuanlei 域） | 稳定 `operation_id`、投递/回收本地状态与远端只读投影分离 |
 | 结果产物 | `backend/package/yuxi/workspace/workdir.py` | Workdir 边界内物化，经 `_require_within` 校验 |
-| 工具门控 | `backend/package/yuxi/agents/toolkits/service.py`、`tool_approval.py` | 仅根 Agent 可见，审批与白名单沿用 coding 模式 |
+| 工具门控 | `backend/package/yuxi/agents/buildin/subagent/graph.py`（`_SUBAGENT_DISABLED_TOOLS`）、`backend/package/yuxi/agents/toolkits/buildin/delegation_tools.py`（`is_subagent_runtime` 检查）、`backend/package/yuxi/agents/toolkits/buildin/project_run_scope.py`（`resolve_project_run_scope`） | 子智能体工具面隐藏并在调用期结构化拒绝；根 AgentRun 按 Project 授权范围校验 |
 
 ## 上游依赖
 

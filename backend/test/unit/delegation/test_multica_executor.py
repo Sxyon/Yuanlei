@@ -40,8 +40,8 @@ class _FakeClient:
     async def search_issues(self, *, query: str, limit: int = 20) -> list[MulticaIssue]:
         return [issue for issue in self.issues if query in issue.description][:limit]
 
-    async def list_issues(self, *, updated_after: str | None, limit: int = 50) -> list[MulticaIssue]:
-        return self.issues[:limit]
+    async def list_issues(self, *, updated_after: str | None, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
+        return self.issues[offset : offset + limit]
 
 
 def _request(operation_id: str = "op-123") -> DelegationRequest:

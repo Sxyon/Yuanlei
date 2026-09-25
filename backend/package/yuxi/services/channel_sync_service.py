@@ -23,6 +23,7 @@ from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
 MULTICA_SYNC_CHANNEL = MULTICA_EXECUTOR_KEY
 DEFAULT_CURSOR_LEASE_SECONDS = 120
+MULTICA_SYNC_MAX_PAGES = 10
 
 
 def _advance_cursor(current: str | None, updated_at: str | None) -> str | None:
@@ -44,35 +45,44 @@ class ChannelSyncService:
         self.lease_seconds = int(lease_seconds)
 
     async def pull_multica(self, *, project_id: str, actor_uid: str, limit: int = 50) -> dict:
-        """在游标租约内拉取一页 Multica 议题并归一为 proposed；重复跳过，成功后推进游标。"""
+        """在游标租约内有界分页拉取 Multica 议题并归一为 proposed；整批取回后推进游标。"""
         actor = await UserRepository().get_by_uid_with_db(self.db, str(actor_uid))
         if actor is None:
             raise DelegationLeaseLostError("同步发起用户不存在")
+        page_size = max(1, int(limit))
         cursor = await self._claim_cursor(project_id=project_id)
         initial = cursor.cursor_value
         imported = skipped = 0
         latest = initial
+        consumed = False
         try:
-            issues = await self.client.list_issues(updated_after=initial, limit=int(limit))
-            for issue in issues:
-                try:
-                    await create_governance_topic(
-                        project_id=project_id,
-                        title=issue.title,
-                        summary=issue.description,
-                        source_channel=MULTICA_SYNC_CHANNEL,
-                        source_external_id=issue.identifier,
-                        source_url=issue.url,
-                        db=self.db,
-                        user=actor,
-                    )
-                    imported += 1
-                except HTTPException as exc:
-                    if exc.status_code == 409:
-                        skipped += 1
-                        continue
-                    raise
-                latest = _advance_cursor(latest, issue.updated_at)
+            offset = 0
+            for _ in range(MULTICA_SYNC_MAX_PAGES):
+                issues = await self.client.list_issues(updated_after=initial, limit=page_size, offset=offset)
+                for issue in issues:
+                    # 先推进候选游标，后续去重跳过也不能丢失该页进度。
+                    latest = _advance_cursor(latest, issue.updated_at)
+                    try:
+                        await create_governance_topic(
+                            project_id=project_id,
+                            title=issue.title,
+                            summary=issue.description,
+                            source_channel=MULTICA_SYNC_CHANNEL,
+                            source_external_id=issue.identifier,
+                            source_url=issue.url,
+                            db=self.db,
+                            user=actor,
+                        )
+                        imported += 1
+                    except HTTPException as exc:
+                        if exc.status_code == 409:
+                            skipped += 1
+                            continue
+                        raise
+                if len(issues) < page_size:
+                    consumed = True
+                    break
+                offset += len(issues)
         except Exception as exc:
             logger.warning("Multica inbound sync failed: project={} error={}", project_id, exc)
             await self._finish_cursor(project_id=project_id, cursor_value=None, last_error=str(exc))
@@ -84,13 +94,21 @@ class ChannelSyncService:
                 "cursor": initial,
                 "error": str(exc),
             }
-        await self._finish_cursor(project_id=project_id, cursor_value=latest, last_error=None)
+        # 只有确认整个结果集取回后才推进游标；触顶分页上限时保持原游标并显式告警，避免满页时静默跳过未取回项。
+        if not consumed:
+            logger.warning(
+                "Multica inbound sync hit page cap without consuming all items: project={} pages={}",
+                project_id,
+                MULTICA_SYNC_MAX_PAGES,
+            )
+        cursor_value = latest if consumed else initial
+        await self._finish_cursor(project_id=project_id, cursor_value=cursor_value, last_error=None)
         return {
             "channel": MULTICA_SYNC_CHANNEL,
             "project_id": project_id,
             "imported": imported,
             "skipped": skipped,
-            "cursor": latest,
+            "cursor": cursor_value,
         }
 
     async def converge(self, *, limit_per_project: int = 50, max_projects: int = 20) -> dict[str, int]:

@@ -51,6 +51,7 @@ class MulticaClient(Protocol):
         *,
         updated_after: str | None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[MulticaIssue]: ...
 
 
@@ -199,8 +200,8 @@ class HttpMulticaClient:
         items = data.get("issues", data) if isinstance(data, dict) else data
         return [self._normalize(item) for item in (items or [])]
 
-    async def list_issues(self, *, updated_after: str | None, limit: int = 50) -> list[MulticaIssue]:
-        params: dict[str, Any] = {"limit": int(limit)}
+    async def list_issues(self, *, updated_after: str | None, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
+        params: dict[str, Any] = {"limit": int(limit), "offset": int(offset)}
         if self.project_ref:
             params["project_id"] = self.project_ref
         if updated_after:

@@ -1865,6 +1865,8 @@ async def _worker_startup(ctx):
     await recover_scheduled_dispatches()
     await claim_and_dispatch_due_jobs()
     await reconcile_coding_turns()
+    await reconcile_delegations()
+    await reconcile_channel_sync()
     await _publish_reconciliation_health()
     try:
         await run_sandbox_lifecycle_tick()

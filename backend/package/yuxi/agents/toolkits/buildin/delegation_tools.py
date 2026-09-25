@@ -21,15 +21,6 @@ from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import AgentRun
 from yuxi.workspace.workdir import Workdir
 
-DELEGATION_TOOL_NAMES = frozenset(
-    {
-        "delegation_dispatch",
-        "delegation_status",
-        "delegation_collect",
-        "delegation_list",
-    }
-)
-
 
 async def _run_delegation_operation(
     runtime: ToolRuntime,
@@ -189,11 +180,3 @@ async def delegation_list(runtime: ToolRuntime = None) -> str:
         return await DelegationService.build_default(db).list_delegations(project_id=project_id)
 
     return await _run_delegation_operation(runtime, operation)
-
-
-DELEGATION_TOOLS = (
-    delegation_dispatch,
-    delegation_status,
-    delegation_collect,
-    delegation_list,
-)
