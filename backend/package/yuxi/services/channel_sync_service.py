@@ -108,9 +108,15 @@ class ChannelSyncService:
             actor_uid = await self._project_owner_uid(project_id=cursor.project_id)
             if actor_uid is None:
                 continue
-            result = await self.pull_multica(
-                project_id=cursor.project_id, actor_uid=actor_uid, limit=int(limit_per_project)
-            )
+            try:
+                result = await self.pull_multica(
+                    project_id=cursor.project_id, actor_uid=actor_uid, limit=int(limit_per_project)
+                )
+            except DelegationLeaseLostError:
+                # 单个 Project 游标被其他 owner 持有不阻断其余 Project。
+                logger.warning("Multica sync skipped a project: project={}", cursor.project_id)
+                counts["failed"] += 1
+                continue
             counts["projects"] += 1
             counts["imported"] += int(result.get("imported", 0))
             counts["skipped"] += int(result.get("skipped", 0))
