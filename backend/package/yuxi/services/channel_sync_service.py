@@ -1,0 +1,176 @@
+"""入向渠道同步：Multica → 元垒 proposed 治理行的确定性收敛（yuanlei 域）。
+
+游标、去重与失败重试由本服务与 `channel_sync_cursors` 行持有，不依赖 Agent
+自行决定同步。导入入口只调用治理用例的创建路径，只产生 `proposed`，不暴露
+审核或状态写入参数，也不开放公网 webhook。
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import timedelta
+
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from yuxi.delegation.contracts import DelegationLeaseLostError
+from yuxi.delegation.multica import MULTICA_EXECUTOR_KEY, MulticaClient, build_multica_client_from_env
+from yuxi.repositories.channel_delegation_repository import ChannelDelegationRepository
+from yuxi.repositories.user_repository import UserRepository
+from yuxi.services.governance_service import create_governance_topic
+from yuxi.utils import logger
+from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
+
+MULTICA_SYNC_CHANNEL = MULTICA_EXECUTOR_KEY
+DEFAULT_CURSOR_LEASE_SECONDS = 120
+
+
+def _advance_cursor(current: str | None, updated_at: str | None) -> str | None:
+    """只在远端时间戳更新且可比较时推进游标。"""
+    if not updated_at:
+        return current
+    if current is None or str(updated_at) > str(current):
+        return str(updated_at)
+    return current
+
+
+class ChannelSyncService:
+    """Multica 入向同步的确定性 Owner；一次同步一个 Project 的游标。"""
+
+    def __init__(self, db: AsyncSession, *, client: MulticaClient, lease_seconds: int = DEFAULT_CURSOR_LEASE_SECONDS):
+        self.db = db
+        self.client = client
+        self.repo = ChannelDelegationRepository(db)
+        self.lease_seconds = int(lease_seconds)
+
+    async def pull_multica(self, *, project_id: str, actor_uid: str, limit: int = 50) -> dict:
+        """在游标租约内拉取一页 Multica 议题并归一为 proposed；重复跳过，成功后推进游标。"""
+        actor = await UserRepository().get_by_uid_with_db(self.db, str(actor_uid))
+        if actor is None:
+            raise DelegationLeaseLostError("同步发起用户不存在")
+        cursor = await self._claim_cursor(project_id=project_id)
+        initial = cursor.cursor_value
+        imported = skipped = 0
+        latest = initial
+        try:
+            issues = await self.client.list_issues(updated_after=initial, limit=int(limit))
+            for issue in issues:
+                try:
+                    await create_governance_topic(
+                        project_id=project_id,
+                        title=issue.title,
+                        summary=issue.description,
+                        source_channel=MULTICA_SYNC_CHANNEL,
+                        source_external_id=issue.identifier,
+                        source_url=issue.url,
+                        db=self.db,
+                        user=actor,
+                    )
+                    imported += 1
+                except HTTPException as exc:
+                    if exc.status_code == 409:
+                        skipped += 1
+                        continue
+                    raise
+                latest = _advance_cursor(latest, issue.updated_at)
+        except Exception as exc:
+            logger.warning("Multica inbound sync failed: project={} error={}", project_id, exc)
+            await self._finish_cursor(project_id=project_id, cursor_value=None, last_error=str(exc))
+            return {
+                "channel": MULTICA_SYNC_CHANNEL,
+                "project_id": project_id,
+                "imported": imported,
+                "skipped": skipped,
+                "cursor": initial,
+                "error": str(exc),
+            }
+        await self._finish_cursor(project_id=project_id, cursor_value=latest, last_error=None)
+        return {
+            "channel": MULTICA_SYNC_CHANNEL,
+            "project_id": project_id,
+            "imported": imported,
+            "skipped": skipped,
+            "cursor": latest,
+        }
+
+    async def converge(self, *, limit_per_project: int = 50, max_projects: int = 20) -> dict[str, int]:
+        """确定性收敛：对已有游标的 Project 继续拉取，并释放超租约的陈旧游标。"""
+        cursors = await self.repo.list_cursors_for_channel(channel=MULTICA_SYNC_CHANNEL)
+        now = utc_now_naive()
+        counts = {"projects": 0, "imported": 0, "skipped": 0, "released": 0, "failed": 0}
+        for cursor in cursors[: int(max_projects)]:
+            if cursor.lease_expires_at is not None and cursor.lease_expires_at <= now:
+                cursor.owner_token = None
+                cursor.lease_expires_at = None
+                counts["released"] += 1
+        await self.db.commit()
+        for cursor in cursors[: int(max_projects)]:
+            actor_uid = await self._project_owner_uid(project_id=cursor.project_id)
+            if actor_uid is None:
+                continue
+            result = await self.pull_multica(
+                project_id=cursor.project_id, actor_uid=actor_uid, limit=int(limit_per_project)
+            )
+            counts["projects"] += 1
+            counts["imported"] += int(result.get("imported", 0))
+            counts["skipped"] += int(result.get("skipped", 0))
+            if result.get("error"):
+                counts["failed"] += 1
+        return counts
+
+    async def _project_owner_uid(self, *, project_id: str) -> str | None:
+        from sqlalchemy import select
+
+        from yuxi.storage.postgres.models_business import Project
+
+        return await self.db.scalar(select(Project.uid).where(Project.id == str(project_id)))
+
+    async def _claim_cursor(self, *, project_id: str):
+        cursor = await self.repo.get_cursor_for_update(channel=MULTICA_SYNC_CHANNEL, project_id=project_id)
+        if cursor is None:
+            cursor = await self.repo.add_cursor(channel=MULTICA_SYNC_CHANNEL, project_id=project_id)
+        now = utc_now_naive()
+        if cursor.lease_expires_at is not None and cursor.lease_expires_at > now:
+            raise DelegationLeaseLostError("渠道同步游标已被其他 owner 持有")
+        cursor.owner_token = uuid.uuid4().hex
+        cursor.lease_expires_at = now + timedelta(seconds=self.lease_seconds)
+        await self.db.commit()
+        await self.db.refresh(cursor)
+        return cursor
+
+    async def _finish_cursor(self, *, project_id: str, cursor_value: str | None, last_error: str | None) -> None:
+        cursor = await self.repo.get_cursor_for_update(channel=MULTICA_SYNC_CHANNEL, project_id=project_id)
+        if cursor is None:
+            return
+        if cursor_value is not None:
+            cursor.cursor_value = cursor_value
+        cursor.last_synced_at = utc_now_naive() if last_error is None else cursor.last_synced_at
+        cursor.last_error = last_error
+        cursor.owner_token = None
+        cursor.lease_expires_at = None
+        await self.db.commit()
+
+    async def get_cursor(self, *, project_id: str) -> dict | None:
+        """读取 Project 的 Multica 同步游标状态。"""
+        cursors = await self.repo.list_cursors_for_channel(channel=MULTICA_SYNC_CHANNEL)
+        for cursor in cursors:
+            if cursor.project_id == str(project_id):
+                return {
+                    "channel": cursor.channel,
+                    "project_id": cursor.project_id,
+                    "cursor": cursor.cursor_value,
+                    "last_synced_at": format_utc_datetime(cursor.last_synced_at),
+                    "last_error": cursor.last_error,
+                }
+        return None
+
+
+async def reconcile_channel_sync() -> dict[str, int]:
+    """确定性收敛 Multica 入向游标；无凭据时不发任何外部请求。"""
+    from yuxi.storage.postgres.manager import pg_manager
+
+    client = build_multica_client_from_env()
+    if client is None:
+        return {"projects": 0, "imported": 0, "skipped": 0, "released": 0, "failed": 0}
+    async with pg_manager.get_async_session_context() as db:
+        return await ChannelSyncService(db, client=client).converge()

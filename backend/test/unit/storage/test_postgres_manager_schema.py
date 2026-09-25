@@ -394,6 +394,48 @@ async def test_yuanlei_v9_to_v10_upgrade_creates_governance_tables_idempotently(
     assert "ck_governance_tasks_review_shape" in statements
 
 
+def test_channel_delegation_schema_owns_state_and_operation_boundaries():
+    """委派域 fresh schema 约束本地状态、执行器与唯一操作标识。"""
+    assert {"channel_delegations", "channel_sync_cursors"}.issubset(BusinessBase.metadata.tables)
+
+    delegations = BusinessBase.metadata.tables["channel_delegations"]
+    assert {
+        "ck_channel_delegations_dispatch_state",
+        "ck_channel_delegations_executor_key",
+    }.issubset({constraint.name for constraint in delegations.constraints})
+    foreign_keys = {constraint.name for constraint in delegations.foreign_key_constraints}
+    assert foreign_keys == {
+        "fk_channel_delegations_project_id",
+        "fk_channel_delegations_initiator_run_id",
+    }
+    assert "uq_channel_delegations_operation_id" in {index.name for index in delegations.indexes}
+    assert "ix_channel_delegations_state_lease" in {index.name for index in delegations.indexes}
+    assert "task" in delegations.c
+    assert "request_json" in delegations.c
+
+    cursors = BusinessBase.metadata.tables["channel_sync_cursors"]
+    assert "ck_channel_sync_cursors_channel" in {constraint.name for constraint in cursors.constraints}
+    assert "fk_channel_sync_cursors_project_id" in {
+        constraint.name for constraint in cursors.foreign_key_constraints
+    }
+    assert "uq_channel_sync_cursors_scope" in {index.name for index in cursors.indexes}
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v10_to_v11_upgrade_creates_channel_tables_idempotently():
+    """委派事实与同步游标表由 yuanlei 域升级收敛，重放不重复建表。"""
+    async with _recording_manager() as (manager, connection):
+        await manager.upgrade_yuanlei_schema_v10_to_v11()
+        await manager.upgrade_yuanlei_schema_v10_to_v11()
+
+    statements = "\n".join(connection.statements)
+    assert "CREATE TABLE IF NOT EXISTS channel_delegations" in statements
+    assert "CREATE TABLE IF NOT EXISTS channel_sync_cursors" in statements
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_delegations_operation_id" in statements
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_sync_cursors_scope" in statements
+    assert "ck_channel_delegations_dispatch_state" in statements
+
+
 @pytest.mark.asyncio
 async def test_ensure_business_schema_cleans_duplicate_active_agent_runs_before_unique_index():
     async with _recording_manager() as (manager, connection):

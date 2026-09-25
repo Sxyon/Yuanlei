@@ -11,6 +11,7 @@ from server.routers.coding_credential_router import admin_coding_credentials, us
 from server.routers.coding_sandbox_router import coding_sandboxes
 from server.routers.coding_session_router import coding_sessions
 from server.routers.dashboard_router import dashboard
+from server.routers.delegation_router import delegations
 from server.routers.external_kb_router import external_kb
 from server.routers.filesystem_router import filesystem_router
 from server.routers.git_router import git
@@ -51,6 +52,7 @@ router.include_router(project_documents)  # /api/projects/{id}/documents* 项目
 router.include_router(project_blueprints)  # /api/projects/{id}/blueprint* 项目蓝图 Workdir 文档
 router.include_router(project_dashboard)  # /api/projects/{id}/dashboard 项目 Dashboard 页面只读视图
 router.include_router(governance)  # /api/projects/{id}/governance* 与 /api/governance/board 治理与督查板
+router.include_router(delegations)  # /api/projects/{id}/delegations* 与 Multica 渠道同步
 router.include_router(git)  # /api/git/* 用户级 Git connection
 router.include_router(scheduled_agents)  # /api/scheduled-tasks* 用户自建 Agent 定时任务
 

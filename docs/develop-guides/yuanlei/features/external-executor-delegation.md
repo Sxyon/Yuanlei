@@ -1,6 +1,6 @@
 # 外部执行器委派与 Multica 桥接
 
-状态：提案，未实现（已过方向评审，按评审意见修订）
+状态：已实现（MVP：委派/查询/回收 + Multica 拉取式入向与标记核对出向）
 类型：新增业务能力
 主要 Owner：backend/package/yuxi/services/delegation_service.py
 
@@ -57,7 +57,8 @@
 
 ## 决策与证据
 
-- Decision：[外部执行器委派抽象与 Multica 桥接](../decisions/proposed/2026-09-25-external-executor-delegation-multica-bridge.md)。
+- Decision：[外部执行器委派抽象与 Multica 桥接](../decisions/implemented/2026-09-25-external-executor-delegation-multica-bridge.md)。
 - 既有可复用事实：[Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)、[项目治理域数据模型](project-governance.md)。
-- Multica 创建/查询/幂等契约依据 `multica` CLI 帮助与 `multica-platform` skill reference 核实，结论写在 Decision 第 5 节。
-- 未实现，验收证据以关联 Decision 的六列矩阵为准；当前结果全部为 `Not run`。
+- Multica 创建/查询/幂等契约依据 `multica` CLI 帮助与 `multica-platform` skill reference 核实，结论写在 Decision 的 Multica 桥接一节。
+- 代码 Owner：`backend/package/yuxi/delegation/`（接口与适配器）、`backend/package/yuxi/services/delegation_service.py`、`backend/package/yuxi/services/channel_sync_service.py`、`backend/package/yuxi/repositories/channel_delegation_repository.py`、`backend/server/routers/delegation_router.py`、`backend/package/yuxi/agents/toolkits/buildin/delegation_tools.py`。
+- 验收证据以关联 Decision 的六列矩阵为准；真实 Multica 实例连通与真实专属沙盒整轮执行仍为 `Not run`。

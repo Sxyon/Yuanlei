@@ -961,6 +961,98 @@ class GovernanceReport(Base):
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
+CHANNEL_DELEGATION_DISPATCH_STATES = ("pending", "dispatched", "collecting", "reclaimed", "failed")
+CHANNEL_DELEGATION_EXECUTORS = ("opencode", "codex", "multica")
+CHANNEL_SYNC_CHANNELS = ("multica",)
+
+
+class ChannelDelegation(Base):
+    """外部执行器委派事实：本地投递/回收状态与远端只读投影分离（yuanlei 域）。
+
+    `dispatch_state` 只由 `DelegationService` 写；`remote_status` 是远端执行的只读
+    投影，远端状态变化不改写本地状态，也不复制为 canonical。结果只引用发起 Run。
+    """
+
+    __tablename__ = "channel_delegations"
+    __table_args__ = (
+        CheckConstraint(
+            "dispatch_state IN ('pending', 'dispatched', 'collecting', 'reclaimed', 'failed')",
+            name="ck_channel_delegations_dispatch_state",
+        ),
+        CheckConstraint(
+            "executor_key IN ('opencode', 'codex', 'multica')",
+            name="ck_channel_delegations_executor_key",
+        ),
+        Index("ix_channel_delegations_project_id", "project_id"),
+        Index("ix_channel_delegations_state_lease", "dispatch_state", "lease_expires_at"),
+        Index("uq_channel_delegations_operation_id", "operation_id", unique=True),
+    )
+
+    id = Column(String(64), primary_key=True, comment="委派行 UUID")
+    operation_id = Column(String(128), nullable=False, comment="元垒侧稳定委派操作标识")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_channel_delegations_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    initiator_run_id = Column(
+        String(64),
+        ForeignKey("agent_runs.id", ondelete="SET NULL", name="fk_channel_delegations_initiator_run_id"),
+        nullable=True,
+        comment="发起委派的 Run，只引用不承载其状态",
+    )
+    executor_key = Column(String(32), nullable=False, comment="opencode/codex/multica")
+    task = Column(Text, nullable=False, comment="委派任务描述（投递意图）")
+    request_json = Column(JSON_VALUE, nullable=False, default=dict, comment="委派意图快照，供崩溃后重投")
+    session_id = Column(String(64), nullable=True, comment="沙盒委派的 coding session id")
+    turn_id = Column(String(64), nullable=True, comment="沙盒委派那一轮的 coding turn id")
+    external_ref = Column(String(191), nullable=True, comment="远端渠道工作项标识")
+    external_url = Column(String(1024), nullable=True, comment="远端渠道工作项链接")
+    dispatch_state = Column(
+        String(16), nullable=False, default="pending", comment="pending/dispatched/collecting/reclaimed/failed"
+    )
+    attempts = Column(Integer, nullable=False, default=0, comment="投递/回收尝试次数")
+    remote_status = Column(String(32), nullable=True, comment="远端执行状态只读投影")
+    remote_status_synced_at = Column(DateTime, nullable=True, comment="远端投影同步时间")
+    result_summary = Column(Text, nullable=True, comment="回收归一化摘要")
+    result_json = Column(JSON_VALUE, nullable=False, default=dict, comment="回收结构化结果")
+    artifact_path = Column(String(512), nullable=True, comment="Workdir 相对产物路径")
+    owner_token = Column(String(128), nullable=True, comment="当前投递/回收租约 owner")
+    lease_expires_at = Column(DateTime, nullable=True, comment="租约到期时间")
+    error_code = Column(String(64), nullable=True, comment="最近结构化错误码")
+    last_error_at = Column(DateTime, nullable=True, comment="最近错误时间")
+    created_by = Column(String(64), nullable=True, comment="发起者 uid")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class ChannelSyncCursor(Base):
+    """入向渠道同步游标：确定性同步服务持有，不依赖 Agent 决定同步（yuanlei 域）。"""
+
+    __tablename__ = "channel_sync_cursors"
+    __table_args__ = (
+        CheckConstraint("channel IN ('multica')", name="ck_channel_sync_cursors_channel"),
+        Index("uq_channel_sync_cursors_scope", "channel", "project_id", unique=True),
+    )
+
+    id = Column(String(64), primary_key=True, comment="游标行 UUID")
+    channel = Column(String(32), nullable=False, comment="multica")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_channel_sync_cursors_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    cursor_value = Column(String(512), nullable=True, comment="上次成功同步位置")
+    last_synced_at = Column(DateTime, nullable=True, comment="上次成功同步时间")
+    owner_token = Column(String(128), nullable=True, comment="当前同步租约 owner")
+    lease_expires_at = Column(DateTime, nullable=True, comment="租约到期时间")
+    last_error = Column(Text, nullable=True, comment="最近同步失败原因")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
 class CodingCredential(Base):
     """编码执行器（opencode/codex）的用户级或全局凭据（yuanlei 域）。"""
 
