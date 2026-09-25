@@ -7,6 +7,7 @@ import { createServer } from 'vite'
 
 import {
   describeBoardError,
+  governanceStatusColor,
   governanceStatusLabel,
   runStatusEntries,
   runStatusLabel,
@@ -15,6 +16,13 @@ import {
 
 function readSource(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8')
+}
+
+const STATUS_LITERAL_BRANCH =
+  /===\s*['"](?:proposed|canonical|rejected|implemented|failed|interrupted)['"]/
+
+function containsStatusLiteralBranch(source) {
+  return STATUS_LITERAL_BRANCH.test(source)
 }
 
 const storageValues = new Map()
@@ -54,6 +62,14 @@ test('状态与来源文案对未知值回退为原始值', () => {
   assert.equal(runStatusLabel('mystery'), 'mystery')
   assert.equal(governanceStatusLabel('mystery'), 'mystery')
   assert.equal(sourceChannelLabel('mystery'), 'mystery')
+})
+
+test('治理状态配色只按状态串查表，未知状态回退待定色', () => {
+  assert.equal(governanceStatusColor('proposed'), 'gold')
+  assert.equal(governanceStatusColor('canonical'), 'green')
+  assert.equal(governanceStatusColor('implemented'), 'green')
+  assert.equal(governanceStatusColor('rejected'), 'red')
+  assert.equal(governanceStatusColor('mystery'), 'gold')
 })
 
 test('describeBoardError 提取后端可展示文案并回退', () => {
@@ -108,9 +124,8 @@ test('展示面只消费读视图给出的 pending/blocked 字段，前端不自
   assert.match(panelSource, /pending_tasks/)
   assert.match(panelSource, /pending_decisions/)
   assert.match(panelSource, /blocked_runs/)
-  assert.equal(panelSource.includes("=== 'proposed'"), false)
-  assert.equal(panelSource.includes("=== 'failed'"), false)
-  assert.equal(panelSource.includes("=== 'interrupted'"), false)
+  assert.equal(containsStatusLiteralBranch(panelSource), false)
+  assert.match(panelSource, /governanceStatusColor\(item\.status\)/)
 
   assert.match(crossViewSource, /governanceBoardApi\.getCrossProjectBoard\(\)/)
   assert.match(projectViewSource, /governanceBoardApi\.getProjectBoard\(projectId\.value\)/)
@@ -120,4 +135,19 @@ test('展示面只消费读视图给出的 pending/blocked 字段，前端不自
   assert.match(routerSource, /path: '\/projects\/:project_id\/inspection'/)
   assert.match(layoutSource, /name: '督查板'/)
   assert.match(layoutSource, /path: '\/inspection'/)
+})
+
+test('状态字面量分支 guard：真实面板通过，恢复状态判断后失败（负向）', () => {
+  const panelSource = readSource('../../src/components/inspection/GovernanceBoardPanel.vue')
+  assert.equal(containsStatusLiteralBranch(panelSource), false)
+
+  const restoredDefect = [
+    'const governanceTagColor = (status) => {',
+    "  if (status === 'rejected') return 'red'",
+    "  if (status === 'canonical' || status === 'implemented') return 'green'",
+    "  return 'gold'",
+    '}'
+  ].join('\n')
+  const defectivePanel = panelSource.replace('<script setup>', `<script setup>\n${restoredDefect}`)
+  assert.equal(containsStatusLiteralBranch(defectivePanel), true)
 })

@@ -23,7 +23,7 @@
             <li v-for="item in group.items" :key="item.id" class="board-list-item">
               <div class="board-item-main">
                 <span class="board-item-title">{{ item.title }}</span>
-                <a-tag :color="governanceTagColor(item.status)">
+                <a-tag :color="governanceStatusColor(item.status)">
                   {{ governanceStatusLabel(item.status) }}
                 </a-tag>
               </div>
@@ -72,6 +72,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
+  governanceStatusColor,
   governanceStatusLabel,
   runStatusEntries,
   runStatusLabel,
@@ -99,12 +100,6 @@ const pendingGroups = computed(() => [
 ])
 
 const itemNote = (item) => item.summary || item.description || item.conclusion || ''
-
-const governanceTagColor = (status) => {
-  if (status === 'rejected') return 'red'
-  if (status === 'canonical' || status === 'implemented') return 'green'
-  return 'gold'
-}
 </script>
 
 <style scoped lang="less">

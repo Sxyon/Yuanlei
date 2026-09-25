@@ -25,4 +25,4 @@
 - [项目自定义 Dashboard](project-dashboard.md)：已实现静态 Dashboard v0；含文档与页面 revision、受控 writer、Agent 读写工具和无脚本页面壳。
 - [项目治理域数据模型](project-governance.md)：已实现；议题/决策/任务/汇报四类结构化事实与多渠道来源归一化、proposed→审核→canonical 生命周期。
 - [项目蓝图 Workdir 事实源](project-blueprint.md)：已实现；项目蓝图固定在 Workdir `.yuanlei/blueprint/` 目录，可读写、可 diff，Agent 起草、人可编辑。
-- [项目督查板](project-inspection-board.md)：已实现；只读聚合治理事实与 Run 执行事实，Agent 写汇报/开议题，提供跨项目 board 读接口；前端页面待补。
+- [项目督查板](project-inspection-board.md)：已实现；只读聚合治理事实与 Run 执行事实，Agent 写汇报/开议题，提供跨项目 board 读接口与跨项目/单项目只读展示面。

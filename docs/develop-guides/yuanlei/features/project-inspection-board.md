@@ -59,4 +59,4 @@
 - Agent 工具单测：`backend/test/unit/toolkits/test_governance_tools.py`。
 - HTTP 适配：`backend/server/routers/governance_router.py`。
 - 展示面单测：`web/test/unit/governanceBoard.test.js`（API 端点、文案回退与「只消费读视图字段」源码 guard）。
-- 展示面真实渲染证据：`/inspection` 与 `/projects/project-alpha/inspection` 的 Vue 页面回读 DOM 与 summary。
+- 展示面渲染证据：`web/test/unit/governanceBoard.test.js` 的源码 guard、文案/配色查表单测与 `vite build`；真实浏览器 DOM 未在仓库内验证（无 headless harness）。

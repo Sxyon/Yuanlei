@@ -25,6 +25,13 @@ export const GOVERNANCE_STATUS_LABELS = {
   implemented: '已实施'
 }
 
+export const GOVERNANCE_STATUS_COLORS = {
+  proposed: 'gold',
+  canonical: 'green',
+  rejected: 'red',
+  implemented: 'green'
+}
+
 export const SOURCE_CHANNEL_LABELS = {
   project: '项目内',
   multica: 'Multica',
@@ -40,6 +47,11 @@ export function runStatusLabel(status) {
 /** 展示治理状态中文文案，未知状态回退为原始值。 */
 export function governanceStatusLabel(status) {
   return GOVERNANCE_STATUS_LABELS[status] || status
+}
+
+/** 展示治理状态配色，只按后端状态串查表，未知状态回退为待定色。 */
+export function governanceStatusColor(status) {
+  return GOVERNANCE_STATUS_COLORS[status] || 'gold'
 }
 
 /** 展示来源渠道文案，未知渠道回退为原始值。 */
