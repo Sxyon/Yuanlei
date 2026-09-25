@@ -412,3 +412,33 @@ async def test_multica_inbound_sync_full_duplicate_page_advances_cursor() -> Non
             second = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
             assert second["imported"] == 0
             assert second["skipped"] == 0
+
+
+async def test_multica_inbound_sync_holds_cursor_when_page_cap_hit(monkeypatch) -> None:
+    """触顶分页上限时保持原游标，不把游标推进到已取回页而静默跳过未取回项。"""
+    async with _scoped_database("pytest_channel_sync_cap") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            client = _FakeMulticaClient()
+            for index in range(3):
+                await client.create_issue(title=f"远端议题{index}", description="来自 Multica")
+            monkeypatch.setattr("yuxi.services.channel_sync_service.MULTICA_SYNC_MAX_PAGES", 1)
+            service = ChannelSyncService(db, client=client)
+
+            # 待取回 3 项、单页 limit 2、页上限 1：满页触顶，本轮只导入一页。
+            result = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
+            assert result["imported"] == 2
+            assert result["skipped"] == 0
+            # 未确认整批取回 → 游标保持原值（未初始化仍为空），不前进到该页最大 updated_at。
+            assert result["cursor"] is None
+            assert "error" not in result
+            assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 2
+
+            cursor = await service.get_cursor(project_id="project-owner")
+            assert cursor is not None and cursor["cursor"] is None
+
+            # 游标未推进 → 下一轮重取同页（此处命中 409 去重），证明未静默跳过未取回项。
+            follow_up = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
+            assert follow_up["imported"] == 0
+            assert follow_up["skipped"] == 2
+            assert follow_up["cursor"] is None

@@ -82,12 +82,13 @@ MVP 入向与出向都用轮询，复用既有 worker 收敛循环与显式入�
 - 收敛重投 `pending` 时，沙盒场景在「会话已提交、本地行未更新」的窄窗口内可能重复建会话；Multica 场景由标记核对避免重复工作项。
 - 外部执行副作用不可回滚；委派描述写一次，结果与副作用在终端事件中显式提示核对。
 - 渠道 token 仍属敏感值：只经环境注入，明文不进 DB/API/日志/事件；响应与日志不落未脱敏凭据。
+- 入向积压边界：当某 Project 待取回项 ≥ `MULTICA_SYNC_MAX_PAGES * limit`（默认 10×50=500）且每页始终满页时，永远见不到短页 → `consumed` 恒为 false → 游标不推进，每轮重复处理同一批（有告警、不丢数据、不静默，但无法前进）。这是「触顶保原游标」取舍的已知后果：需提高页上限、调大 `limit` 或缩小 Project 积压才能前进，不能靠重放自愈。
 
 ## 验证
 
 实际执行（容器内以本 worktree 代码 + 运行中 PostgreSQL）：
 
-- `pytest test/integration/services/test_delegation_service.py` → 9 passed（统一接口委派、未注册执行器结构化失败、operation_id search-before-create 采纳响应丢失、本地状态与远端投影分离、Workdir 物化边界、崩溃收敛、入向只产生 proposed 与游标去重、待取回项超过 limit 时有界分页取回、整页重复仍推进游标）。
+- `pytest test/integration/services/test_delegation_service.py` → 9 passed（9 个用例：统一接口委派与未注册执行器结构化失败、operation_id search-before-create 采纳响应丢失、本地状态与远端投影分离、Workdir 物化边界、崩溃收敛、入向只产生 proposed 与游标去重、待取回项超过 limit 时有界分页取回、整页重复仍推进游标、触顶分页上限保持原游标）。
 - `pytest test/integration/api/test_delegation_router.py` → 3 passed（未认证 401 由 `get_required_user` 拒绝、未知或不可见 Project 404、无 Multica 凭据 503 `channel_unavailable`）。
 - `pytest test/unit/delegation` → 11 passed（新增子智能体委派工具 fail-closed：结构化拒绝且不访问 DB、不调用执行器）；`pytest test/unit/storage test/unit/services/test_storage_migration.py` → 通过（含 v10→v11 幂等与升级顺序）。
 - `pytest test/unit/services/test_run_worker.py` → 通过（`_worker_startup` 断言 `reconcile_delegations()` 与 `reconcile_channel_sync()` 各执行一次；移除调用时该用例失败）。
@@ -105,7 +106,7 @@ MVP 入向与出向都用轮询，复用既有 worker 收敛循环与显式入�
 | 同一 `operation_id` 重复投递不产生第二个远端工作项（含响应丢失核对） | 重复创建或永久卡在未知态 | `DelegationService` + `MulticaExecutor` | `test_multica_search_before_create_adopts_lost_response`、`test_multica_executor.py` | 标记不匹配时不静默采纳 | Passed |
 | 本地 `dispatch_state` 与远端 `remote_status` 投影分离 | 远端状态改写本地状态或成为第二事实源 | `DelegationService` + `channel_delegations` | `test_local_state_and_remote_projection_stay_separate` | 远端状态变化不写 `dispatch_state`，不新增 `agent_runs` | Passed |
 | 委派结果只引用发起 Run，产物物化在 Workdir 边界内 | 伪造新 Run 或越界写文件 | `DelegationService` + `Workdir` | `test_collect_materializes_inside_workdir_boundary` | 越界路径被 `_require_within` 拒绝 | Passed |
-| 入向游标、去重与重试由确定性同步服务持有，且不静默跳过未取回项 | 依赖 Agent 自行决定同步/重复导入/满页推进游标跳过 | `ChannelSyncService` + `channel_sync_cursors` | `test_multica_inbound_sync_pages_past_limit_without_cursor_skip`、`test_multica_inbound_sync_full_duplicate_page_advances_cursor`；`reconcile_channel_sync` 注册进 worker | 待取回项超过 limit 时不被游标跳过；整页重复仍推进游标；租约被占时拒绝 | Passed |
+| 入向游标、去重与重试由确定性同步服务持有，且不静默跳过未取回项 | 依赖 Agent 自行决定同步/重复导入/满页推进游标跳过 | `ChannelSyncService` + `channel_sync_cursors` | `test_multica_inbound_sync_pages_past_limit_without_cursor_skip`、`test_multica_inbound_sync_full_duplicate_page_advances_cursor`、`test_multica_inbound_sync_holds_cursor_when_page_cap_hit`；`reconcile_channel_sync` 注册进 worker | 待取回项超过 limit 时不被游标跳过；整页重复仍推进游标；触顶分页上限保原游标不静默跳过；租约被占时拒绝 | Passed |
 | 缺失 Multica 凭据时适配器禁用且元垒其余能力独立可用 | 整链不可用或缺配置伪装成功 | `build_multica_client_from_env` + 适配器注册表 + `delegation_router.py` | `test_multica_executor.py::test_build_multica_client_from_env_fails_closed_without_credentials`、`test_delegation_router.py::test_multica_channel_routes_fail_closed_without_credentials` | 无凭据时不注册、不发外部请求，渠道入口 503 `channel_unavailable` | Passed |
 | 非终态委派有 owner/lease，崩溃后可观察收敛，且 worker 启动即收敛一次 | 委派永久 running 或停机期间委派/渠道失联不可恢复 | `DelegationService` + `reconcile_delegations` + `_worker_startup` | `test_converge_resets_interrupted_collecting_row`、`test_run_worker.py::test_worker_startup_ensures_builtin_mcp_servers_and_runs_convergence` | 超租约行复位且释放 owner；移除启动调用该用例失败 | Passed |
 | 委派 HTTP 入口最终授权在 `get_required_user`，Project 可见性在 repository 查询执行 | 未认证放行或跨用户读取他人 Project 委派 | `delegation_router.py` + `ProjectRepository.get_active_selectable_for_user` | `test_delegation_router.py::test_delegation_routes_require_authentication`、`test_delegation_routes_reject_unknown_or_invisible_project` | 未认证 401；未知或不可见 Project 404 | Passed |
