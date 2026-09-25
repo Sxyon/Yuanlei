@@ -415,7 +415,12 @@ async def test_multica_inbound_sync_full_duplicate_page_advances_cursor() -> Non
 
 
 async def test_multica_inbound_sync_holds_cursor_when_page_cap_hit(monkeypatch) -> None:
-    """触顶分页上限时保持原游标，不把游标推进到已取回页而静默跳过未取回项。"""
+    """触顶分页上限时保持原游标并显式告警，不把游标推进到已取回页而静默跳过未取回项。"""
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "yuxi.services.channel_sync_service.logger.warning",
+        lambda message, *args: warnings.append(message.format(*args)),
+    )
     async with _scoped_database("pytest_channel_sync_cap") as (manager, sessions):
         await _seed_scope(manager.async_engine)
         async with sessions() as db:
@@ -432,6 +437,7 @@ async def test_multica_inbound_sync_holds_cursor_when_page_cap_hit(monkeypatch) 
             # 未确认整批取回 → 游标保持原值（未初始化仍为空），不前进到该页最大 updated_at。
             assert result["cursor"] is None
             assert "error" not in result
+            assert any("hit page cap" in message for message in warnings)
             assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 2
 
             cursor = await service.get_cursor(project_id="project-owner")
