@@ -5,6 +5,7 @@ import { GithubOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import {
   BarChart3,
+  ClipboardCheck,
   ClipboardList,
   LibraryBig,
   Box,
@@ -192,6 +193,13 @@ const mainList = computed(() => {
     activePaths: ['/extensions'],
     icon: LibraryBig,
     activeIcon: LibraryBig
+  })
+
+  items.push({
+    name: '督查板',
+    path: '/inspection',
+    icon: ClipboardCheck,
+    activeIcon: ClipboardCheck
   })
 
   if (userStore.isSuperAdmin) {

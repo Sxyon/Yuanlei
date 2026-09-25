@@ -8,7 +8,7 @@ Owner：backend/package/yuxi/services/inspection_board_service.py
 
 ## 问题
 
-督查与汇报需要一条「定时任务驱动项目数字员工，只读汇聚执行面事实并产出汇报，在 Dashboard/Taskboard 展示」的通道。Step 1 已有治理四表，Step 2 已有蓝图与决策生命周期，但缺少三样东西：把治理事实与上游 Run 事实聚合成一个读视图的用例；让项目数字员工只读汇总并写入汇报、打开议题的 Agent 工具；以及把事实暴露给 Dashboard/Taskboard 的读接口。若为展示另建镜像表、或让汇报复制/回写 Run 终态，就会出现第二个状态 Owner 与镜像漂移。上游 Yuxi 拥有 AgentRun、队列与用户自建定时任务，但没有任何督查聚合读模型。
+督查与汇报需要一条「定时任务驱动项目数字员工，只读汇聚执行面事实并产出汇报，在 Dashboard/Taskboard 展示」的通道。Step 1 已有治理四表，Step 2 已有蓝图与决策生命周期，但缺少四样东西：把治理事实与上游 Run 事实聚合成一个读视图的用例；让项目数字员工只读汇总并写入汇报、打开议题的 Agent 工具；把事实暴露给 Dashboard/Taskboard 的读接口；以及把读视图真实呈现给人的受信任 Vue 展示面。若为展示另建镜像表、或让汇报复制/回写 Run 终态，就会出现第二个状态 Owner 与镜像漂移。上游 Yuxi 拥有 AgentRun、队列与用户自建定时任务，但没有任何督查聚合读模型。
 
 ## 决策
 
@@ -18,6 +18,8 @@ Owner：backend/package/yuxi/services/inspection_board_service.py
 - 持久化读查询 `backend/package/yuxi/repositories/inspection_board_repository.py`：按 Project（经 `conversations.project_id` 归属）读取最近 Run、阻塞 Run 与状态计数。
 - Agent 工具 `backend/package/yuxi/agents/toolkits/buildin/governance_tools.py`：`governance_board_read`（只读聚合）、`governance_report_write`（写 `governance_reports`，`source_run_id` 绑定当前 Run，`artifact_path` 引用产物）、`governance_topic_open`（写 proposed 项目内议题）。工具在带 Project 的运行中经 `resolve_project_run_scope` 重建 Run→Conversation→Project 授权并校验 lease，子智能体拒绝。
 - HTTP 接口 `backend/server/routers/governance_router.py`：`GET /projects/{id}/governance/board`、`GET /governance/board`（跨项目）、`POST /projects/{id}/governance/topics`、`.../topics/{topic_id}/review`、`.../tasks/{task_id}/review`、`.../reports`。
+- 展示面 `web/src/views/InspectionBoardView.vue`（跨项目，路由 `/inspection`）与 `web/src/views/ProjectInspectionBoardView.vue`（单项目，路由 `/projects/:project_id/inspection`），共用 `web/src/components/inspection/GovernanceBoardPanel.vue`。它们只消费 `GET /governance/board` 与 `GET /projects/{id}/governance/board` 的读视图，渲染 open 议题/任务/决策、待决策队列与阻塞项；前端只做文案本地化，不自行判断 Run/治理状态、不写任何状态。跨项目入口挂在侧边栏 `/inspection`，不复用项目自定义 Dashboard 的静态 iframe。
+- 展示面权限由后端执行：board 接口依赖 `get_required_user`；单项目 board 经 `get_active_selectable_for_user` 对不可见项目 404；跨项目 board 只覆盖当前用户 selectable Project。前端路由 `requiresAuth` 只提供体验约束。
 - 秘书数字员工复用现有 ProjectAgent，不引入角色抽象；定时触发链路是上游 `ScheduledAgentJob`，本步不新建调度器。
 - 无 schema 迁移，`YUANLEI_SCHEMA_VERSION` 保持 10。
 
@@ -27,6 +29,7 @@ Owner：backend/package/yuxi/services/inspection_board_service.py
 - 让秘书工具或汇报直接改 Run 状态：拒绝。执行终态由上游拥有，汇报只引用产出 Run。
 - 在 Agent 工具内重复实现聚合查询：拒绝。读模型归 service，持久化查询归 repository。
 - 新建「秘书/参谋/执行」角色抽象：拒绝。沿用 2026-09-24 六项决策，ProjectAgent 已能表达。
+- 复用项目自定义 Dashboard 的静态 iframe 承载督查板：拒绝。该 iframe 无脚本、无 bridge、不注入项目数据，无法承载结构化、只读的实时督查事实。
 - 前端自行读取 Run 明细并判断状态：拒绝。前端只消费 board 读视图，避免状态判断分叉。
 
 ## 后果
@@ -35,7 +38,7 @@ Owner：backend/package/yuxi/services/inspection_board_service.py
 - 汇报写入永不触碰 `agent_runs`，生产 Run 的终态由上游链路维护。
 - 跨项目 `blockers` 计数来自状态计数；`blocked_runs` 明细按项目有界（各取最近 10 条），最近 Run 明细各取 20 条。
 - 治理 Agent 工具默认对所有项目数字员工按工具配置可见，子智能体禁用。
-- 前端 Vue Taskboard 页面不在本记录范围；本步交付其数据面（board 接口）。
+- 跨项目入口 `/inspection` 与单项目 `/projects/:id/inspection` 均为只读视图，可见性与读取授权在服务端执行；前端不持有可写的治理或 Run 状态。
 
 ## 验证
 
@@ -46,3 +49,5 @@ Owner：backend/package/yuxi/services/inspection_board_service.py
 | 汇报只引用产出 Run，不终结或改写 Run 终态 | 汇报成为第二 Run 状态源 | `governance_reports` + `create_governance_report` | `test/integration/services/test_inspection_board_service.py::test_report_write_references_run_without_changing_run_status` | 写汇报后回读 Run 仍为 `running` | Passed |
 | 不可见/未知 Project 不泄漏事实 | 跨用户读取他人督查板 | Project 可见性查询 | `test/integration/services/test_inspection_board_service.py::test_board_rejects_invisible_or_unknown_project` | 未知 Project 404 | Passed |
 | 治理 Agent 工具注册、元数据与越权收敛 | runtime 泄漏进 schema 或子智能体调用 | `governance_tools.py` + `resolve_project_run_scope` | `test/unit/toolkits/test_governance_tools.py` | 子智能体返回 `invalid_request` | Passed |
+| 展示面只消费 board 读视图，不自行判断 Run/治理状态 | 前端状态判断分叉成第二事实源 | `InspectionBoardView.vue` / `ProjectInspectionBoardView.vue` / `GovernanceBoardPanel.vue` | `web/test/unit/governanceBoard.test.js`；真实页面回读 DOM | 源码 guard 禁止 `=== 'proposed'`、`=== 'failed'`、`=== 'interrupted'`；面板列表逐项等于读视图返回 | Passed |
+| Dashboard/Taskboard 展示与唯一事实源一致 | 展示面与来源漂移 | board 读视图 + 展示面 | 真实浏览器渲染 `/inspection` 与 `/projects/project-alpha/inspection`，回读 DOM 与 summary | summary 计数与各项目 open 议题/任务/决策、阻塞项一致，无页面错误 | Passed（真实 Vue 渲染 + mock 读视图） |

@@ -19,6 +19,7 @@ export * from './user_config_api' // 用户配置 API
 export * from './auth_api' // 认证与用户管理 API
 export * from './project_api' // Project API
 export * from './project_agent_api' // 项目数字员工 API
+export * from './governance_board_api' // 督查板只读读视图 API
 export * from './scheduled_agent_api' // 用户 Agent 定时任务 API
 export * from './workspace_api' // Workspace API
 
