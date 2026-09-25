@@ -46,6 +46,7 @@ def build_prompt_with_context(context):
 当前 Project Workdir 为 {workdir_path}，也是默认工作目录：
 - {workdir_path}/uploads/：用户上传文件的建议目录；Agent 可以覆盖，但非必要不修改原文件
 - {workdir_path}/outputs/：最终交付物的建议目录，不是强制授权边界
+- {workdir_path}/.yuanlei/blueprint/：项目蓝图与方案文档的固定目录，用 `.md` 文件名，参谋起草、用户可编辑
 - /home/gem/user-data/：当前用户的整个 UserWorkspace；可以读取其他 Project 目录作为参考
 - /home/gem/skills/：当前用户已授权共享/内置 Skill 的只读目录
 - /home/gem/user-data/agents/skills/：当前用户的个人 Skill 目录
