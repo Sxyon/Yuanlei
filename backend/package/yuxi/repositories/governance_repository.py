@@ -196,6 +196,15 @@ class GovernanceRepository:
         """按 id 读取决策。"""
         return await self.db.scalar(select(GovernanceDecision).where(GovernanceDecision.id == str(decision_id)))
 
+    async def list_decisions(self, *, project_id: str) -> list[GovernanceDecision]:
+        """按创建时间读取项目内决策。"""
+        result = await self.db.scalars(
+            select(GovernanceDecision)
+            .where(GovernanceDecision.project_id == str(project_id))
+            .order_by(GovernanceDecision.created_at, GovernanceDecision.id)
+        )
+        return list(result)
+
     async def add_report(
         self,
         *,

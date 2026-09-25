@@ -433,3 +433,15 @@ async def list_governance_reports(
     project = await _require_project(project_id=project_id, db=db, user=user)
     rows = await GovernanceRepository(db).list_reports(project_id=project.id)
     return [_serialize_report(row) for row in rows]
+
+
+async def list_governance_decisions(
+    *,
+    project_id: str,
+    db: AsyncSession,
+    user: User,
+) -> list[dict[str, Any]]:
+    """读取当前用户项目下的决策列表。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    rows = await GovernanceRepository(db).list_decisions(project_id=project.id)
+    return [_serialize_decision(row) for row in rows]

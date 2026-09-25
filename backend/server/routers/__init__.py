@@ -14,6 +14,7 @@ from server.routers.dashboard_router import dashboard
 from server.routers.external_kb_router import external_kb
 from server.routers.filesystem_router import filesystem_router
 from server.routers.git_router import git
+from server.routers.governance_router import governance
 from server.routers.graph_router import graph
 from server.routers.knowledge_dashboard_router import knowledge_dashboard
 from server.routers.knowledge_eval_router import evaluation
@@ -49,6 +50,7 @@ router.include_router(project_agents)  # /api/projects/{id}/agents* 项目数字
 router.include_router(project_documents)  # /api/projects/{id}/documents* 项目命名 JSON 文档
 router.include_router(project_blueprints)  # /api/projects/{id}/blueprint* 项目蓝图 Workdir 文档
 router.include_router(project_dashboard)  # /api/projects/{id}/dashboard 项目 Dashboard 页面只读视图
+router.include_router(governance)  # /api/projects/{id}/governance* 与 /api/governance/board 治理与督查板
 router.include_router(git)  # /api/git/* 用户级 Git connection
 router.include_router(scheduled_agents)  # /api/scheduled-tasks* 用户自建 Agent 定时任务
 
