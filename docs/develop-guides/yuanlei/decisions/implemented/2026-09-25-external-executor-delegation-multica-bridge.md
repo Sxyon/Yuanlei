@@ -47,12 +47,13 @@ MVP 只覆盖委派、查询、回收，不定义 `cancel` / `resume` / `streami
 - 结果只绑定 `initiator_run_id`，不产生新的 `agent_runs`。
 - Workdir 物化：远端文本结果写入 Project Workdir 下 `.yuanlei/delegations/<operation_id>/result.md`，经 `Workdir.create_directory` / `replace_file` 与 `_require_within` 校验边界；`artifact_service.py` 不新增物化写用例，外部文件只存 URL 引用。
 - 新增 `channel_sync_cursors`，按（`channel`, `project_id`）记录同步进度、`owner_token` 与租约；迁移仅进 `yuanlei` 域，幂等升级链挂接，不触碰上游 `business` / `knowledge` 域。
+- 同步完成时持锁重读游标，核对当前 `owner_token` 与未过期租约后才更新；旧执行者租约失效后不能覆盖新游标或清除新 owner。worker 清理超期租约时也持锁复核。
 
 ### Multica 桥接
 
 - 契约（2026-09-25 核实 `multica` CLI 与平台 reference；2026-09-26 对真实实例探测）：创建 `POST /api/issues` 没有调用方幂等键、没有按外部引用 upsert；查询有 `issue get` / `list` / `search`；状态枚举 `backlog` / `todo` / `in_progress` / `in_review` / `blocked` / `done` / `cancelled`。issues 端点强制 workspace 作用域，缺失即 400 `{"error":"workspace_id or workspace_slug is required"}`，`project_id` 不能替代；GET 的列出/查询/详情入口以查询参数附带 `workspace_id`，真实实例复验通过（选 `id` 而非 `slug`：稳定且与既有 `project_id` 同为 id，避免引入可变键；两键不并存）。`POST /api/issues` 的作用域也在查询参数：真实实例上请求体带 `workspace_id` 返回 400（结构化 `multica_request_failed`，不创建工作项），查询参数带 `workspace_id` 返回 2xx 并真实建单——2026-09-26 一次受控写实测以查询参数创建 YL-22 后立即 `cancel` 回收并回读终态为 `cancelled`。`create_issue` 据此把 `workspace_id` 经查询参数附带，请求体只放 `title` / `description`；`project_ref` 存在时仍在请求体，其在 POST 上的 wire 位置未验证。列表端点实测接受 `sort=updated_at&direction=desc`（`sort` 不在 CLI 文档枚举内，依据真实实例探测采用），并实测静默忽略 `updated_after`、默认按可变 `position` 排序（`updated_at` 非单调），故增量不能依赖服务端 `updated_after` 与默认次序。幂等只能由元垒侧 `operation_id` + 标记核对实现。
 - 出向：`MulticaExecutor.dispatch` 先在描述内嵌稳定标记 `Yuanlei-Delegation-Operation: <operation_id>`，重投时先按标记 `search` 精确核对，命中则采纳已有工作项（写回 `external_ref`），未命中才创建，保证同一操作不产生第二个远端工作项。`status` / `collect` 轮询读取远端并将状态写入 `remote_status` 投影，不修改远端状态、不回写 canonical。
-- 入向：`ChannelSyncService.pull_multica` 在游标租约内按 `sort=updated_at&direction=desc` 分页拉取 Multica 议题，归一为 `proposed` 治理行（`source_channel="multica"`、外部标识、原文链接），重复由既有 partial unique 拒绝（409 跳过），成功后推进游标。游标是稳定组合键 `(updated_at, id)`：两个字段归一为固定 UTC 微秒格式后 JSON 编码，`updated_at` 先于 `id` 比较；历史裸 `updated_at` 值按 `(updated_at, "")` 兼容读取，解析失败即 fail-closed（保持原值、记 error、不发请求）。增量由客户端按组合键过滤：`updated_at < 游标` 即停止翻页；`updated_at == 游标` 的边界秒内项全部纳入并靠 `source_external_id` 去重——服务端并列次序不可依赖，若按 id 严格过滤会漏掉同一 `updated_at` 下更小的 id。只有整个结果集取回后才推进游标；触顶 `MULTICA_SYNC_MAX_PAGES` 或中途异常时保持原游标并显式告警，不静默跳过未取回项。导入入口只调用治理创建用例，不暴露审核或状态写入参数，不开公网 webhook。
+- 入向：`ChannelSyncService.pull_multica` 在游标租约内按 `sort=updated_at&direction=desc` 分页拉取 Multica 议题，归一为 `proposed` 治理行（`source_channel="multica"`、外部标识、原文链接），重复由既有 partial unique 拒绝（409 跳过），成功后推进游标。游标是稳定组合键 `(updated_at, id)`：两个字段归一为固定 UTC 微秒格式后 JSON 编码，`updated_at` 先于 `id` 比较；历史裸 `updated_at` 值按 `(updated_at, "")` 兼容读取，解析失败即 fail-closed（保持原值、记 error、不发请求）。增量由客户端按组合键过滤：`updated_at < 游标` 即停止翻页；`updated_at == 游标` 的边界秒内项全部纳入并靠 `source_external_id` 去重——服务端并列次序不可依赖，若按 id 严格过滤会漏掉同一 `updated_at` 下更小的 id。只有整个结果集取回后才推进游标；触顶 `MULTICA_SYNC_MAX_PAGES` 或中途异常时保持原游标、返回并持久化错误，不静默跳过未取回项。导入入口只调用治理创建用例，不暴露审核或状态写入参数，不开公网 webhook。
 - 驱动：`reconcile_channel_sync` 与 `reconcile_delegations` 注册进 worker 周期收敛循环并启动时执行一次；另提供显式 HTTP 同步入口，不依赖 Agent 自行决定同步。
 - 凭据：MVP 通过实例级全局环境配置（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN` / `YUANLEI_MULTICA_WORKSPACE_ID` 必填，`YUANLEI_MULTICA_PROJECT_ID` 可选，端点、认证头与 workspace 作用域收敛在 `HttpMulticaClient`）装配；任一必填缺失时 `build_multica_client_from_env` 不装配、`MulticaExecutor` 不注册，向 `multica` 委派返回结构化 `executor_unavailable`，渠道同步与游标入口返回结构化 `channel_unavailable`，且不发任何外部请求，元垒其余能力独立可用。粒度升级到按 Project 的凭据（依据 `channel_delegations.project_id` 与 `channel_sync_cursors(channel, project_id)`，非按用户）与 DB 级加密渠道凭据表留待后续 decision，不在本 MVP 引入。
 
@@ -77,20 +78,21 @@ MVP 入向与出向都用轮询，复用既有 worker 收敛循环与显式入�
 
 ## 后果
 
-- Multica HTTP 契约的认证头、分页与元数据形状未对照真实实例固化，传输细节收敛在 `HttpMulticaClient`；核实前不把细节散落到编排层。契约测试覆盖适配器与假客户端，真实实例连通性未验证。
+- Multica HTTP 的 workspace 作用域、只读列表与排序已由真实实例探测；出向创建的查询参数位置经受控写确认。修正后的客户端尚未完成真实实例整轮出向委派与回收验证，传输细节仍收敛在 `HttpMulticaClient`。
 - search-before-create 存在核对窗口：`issue search` 可能命中同名字段，标记包含唯一 `operation_id` 且只采纳精确匹配；租约保证同委派单写者。
 - 收敛重投 `pending` 时，沙盒场景在「会话已提交、本地行未更新」的窄窗口内可能重复建会话；Multica 场景由标记核对避免重复工作项。
 - 外部执行副作用不可回滚；委派描述写一次，结果与副作用在终端事件中显式提示核对。
 - 渠道 token 仍属敏感值：只经环境注入，明文不进 DB/API/日志/事件；响应与日志不落未脱敏凭据。
-- 入向积压边界：当某 Project 待取回项 ≥ `MULTICA_SYNC_MAX_PAGES * limit`（默认 10×50=500）且每页始终满页时，永远见不到短页 → `consumed` 恒为 false → 游标不推进，每轮重复处理同一批（有告警、不丢数据、不静默，但无法前进）。这是「触顶保原游标」取舍的已知后果：需提高页上限、调大 `limit` 或缩小 Project 积压才能前进，不能靠重放自愈。
+- 入向积压边界：当某 Project 待取回项 ≥ `MULTICA_SYNC_MAX_PAGES * limit`（默认 10×50=500）且每页始终满页时，永远见不到短页 → `consumed` 恒为 false → 游标不推进，每轮重复处理同一批（返回并持久化错误；静态列表不会跳过未取回项，但无法前进）。这是「触顶保原游标」取舍的已知后果：需提高页上限、调大 `limit` 或缩小 Project 积压才能前进，不能靠重放自愈。
 - 游标边界秒：远端 `updated_at` 为秒级，同一秒内多个议题的并列次序由服务端可变 `position` 决定，元垒不能依赖。组合游标只按时间戳分界，边界秒内项目每轮重扫并由 `source_external_id` 去重；代价是每次同步对边界秒内已导入项产生一次 409 跳过，换来同一 `updated_at` 下更小 id 的新项不被漏掉。
+- 远端列表没有快照游标，`offset` 分页期间若前页工作项被删除或重排，后页可能跳过一项；该项的 `updated_at` 早于本轮新游标时，后续增量不会重新导入。真实实例尚未验证分页期间的变更行为，自动同步不能作为无遗漏历史导入的唯一证据。
 
 ## 验证
 
 实际执行（容器内以本 worktree 代码 + 运行中 PostgreSQL）：
 
-- `pytest test/integration/services/test_delegation_service.py` → 11 passed（统一接口委派与未注册执行器结构化失败、operation_id search-before-create 采纳响应丢失、本地状态与远端投影分离、Workdir 物化边界、崩溃收敛、入向只产生 proposed 与游标去重、待取回项超过 limit 时有界分页取回、整页重复仍推进游标、触顶分页上限保持原游标、同一 `updated_at` 下不同 id 的边界不丢项且不重复落库、畸形 `cursor_value` fail-closed 保原游标且不发请求）。
-- `pytest test/integration/api/test_delegation_router.py` → 3 passed（未认证 401 由 `get_required_user` 拒绝、未知或不可见 Project 404、无 Multica 凭据 503 `channel_unavailable`）。
+- `pytest test/integration/services/test_delegation_service.py` → 16 passed（统一接口委派与未注册执行器结构化失败、operation_id search-before-create 采纳响应丢失、本地状态与远端投影分离、Workdir 物化边界、崩溃收敛、入向只产生 proposed 与游标去重、待取回项超过 limit 时有界分页取回、整页重复仍推进游标、触顶分页上限保持原游标并记录错误、旧租约不能覆盖新游标、同一 `updated_at` 下不同 id 的边界不丢项且不重复落库、畸形 `cursor_value` fail-closed 保原游标且不发请求）。
+- `pytest test/integration/api/test_delegation_router.py` → 4 passed（未认证 401 由 `get_required_user` 拒绝、未知或不可见 Project 404、无 Multica 凭据 503 `channel_unavailable`）。
 - `pytest test/unit/delegation` → 12 passed（含按 workspace 作用域装配的 fail-closed、四个 issues 出入口附带 `workspace_id` 且列表固定 `updated_at` 倒序、子智能体委派工具 fail-closed）；`pytest test/unit/storage test/unit/services/test_storage_migration.py` → 通过（含 v10→v11 幂等与升级顺序）。
 - `pytest test/unit/services/test_run_worker.py` → 通过（`_worker_startup` 断言 `reconcile_delegations()` 与 `reconcile_channel_sync()` 各执行一次；移除调用时该用例失败）。
 - `pytest test/integration/services/test_schema_migration_version.py` → 除两个与本变更无关的既有失败（`test_business_v2_converges_project_git_schema`、`test_project_git_schema_enforces_alias_and_user_boundaries`，在未改动的基线 checkout 上同样失败）外通过，含新增的 v10→v11 真实 PostgreSQL 收敛用例。
@@ -108,7 +110,7 @@ MVP 入向与出向都用轮询，复用既有 worker 收敛循环与显式入�
 | 同一 `operation_id` 重复投递不产生第二个远端工作项（含响应丢失核对） | 重复创建或永久卡在未知态 | `DelegationService` + `MulticaExecutor` | `test_multica_search_before_create_adopts_lost_response`、`test_multica_executor.py` | 标记不匹配时不静默采纳 | Passed |
 | 本地 `dispatch_state` 与远端 `remote_status` 投影分离 | 远端状态改写本地状态或成为第二事实源 | `DelegationService` + `channel_delegations` | `test_local_state_and_remote_projection_stay_separate` | 远端状态变化不写 `dispatch_state`，不新增 `agent_runs` | Passed |
 | 委派结果只引用发起 Run，产物物化在 Workdir 边界内 | 伪造新 Run 或越界写文件 | `DelegationService` + `Workdir` | `test_collect_materializes_inside_workdir_boundary` | 越界路径被 `_require_within` 拒绝 | Passed |
-| 入向游标、去重与重试由确定性同步服务持有，游标落在稳定组合键且不静默跳过未取回项 | 依赖 Agent 自行决定同步/重复导入/满页推进游标跳过/同一 `updated_at` 边界项被跳过/畸形游标被静默读作空 | `ChannelSyncService` + `channel_sync_cursors` | `test_multica_inbound_sync_pages_past_limit_without_cursor_skip`、`test_multica_inbound_sync_full_duplicate_page_advances_cursor`、`test_multica_inbound_sync_holds_cursor_when_page_cap_hit`、`test_multica_inbound_sync_same_updated_at_boundary_not_lost`、`test_multica_inbound_sync_fails_closed_on_malformed_cursor`；`reconcile_channel_sync` 注册进 worker | 待取回项超过 limit 时不被游标跳过；整页重复仍推进游标；触顶分页上限保原游标不静默跳过；同一 `updated_at` 下更小 id 的新项仍取回；畸形 `cursor_value` 时 fail-closed、保原游标、不发外部请求（移除解析守卫时该用例失败）；租约被占时拒绝 | Passed |
+| 入向游标、去重与重试由确定性同步服务持有，游标落在稳定组合键且不静默跳过未取回项 | 依赖 Agent 自行决定同步/重复导入/满页推进游标跳过/同一 `updated_at` 边界项被跳过/畸形游标被静默读作空 | `ChannelSyncService` + `channel_sync_cursors` | `test_multica_inbound_sync_pages_past_limit_without_cursor_skip`、`test_multica_inbound_sync_full_duplicate_page_advances_cursor`、`test_multica_inbound_sync_holds_cursor_when_page_cap_hit`、`test_multica_inbound_sync_same_updated_at_boundary_not_lost`、`test_multica_inbound_sync_fails_closed_on_malformed_cursor`、`test_multica_expired_owner_cannot_overwrite_new_cursor_owner`、`test_multica_converge_does_not_release_owner_claimed_after_listing`；`reconcile_channel_sync` 注册进 worker | 待取回项超过 limit 时不被游标跳过；整页重复仍推进游标；触顶分页上限保原游标并记录错误；旧租约不能覆盖新游标；同一 `updated_at` 下更小 id 的新项仍取回；畸形 `cursor_value` 时 fail-closed、保原游标、不发外部请求（移除解析守卫时该用例失败）；租约被占时拒绝 | Passed |
 | issues 的 GET 出入口强制 workspace 作用域，列表固定 `updated_at` 倒序且不依赖被忽略的 `updated_after` | 缺失作用域 400 / 依赖可变排序导致增量不可靠 | `HttpMulticaClient` + `build_multica_client_from_env` | `test_multica_executor.py::test_http_client_scopes_every_issue_request_by_workspace` | 缺 workspace 键时不装配客户端、不发请求 | Passed |
 | 出向 `create_issue` 的 workspace 作用域被真实服务端接受 | 作用域位置错误导致出向不可用或静默错建 | `HttpMulticaClient.create_issue` | `test_multica_executor.py::test_http_client_scopes_every_issue_request_by_workspace`（create 作用域在查询参数、请求体不含）；2026-09-26 真实实例受控写：查询参数带 `workspace_id` → 2xx 建单 YL-22 并即时 `cancel` 回收，回读 `cancelled` | 请求体带 `workspace_id` 被真实 400 拒（结构化 `multica_request_failed`）；回退到请求体形状时 unit 用例失败；修正后客户端真实写未复测 | Passed（形状）/ Not run（修正后真实写） |
 | 缺失 Multica 凭据或 workspace 作用域时适配器禁用且元垒其余能力独立可用 | 整链不可用或缺配置伪装成功 | `build_multica_client_from_env` + 适配器注册表 + `delegation_router.py` | `test_multica_executor.py::test_build_multica_client_from_env_fails_closed_without_credentials`、`test_delegation_router.py::test_multica_channel_routes_fail_closed_without_credentials` | 无凭据或缺 workspace 时不注册、不发外部请求，渠道入口 503 `channel_unavailable` | Passed |

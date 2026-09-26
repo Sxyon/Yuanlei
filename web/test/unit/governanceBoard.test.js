@@ -128,7 +128,8 @@ test('展示面只消费读视图给出的 pending/blocked 字段，前端不自
   assert.match(panelSource, /governanceStatusColor\(item\.status\)/)
 
   assert.match(crossViewSource, /governanceBoardApi\.getCrossProjectBoard\(\)/)
-  assert.match(projectViewSource, /governanceBoardApi\.getProjectBoard\(projectId\.value\)/)
+  assert.match(projectViewSource, /const project = projectId\.value/)
+  assert.match(projectViewSource, /api\.getProjectBoard\(project\)/)
 
   assert.match(routerSource, /name: 'InspectionBoardComp'/)
   assert.match(routerSource, /name: 'ProjectInspectionBoardComp'/)

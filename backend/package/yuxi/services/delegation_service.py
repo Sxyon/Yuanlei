@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 from datetime import timedelta
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.delegation.contracts import (
@@ -26,7 +27,10 @@ from yuxi.delegation.contracts import (
 from yuxi.delegation.multica import MulticaExecutor, build_multica_client_from_env
 from yuxi.delegation.sandbox import SandboxCodingExecutor
 from yuxi.repositories.channel_delegation_repository import ChannelDelegationRepository
-from yuxi.storage.postgres.models_business import ChannelDelegation
+from yuxi.repositories.governance_repository import GovernanceRepository
+from yuxi.repositories.project_agent_repository import ProjectAgentRepository
+from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.storage.postgres.models_business import ChannelDelegation, User
 from yuxi.utils import logger
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
@@ -43,6 +47,7 @@ def _serialize(row: ChannelDelegation, *, capabilities: dict[str, bool] | None =
         "project_id": row.project_id,
         "executor_key": row.executor_key,
         "task": row.task,
+        "governance_task_id": (row.request_json or {}).get("governance_task_id"),
         "initiator_run_id": row.initiator_run_id,
         "session_id": row.session_id,
         "turn_id": row.turn_id,
@@ -117,6 +122,52 @@ class DelegationService:
             raise ExecutorUnavailableError(f"执行器未注册或不可用: {executor_key}")
         return executor
 
+    async def dispatch_project_task(self, *, project_id: str, task_id: str, executor_key: str, user: User) -> dict:
+        """校验项目、已审核任务及数字员工绑定后，委派到项目专属沙盒。"""
+        from yuxi.agents.backends.sandbox.provider import SandboxScope
+        from yuxi.repositories.agent_repository import AgentRepository, user_can_manage_agent
+
+        if executor_key not in SANDBOX_EXECUTOR_KEYS:
+            raise HTTPException(status_code=422, detail={"code": "invalid_executor", "message": "仅支持本地编码执行器"})
+        project = await ProjectRepository(self.db).get_active_selectable_for_user(project_id, str(user.uid))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project 不存在")
+        task = await GovernanceRepository(self.db).get_task(task_id=task_id)
+        if task is None or task.project_id != project.id:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        if task.status != "canonical" or not task.assignee_agent_slug:
+            raise HTTPException(
+                status_code=409, detail={"code": "task_not_ready", "message": "任务需先审核并指派项目数字员工"}
+            )
+        binding = await ProjectAgentRepository(self.db).get(project.id, task.assignee_agent_slug)
+        agent = await AgentRepository(self.db).get_visible_by_slug(
+            slug=task.assignee_agent_slug, user=user, kind="main"
+        )
+        if binding is None or agent is None:
+            raise HTTPException(status_code=409, detail={"code": "agent_unbound", "message": "项目数字员工绑定已失效"})
+        if not user_can_manage_agent(user, agent):
+            raise HTTPException(status_code=403, detail="需要该项目数字员工的管理权限")
+
+        uid = str(user.uid)
+        scope = SandboxScope.agent_project(uid=uid, agent_slug=agent.slug, project_id=project.id)
+        prompt = task.title if not task.description else f"{task.title}\n\n{task.description}"
+        return await self.dispatch(
+            executor_key=executor_key,
+            request=DelegationRequest(
+                operation_id="",
+                project_id=project.id,
+                task=prompt,
+                metadata={
+                    "uid": uid,
+                    "runtime_scope_id": scope.cache_key,
+                    "workdir_relative_path": project.workdir_path,
+                    "agent_config": agent.config_json or {},
+                    "governance_task_id": task.id,
+                },
+            ),
+            uid=uid,
+        )
+
     async def dispatch(
         self,
         *,
@@ -138,6 +189,7 @@ class DelegationService:
                 "context_refs": [dict(ref) for ref in request.context_refs],
                 "budget": dict(request.budget),
                 "metadata": dict(request.metadata),
+                "governance_task_id": request.metadata.get("governance_task_id"),
             },
             initiator_run_id=request.initiator_run_id,
             created_by=uid,
@@ -158,13 +210,18 @@ class DelegationService:
         self._apply_handle(row, handle, now=utc_now_naive())
         await self.db.commit()
         await self.db.refresh(row)
+        if isinstance(executor, SandboxCodingExecutor):
+            try:
+                await executor.enqueue(handle, plan_only=bool(request.metadata.get("plan_only", False)))
+            except Exception:
+                logger.warning("Coding turn enqueue deferred to reconciliation: operation={}", operation_id)
         return _serialize(row, capabilities=executor.capabilities())
 
     async def status(self, *, operation_id: str, project_id: str | None = None) -> dict:
         """读取统一视图，并刷新远端状态的只读投影（不改写 dispatch_state）。"""
         row = await self._load(operation_id=operation_id, project_id=project_id)
         executor = self._executors.get(row.executor_key)
-        if executor is not None and row.dispatch_state == "dispatched" and row.external_ref:
+        if executor is not None and row.dispatch_state == "dispatched" and (row.external_ref or row.turn_id):
             try:
                 remote = await executor.status(self._handle(row))
             except Exception:
@@ -197,7 +254,13 @@ class DelegationService:
         self._claim(row, now=now, state="collecting")
         await self.db.commit()
         await self.db.refresh(row)
-        result = await executor.collect(self._handle(row))
+        try:
+            result = await executor.collect(self._handle(row))
+        except DelegationError:
+            row.dispatch_state = "dispatched"
+            self._release(row)
+            await self.db.commit()
+            raise
         artifact_path = None
         if result.text and workdir is not None:
             artifact_path = self._materialize(workdir, row.operation_id, result.text)
@@ -223,11 +286,16 @@ class DelegationService:
     async def converge(self, *, limit: int = 50) -> dict[str, int]:
         """确定性收敛非终态委派：重投 pending、复位 collecting、刷新远端投影。"""
         now = utc_now_naive()
-        rows = await self.repo.list_unsettled_leased(now=now, limit=int(limit))
+        operation_ids = [row.operation_id for row in await self.repo.list_unsettled_leased(now=now, limit=int(limit))]
         counts = {"redispatched": 0, "released": 0, "reprojected": 0, "failed": 0}
-        for row in rows:
+        for operation_id in operation_ids:
+            row = await self.repo.get_by_operation_id(operation_id=operation_id, for_update=True)
+            if row is None or row.dispatch_state not in {"pending", "dispatched", "collecting"}:
+                continue
+            if row.lease_expires_at is not None and row.lease_expires_at >= now:
+                continue
             if row.dispatch_state == "pending":
-                await self._converge_pending(row, now=now, counts=counts)
+                row = await self._converge_pending(row, now=now, counts=counts)
             elif row.dispatch_state == "collecting":
                 row.dispatch_state = "dispatched"
                 self._release(row)
@@ -238,25 +306,39 @@ class DelegationService:
             await self.db.refresh(row)
         return counts
 
-    async def _converge_pending(self, row: ChannelDelegation, *, now, counts: dict[str, int]) -> None:
+    async def _converge_pending(self, row: ChannelDelegation, *, now, counts: dict[str, int]) -> ChannelDelegation:
         executor = self._executors.get(row.executor_key)
         if executor is None:
             self._release(row)
-            return
+            return row
         try:
             handle = await executor.dispatch(self._request_from_row(row))
         except Exception:
+            operation_id = row.operation_id
+            await self.db.rollback()
+            row = await self.repo.get_by_operation_id(operation_id=operation_id, for_update=True)
+            if row is None:
+                raise DelegationNotFoundError(f"委派操作不存在: {operation_id}")
             row.error_code = "executor_dispatch_failed"
             row.last_error_at = now
             self._release(row)
             counts["failed"] += 1
         else:
             self._apply_handle(row, handle, now=now)
+            if isinstance(executor, SandboxCodingExecutor):
+                await self.db.commit()
+                try:
+                    await executor.enqueue(
+                        handle, plan_only=bool(self._request_from_row(row).metadata.get("plan_only", False))
+                    )
+                except Exception:
+                    logger.warning("Coding turn enqueue deferred to reconciliation: operation={}", row.operation_id)
             counts["redispatched"] += 1
+        return row
 
     async def _converge_dispatched(self, row: ChannelDelegation, *, now, counts: dict[str, int]) -> None:
         executor = self._executors.get(row.executor_key)
-        if executor is not None and row.external_ref:
+        if executor is not None and (row.external_ref or row.turn_id):
             try:
                 remote = await executor.status(self._handle(row))
             except Exception:
@@ -275,11 +357,16 @@ class DelegationService:
         return row
 
     async def _record_error(self, row: ChannelDelegation, error_code: str, *, now) -> None:
-        row.error_code = error_code
-        row.last_error_at = now
-        self._release(row)
+        operation_id = row.operation_id
+        await self.db.rollback()
+        pending = await self.repo.get_by_operation_id(operation_id=operation_id, for_update=True)
+        if pending is None:
+            raise DelegationNotFoundError(f"委派操作不存在: {operation_id}")
+        pending.error_code = error_code
+        pending.last_error_at = now
+        self._release(pending)
         await self.db.commit()
-        await self.db.refresh(row)
+        await self.db.refresh(pending)
 
     def _claim(self, row: ChannelDelegation, *, now, state: str | None = None) -> None:
         row.owner_token = uuid.uuid4().hex

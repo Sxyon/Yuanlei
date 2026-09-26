@@ -88,12 +88,15 @@ class ChannelSyncService:
             raise DelegationLeaseLostError("同步发起用户不存在")
         page_size = max(1, int(limit))
         cursor = await self._claim_cursor(project_id=project_id)
+        owner_token = cursor.owner_token
         initial_value = cursor.cursor_value
         try:
             initial_key = _decode_cursor(initial_value)
         except ValueError as exc:
             logger.warning("Multica inbound sync rejected cursor: project={} cursor={}", project_id, initial_value)
-            await self._finish_cursor(project_id=project_id, cursor_value=None, last_error=str(exc))
+            await self._finish_cursor(
+                project_id=project_id, owner_token=owner_token, cursor_value=None, last_error=str(exc)
+            )
             return {
                 "channel": MULTICA_SYNC_CHANNEL,
                 "project_id": project_id,
@@ -145,7 +148,9 @@ class ChannelSyncService:
                 offset += len(issues)
         except Exception as exc:
             logger.warning("Multica inbound sync failed: project={} error={}", project_id, exc)
-            await self._finish_cursor(project_id=project_id, cursor_value=None, last_error=str(exc))
+            await self._finish_cursor(
+                project_id=project_id, owner_token=owner_token, cursor_value=None, last_error=str(exc)
+            )
             return {
                 "channel": MULTICA_SYNC_CHANNEL,
                 "project_id": project_id,
@@ -155,44 +160,55 @@ class ChannelSyncService:
                 "error": str(exc),
             }
         # 只有确认整个结果集取回后才推进游标；触顶分页上限时保持原游标并显式告警，避免满页时静默跳过未取回项。
+        error = None
         if not consumed:
+            error = f"Multica 同步达到 {MULTICA_SYNC_MAX_PAGES} 页上限，游标未推进"
             logger.warning(
                 "Multica inbound sync hit page cap without consuming all items: project={} pages={}",
                 project_id,
                 MULTICA_SYNC_MAX_PAGES,
             )
         cursor_value = _encode_cursor(latest_key) if consumed and latest_key is not None else initial_value
-        await self._finish_cursor(project_id=project_id, cursor_value=cursor_value, last_error=None)
-        return {
+        await self._finish_cursor(
+            project_id=project_id, owner_token=owner_token, cursor_value=cursor_value, last_error=error
+        )
+        result = {
             "channel": MULTICA_SYNC_CHANNEL,
             "project_id": project_id,
             "imported": imported,
             "skipped": skipped,
             "cursor": cursor_value,
         }
+        if error:
+            result["error"] = error
+        return result
 
     async def converge(self, *, limit_per_project: int = 50, max_projects: int = 20) -> dict[str, int]:
         """确定性收敛：对已有游标的 Project 继续拉取，并释放超租约的陈旧游标。"""
-        cursors = await self.repo.list_cursors_for_channel(channel=MULTICA_SYNC_CHANNEL)
+        project_ids = [
+            cursor.project_id
+            for cursor in (await self.repo.list_cursors_for_channel(channel=MULTICA_SYNC_CHANNEL))[: int(max_projects)]
+        ]
         now = utc_now_naive()
         counts = {"projects": 0, "imported": 0, "skipped": 0, "released": 0, "failed": 0}
-        for cursor in cursors[: int(max_projects)]:
-            if cursor.lease_expires_at is not None and cursor.lease_expires_at <= now:
-                cursor.owner_token = None
-                cursor.lease_expires_at = None
+        for project_id in project_ids:
+            locked = await self.repo.get_cursor_for_update(channel=MULTICA_SYNC_CHANNEL, project_id=project_id)
+            if locked is not None and locked.lease_expires_at is not None and locked.lease_expires_at <= now:
+                locked.owner_token = None
+                locked.lease_expires_at = None
                 counts["released"] += 1
         await self.db.commit()
-        for cursor in cursors[: int(max_projects)]:
-            actor_uid = await self._project_owner_uid(project_id=cursor.project_id)
+        for project_id in project_ids:
+            actor_uid = await self._project_owner_uid(project_id=project_id)
             if actor_uid is None:
                 continue
             try:
                 result = await self.pull_multica(
-                    project_id=cursor.project_id, actor_uid=actor_uid, limit=int(limit_per_project)
+                    project_id=project_id, actor_uid=actor_uid, limit=int(limit_per_project)
                 )
             except DelegationLeaseLostError:
                 # 单个 Project 游标被其他 owner 持有不阻断其余 Project。
-                logger.warning("Multica sync skipped a project: project={}", cursor.project_id)
+                logger.warning("Multica sync skipped a project: project={}", project_id)
                 counts["failed"] += 1
                 continue
             counts["projects"] += 1
@@ -215,6 +231,7 @@ class ChannelSyncService:
             cursor = await self.repo.add_cursor(channel=MULTICA_SYNC_CHANNEL, project_id=project_id)
         now = utc_now_naive()
         if cursor.lease_expires_at is not None and cursor.lease_expires_at > now:
+            await self.db.rollback()
             raise DelegationLeaseLostError("渠道同步游标已被其他 owner 持有")
         cursor.owner_token = uuid.uuid4().hex
         cursor.lease_expires_at = now + timedelta(seconds=self.lease_seconds)
@@ -222,10 +239,18 @@ class ChannelSyncService:
         await self.db.refresh(cursor)
         return cursor
 
-    async def _finish_cursor(self, *, project_id: str, cursor_value: str | None, last_error: str | None) -> None:
+    async def _finish_cursor(
+        self, *, project_id: str, owner_token: str, cursor_value: str | None, last_error: str | None
+    ) -> None:
         cursor = await self.repo.get_cursor_for_update(channel=MULTICA_SYNC_CHANNEL, project_id=project_id)
-        if cursor is None:
-            return
+        if (
+            cursor is None
+            or cursor.owner_token != owner_token
+            or cursor.lease_expires_at is None
+            or cursor.lease_expires_at <= utc_now_naive()
+        ):
+            await self.db.rollback()
+            raise DelegationLeaseLostError("渠道同步游标租约已失效")
         if cursor_value is not None:
             cursor.cursor_value = cursor_value
         cursor.last_synced_at = utc_now_naive() if last_error is None else cursor.last_synced_at

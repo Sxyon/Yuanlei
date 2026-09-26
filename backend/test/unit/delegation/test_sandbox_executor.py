@@ -47,6 +47,34 @@ async def test_dispatch_requires_sandbox_scope() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_rejects_scope_from_another_project(monkeypatch) -> None:
+    """即便元数据完整，也不能把其他项目的沙盒用于当前任务。"""
+    import yuxi.services.coding_execution_service as coding_module
+
+    class WrongScopeService:
+        """伪造跨项目解析结果以证明隔离守卫会拒绝。"""
+
+        def __init__(self, _db, **_kwargs):
+            self.scope = type("Scope", (), {"uid": "owner", "project_id": "other-project"})()
+
+    monkeypatch.setattr(coding_module, "CodingExecutionService", WrongScopeService)
+    with pytest.raises(DelegationError) as exc:
+        await _executor().dispatch(
+            DelegationRequest(
+                operation_id="op-1",
+                project_id="project-1",
+                task="t",
+                metadata={
+                    "uid": "owner",
+                    "runtime_scope_id": "agent-project:owner:agent:other-project",
+                    "workdir_relative_path": "project",
+                },
+            )
+        )
+    assert exc.value.error_code == "sandbox_scope_mismatch"
+
+
+@pytest.mark.asyncio
 async def test_status_and_collect_read_only_the_delegated_turn(monkeypatch) -> None:
     import yuxi.repositories.coding_session_repository as repo_module
 

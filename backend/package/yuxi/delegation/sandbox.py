@@ -51,6 +51,7 @@ class SandboxCodingExecutor:
 
     async def dispatch(self, request: DelegationRequest) -> DelegationHandle:
         """创建编码会话并排队被委派的那一轮，返回绑定 session/turn 的句柄。"""
+        from yuxi.agents.skills.service import refresh_user_skill_projection_async
         from yuxi.services.coding_execution_service import (
             CodingExecutionService,
             effective_coding_agent_config_snapshot,
@@ -74,6 +75,8 @@ class SandboxCodingExecutor:
             runtime_scope_id=runtime_scope_id,
             workdir_relative_path=workdir_relative_path,
         )
+        if service.scope.uid != uid or service.scope.project_id != request.project_id:
+            raise DelegationError("沙盒委派范围与项目不一致", error_code="sandbox_scope_mismatch")
         policy = await resolve_agent_sandbox_policy(
             db=self.db,
             agent_config=agent_config,
@@ -86,6 +89,8 @@ class SandboxCodingExecutor:
                 error_code="sandbox_policy_unsupported",
             )
 
+        await refresh_user_skill_projection_async(uid)
+        await service.prepare(agent_config)
         session = await service.sessions.create_session(
             uid=uid,
             project_id=service.scope.project_id or "",
@@ -106,7 +111,6 @@ class SandboxCodingExecutor:
             conversation_id=conversation_id,
             parent_run_id=request.initiator_run_id,
         )
-        await service.prepare(agent_config)
         session.executor = self.key
         turn = await service.sessions.queue_turn(
             session,
@@ -114,14 +118,17 @@ class SandboxCodingExecutor:
             plan_only=plan_only,
             enqueueing_run_id=request.initiator_run_id,
         )
-        await self.db.commit()
-        await self._enqueue(session_id=session.id, turn_id=turn.id, plan_only=plan_only)
         return DelegationHandle(
             operation_id=request.operation_id,
             executor_key=self.key,
             session_id=session.id,
             turn_id=turn.id,
         )
+
+    async def enqueue(self, handle: DelegationHandle, *, plan_only: bool = False) -> None:
+        """在委派句柄和编码 turn 同事务提交后发布队列消息。"""
+        if handle.session_id and handle.turn_id:
+            await self._enqueue(session_id=handle.session_id, turn_id=handle.turn_id, plan_only=plan_only)
 
     async def status(self, handle: DelegationHandle) -> str | None:
         """读取被委派那一轮 turn 的只读状态投影。"""

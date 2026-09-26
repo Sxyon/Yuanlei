@@ -102,6 +102,7 @@ class ChannelDelegationRepository:
                 ChannelSyncCursor.project_id == str(project_id),
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def add_cursor(

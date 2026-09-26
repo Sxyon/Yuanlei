@@ -7,7 +7,7 @@
 
 ## 需求与失败场景
 
-元垒需要一个督查与汇报面：由上游用户自建定时任务驱动项目数字员工，只读汇聚 Run、任务、产物与失败，产出周期汇报，并在 Dashboard/Taskboard 呈现跨项目的 open 议题、阻塞项与待决策队列，且可由汇报打开新议题。汇报的载体是定时任务产出的 artifact，元垒只保存结构化引用。跨项目与单项目都以受信任的 Vue 视图只读呈现这一读视图。
+元垒需要一个督查与汇报面：由上游用户自建定时任务驱动项目数字员工，只读汇聚 Run、任务、产物与失败，产出周期汇报，并在 Dashboard/Taskboard 呈现跨项目的 open 议题、阻塞项与待决策队列，且可由汇报打开新议题。汇报的载体是定时任务产出的 artifact，元垒只保存结构化引用。跨项目页面只读呈现督查板；单项目页面把只读督查面板嵌入可操作工作台。
 
 失败场景：为展示另建镜像表导致议题/任务状态与来源漂移；汇报复制或回写 Run 终态，使执行面出现第二个状态 Owner；跨项目待决策队列只能单项目查看；展示面缺失或前端自行解析 Run/治理状态导致展示与唯一事实源分叉；子智能体或越权运行读写项目督查事实。
 
@@ -19,12 +19,12 @@
 - `open` 指仍在 `proposed` 的议题/任务/决策；`blockers` 指 `failed`/`interrupted` 的 Run。
 - Agent 工具只在带 Project 的运行中重建授权并校验当前 worker lease；子智能体拒绝。
 - 跨项目视图只覆盖当前用户 active、selectable 的 Project。
-- 展示面只消费 board 读视图：跨项目入口消费 `GET /governance/board`，单项目入口消费 `GET /projects/{id}/governance/board`；前端只做文案本地化，不判断 Run/治理状态、不写任何状态。
+- 督查面板只消费 board 读视图：跨项目入口消费 `GET /governance/board`，单项目工作台消费 `GET /projects/{id}/governance/board`；治理与执行操作由单项目工作台通过各自 API 完成，后端拥有最终状态。
 - 展示面读取授权由后端执行：读接口要求登录用户，单项目 board 对不可见项目 404；前端路由守卫只提供体验约束。
 
 ## 与 Yuxi 的边界
 
-上游 Yuxi 拥有 Project、Conversation、AgentRun、队列、执行与用户自建定时任务；督查板不在这些域新增语义，也不新建调度器或角色抽象。元垒新增的是只读聚合用例、持久化读查询、Agent 工具、HTTP 读接口与只读 Vue 展示面：后端落在 `yuanlei` 域扩展，前端落在 web 应用。无 schema 迁移，`YUANLEI_SCHEMA_VERSION` 保持 10。
+上游 Yuxi 拥有 Project、Conversation、AgentRun、队列、执行与用户自建定时任务；督查板不在这些域新增语义，也不新建调度器或角色抽象。元垒的督查读模型不新增表；单项目工作台复用治理写接口、蓝图 Workdir 与委派事实。
 
 ## 稳定集成点
 
@@ -32,7 +32,7 @@
 - 持久化读查询：`backend/package/yuxi/repositories/inspection_board_repository.py` 按 Project 读取最近 Run、阻塞 Run 与状态计数。
 - Agent 工具：`backend/package/yuxi/agents/toolkits/buildin/governance_tools.py` 的 `governance_board_read` / `governance_report_write` / `governance_topic_open`；运行范围解析复用 `backend/package/yuxi/agents/toolkits/buildin/project_run_scope.py`。
 - HTTP 接口：`backend/server/routers/governance_router.py` 的 `/projects/{id}/governance/*` 与 `/governance/board`。
-- 展示面：`web/src/views/InspectionBoardView.vue`（跨项目 `/inspection`）与 `web/src/views/ProjectInspectionBoardView.vue`（单项目 `/projects/:project_id/inspection`）共用 `web/src/components/inspection/GovernanceBoardPanel.vue`；API 适配在 `web/src/apis/governance_board_api.js`，展示适配与状态文案在 `web/src/utils/governanceBoard.js`。
+- 展示面：`web/src/views/InspectionBoardView.vue`（跨项目 `/inspection`）与 `web/src/views/ProjectInspectionBoardView.vue`（单项目工作台 `/projects/:project_id/inspection`）共用只读 `web/src/components/inspection/GovernanceBoardPanel.vue`；API 适配在 `web/src/apis/governance_board_api.js`，展示适配与状态文案在 `web/src/utils/governanceBoard.js`。
 - 治理事实 Owner：`governance_service.py` 与治理四表；汇报写入复用 `create_governance_report`。
 
 ## 上游依赖
@@ -59,4 +59,4 @@
 - Agent 工具单测：`backend/test/unit/toolkits/test_governance_tools.py`。
 - HTTP 适配：`backend/server/routers/governance_router.py`。
 - 展示面单测：`web/test/unit/governanceBoard.test.js`（API 端点、文案回退与「只消费读视图字段」源码 guard）。
-- 展示面渲染证据：`web/test/unit/governanceBoard.test.js` 的源码 guard、文案/配色查表单测与 `vite build`；真实浏览器 DOM 未在仓库内验证（无 headless harness）。
+- 展示面渲染证据：`web/test/unit/governanceBoard.test.js` 的督查面板源码 guard、文案/配色查表单测与 `vite build`；2026-09-26 真实浏览器核对单项目工作台蓝图、任务委派和汇报，关联 [单项目本地闭环决策](../decisions/implemented/2026-09-26-single-project-local-loop.md)。

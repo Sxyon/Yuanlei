@@ -36,6 +36,13 @@ class DelegationCreate(BaseModel):
     budget: dict[str, Any] | None = None
 
 
+class ProjectTaskDelegationCreate(BaseModel):
+    """将已审核的项目任务交给本地执行器。"""
+
+    model_config = ConfigDict(extra="forbid")
+    executor_key: str = Field(..., pattern="^(codex|opencode)$")
+
+
 async def _require_project(*, project_id: str, db: AsyncSession, user: User):
     project = await ProjectRepository(db).get_active_selectable_for_user(project_id, str(user.uid))
     if project is None:
@@ -62,6 +69,11 @@ async def create_delegation(
 ):
     """把任务委派给已注册的外部执行器并回收为统一委派视图。"""
     project = await _require_project(project_id=project_id, db=db, user=current_user)
+    if payload.executor_key in {"codex", "opencode"}:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "task_required", "message": "本地执行请从已审核的项目任务发起"},
+        )
     service = DelegationService.build_default(db)
     if payload.executor_key not in service.registered_keys():
         raise HTTPException(
@@ -77,6 +89,23 @@ async def create_delegation(
     )
     try:
         return await service.dispatch(executor_key=payload.executor_key, request=request, uid=str(current_user.uid))
+    except DelegationError as exc:
+        raise _delegation_http_error(exc) from exc
+
+
+@delegations.post("/projects/{project_id}/governance/tasks/{task_id}/delegations")
+async def delegate_project_task(
+    project_id: str,
+    task_id: str,
+    payload: ProjectTaskDelegationCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """从已审核项目任务发起可追溯的本地编码委派。"""
+    try:
+        return await DelegationService.build_default(db).dispatch_project_task(
+            project_id=project_id, task_id=task_id, executor_key=payload.executor_key, user=current_user
+        )
     except DelegationError as exc:
         raise _delegation_http_error(exc) from exc
 
