@@ -54,7 +54,7 @@ MVP 只覆盖委派、查询、回收，不定义 `cancel` / `resume` / `streami
 - 出向：`MulticaExecutor.dispatch` 先在描述内嵌稳定标记 `Yuanlei-Delegation-Operation: <operation_id>`，重投时先按标记 `search` 精确核对，命中则采纳已有工作项（写回 `external_ref`），未命中才创建，保证同一操作不产生第二个远端工作项。`status` / `collect` 轮询读取远端并将状态写入 `remote_status` 投影，不修改远端状态、不回写 canonical。
 - 入向：`ChannelSyncService.pull_multica` 在游标租约内分页拉取 Multica 议题，归一为 `proposed` 治理行（`source_channel="multica"`、外部标识、原文链接），重复由既有 partial unique 拒绝（409 跳过），成功后推进游标。分页按远端 `offset`/`limit` 有界进行，只有整个结果集取回后才推进游标；触顶分页上限时保持原游标，避免满页时静默跳过未取回项。导入入口只调用治理创建用例，不暴露审核或状态写入参数，不开公网 webhook。
 - 驱动：`reconcile_channel_sync` 与 `reconcile_delegations` 注册进 worker 周期收敛循环并启动时执行一次；另提供显式 HTTP 同步入口，不依赖 Agent 自行决定同步。
-- 凭据：MVP 通过环境配置（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN`，端点与认证头收敛在 `HttpMulticaClient`）装配；缺失时 `MulticaExecutor` 不注册，工具与路由返回结构化 `channel_unavailable`，元垒其余能力独立可用。DB 级加密渠道凭据表留待后续 decision，不在本 MVP 引入。
+- 凭据：MVP 通过实例级全局环境配置（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN` 必填，`YUANLEI_MULTICA_PROJECT_ID` 可选，端点与认证头收敛在 `HttpMulticaClient`）装配；`BASE_URL` 或 `TOKEN` 缺失时 `MulticaExecutor` 不注册，向 `multica` 委派返回结构化 `executor_unavailable`，渠道同步与游标入口返回结构化 `channel_unavailable`，元垒其余能力独立可用。粒度升级到按 Project 的凭据（依据 `channel_delegations.project_id` 与 `channel_sync_cursors(channel, project_id)`，非按用户）与 DB 级加密渠道凭据表留待后续 decision，不在本 MVP 引入。
 
 ### 入口
 
