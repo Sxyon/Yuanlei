@@ -6,6 +6,7 @@ import pytest
 
 from yuxi.delegation.contracts import DelegationHandle, DelegationRequest
 from yuxi.delegation.multica import (
+    HttpMulticaClient,
     MulticaExecutor,
     MulticaIssue,
     build_multica_client_from_env,
@@ -40,7 +41,7 @@ class _FakeClient:
     async def search_issues(self, *, query: str, limit: int = 20) -> list[MulticaIssue]:
         return [issue for issue in self.issues if query in issue.description][:limit]
 
-    async def list_issues(self, *, updated_after: str | None, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
+    async def list_issues(self, *, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
         return self.issues[offset : offset + limit]
 
 
@@ -117,10 +118,50 @@ async def test_status_and_collect_expose_remote_projection() -> None:
 def test_build_multica_client_from_env_fails_closed_without_credentials(monkeypatch) -> None:
     monkeypatch.delenv("YUANLEI_MULTICA_BASE_URL", raising=False)
     monkeypatch.delenv("YUANLEI_MULTICA_TOKEN", raising=False)
+    monkeypatch.delenv("YUANLEI_MULTICA_WORKSPACE_ID", raising=False)
     assert build_multica_client_from_env() is None
 
+    # base_url + token 齐备但缺 workspace 作用域仍 fail-closed，不装配客户端。
     monkeypatch.setenv("YUANLEI_MULTICA_BASE_URL", "http://multica.invalid")
     monkeypatch.setenv("YUANLEI_MULTICA_TOKEN", "secret-token")
+    assert build_multica_client_from_env() is None
+
+    monkeypatch.setenv("YUANLEI_MULTICA_WORKSPACE_ID", "ws-1")
     client = build_multica_client_from_env()
     assert client is not None
     assert client.base_url == "http://multica.invalid"
+    assert client.workspace_ref == "ws-1"
+
+
+@pytest.mark.asyncio
+async def test_http_client_scopes_every_issue_request_by_workspace(monkeypatch) -> None:
+    """四个 issues 出入口都带 workspace 作用域，列表固定 updated_at 倒序。"""
+    client = HttpMulticaClient(base_url="http://multica.invalid", token="t", workspace_ref="ws-1")
+    calls: list[tuple[str, str, dict]] = []
+
+    async def fake_request(self, method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        if method == "POST":
+            return {
+                "id": "i",
+                "identifier": "YL-1",
+                "title": "t",
+                "description": "d",
+                "updated_at": "2026-09-25T00:00:00Z",
+            }
+        return {"issues": []}
+
+    monkeypatch.setattr(HttpMulticaClient, "_request", fake_request)
+
+    await client.create_issue(title="t", description="d")
+    await client.get_issue(issue_ref="i")
+    await client.search_issues(query="q")
+    await client.list_issues(limit=5)
+
+    assert calls[0][2]["json"]["workspace_id"] == "ws-1"
+    assert calls[1][2]["params"]["workspace_id"] == "ws-1"
+    assert calls[2][2]["params"]["workspace_id"] == "ws-1"
+    assert calls[3][2]["params"]["workspace_id"] == "ws-1"
+    assert calls[3][2]["params"]["sort"] == "updated_at"
+    assert calls[3][2]["params"]["direction"] == "desc"
+    assert "updated_after" not in calls[3][2]["params"]

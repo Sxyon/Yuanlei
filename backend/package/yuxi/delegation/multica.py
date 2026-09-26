@@ -3,7 +3,8 @@
 Multica 侧没有调用方幂等键，元垒用稳定 `operation_id` 与描述标记
 `Yuanlei-Delegation-Operation: <operation_id>` 做 search-before-create：
 重投时先核对标记，命中则采纳已有工作项，不再创建第二个。远端状态只作为只读投影读取，
-不反向写元垒 canonical 状态。HTTP 传输收敛在 `HttpMulticaClient` 内。
+不反向写元垒 canonical 状态。HTTP 传输收敛在 `HttpMulticaClient` 内；issues 端点强制
+workspace 作用域，`HttpMulticaClient` 在传输边界统一附带 `workspace_id`。
 """
 
 from __future__ import annotations
@@ -49,7 +50,6 @@ class MulticaClient(Protocol):
     async def list_issues(
         self,
         *,
-        updated_after: str | None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[MulticaIssue]: ...
@@ -147,16 +147,31 @@ class MulticaExecutor:
 
 
 class HttpMulticaClient:
-    """基于 aiohttp 的 Multica 客户端；端点以配置表达，认证头收敛在此。"""
+    """基于 aiohttp 的 Multica 客户端；端点、认证头与 workspace 作用域收敛在此。"""
 
-    def __init__(self, *, base_url: str, token: str, project_ref: str | None = None, timeout: float = 20.0):
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        workspace_ref: str,
+        project_ref: str | None = None,
+        timeout: float = 20.0,
+    ):
+        if not str(workspace_ref).strip():
+            raise ValueError("Multica workspace_ref 不能为空")
         self.base_url = str(base_url).rstrip("/")
         self.token = str(token)
+        self.workspace_ref = str(workspace_ref)
         self.project_ref = project_ref
         self.timeout = float(timeout)
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+
+    def _scope_params(self) -> dict[str, str]:
+        """issues 端点要求 workspace 作用域，缺失即 400；统一在传输边界附带。"""
+        return {"workspace_id": self.workspace_ref}
 
     @staticmethod
     def _normalize(payload: dict[str, Any]) -> MulticaIssue:
@@ -185,37 +200,49 @@ class HttpMulticaClient:
                 return await response.json()
 
     async def create_issue(self, *, title: str, description: str) -> MulticaIssue:
-        payload: dict[str, Any] = {"title": title, "description": description}
+        payload: dict[str, Any] = {"title": title, "description": description, **self._scope_params()}
         if self.project_ref:
             payload["project_id"] = self.project_ref
         data = await self._request("POST", "/api/issues", json=payload)
         return self._normalize(data.get("issue", data))
 
     async def get_issue(self, *, issue_ref: str) -> MulticaIssue:
-        data = await self._request("GET", f"/api/issues/{issue_ref}")
+        data = await self._request("GET", f"/api/issues/{issue_ref}", params=self._scope_params())
         return self._normalize(data.get("issue", data))
 
     async def search_issues(self, *, query: str, limit: int = 20) -> list[MulticaIssue]:
-        data = await self._request("GET", "/api/issues", params={"query": query, "limit": int(limit)})
+        params: dict[str, Any] = {"query": query, "limit": int(limit), **self._scope_params()}
+        data = await self._request("GET", "/api/issues", params=params)
         items = data.get("issues", data) if isinstance(data, dict) else data
         return [self._normalize(item) for item in (items or [])]
 
-    async def list_issues(self, *, updated_after: str | None, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
-        params: dict[str, Any] = {"limit": int(limit), "offset": int(offset)}
+    async def list_issues(self, *, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
+        """按 updated_at 倒序分页读取；服务端忽略 updated_after，增量过滤由调用方按组合游标完成。"""
+        params: dict[str, Any] = {
+            "limit": int(limit),
+            "offset": int(offset),
+            "sort": "updated_at",
+            "direction": "desc",
+            **self._scope_params(),
+        }
         if self.project_ref:
             params["project_id"] = self.project_ref
-        if updated_after:
-            params["updated_after"] = updated_after
         data = await self._request("GET", "/api/issues", params=params)
         items = data.get("issues", data) if isinstance(data, dict) else data
         return [self._normalize(item) for item in (items or [])]
 
 
 def build_multica_client_from_env() -> HttpMulticaClient | None:
-    """按环境配置装配 Multica 客户端；凭据缺失时返回 None，适配器不注册。"""
+    """按环境配置装配 Multica 客户端；base_url/token/workspace 任一缺失时返回 None，适配器不注册。"""
     base_url = os.getenv("YUANLEI_MULTICA_BASE_URL", "").strip()
     token = os.getenv("YUANLEI_MULTICA_TOKEN", "").strip()
-    if not base_url or not token:
+    workspace_ref = os.getenv("YUANLEI_MULTICA_WORKSPACE_ID", "").strip()
+    if not base_url or not token or not workspace_ref:
         return None
     project_ref = os.getenv("YUANLEI_MULTICA_PROJECT_ID", "").strip() or None
-    return HttpMulticaClient(base_url=base_url, token=token, project_ref=project_ref)
+    return HttpMulticaClient(
+        base_url=base_url,
+        token=token,
+        workspace_ref=workspace_ref,
+        project_ref=project_ref,
+    )
