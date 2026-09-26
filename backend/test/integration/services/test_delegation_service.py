@@ -148,8 +148,10 @@ class _FakeMulticaClient:
     def __init__(self):
         self.issues: list[MulticaIssue] = []
         self.create_calls = 0
+        self.calls = 0
 
     async def create_issue(self, *, title: str, description: str) -> MulticaIssue:
+        self.calls += 1
         self.create_calls += 1
         issue = MulticaIssue(
             id=f"id-{self.create_calls}",
@@ -164,12 +166,15 @@ class _FakeMulticaClient:
         return issue
 
     async def get_issue(self, *, issue_ref: str) -> MulticaIssue:
+        self.calls += 1
         return next(issue for issue in self.issues if issue.identifier == issue_ref)
 
     async def search_issues(self, *, query: str, limit: int = 20) -> list[MulticaIssue]:
+        self.calls += 1
         return [issue for issue in self.issues if query in issue.description][:limit]
 
     async def list_issues(self, *, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
+        self.calls += 1
         ordered = sorted(self.issues, key=lambda issue: (issue.updated_at or "", issue.id), reverse=True)
         return ordered[offset : offset + limit]
 
@@ -504,3 +509,27 @@ async def test_multica_inbound_sync_same_updated_at_boundary_not_lost() -> None:
             third = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=1)
             assert third["imported"] == 0
             assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 3
+
+
+async def test_multica_inbound_sync_fails_closed_on_malformed_cursor() -> None:
+    """畸形 cursor_value 必须 fail-closed：报 error、不发外部请求、原游标保留、不落库。"""
+    async with _scoped_database("pytest_channel_sync_bad_cursor") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            client = _FakeMulticaClient()
+            await client.create_issue(title="不应被拉取的议题", description="来自 Multica")
+            cursor_row = await ChannelDelegationRepository(db).add_cursor(channel="multica", project_id="project-owner")
+            malformed = "{not-json"
+            cursor_row.cursor_value = malformed
+            await db.commit()
+            service = ChannelSyncService(db, client=client)
+            client.calls = 0
+
+            result = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner")
+
+            assert "error" in result
+            assert client.calls == 0
+            assert result["cursor"] == malformed
+            assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 0
+            retained = await service.get_cursor(project_id="project-owner")
+            assert retained is not None and retained["cursor"] == malformed
