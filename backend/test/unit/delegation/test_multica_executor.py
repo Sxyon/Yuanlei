@@ -135,7 +135,12 @@ def test_build_multica_client_from_env_fails_closed_without_credentials(monkeypa
 
 @pytest.mark.asyncio
 async def test_http_client_scopes_every_issue_request_by_workspace(monkeypatch) -> None:
-    """四个 issues 出入口都带 workspace 作用域，列表固定 updated_at 倒序。"""
+    """四个 issues 出入口都带 workspace 作用域，列表固定 updated_at 倒序。
+
+    workspace 作用域统一放查询参数：真实实例 `POST /api/issues` 请求体带
+    `workspace_id` 返回 400，查询参数带则 2xx（见 Decision 受控写实测）。断言 create
+    的请求体不含 `workspace_id`，回退到请求体形状时该用例失败。
+    """
     client = HttpMulticaClient(base_url="http://multica.invalid", token="t", workspace_ref="ws-1")
     calls: list[tuple[str, str, dict]] = []
 
@@ -158,7 +163,8 @@ async def test_http_client_scopes_every_issue_request_by_workspace(monkeypatch) 
     await client.search_issues(query="q")
     await client.list_issues(limit=5)
 
-    assert calls[0][2]["json"]["workspace_id"] == "ws-1"
+    assert calls[0][2]["params"]["workspace_id"] == "ws-1"
+    assert "workspace_id" not in calls[0][2]["json"]
     assert calls[1][2]["params"]["workspace_id"] == "ws-1"
     assert calls[2][2]["params"]["workspace_id"] == "ws-1"
     assert calls[3][2]["params"]["workspace_id"] == "ws-1"

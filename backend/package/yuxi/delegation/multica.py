@@ -200,10 +200,16 @@ class HttpMulticaClient:
                 return await response.json()
 
     async def create_issue(self, *, title: str, description: str) -> MulticaIssue:
-        payload: dict[str, Any] = {"title": title, "description": description, **self._scope_params()}
+        """创建远端工作项；workspace 作用域走查询参数，请求体只放内容字段。
+
+        真实实例受控写实测：`POST /api/issues` 请求体带 `workspace_id` 返回 400
+        `workspace_id or workspace_slug is required`，查询参数带则返回 2xx，故作用域与
+        GET 出入口一致放在查询参数。
+        """
+        payload: dict[str, Any] = {"title": title, "description": description}
         if self.project_ref:
             payload["project_id"] = self.project_ref
-        data = await self._request("POST", "/api/issues", json=payload)
+        data = await self._request("POST", "/api/issues", params=self._scope_params(), json=payload)
         return self._normalize(data.get("issue", data))
 
     async def get_issue(self, *, issue_ref: str) -> MulticaIssue:

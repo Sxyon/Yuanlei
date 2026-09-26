@@ -59,6 +59,6 @@
 
 - Decision：[外部执行器委派抽象与 Multica 桥接](../decisions/implemented/2026-09-25-external-executor-delegation-multica-bridge.md)。
 - 既有可复用事实：[Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)、[项目治理域数据模型](project-governance.md)。
-- Multica 创建/查询/幂等契约依据 `multica` CLI 帮助与 `multica-platform` skill reference 核实，workspace 必填、`updated_after` 被忽略与列表排序行为由 2026-09-26 真实实例只读探测确认；同日受控写实测确认 `POST /api/issues` 不接受请求体内的 `workspace_id`（返回 400，未创建工作项），出向创建保持 fail-closed，修正待决策。结论写在 Decision 的 Multica 桥接一节。
+- Multica 创建/查询/幂等契约依据 `multica` CLI 帮助与 `multica-platform` skill reference 核实，workspace 必填、`updated_after` 被忽略与列表排序行为由 2026-09-26 真实实例只读探测确认；同日两次受控写实测确认 `POST /api/issues` 的 workspace 作用域在查询参数（请求体带 `workspace_id` 返回 400，查询参数带返回 2xx 并真实建单），`create_issue` 据此把作用域经查询参数附带、请求体只放内容字段。结论写在 Decision 的 Multica 桥接一节。
 - 代码 Owner：`backend/package/yuxi/delegation/`（接口与适配器）、`backend/package/yuxi/services/delegation_service.py`、`backend/package/yuxi/services/channel_sync_service.py`、`backend/package/yuxi/repositories/channel_delegation_repository.py`、`backend/server/routers/delegation_router.py`、`backend/package/yuxi/agents/toolkits/buildin/delegation_tools.py`。
-- 验收证据以关联 Decision 的六列矩阵为准；真实 Multica 实例的只读读取已复验，出向 `create_issue` 受控写实测失败（`POST /api/issues` 的 `workspace_id` 载荷被拒，400）并保持 fail-closed，真实专属沙盒整轮执行仍为 `Not run`。
+- 验收证据以关联 Decision 的六列矩阵为准；真实 Multica 实例的只读读取已复验，出向 `create_issue` 的 workspace 作用域经查询参数被真实服务端接受（受控写建单后回收），以 unit 断言 create 请求体不含 `workspace_id` 守住该形状；修正后客户端对真实实例的真实写未复测，真实专属沙盒整轮执行仍为 `Not run`。
