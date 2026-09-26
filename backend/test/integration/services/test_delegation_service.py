@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -142,7 +143,7 @@ class _StubExecutor:
 
 
 class _FakeMulticaClient:
-    """内存 Multica 客户端；记录创建次数以证明 search-before-create。"""
+    """内存 Multica 客户端；按 updated_at 倒序分页，记录创建次数以证明 search-before-create。"""
 
     def __init__(self):
         self.issues: list[MulticaIssue] = []
@@ -168,11 +169,9 @@ class _FakeMulticaClient:
     async def search_issues(self, *, query: str, limit: int = 20) -> list[MulticaIssue]:
         return [issue for issue in self.issues if query in issue.description][:limit]
 
-    async def list_issues(self, *, updated_after: str | None, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
-        issues = list(self.issues)
-        if updated_after:
-            issues = [issue for issue in issues if (issue.updated_at or "") > updated_after]
-        return issues[offset : offset + limit]
+    async def list_issues(self, *, limit: int = 50, offset: int = 0) -> list[MulticaIssue]:
+        ordered = sorted(self.issues, key=lambda issue: (issue.updated_at or "", issue.id), reverse=True)
+        return ordered[offset : offset + limit]
 
 
 async def test_dispatch_persists_intent_unified_view_and_executor_unavailable() -> None:
@@ -351,13 +350,14 @@ async def test_multica_inbound_sync_only_proposed_and_deduped_by_cursor() -> Non
             assert {topic.status for topic in topics} == {"proposed"}
             assert {topic.source_channel for topic in topics} == {"multica"}
 
-            # 崩溃后重跑：游标已推进到最新，同一页不会重复导入。
+            # 崩溃后重跑：游标已推进到最新，边界秒重复项靠去重跳过，不再新增落库。
             second = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner")
             assert second["imported"] == 0
-            assert second["skipped"] == 0
+            assert second["skipped"] == 1
             assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 2
             cursor = await service.get_cursor(project_id="project-owner")
-            assert cursor is not None and cursor["cursor"] == "2026-09-25T00:00:02Z"
+            assert cursor is not None
+            assert json.loads(cursor["cursor"]) == {"id": "id-2", "updated_at": "2026-09-25T00:00:02.000000+00:00"}
 
 
 async def test_multica_inbound_sync_pages_past_limit_without_cursor_skip() -> None:
@@ -373,12 +373,12 @@ async def test_multica_inbound_sync_pages_past_limit_without_cursor_skip() -> No
             result = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
             assert result["imported"] == 3
             assert result["skipped"] == 0
-            assert result["cursor"] == "2026-09-25T00:00:03Z"
+            assert json.loads(result["cursor"]) == {"id": "id-3", "updated_at": "2026-09-25T00:00:03.000000+00:00"}
             assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 3
 
             follow_up = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
             assert follow_up["imported"] == 0
-            assert follow_up["skipped"] == 0
+            assert follow_up["skipped"] == 1
 
 
 async def test_multica_inbound_sync_full_duplicate_page_advances_cursor() -> None:
@@ -407,11 +407,12 @@ async def test_multica_inbound_sync_full_duplicate_page_advances_cursor() -> Non
             assert first["imported"] == 0
             assert first["skipped"] == 2
             cursor = await service.get_cursor(project_id="project-owner")
-            assert cursor is not None and cursor["cursor"] == "2026-09-25T00:00:02Z"
+            assert cursor is not None
+            assert json.loads(cursor["cursor"]) == {"id": "id-2", "updated_at": "2026-09-25T00:00:02.000000+00:00"}
 
             second = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=2)
             assert second["imported"] == 0
-            assert second["skipped"] == 0
+            assert second["skipped"] == 1
 
 
 async def test_multica_inbound_sync_holds_cursor_when_page_cap_hit(monkeypatch) -> None:
@@ -448,3 +449,58 @@ async def test_multica_inbound_sync_holds_cursor_when_page_cap_hit(monkeypatch) 
             assert follow_up["imported"] == 0
             assert follow_up["skipped"] == 2
             assert follow_up["cursor"] is None
+
+
+async def test_multica_inbound_sync_same_updated_at_boundary_not_lost() -> None:
+    """同一 updated_at 下不同 id：边界秒内的新项不被游标漏掉，也不重复落库。"""
+    async with _scoped_database("pytest_channel_sync_ties") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            client = _FakeMulticaClient()
+            for suffix in ("a", "b"):
+                client.issues.append(
+                    MulticaIssue(
+                        id=f"id-{suffix}",
+                        identifier=f"YL-tie-{suffix}",
+                        title=f"同秒 {suffix}",
+                        description="来自 Multica",
+                        status="todo",
+                        url=f"https://multica.invalid/issues/YL-tie-{suffix}",
+                        updated_at="2026-09-25T00:00:05Z",
+                    )
+                )
+            service = ChannelSyncService(db, client=client)
+
+            first = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=1)
+            assert first["imported"] == 2
+            assert first["skipped"] == 0
+            assert json.loads(first["cursor"]) == {"id": "id-b", "updated_at": "2026-09-25T00:00:05.000000+00:00"}
+
+            # 同一 updated_at 下新增 id 更小的项：并列次序不可依赖，必须仍被取回而非跳过。
+            client.issues.append(
+                MulticaIssue(
+                    id="id-0",
+                    identifier="YL-tie-0",
+                    title="同秒 0",
+                    description="来自 Multica",
+                    status="todo",
+                    url="https://multica.invalid/issues/YL-tie-0",
+                    updated_at="2026-09-25T00:00:05Z",
+                )
+            )
+            second = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=1)
+            assert second["imported"] == 1
+            assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 3
+            assert (
+                await db.scalar(
+                    select(func.count())
+                    .select_from(GovernanceTopic)
+                    .where(GovernanceTopic.source_external_id == "YL-tie-0")
+                )
+                == 1
+            )
+
+            # 再跑一轮：边界秒内项只靠去重跳过，最终不重不漏。
+            third = await service.pull_multica(project_id="project-owner", actor_uid="uid-owner", limit=1)
+            assert third["imported"] == 0
+            assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 3

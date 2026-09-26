@@ -2,19 +2,22 @@
 
 游标、去重与失败重试由本服务与 `channel_sync_cursors` 行持有，不依赖 Agent
 自行决定同步。导入入口只调用治理用例的创建路径，只产生 `proposed`，不暴露
-审核或状态写入参数，也不开放公网 webhook。
+审核或状态写入参数，也不开放公网 webhook。游标是稳定组合键 `(updated_at, id)`，
+请求固定按 `updated_at` 倒序，客户端按组合键做增量过滤；`updated_after` 被服务端
+忽略，不作为增量依据。
 """
 
 from __future__ import annotations
 
+import json
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.delegation.contracts import DelegationLeaseLostError
-from yuxi.delegation.multica import MULTICA_EXECUTOR_KEY, MulticaClient, build_multica_client_from_env
+from yuxi.delegation.multica import MULTICA_EXECUTOR_KEY, MulticaClient, MulticaIssue, build_multica_client_from_env
 from yuxi.repositories.channel_delegation_repository import ChannelDelegationRepository
 from yuxi.repositories.user_repository import UserRepository
 from yuxi.services.governance_service import create_governance_topic
@@ -26,13 +29,47 @@ DEFAULT_CURSOR_LEASE_SECONDS = 120
 MULTICA_SYNC_MAX_PAGES = 10
 
 
-def _advance_cursor(current: str | None, updated_at: str | None) -> str | None:
-    """只在远端时间戳更新且可比较时推进游标。"""
-    if not updated_at:
-        return current
-    if current is None or str(updated_at) > str(current):
-        return str(updated_at)
-    return current
+def _normalize_timestamp(value: str) -> str:
+    """把远端时间戳归一为固定 UTC 微秒格式，使字符串比较与时间先后一致。"""
+    parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+def _cursor_key(issue: MulticaIssue) -> tuple[str, str]:
+    """计算议题的稳定排序键 (归一 updated_at, id)；缺字段时显式失败而非静默丢项。"""
+    if not issue.updated_at or not issue.id:
+        raise ValueError(f"multica issue missing updated_at/id: {issue.identifier or issue.id or '<unknown>'}")
+    return (_normalize_timestamp(issue.updated_at), str(issue.id))
+
+
+def _encode_cursor(key: tuple[str, str]) -> str:
+    """把组合游标编码为可持久化的稳定字符串。"""
+    return json.dumps({"updated_at": key[0], "id": key[1]}, separators=(",", ":"), sort_keys=True)
+
+
+def _decode_cursor(value: str | None) -> tuple[str, str] | None:
+    """解析组合游标；历史裸 updated_at 值按 (updated_at, "") 兼容读取，无法解析即 fail-closed。"""
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.startswith("{"):
+        try:
+            payload = json.loads(text)
+            updated_at = str(payload["updated_at"]).strip()
+            issue_id = str(payload["id"]).strip()
+            if not updated_at or not issue_id:
+                raise KeyError("empty cursor field")
+            return (_normalize_timestamp(updated_at), issue_id)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"malformed multica sync cursor: {text!r}") from exc
+    try:
+        return (_normalize_timestamp(text), "")
+    except ValueError as exc:
+        raise ValueError(f"malformed legacy multica sync cursor: {text!r}") from exc
 
 
 class ChannelSyncService:
@@ -45,23 +82,46 @@ class ChannelSyncService:
         self.lease_seconds = int(lease_seconds)
 
     async def pull_multica(self, *, project_id: str, actor_uid: str, limit: int = 50) -> dict:
-        """在游标租约内有界分页拉取 Multica 议题并归一为 proposed；整批取回后推进游标。"""
+        """在游标租约内按 updated_at 倒序有界拉取 Multica 议题并归一为 proposed；整批取回后推进组合游标。"""
         actor = await UserRepository().get_by_uid_with_db(self.db, str(actor_uid))
         if actor is None:
             raise DelegationLeaseLostError("同步发起用户不存在")
         page_size = max(1, int(limit))
         cursor = await self._claim_cursor(project_id=project_id)
-        initial = cursor.cursor_value
+        initial_value = cursor.cursor_value
+        try:
+            initial_key = _decode_cursor(initial_value)
+        except ValueError as exc:
+            logger.warning("Multica inbound sync rejected cursor: project={} cursor={}", project_id, initial_value)
+            await self._finish_cursor(project_id=project_id, cursor_value=None, last_error=str(exc))
+            return {
+                "channel": MULTICA_SYNC_CHANNEL,
+                "project_id": project_id,
+                "imported": 0,
+                "skipped": 0,
+                "cursor": initial_value,
+                "error": str(exc),
+            }
         imported = skipped = 0
-        latest = initial
+        latest_key = initial_key
         consumed = False
         try:
             offset = 0
             for _ in range(MULTICA_SYNC_MAX_PAGES):
-                issues = await self.client.list_issues(updated_after=initial, limit=page_size, offset=offset)
+                issues = await self.client.list_issues(limit=page_size, offset=offset)
+                if not issues:
+                    consumed = True
+                    break
+                reached_cursor = False
                 for issue in issues:
-                    # 先推进候选游标，后续去重跳过也不能丢失该页进度。
-                    latest = _advance_cursor(latest, issue.updated_at)
+                    key = _cursor_key(issue)
+                    if initial_key is not None and key[0] < initial_key[0]:
+                        reached_cursor = True
+                        break
+                    # 边界秒内的项每轮纳入并靠 source_external_id 去重：服务端并列次序不可依赖，
+                    # 若按 id 严格过滤会漏掉同一 updated_at 下更小的 id。
+                    if latest_key is None or key > latest_key:
+                        latest_key = key
                     try:
                         await create_governance_topic(
                             project_id=project_id,
@@ -79,7 +139,7 @@ class ChannelSyncService:
                             skipped += 1
                             continue
                         raise
-                if len(issues) < page_size:
+                if reached_cursor or len(issues) < page_size:
                     consumed = True
                     break
                 offset += len(issues)
@@ -91,7 +151,7 @@ class ChannelSyncService:
                 "project_id": project_id,
                 "imported": imported,
                 "skipped": skipped,
-                "cursor": initial,
+                "cursor": initial_value,
                 "error": str(exc),
             }
         # 只有确认整个结果集取回后才推进游标；触顶分页上限时保持原游标并显式告警，避免满页时静默跳过未取回项。
@@ -101,7 +161,7 @@ class ChannelSyncService:
                 project_id,
                 MULTICA_SYNC_MAX_PAGES,
             )
-        cursor_value = latest if consumed else initial
+        cursor_value = _encode_cursor(latest_key) if consumed and latest_key is not None else initial_value
         await self._finish_cursor(project_id=project_id, cursor_value=cursor_value, last_error=None)
         return {
             "channel": MULTICA_SYNC_CHANNEL,
