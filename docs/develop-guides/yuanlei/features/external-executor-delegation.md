@@ -21,7 +21,7 @@
 - 能力差异由 `capabilities()` 显式声明，MVP 只声明有消费者的 `multi_turn` 与 `remote_artifacts`；不可用即结构化失败，不静默降级或替换基底。
 - 非终态委派必须有显式 owner 与 lease，崩溃后可观察收敛；结果不得从相邻 Run 或会话猜测。
 - 入向游标、去重与失败重试由确定性同步服务与 `channel_sync_cursors` 行持有，不依赖 Agent 自行决定同步。分页按远端 `offset`/`limit` 有界进行，只有整个结果集取回后才推进游标；触顶 `MULTICA_SYNC_MAX_PAGES` 或中途异常时保持原游标并显式告警/报错，绝不把游标推进到未确认取回的页（不静默跳过）。该取舍的已知后果：待取回项 ≥ `MULTICA_SYNC_MAX_PAGES * limit`（默认 500）且每页始终满页时，游标不推进、每轮重复处理同一批（有告警、不丢数据、不静默，但无法前进），需调大页上限/`limit` 或缩小项目积压才能前进。
-- 渠道凭据加密、fail-closed、明文不进 DB/API/日志/事件；远端结果写入 Workdir 由 `Workdir` 安全写入 Owner 执行，路径按现有边界校验。
+- 渠道凭据 fail-closed、明文不进 DB/API/日志/事件；Multica MVP 用实例级全局环境变量（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN` 必填，`YUANLEI_MULTICA_PROJECT_ID` 可选），升级到按 Project 的凭据（依据 `channel_delegations.project_id` 与 `channel_sync_cursors(channel, project_id)`，非按用户）属后续决策；远端结果写入 Workdir 由 `Workdir` 安全写入 Owner 执行，路径按现有边界校验。
 - 无 Multica 凭据时 Multica 适配器不注册，治理、Channel、Run 与 coding 路径独立可用。
 
 ## 与 Yuxi 的边界
@@ -34,7 +34,7 @@
 |---|---|---|
 | 统一委派接口与编排 | `backend/package/yuxi/services/delegation_service.py`、`backend/package/yuxi/delegation/` | 适配器注册、委派事实、收集租约、统一读模型 |
 | 沙盒 CLI 适配 | `CodingExecutionService`、`coding_sessions` 仓储 | `SandboxCodingExecutor` 复用会话事实，句柄绑定 `session_id` / `turn_id`，不新增平行表 |
-| Multica 适配与凭据 | 新增 Multica 适配器与渠道凭据服务 | 入向拉取归一；出向按 `operation_id` 创建/轮询/回收，投递意图先持久化 |
+| Multica 适配与凭据 | 新增 Multica 适配器；MVP 凭据为实例级全局 env（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN` / 可选 `YUANLEI_MULTICA_PROJECT_ID`） | 入向拉取归一；出向按 `operation_id` 创建/轮询/回收，投递意图先持久化；无凭据时适配器不注册 |
 | 入向归一与审核 | `backend/package/yuxi/services/governance_service.py` + 治理四表 | 只产生 `proposed`，导入入口无 canonical 写路径，复用外部标识唯一约束 |
 | 入向同步游标 | 新增 `ChannelSyncService` + `channel_sync_cursors`（yuanlei 域） | 游标、去重与失败重试的确定性 Owner，worker 周期驱动 |
 | 委派事实 | 新增 `channel_delegations`（yuanlei 域） | 稳定 `operation_id`、投递/回收本地状态与远端只读投影分离 |
