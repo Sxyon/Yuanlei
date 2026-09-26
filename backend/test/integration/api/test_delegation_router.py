@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from server.routers.delegation_router import delegations
+from server.routers.governance_router import governance
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import User
@@ -90,6 +91,7 @@ def _build_app(session_factory, *, current_user: User | None):
     """按需覆盖 get_required_user；不覆盖时保留真实 401 语义。"""
     app = FastAPI()
     app.include_router(delegations, prefix="/api")
+    app.include_router(governance, prefix="/api")
 
     async def override_db():
         async with session_factory() as db:
@@ -156,3 +158,43 @@ async def test_multica_channel_routes_fail_closed_without_credentials(monkeypatc
             cursor_response = await client.get("/api/projects/project-owner/channels/multica/cursor")
             assert cursor_response.status_code == 503, cursor_response.text
             assert cursor_response.json()["detail"]["code"] == "channel_unavailable"
+
+
+async def test_project_governance_http_creation_and_local_delegation_guard() -> None:
+    """真实 HTTP 允许项目内治理写入，未经审核任务不得进入本地执行。"""
+    async with _scoped_database("pytest_project_workbench_http") as (manager, sessions):
+        await _seed_user_with_project(manager.async_engine, uid="uid-owner", project_id="project-owner")
+        owner = User(username="owner", uid="uid-owner", password_hash="x", role="user")
+        async with _http_client(sessions, current_user=owner) as client:
+            topic = await client.post(
+                "/api/projects/project-owner/governance/topics",
+                json={"title": "本地议题", "source_channel": "project"},
+            )
+            assert topic.status_code == 200, topic.text
+            reviewed = await client.post(
+                f"/api/projects/project-owner/governance/topics/{topic.json()['id']}/review",
+                json={"approve": True},
+            )
+            assert reviewed.json()["status"] == "canonical"
+            decision = await client.post(
+                "/api/projects/project-owner/governance/decisions",
+                json={"title": "采用本地方案", "conclusion": "先完成单项目", "topic_id": topic.json()["id"]},
+            )
+            assert decision.status_code == 200, decision.text
+            task = await client.post(
+                "/api/projects/project-owner/governance/tasks",
+                json={"title": "本地任务", "decision_id": decision.json()["id"]},
+            )
+            assert task.status_code == 200, task.text
+            blocked = await client.post(
+                f"/api/projects/project-owner/governance/tasks/{task.json()['id']}/delegations",
+                json={"executor_key": "codex"},
+            )
+            assert blocked.status_code == 409, blocked.text
+            assert blocked.json()["detail"]["code"] == "task_not_ready"
+            generic = await client.post(
+                "/api/projects/project-owner/delegations",
+                json={"executor_key": "codex", "task": "不能绕过任务"},
+            )
+            assert generic.status_code == 422, generic.text
+            assert generic.json()["detail"]["code"] == "task_required"

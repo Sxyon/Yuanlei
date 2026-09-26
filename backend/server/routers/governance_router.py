@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services.governance_service import (
+    create_governance_decision,
     create_governance_report,
+    create_governance_task,
     create_governance_topic,
     review_governance_task,
     review_governance_topic,
@@ -43,6 +45,30 @@ class GovernanceReview(BaseModel):
 
     approve: bool
     review_note: str | None = None
+
+
+class GovernanceDecisionCreate(BaseModel):
+    """记录项目决策的请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., max_length=512)
+    conclusion: str
+    rationale: str | None = None
+    topic_id: str | None = Field(None, max_length=64)
+    decided: bool = True
+
+
+class GovernanceTaskCreate(BaseModel):
+    """创建待审核项目任务的请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., max_length=512)
+    description: str | None = None
+    topic_id: str | None = Field(None, max_length=64)
+    decision_id: str | None = Field(None, max_length=64)
+    assignee_agent_slug: str | None = Field(None, max_length=80)
 
 
 class GovernanceReportCreate(BaseModel):
@@ -129,6 +155,49 @@ async def review_task(
         task_id=task_id,
         approve=payload.approve,
         review_note=payload.review_note,
+        db=db,
+        user=current_user,
+    )
+
+
+@governance.post("/projects/{project_id}/governance/decisions")
+async def create_decision(
+    project_id: str,
+    payload: GovernanceDecisionCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """由当前用户记录项目决策。"""
+    return await create_governance_decision(
+        project_id=project_id,
+        title=payload.title,
+        conclusion=payload.conclusion,
+        rationale=payload.rationale,
+        topic_id=payload.topic_id,
+        decided=payload.decided,
+        db=db,
+        user=current_user,
+    )
+
+
+@governance.post("/projects/{project_id}/governance/tasks")
+async def create_task(
+    project_id: str,
+    payload: GovernanceTaskCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建项目内来源的待审核任务。"""
+    return await create_governance_task(
+        project_id=project_id,
+        title=payload.title,
+        description=payload.description,
+        topic_id=payload.topic_id,
+        decision_id=payload.decision_id,
+        assignee_agent_slug=payload.assignee_agent_slug,
+        source_channel="project",
+        source_external_id=None,
+        source_url=None,
         db=db,
         user=current_user,
     )

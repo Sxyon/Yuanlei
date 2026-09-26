@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -27,6 +28,7 @@ from yuxi.repositories.channel_delegation_repository import ChannelDelegationRep
 from yuxi.services.channel_sync_service import ChannelSyncService
 from yuxi.services.delegation_service import DelegationService
 from yuxi.services.governance_service import create_governance_topic
+from yuxi.services.governance_service import create_governance_task, review_governance_task
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import (
     AgentRun,
@@ -173,6 +175,131 @@ class _FakeMulticaClient:
         if updated_after:
             issues = [issue for issue in issues if (issue.updated_at or "") > updated_after]
         return issues[offset : offset + limit]
+
+
+async def test_project_task_delegation_requires_review_and_keeps_task_link() -> None:
+    """仅已审核且已指派的项目任务能委派，读模型可回读来源任务。"""
+    async with _scoped_database("pytest_project_task_delegation") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with manager.async_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    """INSERT INTO agents
+                    (slug, backend_id, name, pics, config_json, share_config, is_default, is_subagent)
+                    VALUES ('project-worker', 'ChatbotAgent', 'Worker', '[]'::jsonb,
+                    '{}'::jsonb, '{}'::jsonb, FALSE, FALSE)"""
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO project_agents (id, project_id, agent_slug, config_overrides) "
+                    "VALUES ('binding-1', 'project-owner', 'project-worker', '{}'::jsonb)"
+                )
+            )
+        async with sessions() as db:
+            user = await _load_user(db)
+            task = await create_governance_task(
+                project_id="project-owner",
+                title="交付功能",
+                description="写完并验证",
+                topic_id=None,
+                decision_id=None,
+                assignee_agent_slug="project-worker",
+                source_channel="project",
+                source_external_id=None,
+                source_url=None,
+                db=db,
+                user=user,
+            )
+            service = DelegationService(db, executors=[_StubExecutor("codex")])
+            with pytest.raises(HTTPException) as pending:
+                await service.dispatch_project_task(
+                    project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+                )
+            assert pending.value.status_code == 409
+
+            await review_governance_task(
+                project_id="project-owner",
+                task_id=task["id"],
+                approve=True,
+                review_note=None,
+                db=db,
+                user=user,
+            )
+            view = await service.dispatch_project_task(
+                project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+            )
+            assert view["governance_task_id"] == task["id"]
+            assert view["task"] == "交付功能\n\n写完并验证"
+            assert (await service.list_delegations(project_id="project-owner"))[0]["governance_task_id"] == task["id"]
+
+
+async def test_failed_dispatch_rolls_back_partial_executor_writes() -> None:
+    """执行器失败时只保留投递意图和错误，不提交半成品副作用。"""
+    async with _scoped_database("pytest_dispatch_rollback") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+
+            class PartialExecutor(_StubExecutor):
+                """先写入未提交渠道行再模拟执行器失败。"""
+
+                async def dispatch(self, request):
+                    await db.execute(
+                        text(
+                            "INSERT INTO channel_sync_cursors (id, channel, project_id, created_at, updated_at) "
+                            "VALUES ('partial-cursor', 'multica', 'project-owner', NOW(), NOW())"
+                        )
+                    )
+                    raise DelegationError("partial failure", error_code="partial_failure")
+
+            service = DelegationService(db, executors=[PartialExecutor("codex")])
+            with pytest.raises(DelegationError):
+                await service.dispatch(
+                    executor_key="codex",
+                    request=DelegationRequest(operation_id="", project_id="project-owner", task="只留下意图"),
+                    uid="uid-owner",
+                )
+            assert await db.scalar(text("SELECT COUNT(*) FROM channel_sync_cursors")) == 0
+            assert (
+                await db.scalar(text("SELECT COUNT(*) FROM channel_delegations WHERE error_code='partial_failure'"))
+                == 1
+            )
+
+
+async def test_failed_recovery_rolls_back_partial_executor_writes() -> None:
+    """恢复重投失败时不提交执行器半成品，并保留可观察的 pending 错误。"""
+    async with _scoped_database("pytest_recovery_rollback") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            await ChannelDelegationRepository(db).add_delegation(
+                operation_id="recover-1",
+                project_id="project-owner",
+                executor_key="codex",
+                task="恢复任务",
+                request_json={"metadata": {}},
+                initiator_run_id=None,
+                created_by="uid-owner",
+            )
+            await db.commit()
+
+            class PartialExecutor(_StubExecutor):
+                """模拟恢复期间先写入半成品再报错。"""
+
+                async def dispatch(self, request):
+                    await db.execute(
+                        text(
+                            "INSERT INTO channel_sync_cursors (id, channel, project_id, created_at, updated_at) "
+                            "VALUES ('partial-recovery', 'multica', 'project-owner', NOW(), NOW())"
+                        )
+                    )
+                    raise DelegationError("partial recovery", error_code="partial_recovery")
+
+            counts = await DelegationService(db, executors=[PartialExecutor("codex")]).converge()
+            assert counts["failed"] == 1
+            assert await db.scalar(text("SELECT COUNT(*) FROM channel_sync_cursors")) == 0
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="recover-1")
+            assert row.dispatch_state == "pending"
+            assert row.error_code == "executor_dispatch_failed"
 
 
 async def test_dispatch_persists_intent_unified_view_and_executor_unavailable() -> None:

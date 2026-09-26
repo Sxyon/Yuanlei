@@ -23,6 +23,8 @@
 - 入向游标、去重与失败重试由确定性同步服务与 `channel_sync_cursors` 行持有，不依赖 Agent 自行决定同步。分页按远端 `offset`/`limit` 有界进行，只有整个结果集取回后才推进游标；触顶 `MULTICA_SYNC_MAX_PAGES` 或中途异常时保持原游标并显式告警/报错，绝不把游标推进到未确认取回的页（不静默跳过）。该取舍的已知后果：待取回项 ≥ `MULTICA_SYNC_MAX_PAGES * limit`（默认 500）且每页始终满页时，游标不推进、每轮重复处理同一批（有告警、不丢数据、不静默，但无法前进），需调大页上限/`limit` 或缩小项目积压才能前进。
 - 渠道凭据 fail-closed、明文不进 DB/API/日志/事件；Multica MVP 用实例级全局环境变量（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN` 必填，`YUANLEI_MULTICA_PROJECT_ID` 可选），升级到按 Project 的凭据（依据 `channel_delegations.project_id` 与 `channel_sync_cursors(channel, project_id)`，非按用户）属后续决策；远端结果写入 Workdir 由 `Workdir` 安全写入 Owner 执行，路径按现有边界校验。
 - 无 Multica 凭据时 Multica 适配器不注册，治理、Channel、Run 与 coding 路径独立可用。
+- 单项目的人用 HTTP 本地入口从已审核且已指派项目数字员工的任务发起。服务端按用户、项目、Agent 绑定与 Workdir 派生专属沙盒范围，通用 HTTP 委派入口不接受无范围的 codex/opencode 请求。委派请求快照保留来源任务 ID，读视图可关联同一任务的多次尝试。既有 Agent Run 内工具仍可按其运行授权范围执行独立编码委派。
+- 本地编码会话/turn 与委派句柄同事务提交后再发布队列；编码 pending turn 的既有恢复流程处理提交后投递失败。首次沙盒创建前刷新用户 Skill 投影，避免缺目录导致 provisioner 拒绝。
 
 ## 与 Yuxi 的边界
 
@@ -61,4 +63,5 @@
 - 既有可复用事实：[Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)、[项目治理域数据模型](project-governance.md)。
 - Multica 创建/查询/幂等契约依据 `multica` CLI 帮助与 `multica-platform` skill reference 核实，结论写在 Decision 的 Multica 桥接一节。
 - 代码 Owner：`backend/package/yuxi/delegation/`（接口与适配器）、`backend/package/yuxi/services/delegation_service.py`、`backend/package/yuxi/services/channel_sync_service.py`、`backend/package/yuxi/repositories/channel_delegation_repository.py`、`backend/server/routers/delegation_router.py`、`backend/package/yuxi/agents/toolkits/buildin/delegation_tools.py`。
-- 验收证据以关联 Decision 的六列矩阵为准；真实 Multica 实例连通与真实专属沙盒整轮执行仍为 `Not run`。
+- 单项目本地闭环与真实 Codex/Workdir 证据见 [决策记录](../decisions/implemented/2026-09-26-single-project-local-loop.md)。
+- 验收证据以关联 Decision 的六列矩阵为准；真实 Multica 实例连通仍为 `Not run`。本地专属沙盒的真实 Codex 完成、结果回收和 Workdir 产物回读见 [单项目本地闭环决策](../decisions/implemented/2026-09-26-single-project-local-loop.md)。
