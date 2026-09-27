@@ -72,6 +72,18 @@ class Workdir:
         """在 Workdir 内原子创建或替换普通文件。"""
         return self.workspace.replace_authorized_file(self.resolve_path(path), content)
 
+    def create_file(self, path: str, content: bytes) -> dict:
+        """在 Workdir 内独占创建文件，避免新建操作覆盖既有内容。"""
+        return self.workspace.create_authorized_file(self.resolve_path(path), content)
+
+    def move_file(self, source_path: str, target_path: str) -> dict:
+        """在 Workdir 内移动普通文件。"""
+        return self.workspace.move_authorized_file(
+            self.resolve_path(source_path),
+            self.resolve_path(target_path),
+            root=self.root_path,
+        )
+
     def stat(self, path: str) -> dict:
         return self.workspace.stat_authorized_path(self.resolve_path(path), root=self.root_path)
 

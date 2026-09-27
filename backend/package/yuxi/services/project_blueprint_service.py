@@ -8,6 +8,9 @@
 from __future__ import annotations
 
 import re
+import uuid
+import errno
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -22,9 +25,14 @@ from yuxi.workspace.workdir import Workdir
 YUANLEI_DIR_NAME = ".yuanlei"
 BLUEPRINT_DIR_NAME = "blueprint"
 BLUEPRINT_DIRECTORY = f"{YUANLEI_DIR_NAME}/{BLUEPRINT_DIR_NAME}"
+ARCHIVE_DIR_NAME = "archive"
+ARCHIVE_DIRECTORY = f"{BLUEPRINT_DIRECTORY}/{ARCHIVE_DIR_NAME}"
 MAX_BLUEPRINT_NAME_LENGTH = 120
 MAX_BLUEPRINT_BYTES = 256 * 1024
 _BLUEPRINT_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*\.md$")
+_ARCHIVE_NAME_PATTERN = re.compile(
+    r"^(?P<stem>[a-z0-9][a-z0-9._-]*)--(?P<archived_at>\d{8}T\d{12}Z)--[0-9a-f]{32}\.md$"
+)
 
 
 def validate_blueprint_name(name: str) -> str:
@@ -100,6 +108,29 @@ def _ensure_blueprint_directory(workdir: Workdir) -> None:
             raise _blueprint_directory_conflict(scope) from exc
 
 
+def _ensure_archive_directory(workdir: Workdir) -> None:
+    """在蓝图目录内建立归档目录，拒绝同名非目录。"""
+    _ensure_blueprint_directory(workdir)
+    path = f"/{ARCHIVE_DIRECTORY}"
+    try:
+        info = workdir.stat(path)
+    except FileNotFoundError:
+        info = None
+    except PermissionError as exc:
+        raise _blueprint_directory_conflict(path) from exc
+    if info is not None:
+        if not info["is_dir"]:
+            raise _blueprint_directory_conflict(path)
+        return
+    try:
+        workdir.create_directory(f"/{BLUEPRINT_DIRECTORY}", ARCHIVE_DIR_NAME)
+    except FileExistsError:
+        if not workdir.stat(path)["is_dir"]:
+            raise _blueprint_directory_conflict(path)
+    except PermissionError as exc:
+        raise _blueprint_directory_conflict(path) from exc
+
+
 async def list_project_blueprint_view(
     *,
     project_id: str,
@@ -144,6 +175,11 @@ async def get_project_blueprint_view(
     project = await _require_project(project_id=project_id, db=db, user=user)
     workdir = _open_project_workdir(uid=str(user.uid), project=project)
     path = f"/{BLUEPRINT_DIRECTORY}/{normalized_name}"
+    return _read_blueprint_file(workdir, path, normalized_name)
+
+
+def _read_blueprint_file(workdir: Workdir, path: str, name: str) -> dict[str, Any]:
+    """从受限 Workdir 回读蓝图正文和文件元数据。"""
     try:
         payload = workdir.read_file(path, MAX_BLUEPRINT_BYTES)
     except (FileNotFoundError, NotADirectoryError) as exc:
@@ -163,6 +199,38 @@ async def get_project_blueprint_view(
             detail={"code": "blueprint_not_utf8", "message": "蓝图文档必须是 UTF-8 文本"},
         ) from exc
     metadata = workdir.stat(path)
+    return {
+        "name": name,
+        "content": content,
+        "size": int(metadata["size"]),
+        "modified_at": float(metadata["modified_at"]),
+    }
+
+
+async def create_project_blueprint_view(
+    *,
+    project_id: str,
+    name: str,
+    content: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """独占创建蓝图；同名文件已存在时返回冲突且不覆盖内容。"""
+    normalized_name = validate_blueprint_name(name)
+    encoded = encode_blueprint_content(content)
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    workdir = _open_project_workdir(uid=str(user.uid), project=project)
+    _ensure_blueprint_directory(workdir)
+    path = f"/{BLUEPRINT_DIRECTORY}/{normalized_name}"
+    try:
+        metadata = workdir.create_file(path, encoded)
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "blueprint_exists", "message": "同名蓝图已存在，请换一个名称"},
+        ) from exc
+    except PermissionError as exc:
+        raise _blueprint_directory_conflict(path) from exc
     return {
         "name": normalized_name,
         "content": content,
@@ -195,4 +263,100 @@ async def put_project_blueprint_view(
         "content": content,
         "size": int(metadata["size"]),
         "modified_at": float(metadata["modified_at"]),
+    }
+
+
+async def list_project_blueprint_archives_view(
+    *,
+    project_id: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """列出项目 Workdir 的整份蓝图归档。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    workdir = _open_project_workdir(uid=str(user.uid), project=project)
+    try:
+        entries = workdir.list_directory(f"/{ARCHIVE_DIRECTORY}")
+    except FileNotFoundError:
+        entries = []
+    except (NotADirectoryError, PermissionError) as exc:
+        raise _blueprint_directory_conflict(f"/{ARCHIVE_DIRECTORY}") from exc
+    documents = []
+    for entry in entries:
+        match = _ARCHIVE_NAME_PATTERN.fullmatch(str(entry["name"]))
+        if entry["is_dir"] or match is None:
+            continue
+        documents.append(
+            {
+                "archive_name": entry["name"],
+                "name": f"{match.group('stem')}.md",
+                "archived_at": match.group("archived_at"),
+                "size": int(entry["size"]),
+            }
+        )
+    documents.sort(key=lambda document: (document["archived_at"], document["archive_name"]), reverse=True)
+    return {"project_id": project.id, "documents": documents}
+
+
+async def get_project_blueprint_archive_view(
+    *,
+    project_id: str,
+    archive_name: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """只读回顾一份归档蓝图。"""
+    match = _ARCHIVE_NAME_PATTERN.fullmatch(str(archive_name or ""))
+    if match is None:
+        raise ValueError("无效的蓝图归档名称")
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    workdir = _open_project_workdir(uid=str(user.uid), project=project)
+    document = _read_blueprint_file(
+        workdir,
+        f"/{ARCHIVE_DIRECTORY}/{archive_name}",
+        f"{match.group('stem')}.md",
+    )
+    return {**document, "archive_name": archive_name, "archived_at": match.group("archived_at")}
+
+
+async def archive_project_blueprint_view(
+    *,
+    project_id: str,
+    name: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """把当前蓝图原子移入归档目录，拒绝覆盖已有历史文件。"""
+    normalized_name = validate_blueprint_name(name)
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    workdir = _open_project_workdir(uid=str(user.uid), project=project)
+    _ensure_archive_directory(workdir)
+    archived_at = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    archive_name = f"{normalized_name[:-3]}--{archived_at}--{uuid.uuid4().hex}.md"
+    try:
+        metadata = workdir.move_file(
+            f"/{BLUEPRINT_DIRECTORY}/{normalized_name}",
+            f"/{ARCHIVE_DIRECTORY}/{archive_name}",
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="蓝图文档不存在") from exc
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "blueprint_archive_conflict", "message": "归档目标已存在，请重试"},
+        ) from exc
+    except PermissionError as exc:
+        raise _blueprint_directory_conflict(f"/{BLUEPRINT_DIRECTORY}/{normalized_name}") from exc
+    except OSError as exc:
+        if exc.errno not in {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}:
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "blueprint_archive_unavailable", "message": "当前文件系统不支持安全归档"},
+        ) from exc
+    return {
+        "archive_name": archive_name,
+        "name": normalized_name,
+        "archived_at": archived_at,
+        "size": int(metadata["size"]),
     }

@@ -92,6 +92,7 @@
                           >
                           <a-menu-item
                             key="workbench"
+                            :icon="h(ClipboardList, { size: 14 })"
                             @click="emit('open-project-workbench', group.project)"
                             >项目工作台</a-menu-item
                           >
@@ -205,6 +206,7 @@
 import { computed, h, ref } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import {
+  ClipboardList,
   ChevronDown,
   FolderClosed,
   FolderOpen,

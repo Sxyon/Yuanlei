@@ -68,24 +68,36 @@
               <p>记录目标、范围和验收标准</p>
             </div>
           </div>
+          <a-alert
+            v-if="blueprintActionError"
+            type="error"
+            show-icon
+            :message="blueprintActionError"
+            closable
+            @close="blueprintActionError = ''"
+          />
           <div class="form-row">
             <a-select
               v-model:value="blueprintName"
               :disabled="busy || loading"
+              placeholder="选择当前蓝图"
               style="min-width: 200px"
               @change="readBlueprint"
             >
               <a-select-option v-for="doc in blueprints" :key="doc.name" :value="doc.name">{{
-                doc.name
+                displayBlueprintName(doc.name)
               }}</a-select-option>
             </a-select>
             <a-input
               v-model:value="newBlueprintName"
-              placeholder="新文档名，例如 plan.md"
+              aria-label="新蓝图名称"
+              placeholder="新蓝图名称，例如 product-plan"
               style="max-width: 240px"
+              @pressEnter="createBlueprint"
             />
-            <a-button :disabled="busy || loading" @click="startBlueprint">新建</a-button>
+            <a-button :disabled="busy || loading" @click="createBlueprint">新建蓝图</a-button>
           </div>
+          <p class="hint">名称使用小写字母、数字、点、下划线或短横线；系统自动补全 .md。</p>
           <a-textarea
             v-model:value="blueprintContent"
             :rows="9"
@@ -98,11 +110,45 @@
               :disabled="!blueprintName || blueprintName !== loadedBlueprintName || busy || loading"
               @click="saveBlueprint"
               >保存蓝图</a-button
-            ><span
-              v-if="newBlueprintPending || blueprintContent !== savedBlueprintContent"
-              class="hint"
+            ><span v-if="blueprintContent !== savedBlueprintContent" class="hint"
               >有未保存的蓝图草稿</span
             ><span v-else class="hint">保存后从项目 Workdir 回读。</span>
+            <a-popconfirm
+              v-if="blueprintName"
+              title="归档后可在下方历史蓝图翻阅，确认归档？"
+              ok-text="归档"
+              cancel-text="取消"
+              @confirm="archiveBlueprint"
+              ><a-button :disabled="busy || loading">归档当前蓝图</a-button></a-popconfirm
+            >
+          </div>
+          <div class="blueprint-history">
+            <h3>
+              历史蓝图 <span>{{ archivedBlueprints.length }}</span>
+            </h3>
+            <p v-if="!archivedBlueprints.length" class="hint">
+              暂无归档蓝图。旧蓝图归档后会在这里保留供翻阅。
+            </p>
+            <div v-else class="archive-layout">
+              <div class="archive-list" aria-label="历史蓝图列表">
+                <button
+                  v-for="archive in archivedBlueprints"
+                  :key="archive.archive_name"
+                  type="button"
+                  :class="{ active: selectedArchive === archive.archive_name }"
+                  @click="readArchive(archive.archive_name)"
+                >
+                  <strong>{{ displayBlueprintName(archive.name) }}</strong
+                  ><small>{{ archiveTimeLabel(archive.archived_at) }}</small>
+                </button>
+              </div>
+              <div class="archive-preview">
+                <a-spin v-if="archiveLoading" />
+                <a-alert v-else-if="archiveError" type="error" show-icon :message="archiveError" />
+                <MarkdownPreview v-else-if="archiveContent" :content="archiveContent" />
+                <p v-else class="hint">选择一份历史蓝图查看内容。</p>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -302,6 +348,8 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import GovernanceBoardPanel from '@/components/inspection/GovernanceBoardPanel.vue'
+import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
+import { displayBlueprintName, normalizeBlueprintName } from '@/utils/blueprintName'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 import {
@@ -321,10 +369,15 @@ const board = ref({ project: null, governance: null, execution: null })
 const blueprints = ref([])
 const blueprintName = ref('')
 const newBlueprintName = ref('')
+const blueprintActionError = ref('')
 const blueprintContent = ref('')
 const loadedBlueprintName = ref('')
 const savedBlueprintContent = ref('')
-const newBlueprintPending = ref(false)
+const archivedBlueprints = ref([])
+const selectedArchive = ref('')
+const archiveContent = ref('')
+const archiveError = ref('')
+const archiveLoading = ref(false)
 const agents = ref([])
 const delegations = ref([])
 const topicTitle = ref('')
@@ -346,6 +399,7 @@ const sectionLinks = [
 const jumpTo = (id) =>
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 let blueprintReadSeq = 0
+let archiveReadSeq = 0
 let loadSeq = 0
 const pageTitle = computed(() =>
   board.value?.project?.name ? `${board.value.project.name} · 项目工作台` : '项目工作台'
@@ -357,17 +411,18 @@ const taskDelegations = (taskId) =>
   delegations.value.filter((item) => item.governance_task_id === taskId)
 const terminalTurn = (status) =>
   ['completed', 'failed', 'cancelled', 'interrupted'].includes(status)
+const archiveTimeLabel = (raw) => {
+  const value = String(raw || '')
+  if (!/^\d{8}T\d{12}Z$/.test(value)) return value
+  const iso = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}.${value.slice(15, 18)}Z`
+  return new Date(iso).toLocaleString('zh-CN')
+}
 
 async function readBlueprint() {
   if (!blueprintName.value) return
-  if (newBlueprintPending.value) {
-    blueprintName.value = loadedBlueprintName.value
-    actionError.value = '新蓝图尚未保存，请先保存后切换文档'
-    return
-  }
   if (loadedBlueprintName.value && blueprintContent.value !== savedBlueprintContent.value) {
     blueprintName.value = loadedBlueprintName.value
-    actionError.value = '蓝图有未保存的修改，请先保存后切换文档'
+    blueprintActionError.value = '蓝图有未保存的修改，请先保存后切换文档'
     return
   }
   const name = blueprintName.value
@@ -384,7 +439,26 @@ async function readBlueprint() {
     if (seq !== blueprintReadSeq || blueprintName.value !== name || projectId.value !== project)
       return
     blueprintName.value = loadedBlueprintName.value
-    actionError.value = describeBoardError(error)
+    blueprintActionError.value = describeBoardError(error)
+  }
+}
+
+async function readArchive(name) {
+  const project = projectId.value
+  const seq = ++archiveReadSeq
+  selectedArchive.value = name
+  archiveLoading.value = true
+  archiveError.value = ''
+  archiveContent.value = ''
+  try {
+    const document = await api.getBlueprintArchive(project, name)
+    if (seq !== archiveReadSeq || projectId.value !== project) return
+    archiveContent.value = document.content
+  } catch (error) {
+    if (seq !== archiveReadSeq || projectId.value !== project) return
+    archiveError.value = describeBoardError(error)
+  } finally {
+    if (seq === archiveReadSeq && projectId.value === project) archiveLoading.value = false
   }
 }
 
@@ -394,36 +468,42 @@ async function load() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [boardResult, docsResult, agentResult, delegationResult] = await Promise.allSettled([
-      api.getProjectBoard(project),
-      api.listBlueprints(project),
-      projectAgentApi.list(project),
-      api.listDelegations(project)
-    ])
+    const [boardResult, docsResult, archiveResult, agentResult, delegationResult] =
+      await Promise.allSettled([
+        api.getProjectBoard(project),
+        api.listBlueprints(project),
+        api.listBlueprintArchives(project),
+        projectAgentApi.list(project),
+        api.listDelegations(project)
+      ])
     if (seq !== loadSeq || projectId.value !== project) return
     if (boardResult.status === 'rejected') throw boardResult.reason
     board.value = boardResult.value
     agents.value = agentResult.status === 'fulfilled' ? agentResult.value.agents || [] : []
     delegations.value = delegationResult.status === 'fulfilled' ? delegationResult.value : []
-    const auxiliaryErrors = [docsResult, agentResult, delegationResult]
+    const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult]
       .filter((result) => result.status === 'rejected')
       .map((result) => describeBoardError(result.reason))
     if (auxiliaryErrors.length)
       actionError.value = `部分工作台数据加载失败：${auxiliaryErrors.join('；')}`
+    if (archiveResult.status === 'fulfilled')
+      archivedBlueprints.value = archiveResult.value.documents || []
     if (docsResult.status === 'fulfilled') {
       blueprints.value = docsResult.value.documents || []
       if (!blueprintName.value && blueprints.value.length)
         blueprintName.value = blueprints.value[0].name
-      if (
-        blueprintName.value &&
-        !newBlueprintPending.value &&
-        blueprintContent.value === savedBlueprintContent.value
-      ) {
+      if (blueprintName.value && blueprintContent.value === savedBlueprintContent.value) {
         if (blueprints.value.some((doc) => doc.name === blueprintName.value)) await readBlueprint()
         else {
           blueprintName.value = blueprints.value[0]?.name || ''
           if (blueprintName.value) await readBlueprint()
         }
+      }
+      if (!blueprints.value.length) {
+        blueprintName.value = ''
+        loadedBlueprintName.value = ''
+        blueprintContent.value = ''
+        savedBlueprintContent.value = ''
       }
     }
   } catch (error) {
@@ -434,40 +514,44 @@ async function load() {
   }
 }
 
-async function act(operation) {
+async function act(operation, errorTarget = actionError) {
   busy.value = true
-  actionError.value = ''
+  errorTarget.value = ''
   try {
     await operation()
     await load()
   } catch (error) {
-    actionError.value = describeBoardError(error)
+    errorTarget.value = describeBoardError(error)
   } finally {
     busy.value = false
   }
 }
 
-function startBlueprint() {
+function createBlueprint() {
   if (loadedBlueprintName.value && blueprintContent.value !== savedBlueprintContent.value) {
-    actionError.value = '蓝图有未保存的修改，请先保存后新建文档'
+    blueprintActionError.value = '蓝图有未保存的修改，请先保存后新建文档'
     return
   }
-  const name = newBlueprintName.value.trim()
-  if (!/^[a-z0-9][a-z0-9._-]*\.md$/.test(name)) {
-    actionError.value = '文档名需为小写单层 .md 文件名'
+  const raw = newBlueprintName.value.trim()
+  const name = normalizeBlueprintName(raw)
+  if (!name) {
+    blueprintActionError.value = '蓝图名称需使用英文小写字母、数字、点、下划线或短横线'
     return
   }
   if (blueprints.value.some((doc) => doc.name === name)) {
-    actionError.value = '蓝图已存在，请从列表选择并编辑'
+    blueprintActionError.value = '蓝图已存在，请从列表选择并编辑'
     return
   }
-  blueprintReadSeq += 1
-  blueprintName.value = name
-  blueprintContent.value = ''
-  savedBlueprintContent.value = ''
-  loadedBlueprintName.value = name
-  newBlueprintPending.value = true
-  newBlueprintName.value = ''
+  act(async () => {
+    const content = `# ${displayBlueprintName(name)}\n`
+    const created = await api.createBlueprint(projectId.value, name, content)
+    blueprintReadSeq += 1
+    blueprintName.value = created.name
+    loadedBlueprintName.value = created.name
+    blueprintContent.value = created.content
+    savedBlueprintContent.value = created.content
+    newBlueprintName.value = ''
+  }, blueprintActionError)
 }
 const saveBlueprint = () =>
   act(async () => {
@@ -478,8 +562,22 @@ const saveBlueprint = () =>
     )
     savedBlueprintContent.value = document.content
     loadedBlueprintName.value = document.name
-    newBlueprintPending.value = false
-  })
+  }, blueprintActionError)
+const archiveBlueprint = () => {
+  if (blueprintContent.value !== savedBlueprintContent.value) {
+    blueprintActionError.value = '蓝图有未保存的修改，请先保存后归档'
+    return
+  }
+  act(async () => {
+    const archived = await api.archiveBlueprint(projectId.value, blueprintName.value)
+    blueprintReadSeq += 1
+    blueprintName.value = ''
+    loadedBlueprintName.value = ''
+    blueprintContent.value = ''
+    savedBlueprintContent.value = ''
+    await readArchive(archived.archive_name)
+  }, blueprintActionError)
+}
 const createTopic = () =>
   act(async () => {
     await api.createTopic(projectId.value, { title: topicTitle.value, summary: topicSummary.value })
@@ -521,14 +619,20 @@ const collectDelegation = (item) =>
 
 watch(projectId, () => {
   blueprintReadSeq += 1
+  archiveReadSeq += 1
   blueprints.value = []
+  archivedBlueprints.value = []
+  selectedArchive.value = ''
+  archiveContent.value = ''
+  archiveError.value = ''
+  archiveLoading.value = false
   agents.value = []
   delegations.value = []
   blueprintName.value = ''
   loadedBlueprintName.value = ''
   blueprintContent.value = ''
   savedBlueprintContent.value = ''
-  newBlueprintPending.value = false
+  blueprintActionError.value = ''
   load()
 })
 watch(
@@ -668,6 +772,14 @@ onMounted(load)
   border-radius: 6px;
   background: var(--gray-0);
   font-size: 13px;
+  color: var(--gray-700);
+  text-decoration: none;
+}
+.workbench-links a:visited,
+.workbench-links a:hover,
+.workbench-links a:active {
+  color: var(--gray-700);
+  text-decoration: none;
 }
 .workbench-links a:hover {
   border-color: var(--main-color);
@@ -726,5 +838,66 @@ onMounted(load)
 .hint {
   color: var(--gray-500);
   font-size: 12px;
+}
+.blueprint-history {
+  padding-top: 16px;
+  border-top: 1px solid var(--gray-100);
+}
+.blueprint-history h3 {
+  margin: 0 0 12px;
+  color: var(--gray-900);
+  font-size: 15px;
+}
+.blueprint-history h3 span {
+  margin-left: 5px;
+  color: var(--gray-500);
+  font-size: 12px;
+}
+.archive-layout {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  gap: 14px;
+}
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow: auto;
+}
+.archive-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--gray-150);
+  border-radius: 7px;
+  background: var(--gray-0);
+  color: var(--gray-800);
+  cursor: pointer;
+  text-align: left;
+}
+.archive-list button.active {
+  border-color: var(--main-color);
+  background: var(--main-30);
+}
+.archive-list small {
+  color: var(--gray-500);
+}
+.archive-preview {
+  min-width: 0;
+  min-height: 180px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--gray-150);
+  border-radius: 7px;
+  background: var(--gray-25);
+}
+@media (max-width: 680px) {
+  .archive-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -21,6 +21,22 @@ export const governanceBoardApi = {
     return apiGet(`${projectPath(projectId)}/blueprint/${encodeURIComponent(name)}`)
   },
 
+  createBlueprint(projectId, name, content) {
+    return apiPost(`${projectPath(projectId)}/blueprint`, { name, content })
+  },
+
+  listBlueprintArchives(projectId) {
+    return apiGet(`${projectPath(projectId)}/blueprint/history`)
+  },
+
+  getBlueprintArchive(projectId, archiveName) {
+    return apiGet(`${projectPath(projectId)}/blueprint/history/${encodeURIComponent(archiveName)}`)
+  },
+
+  archiveBlueprint(projectId, name) {
+    return apiPost(`${projectPath(projectId)}/blueprint/${encodeURIComponent(name)}/archive`, {})
+  },
+
   putBlueprint(projectId, name, content) {
     return apiPut(`${projectPath(projectId)}/blueprint/${encodeURIComponent(name)}`, { content })
   },

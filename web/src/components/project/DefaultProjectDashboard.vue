@@ -45,12 +45,14 @@
             :class="{ active: doc.name === selectedBlueprint }"
             @click="$emit('select-blueprint', doc.name)"
           >
-            {{ doc.name }}
+            {{ displayBlueprintName(doc.name) }}
           </button>
         </div>
         <p v-if="blueprintError" class="inline-error">{{ blueprintError }}</p>
         <p v-else-if="blueprintLoading" class="empty-copy">正在读取蓝图…</p>
-        <pre v-else-if="blueprintContent" class="blueprint-content">{{ blueprintContent }}</pre>
+        <div v-else-if="blueprintContent" class="blueprint-content">
+          <MarkdownPreview :content="blueprintContent" />
+        </div>
         <div v-else class="empty-block">
           <BookOpen :size="22" />
           <p>还没有蓝图内容</p>
@@ -171,6 +173,8 @@
 <script setup>
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
+import { displayBlueprintName } from '@/utils/blueprintName'
 import { Activity, ArrowUpRight, BookOpen, ListTodo, MessagesSquare, ScrollText } from '@lucide/vue'
 import {
   governanceStatusColor,
@@ -248,9 +252,30 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
   color: var(--gray-0);
   font-weight: 600;
 }
+.primary-link:visited,
+.primary-link:active {
+  color: var(--gray-0);
+  background: var(--main-color);
+}
 .primary-link:hover {
   color: var(--gray-0);
   background: var(--main-600);
+}
+.default-dashboard a,
+.default-dashboard a:visited,
+.default-dashboard a:hover,
+.default-dashboard a:active {
+  text-decoration: none;
+}
+.card-heading a,
+.card-heading a:visited,
+.card-heading a:hover,
+.card-heading a:active,
+.empty-block a,
+.empty-block a:visited,
+.empty-block a:hover,
+.empty-block a:active {
+  color: var(--main-color);
 }
 .overview-stats {
   display: grid;
@@ -342,10 +367,14 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
   border-radius: 7px;
   background: var(--gray-25);
   color: var(--gray-800);
-  font: inherit;
-  line-height: 1.7;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.blueprint-content :deep(a),
+.blueprint-content :deep(a:visited),
+.blueprint-content :deep(a:hover),
+.blueprint-content :deep(a:active) {
+  color: var(--main-color);
+  text-decoration: none;
 }
 .empty-block {
   display: flex;

@@ -3,24 +3,34 @@
 from __future__ import annotations
 
 import os
+import errno
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import PurePosixPath
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
+import yuxi.workspace.filesystem as workspace_filesystem
+from fastapi import FastAPI, HTTPException
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from yuxi.services.project_blueprint_service import (
+    archive_project_blueprint_view,
+    create_project_blueprint_view,
+    get_project_blueprint_archive_view,
     get_project_blueprint_view,
+    list_project_blueprint_archives_view,
     list_project_blueprint_view,
     put_project_blueprint_view,
 )
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import User
 from yuxi.workspace.paths import ensure_user_workspace, user_workspace_dir
+from yuxi.workspace.workdir import Workdir
+from server.routers.project_blueprint_router import project_blueprints
+from server.utils.auth_middleware import get_db, get_required_user
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -172,6 +182,196 @@ async def test_blueprint_round_trip_is_filesystem_owned(monkeypatch, tmp_path) -
                 user=user,
             )
             assert blueprint_file.read_text(encoding="utf-8") == "# v2\n"
+
+
+async def test_blueprint_create_and_archive_preserve_history_without_overwrite(monkeypatch, tmp_path) -> None:
+    """新建同名文件拒绝覆盖；归档移走当前文件并保留可回读正文。"""
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    host_workdir = _create_linked_workdir("uid-owner", "projects/owner")
+    async with _scoped_database("pytest_blueprint_archive") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(
+            manager.async_engine,
+            project_id="project-owner",
+            uid="uid-owner",
+        )
+        async with sessions() as session:
+            user = await _load_user(session, "uid-owner")
+            first = await create_project_blueprint_view(
+                project_id="project-owner",
+                name="plan.md",
+                content="# 第一版\n",
+                db=session,
+                user=user,
+            )
+            assert first["content"] == "# 第一版\n"
+            with pytest.raises(HTTPException) as duplicate:
+                await create_project_blueprint_view(
+                    project_id="project-owner",
+                    name="plan.md",
+                    content="# 意外覆盖\n",
+                    db=session,
+                    user=user,
+                )
+            assert duplicate.value.status_code == 409
+            assert (host_workdir / ".yuanlei/blueprint/plan.md").read_text() == "# 第一版\n"
+
+            archived = await archive_project_blueprint_view(
+                project_id="project-owner",
+                name="plan.md",
+                db=session,
+                user=user,
+            )
+            assert not (host_workdir / ".yuanlei/blueprint/plan.md").exists()
+            assert (host_workdir / ".yuanlei/blueprint/archive" / archived["archive_name"]).read_text() == "# 第一版\n"
+            history = await list_project_blueprint_archives_view(
+                project_id="project-owner",
+                db=session,
+                user=user,
+            )
+            assert [entry["archive_name"] for entry in history["documents"]] == [archived["archive_name"]]
+            read = await get_project_blueprint_archive_view(
+                project_id="project-owner",
+                archive_name=archived["archive_name"],
+                db=session,
+                user=user,
+            )
+            assert read["content"] == "# 第一版\n"
+            assert (
+                await list_project_blueprint_view(
+                    project_id="project-owner",
+                    db=session,
+                    user=user,
+                )
+            )["documents"] == []
+            with pytest.raises(HTTPException) as missing:
+                await get_project_blueprint_view(project_id="project-owner", name="plan.md", db=session, user=user)
+            assert missing.value.status_code == 404
+
+            recreated = await create_project_blueprint_view(
+                project_id="project-owner",
+                name="plan.md",
+                content="# 第二版\n",
+                db=session,
+                user=user,
+            )
+            assert recreated["content"] == "# 第二版\n"
+            assert read["content"] == "# 第一版\n"
+
+            for code in (errno.ENOTSUP, errno.EINVAL):
+
+                def unsupported_move(*_args):
+                    raise OSError(code, "unsupported")
+
+                with monkeypatch.context() as patch:
+                    patch.setattr(workspace_filesystem, "_rename_noreplace", unsupported_move)
+                    with pytest.raises(HTTPException) as unavailable:
+                        await archive_project_blueprint_view(
+                            project_id="project-owner", name="plan.md", db=session, user=user
+                        )
+                assert unavailable.value.status_code == 409
+                assert unavailable.value.detail["code"] == "blueprint_archive_unavailable"
+                assert (host_workdir / ".yuanlei/blueprint/plan.md").read_text() == "# 第二版\n"
+
+
+async def test_archive_move_preserves_concurrent_files(monkeypatch, tmp_path) -> None:
+    """目标抢占不能被覆盖，原子移动只取当时的源且不删除新写入。"""
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    host = _create_linked_workdir("uid-owner", "projects/owner")
+    source = host / "plan.md"
+    target = host / "archive.md"
+    source.write_text("# 原文件\n", encoding="utf-8")
+    workdir = Workdir.open_existing("uid-owner", "projects/owner")
+    original_rename = workspace_filesystem._rename_noreplace
+
+    def race_target(*args):
+        target.write_text("# 已有历史\n", encoding="utf-8")
+        return original_rename(*args)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(workspace_filesystem, "_rename_noreplace", race_target)
+        with pytest.raises(FileExistsError):
+            workdir.move_file("/plan.md", "/archive.md")
+    assert source.read_text(encoding="utf-8") == "# 原文件\n"
+    assert target.read_text(encoding="utf-8") == "# 已有历史\n"
+
+    target.unlink()
+
+    def race_source(*args):
+        replacement = host / "replacement.md"
+        replacement.write_text("# 替换文件\n", encoding="utf-8")
+        os.replace(replacement, source)
+        return original_rename(*args)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(workspace_filesystem, "_rename_noreplace", race_source)
+        workdir.move_file("/plan.md", "/archive.md")
+    assert not source.exists()
+    assert target.read_text(encoding="utf-8") == "# 替换文件\n"
+
+    target.unlink()
+    source.write_text("# 待归档\n", encoding="utf-8")
+
+    original_stat = os.stat
+
+    def recreate_source_after_move(path, *args, **kwargs):
+        if path == "archive.md" and kwargs.get("dir_fd") is not None:
+            source.write_text("# 并发新版本\n", encoding="utf-8")
+        return original_stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "stat", recreate_source_after_move)
+        workdir.move_file("/plan.md", "/archive.md")
+    assert source.read_text(encoding="utf-8") == "# 并发新版本\n"
+    assert target.read_text(encoding="utf-8") == "# 待归档\n"
+
+
+async def test_blueprint_http_create_archive_history_and_authorization(monkeypatch, tmp_path) -> None:
+    """真实 HTTP 路由连接 PostgreSQL 与 Workdir，越权读取和归档返回 404。"""
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    _create_linked_workdir("uid-owner", "projects/owner")
+    async with _scoped_database("pytest_blueprint_http") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_user(manager.async_engine, uid="uid-other")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner")
+        async with sessions() as session:
+            current = {"user": await _load_user(session, "uid-owner")}
+            app = FastAPI()
+            app.include_router(project_blueprints, prefix="/api")
+
+            async def provide_db():
+                yield session
+
+            async def provide_user():
+                return current["user"]
+
+            app.dependency_overrides[get_db] = provide_db
+            app.dependency_overrides[get_required_user] = provide_user
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                base = "/api/projects/project-owner/blueprint"
+                created = await client.post(base, json={"name": "plan.md", "content": "# 初版\n"})
+                assert created.status_code == 201, created.text
+                duplicate = await client.post(base, json={"name": "plan.md", "content": "# 覆盖\n"})
+                assert duplicate.status_code == 409, duplicate.text
+                assert (await client.get(f"{base}/plan.md")).json()["content"] == "# 初版\n"
+
+                current["user"] = await _load_user(session, "uid-other")
+                assert (await client.get(f"{base}/history")).status_code == 404
+                assert (await client.post(f"{base}/plan.md/archive")).status_code == 404
+                current["user"] = await _load_user(session, "uid-owner")
+
+                archived = await client.post(f"{base}/plan.md/archive")
+                assert archived.status_code == 200, archived.text
+                archive_name = archived.json()["archive_name"]
+                history = await client.get(f"{base}/history")
+                assert history.status_code == 200, history.text
+                assert history.json()["documents"][0]["archive_name"] == archive_name
+                read = await client.get(f"{base}/history/{archive_name}")
+                assert read.status_code == 200, read.text
+                assert read.json()["content"] == "# 初版\n"
+                assert (await client.get(f"{base}/plan.md")).status_code == 404
+                current["user"] = await _load_user(session, "uid-other")
+                assert (await client.get(f"{base}/history/{archive_name}")).status_code == 404
 
 
 async def test_blueprint_lists_only_markdown_documents(monkeypatch, tmp_path) -> None:

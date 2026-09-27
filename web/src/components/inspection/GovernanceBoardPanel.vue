@@ -139,8 +139,11 @@ const itemNote = (item) => item.summary || item.description || item.conclusion |
   color: var(--main-color);
   text-decoration: none;
 
-  &:hover {
-    text-decoration: underline;
+  &:visited,
+  &:hover,
+  &:active {
+    color: var(--main-color);
+    text-decoration: none;
   }
 }
 
