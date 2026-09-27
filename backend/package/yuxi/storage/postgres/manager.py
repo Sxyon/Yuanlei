@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 12
+YUANLEI_SCHEMA_VERSION = 13
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -578,6 +578,71 @@ GOVERNANCE_TOPIC_DISCUSSION_SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS ix_governance_topic_comments_topic_created "
     "ON governance_topic_comments(topic_id, created_at, id)",
 )
+
+PROJECT_WORK_SCHEMA_STATEMENTS = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_topics_id_project ON governance_topics(id, project_id)",
+    """CREATE TABLE IF NOT EXISTS project_work_codes (
+        project_id VARCHAR(64) PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        code VARCHAR(12) NOT NULL CONSTRAINT uq_project_work_codes_code UNIQUE,
+        next_number INTEGER NOT NULL DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_topic_codes (
+        topic_id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        code VARCHAR(12) NOT NULL,
+        CONSTRAINT uq_project_topic_codes_project_code UNIQUE (project_id, code),
+        CONSTRAINT fk_project_topic_codes_topic_project FOREIGN KEY (topic_id, project_id)
+            REFERENCES governance_topics(id, project_id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_work_tasks (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        topic_id VARCHAR(64) REFERENCES governance_topics(id) ON DELETE SET NULL,
+        parent_id VARCHAR(64) REFERENCES project_work_tasks(id) ON DELETE SET NULL,
+        number VARCHAR(48) NOT NULL,
+        title VARCHAR(512) NOT NULL,
+        description TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'todo',
+        primary_owner_agent_slug VARCHAR(80) REFERENCES agents(slug) ON DELETE SET NULL,
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_project_work_tasks_id_project UNIQUE (id, project_id),
+        CONSTRAINT uq_project_work_tasks_project_number UNIQUE (project_id, number),
+        CONSTRAINT fk_project_work_tasks_topic_project FOREIGN KEY (topic_id, project_id)
+            REFERENCES governance_topics(id, project_id),
+        CONSTRAINT fk_project_work_tasks_parent_project FOREIGN KEY (parent_id, project_id)
+            REFERENCES project_work_tasks(id, project_id),
+        CONSTRAINT ck_project_work_tasks_status
+            CHECK (status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_tasks_project_created ON project_work_tasks(project_id, created_at)",
+    """CREATE TABLE IF NOT EXISTS project_work_issues (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES project_work_tasks(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        title VARCHAR(512) NOT NULL,
+        description TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'open',
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_project_work_issues_task_sequence UNIQUE (task_id, sequence),
+        CONSTRAINT ck_project_work_issues_status CHECK (status IN ('open', 'resolved', 'closed'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_work_comments (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) REFERENCES project_work_tasks(id) ON DELETE CASCADE,
+        issue_id VARCHAR(64) REFERENCES project_work_issues(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        author_uid VARCHAR(64) NOT NULL,
+        author_name TEXT NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_project_work_comments_one_parent CHECK ((task_id IS NOT NULL) <> (issue_id IS NOT NULL))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_comments_task_created ON project_work_comments(task_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_comments_issue_created ON project_work_comments(issue_id, created_at)",
+)
 # 元垒外部执行器委派域：委派事实与入向同步游标。本地 dispatch_state 与远端
 # remote_status 投影分离；投递意图先持久化，结果只引用发起 Run。
 CHANNEL_DELEGATION_SCHEMA_STATEMENTS = (
@@ -774,7 +839,8 @@ CODING_SESSION_SCHEMA_STATEMENTS = (
         CONSTRAINT uq_coding_session_events_seq UNIQUE (session_id, seq)
     )
     """,
-    "CREATE INDEX IF NOT EXISTS ix_coding_session_events_session_created ON coding_session_events(session_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_coding_session_events_session_created "
+    "ON coding_session_events(session_id, created_at)",
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -1297,6 +1363,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in GOVERNANCE_TOPIC_DISCUSSION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v12_to_v13(self) -> None:
+        """新增独立项目工作任务、问题单及编号配置。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_WORK_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

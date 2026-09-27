@@ -24,6 +24,7 @@
 - [Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)：实现已接入，提案中的浏览器与真实账号证据待补。
 - [项目 Dashboard](project-dashboard.md)：已实现统一默认概览与静态自定义页面；治理关系图从议题、决策和任务的已有外键派生。
 - [项目治理域数据模型](project-governance.md)：已实现；议题/决策/任务/汇报事实、多渠道来源归一化、审核前议题编辑与讨论、proposed→审核→canonical 生命周期。
+- [独立项目工作任务与 Issue](project-work-tasks.md)：一期已接入；项目编号、子任务、问题单、第一负责人和追加式评论。
 - [项目蓝图 Workdir 事实源](project-blueprint.md)：已实现；项目蓝图固定在 Workdir `.yuanlei/blueprint/` 目录，可读写、可 diff，Agent 起草、人可编辑，旧文档可整份归档回顾。
 - [项目督查板](project-inspection-board.md)：已实现；只读聚合治理事实与 Run 执行事实，跨项目只读展示，单项目工作台提供蓝图编辑、议题讨论与治理审核、本地委派与汇报查看。
 - [外部执行器委派与 Multica 桥接](external-executor-delegation.md)：统一 codex/opencode 与 Multica 的可委派执行者接口；Multica 拉取式入向只产生 proposed，出向按 `operation_id` 标记核对，不成为事实源。

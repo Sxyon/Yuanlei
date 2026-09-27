@@ -16,6 +16,7 @@ from yuxi.repositories.agent_repository import (
     user_can_manage_agent,
 )
 from yuxi.repositories.project_agent_repository import ProjectAgentRepository
+from yuxi.repositories.project_work_repository import ProjectWorkRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.agent_config_service import prepare_agent_config_write
 from yuxi.storage.postgres.models_business import Agent, User
@@ -291,6 +292,10 @@ async def unbind_project_agent_view(
     binding = await repo.get_for_update(project.id, agent_slug)
     if binding is None:
         raise HTTPException(status_code=404, detail="该智能体未绑定到此项目")
+
+    work_repo = ProjectWorkRepository(db, project_id=project.id, uid=str(user.uid))
+    if await work_repo.has_owner_tasks(agent_slug):
+        raise HTTPException(status_code=409, detail="该智能体仍是项目任务第一负责人，请先转移责任")
 
     agent = await AgentRepository(db).get_by_slug(agent_slug)
     await db.delete(binding)

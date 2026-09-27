@@ -89,6 +89,78 @@ async def _drop_isolated_schema(schema: str, admin_engine, scoped_engine) -> Non
     await admin_engine.dispose()
 
 
+async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
+    """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            for table in (
+                "project_work_comments",
+                "project_work_issues",
+                "project_work_tasks",
+                "project_topic_codes",
+                "project_work_codes",
+            ):
+                await connection.execute(text(f"DROP TABLE {table}"))
+            await connection.execute(
+                text("ALTER TABLE governance_topics DROP CONSTRAINT uq_governance_topics_id_project")
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO users (username, uid, password_hash, role, login_failed_count, is_deleted) "
+                    "VALUES ('v12-user', 'v12-user', 'x', 'user', 0, 0)"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                    "VALUES ('v12-project', 'v12-user', 'Old project', 'selectable', 'projects/v12', 'managed')"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO governance_topics "
+                    "(id, project_id, title, status, source_channel, created_at, updated_at) "
+                    "VALUES ('v12-topic', 'v12-project', 'Old topic', 'proposed', 'project', NOW(), NOW())"
+                )
+            )
+        await manager.upgrade_yuanlei_schema_v12_to_v13()
+        await manager.upgrade_yuanlei_schema_v12_to_v13()
+        async with scoped_engine.connect() as connection:
+            names = {
+                row[0]
+                for row in await connection.execute(
+                    text("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()")
+                )
+            }
+            assert {
+                "project_work_codes",
+                "project_topic_codes",
+                "project_work_tasks",
+                "project_work_issues",
+                "project_work_comments",
+            } <= names
+            constraints = {
+                row[0]
+                for row in await connection.execute(
+                    text("SELECT conname FROM pg_constraint WHERE connamespace = current_schema()::regnamespace")
+                )
+            }
+            assert "uq_project_work_tasks_project_number" in constraints
+            assert "ck_project_work_comments_one_parent" in constraints
+            indexes = {
+                row[0] for row in await connection.execute(
+                    text("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()")
+                )
+            }
+            assert "uq_governance_topics_id_project" in indexes
+            old_topic = await connection.scalar(text("SELECT title FROM governance_topics WHERE id = 'v12-topic'"))
+            assert old_topic == "Old topic"
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_schema_migration_lock_serializes_real_postgres_sessions() -> None:
     """两个 migrator 竞争同一 advisory lock 时只允许一个进入临界区。"""
     engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
@@ -855,16 +927,11 @@ async def test_yuanlei_v6_to_v7_adds_reference_columns_and_dedupes_idempotently(
                 )
             }
             assert columns == {"source", "model_provider_id", "key_mode"}
-            source_default = await connection.scalar(
-                text("SELECT source FROM coding_credentials WHERE id = 'g2'")
-            )
+            source_default = await connection.scalar(text("SELECT source FROM coding_credentials WHERE id = 'g2'"))
             assert source_default == "manual"
             rows = (
                 await connection.execute(
-                    text(
-                        "SELECT id, executor, status, api_key_cipher FROM coding_credentials "
-                        "ORDER BY id"
-                    )
+                    text("SELECT id, executor, status, api_key_cipher FROM coding_credentials ORDER BY id")
                 )
             ).all()
             assert {(row.executor, row.status) for row in rows} == {
@@ -895,8 +962,7 @@ async def test_yuanlei_v9_to_v10_converges_governance_tables_idempotently() -> N
         async with scoped_engine.begin() as connection:
             await connection.execute(
                 text(
-                    "DROP TABLE IF EXISTS governance_reports, governance_tasks, "
-                    "governance_decisions, governance_topics"
+                    "DROP TABLE IF EXISTS governance_reports, governance_tasks, governance_decisions, governance_topics"
                 )
             )
 
@@ -1030,9 +1096,7 @@ async def test_business_runtime_scope_width_widens_idempotently_for_dedicated_ag
         manager = _scoped_manager(scoped_engine)
         await manager.create_business_tables()
         async with scoped_engine.begin() as connection:
-            await connection.execute(
-                text("ALTER TABLE agent_runs ALTER COLUMN runtime_scope_id TYPE VARCHAR(64)")
-            )
+            await connection.execute(text("ALTER TABLE agent_runs ALTER COLUMN runtime_scope_id TYPE VARCHAR(64)"))
             await connection.execute(
                 text("ALTER TABLE project_git_worktrees ALTER COLUMN runtime_scope_id TYPE VARCHAR(64)")
             )

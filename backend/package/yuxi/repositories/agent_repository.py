@@ -13,7 +13,7 @@ from yuxi.agents.context import AGENT_RUNTIME_RESOURCE_FIELDS
 from yuxi.agents.presets import AgentPreset
 from yuxi.agents.presets.default_chatbot import PRESET as DEFAULT_AGENT
 from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_agent_permission
-from yuxi.storage.postgres.models_business import Agent, User
+from yuxi.storage.postgres.models_business import Agent, Project, ProjectAgent, ProjectWorkTask, User
 from yuxi.utils.datetime_utils import utc_now_naive
 
 DEFAULT_AGENT_SLUG = DEFAULT_AGENT.slug
@@ -29,6 +29,10 @@ DEFAULT_SHARE_CONFIG = {
 
 ADMIN_ROLES = {"admin", "superadmin"}
 AGENT_RESOURCE_CONFIG_FIELDS = AGENT_RUNTIME_RESOURCE_FIELDS | {"preload_skills"}
+
+
+class AgentHasWorkTasks(ValueError):
+    """智能体仍承担项目任务第一负责人时拒绝删除。"""
 
 
 def is_builtin_agent(agent: Agent) -> bool:
@@ -371,6 +375,16 @@ class AgentRepository:
         return agent
 
     async def delete(self, *, agent: Agent) -> None:
+        # 与任务设置负责人共同锁定绑定行，防止检查后新任务抢先提交。
+        await self.db.scalars(select(ProjectAgent.id).where(ProjectAgent.agent_slug == agent.slug).with_for_update())
+        owned_task = await self.db.scalar(
+            select(ProjectWorkTask.id)
+            .join(Project, Project.id == ProjectWorkTask.project_id)
+            .where(ProjectWorkTask.primary_owner_agent_slug == agent.slug, Project.status == "active")
+            .limit(1)
+        )
+        if owned_task is not None:
+            raise AgentHasWorkTasks("该智能体仍是项目任务第一负责人，请先转移责任")
         await self.db.delete(agent)
         await self.db.commit()
 

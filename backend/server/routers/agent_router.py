@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.buildin import AgentBackendNotFoundError, get_agent_backend, list_agent_backend_info
 from yuxi.agents.context import filter_declared_config
 from yuxi.repositories.agent_repository import (
+    AgentHasWorkTasks,
     AgentRepository,
     is_builtin_agent,
     user_can_access_agent,
@@ -238,9 +239,7 @@ async def get_agent(
             await ensure_agent_project_scope(db=db, agent_slug=item.slug, project_id=project.id)
         except AgentProjectScopeDenied as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
-        data["is_project_agent"] = bool(
-            await ProjectAgentRepository(db).list_project_ids_for_agent(item.slug)
-        )
+        data["is_project_agent"] = bool(await ProjectAgentRepository(db).list_project_ids_for_agent(item.slug))
         try:
             backend = get_agent_backend(item.backend_id)
         except AgentBackendNotFoundError as exc:
@@ -321,7 +320,10 @@ async def delete_agent(
         raise HTTPException(status_code=403, detail="不能删除非自己创建的智能体")
     if is_builtin_agent(item):
         raise HTTPException(status_code=409, detail="内置智能体不能删除")
-    await repo.delete(agent=item)
+    try:
+        await repo.delete(agent=item)
+    except AgentHasWorkTasks as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"success": True}
 
 
