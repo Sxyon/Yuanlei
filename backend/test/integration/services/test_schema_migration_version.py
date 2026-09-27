@@ -887,6 +887,133 @@ async def test_yuanlei_v6_to_v7_adds_reference_columns_and_dedupes_idempotently(
         await admin_engine.dispose()
 
 
+async def test_yuanlei_v9_to_v10_converges_governance_tables_idempotently() -> None:
+    """真实 PostgreSQL：v9→v10 建治理四表幂等，来源与审核约束真实生效。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_governance_schema")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "DROP TABLE IF EXISTS governance_reports, governance_tasks, "
+                    "governance_decisions, governance_topics"
+                )
+            )
+
+        await manager.upgrade_yuanlei_schema_v9_to_v10()
+        await manager.upgrade_yuanlei_schema_v9_to_v10()
+
+        async with scoped_engine.connect() as connection:
+            tables = {
+                row.table_name
+                for row in await connection.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = current_schema() "
+                        "AND table_name LIKE 'governance_%'"
+                    )
+                )
+            }
+            assert tables == {
+                "governance_topics",
+                "governance_decisions",
+                "governance_tasks",
+                "governance_reports",
+            }
+            constraints = {
+                row.conname
+                for row in await connection.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint AS con "
+                        "JOIN pg_namespace AS ns ON ns.oid = con.connamespace "
+                        "WHERE ns.nspname = current_schema() "
+                        "AND con.conname LIKE 'ck_governance_%'"
+                    )
+                )
+            }
+            assert {
+                "ck_governance_topics_source_shape",
+                "ck_governance_topics_review_shape",
+                "ck_governance_tasks_source_shape",
+                "ck_governance_tasks_review_shape",
+            }.issubset(constraints)
+            indexes = {
+                row.indexname
+                for row in await connection.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND indexname LIKE 'uq_governance_%'"
+                    )
+                )
+            }
+            assert indexes == {
+                "uq_governance_topics_source_external",
+                "uq_governance_tasks_source_external",
+            }
+        assert YUANLEI_SCHEMA_VERSION == 12
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
+async def test_yuanlei_v10_to_v11_converges_channel_delegation_tables_idempotently() -> None:
+    """真实 PostgreSQL：v10→v11 建委派与同步游标表幂等，状态约束真实生效。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_delegation_schema")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE IF EXISTS channel_delegations, channel_sync_cursors"))
+
+        await manager.upgrade_yuanlei_schema_v10_to_v11()
+        await manager.upgrade_yuanlei_schema_v10_to_v11()
+
+        async with scoped_engine.connect() as connection:
+            tables = {
+                row.table_name
+                for row in await connection.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = current_schema() "
+                        "AND table_name LIKE 'channel_%'"
+                    )
+                )
+            }
+            assert tables == {"channel_delegations", "channel_sync_cursors"}
+            constraints = {
+                row.conname
+                for row in await connection.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint AS con "
+                        "JOIN pg_namespace AS ns ON ns.oid = con.connamespace "
+                        "WHERE ns.nspname = current_schema() "
+                        "AND con.conname LIKE 'ck_channel_%'"
+                    )
+                )
+            }
+            assert {
+                "ck_channel_delegations_dispatch_state",
+                "ck_channel_delegations_executor_key",
+                "ck_channel_sync_cursors_channel",
+            }.issubset(constraints)
+            indexes = {
+                row.indexname
+                for row in await connection.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND indexname LIKE 'uq_channel_%'"
+                    )
+                )
+            }
+            assert indexes == {
+                "uq_channel_delegations_operation_id",
+                "uq_channel_sync_cursors_scope",
+            }
+        assert YUANLEI_SCHEMA_VERSION == 12
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_business_runtime_scope_width_widens_idempotently_for_dedicated_agents() -> None:
     """存量 business 库把 Run / Git worktree 的 runtime_scope_id 扩到 191（幂等）。"""
     schema = f"pytest_runtime_scope_{uuid.uuid4().hex[:16]}"

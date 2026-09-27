@@ -38,6 +38,27 @@ docker compose up -d --force-recreate api worker
 - 沙盒应用层与 provisioner 的配置见[沙盒配置与运维](../agents/sandbox-architecture.md)。
 - 编码执行（opencode/codex）的加密密钥、供应商引用与沙盒策略见[编码执行配置指南](./coding-execution-setup.md)与[编码执行配置参考](./coding-execution-reference.md)。
 
+## 委派与 Multica 桥接
+
+元垒通过统一委派接口把任务交给外部执行器，Multica 是其中一个渠道。MVP 的 Multica 凭据只走实例级全局环境变量，由 API 与 worker 读取，`scripts/init.sh` 不生成这四个键；接入 Multica 实例时必须手工提供。`YUANLEI_MULTICA_BASE_URL`、`YUANLEI_MULTICA_TOKEN` 或 `YUANLEI_MULTICA_WORKSPACE_ID` 任一为空时整条 Multica 渠道 fail-closed：`MulticaExecutor` 不注册，向 `multica` 发起委派得到结构化 `executor_unavailable`，Multica 渠道同步与游标入口返回结构化 `channel_unavailable`（均为 HTTP 503），元垒其余能力独立可用。
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `YUANLEI_MULTICA_BASE_URL` | 是 | Multica 实例地址；端点与认证头收敛在 `HttpMulticaClient` |
+| `YUANLEI_MULTICA_TOKEN` | 是 | 渠道令牌；只经环境注入，明文不写入 DB、API 响应、日志或事件 |
+| `YUANLEI_MULTICA_WORKSPACE_ID` | 是 | issues 端点的 workspace 作用域；缺失即 400，故与凭据一起 fail-closed |
+| `YUANLEI_MULTICA_PROJECT_ID` | 否 | 出向创建与入向拉取的项目范围；为空时用渠道默认 |
+
+凭据是启动期读取，修改后重建读取它的容器：
+
+```bash
+docker compose up -d --force-recreate api worker
+```
+
+出向委派（`POST /api/projects/{project_id}/delegations`）先按稳定 `operation_id` 与描述标记核对再创建，同一操作不产生第二个远端工作项；入向同步（`POST /api/projects/{project_id}/channels/multica/sync`）在项目内拉取并只产生 `proposed` 治理行。入向请求固定 `sort=updated_at&direction=desc`（服务端忽略 `updated_after`），游标是稳定组合键 `(updated_at, id)`；同一 `updated_at` 的边界秒内项目每轮重扫并靠外部标识去重，避免因服务端并列次序丢失项。两个入口都要求登录用户且 Project 可见。
+
+当前粒度是实例级全局：同一实例内所有 Project 共用一组 Multica 凭据。升级到按 Project 的凭据（依据 `channel_delegations.project_id` 与 `channel_sync_cursors(channel, project_id)`，非按用户）属于后续决策。完整语义、失败与取舍见[外部执行器委派与 Multica 桥接](../develop-guides/yuanlei/features/external-executor-delegation.md)。
+
 ## Agent 并发容量
 
 Compose 默认按单 worker、100 个同时运行的 AgentRun 配置。执行槽、API/worker Redis 和 PostgreSQL 池、LangGraph checkpoint 池、PostgreSQL 服务端上限、Sandbox 地址池与清理并发必须联动核算，不能只扩大其中一个值。

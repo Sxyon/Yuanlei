@@ -128,8 +128,8 @@
           >
             <img
               class="star-card-link-image"
-              src="https://img.shields.io/github/stars/xerrors/Yuxi?label=Yuxi&style=social"
-              alt="GitHub stars for Yuxi"
+              src="https://img.shields.io/github/stars/sxyon/Yuanlei?label=Yuanlei&style=social"
+              alt="GitHub stars for Yuanlei"
             />
             <ExternalLink :size="13" />
           </a>
@@ -334,7 +334,7 @@ const loadedTabs = ref(new Set())
 const showStarCard = ref(true)
 
 const STAR_CARD_STORAGE_KEY = 'yuxi-settings-star-card-dismissed'
-const projectRepoUrl = 'https://github.com/xerrors/Yuxi'
+const projectRepoUrl = 'https://github.com/sxyon/Yuanlei'
 
 const visible = computed({
   get: () => props.visible,

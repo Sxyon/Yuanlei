@@ -86,6 +86,32 @@ const router = createRouter({
       ]
     },
     {
+      path: '/inspection',
+      name: 'inspection-board',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'InspectionBoardComp',
+          component: () => import('../views/InspectionBoardView.vue'),
+          meta: { keepAlive: false, requiresAuth: true }
+        }
+      ]
+    },
+    {
+      path: '/projects/:project_id/inspection',
+      name: 'ProjectInspectionBoard',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'ProjectInspectionBoardComp',
+          component: () => import('../views/ProjectInspectionBoardView.vue'),
+          meta: { keepAlive: false, requiresAuth: true }
+        }
+      ]
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: AppLayout,

@@ -11,9 +11,11 @@ from server.routers.coding_credential_router import admin_coding_credentials, us
 from server.routers.coding_sandbox_router import coding_sandboxes
 from server.routers.coding_session_router import coding_sessions
 from server.routers.dashboard_router import dashboard
+from server.routers.delegation_router import delegations
 from server.routers.external_kb_router import external_kb
 from server.routers.filesystem_router import filesystem_router
 from server.routers.git_router import git
+from server.routers.governance_router import governance
 from server.routers.graph_router import graph
 from server.routers.knowledge_dashboard_router import knowledge_dashboard
 from server.routers.knowledge_eval_router import evaluation
@@ -22,6 +24,7 @@ from server.routers.mcp_router import mcp
 from server.routers.mention_router import mention_router
 from server.routers.model_provider_router import model_providers
 from server.routers.project_agent_router import project_agents
+from server.routers.project_blueprint_router import project_blueprints
 from server.routers.project_dashboard_router import project_dashboard
 from server.routers.project_document_router import project_documents
 from server.routers.project_router import projects
@@ -46,7 +49,10 @@ router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
 router.include_router(projects)  # /api/projects* 项目创建与选择
 router.include_router(project_agents)  # /api/projects/{id}/agents* 项目数字员工归属与覆盖配置
 router.include_router(project_documents)  # /api/projects/{id}/documents* 项目命名 JSON 文档
+router.include_router(project_blueprints)  # /api/projects/{id}/blueprint* 项目蓝图 Workdir 文档
 router.include_router(project_dashboard)  # /api/projects/{id}/dashboard 项目 Dashboard 页面只读视图
+router.include_router(governance)  # /api/projects/{id}/governance* 与 /api/governance/board 治理与督查板
+router.include_router(delegations)  # /api/projects/{id}/delegations* 与 Multica 渠道同步
 router.include_router(git)  # /api/git/* 用户级 Git connection
 router.include_router(scheduled_agents)  # /api/scheduled-tasks* 用户自建 Agent 定时任务
 

@@ -57,7 +57,7 @@ Yuxi API 和 worker 与 Gitea 位于同一 Compose network，因此 connection �
 
 host 浏览器端口只用于打开 Gitea 页面，不能替代 API/worker 看到的容器 endpoint。`YUXI_GIT_ALLOWED_GITEA_ORIGINS` 必须包含表中的 API Origin。
 
-开发 profile 的 Gitea 数据保存在 `${YUXI_STATE_DIR}/gitea-git-integration`。它是测试依赖，不随默认 `docker compose up` 启动。
+开发 profile 的 Gitea 仓库和数据库保存在 `${YUXI_STATE_DIR}/gitea-git-integration`，配置和密钥保存在 `${YUXI_STATE_DIR}/gitea-config`。迁移环境时停机后一起复制这两个目录。Gitea 是测试依赖，不随默认 `docker compose up` 启动。
 
 ## 资源关系
 

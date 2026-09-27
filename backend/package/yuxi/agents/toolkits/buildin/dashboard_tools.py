@@ -8,52 +8,14 @@ from typing import Any
 
 from fastapi import HTTPException
 from langgraph.prebuilt.tool_node import ToolRuntime
-from sqlalchemy import select
 
+from yuxi.agents.toolkits.buildin.project_run_scope import resolve_project_run_scope
 from yuxi.agents.toolkits.registry import tool
-from yuxi.repositories.user_repository import UserRepository
 from yuxi.services.project_dashboard_service import (
     get_project_dashboard_view,
     write_project_dashboard_view,
 )
 from yuxi.storage.postgres.manager import pg_manager
-from yuxi.storage.postgres.models_business import AgentRun, Conversation, Project, User
-from yuxi.utils.datetime_utils import utc_now_naive
-
-
-async def _resolve_project_scope(*, db, run_id: str, uid: str, worker_id: str) -> tuple[str, User]:
-    """用 Run、Conversation、Project 的关联重建当前调用的授权范围。"""
-    statement = (
-        select(AgentRun, Conversation, Project)
-        .join(Conversation, Conversation.id == AgentRun.conversation_id)
-        .join(Project, Project.id == Conversation.project_id)
-        .where(
-            AgentRun.id == run_id,
-            AgentRun.uid == uid,
-            Conversation.uid == uid,
-            Conversation.status != "deleted",
-            Project.uid == uid,
-            Project.status == "active",
-            Project.selection_status == "selectable",
-        )
-        .with_for_update(of=AgentRun)
-    )
-    result = (await db.execute(statement)).one_or_none()
-    if result is None:
-        raise ValueError("当前运行无权访问项目 Dashboard")
-    run, conversation, project = result
-    if run.run_type == "subagent" or conversation.status == "subagent" or run.status != "running":
-        raise ValueError("只有正在执行的根 AgentRun 可以访问项目 Dashboard")
-    if (
-        run.worker_id != worker_id
-        or run.lease_expires_at is None
-        or run.lease_expires_at <= utc_now_naive()
-    ):
-        raise ValueError("只有当前有效 AgentRun lease owner 可以访问项目 Dashboard")
-    user = await UserRepository().get_by_uid_with_db(db, uid)
-    if user is None:
-        raise ValueError("当前用户不存在")
-    return str(project.id), user
 
 
 async def _run_dashboard_operation(
@@ -71,7 +33,9 @@ async def _run_dashboard_operation(
         if not run_id or not uid or not worker_id:
             raise ValueError("当前运行缺少 Project 上下文")
         async with pg_manager.get_async_session_context() as db:
-            project_id, user = await _resolve_project_scope(db=db, run_id=run_id, uid=uid, worker_id=worker_id)
+            project_id, user = await resolve_project_run_scope(
+                db=db, run_id=run_id, uid=uid, worker_id=worker_id, resource_label="项目 Dashboard"
+            )
             result = await operation(db=db, project_id=project_id, user=user)
             return json.dumps(result, ensure_ascii=False)
     except HTTPException as exc:

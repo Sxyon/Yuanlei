@@ -770,6 +770,308 @@ class ProjectDashboard(Base):
     updated_at = Column(DateTime, default=utc_now_naive, nullable=False, comment="最近 revision 时间")
 
 
+GOVERNANCE_SOURCE_CHANNELS = ("project", "multica", "github", "gitea")
+GOVERNANCE_LIFECYCLE_STATUSES = ("proposed", "canonical", "rejected")
+
+_GOVERNANCE_STATUS_SQL = "status IN ('proposed', 'canonical', 'rejected')"
+_GOVERNANCE_SOURCE_CHANNEL_SQL = "source_channel IN ('project', 'multica', 'github', 'gitea')"
+# 项目内来源不携带外部标识与链接；外部渠道必须带外部标识，外部镜像无法直接写入 canonical。
+_GOVERNANCE_SOURCE_SHAPE_SQL = (
+    "(source_channel = 'project' AND source_external_id IS NULL AND source_url IS NULL)"
+    " OR (source_channel <> 'project' AND source_external_id IS NOT NULL)"
+)
+# 未经审核的 proposed 不得落入 canonical/rejected；审核必须留下责任人与时间。
+_GOVERNANCE_REVIEW_SHAPE_SQL = (
+    "(status = 'proposed' AND review_owner_uid IS NULL AND reviewed_at IS NULL)"
+    " OR (status IN ('canonical', 'rejected') AND review_owner_uid IS NOT NULL AND reviewed_at IS NOT NULL)"
+)
+
+
+class GovernanceTopic(Base):
+    """项目治理议题：来源归一化后的 proposed → 审核 → canonical 事实（yuanlei 域）。"""
+
+    __tablename__ = "governance_topics"
+    __table_args__ = (
+        CheckConstraint(_GOVERNANCE_STATUS_SQL, name="ck_governance_topics_status"),
+        CheckConstraint(_GOVERNANCE_SOURCE_CHANNEL_SQL, name="ck_governance_topics_source_channel"),
+        CheckConstraint(_GOVERNANCE_SOURCE_SHAPE_SQL, name="ck_governance_topics_source_shape"),
+        CheckConstraint(_GOVERNANCE_REVIEW_SHAPE_SQL, name="ck_governance_topics_review_shape"),
+        Index("ix_governance_topics_project_id", "project_id"),
+        Index("ix_governance_topics_status", "status"),
+        Index(
+            "uq_governance_topics_source_external",
+            "project_id",
+            "source_channel",
+            "source_external_id",
+            unique=True,
+            postgresql_where=text("source_external_id IS NOT NULL"),
+        ),
+    )
+
+    id = Column(String(64), primary_key=True, comment="议题 UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_governance_topics_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    title = Column(String(512), nullable=False, comment="规范化标题")
+    summary = Column(Text, nullable=True, comment="背景与候选方案摘要")
+    status = Column(String(16), nullable=False, default="proposed", comment="proposed/canonical/rejected")
+    source_channel = Column(String(32), nullable=False, comment="project/multica/github/gitea")
+    source_external_id = Column(String(191), nullable=True, comment="外部渠道标识，项目内来源为空")
+    source_url = Column(String(1024), nullable=True, comment="原文链接")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    review_owner_uid = Column(String(64), nullable=True, comment="审核责任人 uid")
+    reviewed_at = Column(DateTime, nullable=True, comment="审核时间")
+    review_note = Column(Text, nullable=True, comment="审核说明")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class GovernanceTopicComment(Base):
+    """项目议题讨论回复；按议题追加保存作者、正文与时间。"""
+
+    __tablename__ = "governance_topic_comments"
+    __table_args__ = (Index("ix_governance_topic_comments_topic_created", "topic_id", "created_at", "id"),)
+
+    id = Column(String(64), primary_key=True, comment="议题回复 UUID")
+    topic_id = Column(
+        String(64),
+        ForeignKey("governance_topics.id", ondelete="CASCADE", name="fk_governance_topic_comments_topic_id"),
+        nullable=False,
+        comment="所属议题",
+    )
+    content = Column(Text, nullable=False, comment="Markdown 回复正文")
+    author_name = Column(Text, nullable=False, comment="发帖时作者显示名快照")
+    created_by = Column(String(64), nullable=True, comment="作者 uid，不建立用户外键以保留历史回复")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class GovernanceDecision(Base):
+    """项目治理决策：人拍板的结论、理由与被否替代（yuanlei 域）。"""
+
+    __tablename__ = "governance_decisions"
+    __table_args__ = (
+        CheckConstraint("status IN ('proposed', 'implemented')", name="ck_governance_decisions_status"),
+        CheckConstraint(
+            "(status = 'proposed' AND decided_by IS NULL AND decided_at IS NULL)"
+            " OR (status = 'implemented' AND decided_by IS NOT NULL AND decided_at IS NOT NULL)",
+            name="ck_governance_decisions_decision_shape",
+        ),
+        Index("ix_governance_decisions_project_id", "project_id"),
+        Index("ix_governance_decisions_topic_id", "topic_id"),
+    )
+
+    id = Column(String(64), primary_key=True, comment="决策 UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_governance_decisions_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    topic_id = Column(
+        String(64),
+        ForeignKey("governance_topics.id", ondelete="SET NULL", name="fk_governance_decisions_topic_id"),
+        nullable=True,
+        comment="来源议题",
+    )
+    title = Column(String(512), nullable=False, comment="决策标题")
+    conclusion = Column(Text, nullable=False, comment="结论")
+    rationale = Column(Text, nullable=True, comment="理由与被否替代")
+    status = Column(String(16), nullable=False, default="proposed", comment="proposed/implemented")
+    decided_by = Column(String(64), nullable=True, comment="拍板人 uid")
+    decided_at = Column(DateTime, nullable=True, comment="拍板时间")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class GovernanceTask(Base):
+    """项目治理任务：由决策拆出并指派项目数字员工，来源归一化同议题（yuanlei 域）。"""
+
+    __tablename__ = "governance_tasks"
+    __table_args__ = (
+        CheckConstraint(_GOVERNANCE_STATUS_SQL, name="ck_governance_tasks_status"),
+        CheckConstraint(_GOVERNANCE_SOURCE_CHANNEL_SQL, name="ck_governance_tasks_source_channel"),
+        CheckConstraint(_GOVERNANCE_SOURCE_SHAPE_SQL, name="ck_governance_tasks_source_shape"),
+        CheckConstraint(_GOVERNANCE_REVIEW_SHAPE_SQL, name="ck_governance_tasks_review_shape"),
+        Index("ix_governance_tasks_project_id", "project_id"),
+        Index("ix_governance_tasks_topic_id", "topic_id"),
+        Index("ix_governance_tasks_decision_id", "decision_id"),
+        Index("ix_governance_tasks_status", "status"),
+        Index(
+            "uq_governance_tasks_source_external",
+            "project_id",
+            "source_channel",
+            "source_external_id",
+            unique=True,
+            postgresql_where=text("source_external_id IS NOT NULL"),
+        ),
+    )
+
+    id = Column(String(64), primary_key=True, comment="任务 UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_governance_tasks_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    topic_id = Column(
+        String(64),
+        ForeignKey("governance_topics.id", ondelete="SET NULL", name="fk_governance_tasks_topic_id"),
+        nullable=True,
+        comment="来源议题",
+    )
+    decision_id = Column(
+        String(64),
+        ForeignKey("governance_decisions.id", ondelete="SET NULL", name="fk_governance_tasks_decision_id"),
+        nullable=True,
+        comment="来源决策",
+    )
+    assignee_agent_slug = Column(
+        String(80),
+        ForeignKey("agents.slug", ondelete="SET NULL", name="fk_governance_tasks_assignee_agent_slug"),
+        nullable=True,
+        comment="指派项目数字员工 slug",
+    )
+    title = Column(String(512), nullable=False, comment="规范化标题")
+    description = Column(Text, nullable=True, comment="任务说明")
+    status = Column(String(16), nullable=False, default="proposed", comment="proposed/canonical/rejected")
+    source_channel = Column(String(32), nullable=False, comment="project/multica/github/gitea")
+    source_external_id = Column(String(191), nullable=True, comment="外部渠道标识，项目内来源为空")
+    source_url = Column(String(1024), nullable=True, comment="原文链接")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    review_owner_uid = Column(String(64), nullable=True, comment="审核责任人 uid")
+    reviewed_at = Column(DateTime, nullable=True, comment="审核时间")
+    review_note = Column(Text, nullable=True, comment="审核说明")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class GovernanceReport(Base):
+    """项目治理汇报：定时任务产出的 artifact 引用与聚合摘要（yuanlei 域）。
+
+    只引用产生 Run 与 artifact 路径，不复制 Run 终态，避免形成第二状态源。
+    """
+
+    __tablename__ = "governance_reports"
+    __table_args__ = (Index("ix_governance_reports_project_id", "project_id"),)
+
+    id = Column(String(64), primary_key=True, comment="汇报 UUID")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_governance_reports_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    title = Column(String(512), nullable=False, comment="汇报标题")
+    summary = Column(Text, nullable=True, comment="人可读摘要")
+    content = Column(JSON_VALUE, nullable=False, default=dict, comment="结构化汇报载荷")
+    source_run_id = Column(
+        String(64),
+        ForeignKey("agent_runs.id", ondelete="SET NULL", name="fk_governance_reports_source_run_id"),
+        nullable=True,
+        comment="产出汇报的 Run 引用，不承载其状态",
+    )
+    artifact_path = Column(String(512), nullable=True, comment="Workdir 相对 artifact 路径")
+    created_by = Column(String(64), nullable=True, comment="创建者 uid")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+CHANNEL_DELEGATION_DISPATCH_STATES = ("pending", "dispatched", "collecting", "reclaimed", "failed")
+CHANNEL_DELEGATION_EXECUTORS = ("opencode", "codex", "multica")
+CHANNEL_SYNC_CHANNELS = ("multica",)
+
+
+class ChannelDelegation(Base):
+    """外部执行器委派事实：本地投递/回收状态与远端只读投影分离（yuanlei 域）。
+
+    `dispatch_state` 只由 `DelegationService` 写；`remote_status` 是远端执行的只读
+    投影，远端状态变化不改写本地状态，也不复制为 canonical。结果只引用发起 Run。
+    """
+
+    __tablename__ = "channel_delegations"
+    __table_args__ = (
+        CheckConstraint(
+            "dispatch_state IN ('pending', 'dispatched', 'collecting', 'reclaimed', 'failed')",
+            name="ck_channel_delegations_dispatch_state",
+        ),
+        CheckConstraint(
+            "executor_key IN ('opencode', 'codex', 'multica')",
+            name="ck_channel_delegations_executor_key",
+        ),
+        Index("ix_channel_delegations_project_id", "project_id"),
+        Index("ix_channel_delegations_state_lease", "dispatch_state", "lease_expires_at"),
+        Index("uq_channel_delegations_operation_id", "operation_id", unique=True),
+    )
+
+    id = Column(String(64), primary_key=True, comment="委派行 UUID")
+    operation_id = Column(String(128), nullable=False, comment="元垒侧稳定委派操作标识")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_channel_delegations_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    initiator_run_id = Column(
+        String(64),
+        ForeignKey("agent_runs.id", ondelete="SET NULL", name="fk_channel_delegations_initiator_run_id"),
+        nullable=True,
+        comment="发起委派的 Run，只引用不承载其状态",
+    )
+    executor_key = Column(String(32), nullable=False, comment="opencode/codex/multica")
+    task = Column(Text, nullable=False, comment="委派任务描述（投递意图）")
+    request_json = Column(JSON_VALUE, nullable=False, default=dict, comment="委派意图快照，供崩溃后重投")
+    session_id = Column(String(64), nullable=True, comment="沙盒委派的 coding session id")
+    turn_id = Column(String(64), nullable=True, comment="沙盒委派那一轮的 coding turn id")
+    external_ref = Column(String(191), nullable=True, comment="远端渠道工作项标识")
+    external_url = Column(String(1024), nullable=True, comment="远端渠道工作项链接")
+    dispatch_state = Column(
+        String(16), nullable=False, default="pending", comment="pending/dispatched/collecting/reclaimed/failed"
+    )
+    attempts = Column(Integer, nullable=False, default=0, comment="投递/回收尝试次数")
+    remote_status = Column(String(32), nullable=True, comment="远端执行状态只读投影")
+    remote_status_synced_at = Column(DateTime, nullable=True, comment="远端投影同步时间")
+    result_summary = Column(Text, nullable=True, comment="回收归一化摘要")
+    result_json = Column(JSON_VALUE, nullable=False, default=dict, comment="回收结构化结果")
+    artifact_path = Column(String(512), nullable=True, comment="Workdir 相对产物路径")
+    owner_token = Column(String(128), nullable=True, comment="当前投递/回收租约 owner")
+    lease_expires_at = Column(DateTime, nullable=True, comment="租约到期时间")
+    error_code = Column(String(64), nullable=True, comment="最近结构化错误码")
+    last_error_at = Column(DateTime, nullable=True, comment="最近错误时间")
+    created_by = Column(String(64), nullable=True, comment="发起者 uid")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class ChannelSyncCursor(Base):
+    """入向渠道同步游标：确定性同步服务持有，不依赖 Agent 决定同步（yuanlei 域）。"""
+
+    __tablename__ = "channel_sync_cursors"
+    __table_args__ = (
+        CheckConstraint("channel IN ('multica')", name="ck_channel_sync_cursors_channel"),
+        Index("uq_channel_sync_cursors_scope", "channel", "project_id", unique=True),
+    )
+
+    id = Column(String(64), primary_key=True, comment="游标行 UUID")
+    channel = Column(String(32), nullable=False, comment="multica")
+    project_id = Column(
+        String(64),
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_channel_sync_cursors_project_id"),
+        nullable=False,
+        comment="所属 Project ID",
+    )
+    cursor_value = Column(String(512), nullable=True, comment="上次成功同步位置")
+    last_synced_at = Column(DateTime, nullable=True, comment="上次成功同步时间")
+    owner_token = Column(String(128), nullable=True, comment="当前同步租约 owner")
+    lease_expires_at = Column(DateTime, nullable=True, comment="租约到期时间")
+    last_error = Column(Text, nullable=True, comment="最近同步失败原因")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
 class CodingCredential(Base):
     """编码执行器（opencode/codex）的用户级或全局凭据（yuanlei 域）。"""
 

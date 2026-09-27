@@ -133,7 +133,7 @@ async def _load_user(session: AsyncSession, uid: str) -> User:
 async def test_yuanlei_v8_to_v9_converges_dashboard_tables_idempotently() -> None:
     """真实 PostgreSQL：v8→v9 建表幂等，唯一与检查约束真实生效。"""
     async with _scoped_database("pytest_dashboard_schema") as (manager, _sessions):
-        assert YUANLEI_SCHEMA_VERSION == 9
+        assert YUANLEI_SCHEMA_VERSION == 12
         async with manager.async_engine.begin() as connection:
             await connection.execute(text("DROP TABLE IF EXISTS project_documents, project_dashboards"))
 

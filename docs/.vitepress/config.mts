@@ -42,6 +42,7 @@ export default defineConfig({
     logo: "/favicon.svg",
     nav: [
       { text: '项目介绍', link: '/intro/project-overview' },
+      { text: '项目工作台', link: '/intro/project-workbench' },
       { text: '快速开始', link: '/intro/quick-start' },
       { text: '智能体开发', link: '/agents/agents-config' },
       { text: '机制详解', link: '/mechanisms/' },
@@ -54,11 +55,17 @@ export default defineConfig({
         items: [
           { text: '认识 Yuanlei', link: '/intro/project-overview' },
           { text: '快速开始', link: '/intro/quick-start' },
-          { text: 'Project Git 仓库', link: '/intro/project-git' },
           { text: '命令行工具', link: '/intro/cli' },
           { text: '模型配置', link: '/intro/model-config' },
           { text: '知识库与知识图谱', link: '/intro/knowledge-base' },
           { text: '知识库评估', link: '/intro/evaluation' }
+        ]
+      },
+      {
+        text: '项目管理',
+        items: [
+          { text: '项目工作台与治理', link: '/intro/project-workbench' },
+          { text: 'Project Git 仓库', link: '/intro/project-git' },
         ]
       },
       {
@@ -80,6 +87,7 @@ export default defineConfig({
         text: '机制详解',
         items: [
           { text: '阅读路径', link: '/mechanisms/' },
+          { text: '项目治理与督查', link: '/mechanisms/project-governance' },
           { text: 'Agent 运行时上下文', link: '/mechanisms/agent-runtime' },
           { text: '沙盒与文件系统', link: '/mechanisms/sandbox' },
           { text: '编码执行（opencode/codex）', link: '/mechanisms/coding-execution' },

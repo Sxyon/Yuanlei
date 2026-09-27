@@ -1497,7 +1497,7 @@ async def test_run_context_fails_closed_when_terminal_attempt_check_fails(monkey
 
 
 @pytest.mark.asyncio
-async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.MonkeyPatch):
+async def test_worker_startup_ensures_builtin_mcp_servers_and_runs_convergence(monkeypatch: pytest.MonkeyPatch):
     calls: list[str] = []
 
     def fake_initialize():
@@ -1566,6 +1566,14 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         calls.append("reconcile_coding_turns")
         return {"republished": 0, "failed": 0}
 
+    async def fake_reconcile_delegations():
+        calls.append("reconcile_delegations")
+        return {"redispatched": 0, "released": 0, "reprojected": 0, "failed": 0}
+
+    async def fake_reconcile_channel_sync():
+        calls.append("reconcile_channel_sync")
+        return {"projects": 0, "imported": 0, "skipped": 0, "released": 0, "failed": 0}
+
     monkeypatch.setattr(run_worker.pg_manager, "initialize", fake_initialize)
     monkeypatch.setattr(run_worker.pg_manager, "require_current_schema", fake_require_current_schema)
     monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session_ctx)
@@ -1593,6 +1601,8 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
     monkeypatch.setattr(run_worker, "recover_scheduled_dispatches", fake_recover_scheduled_dispatches)
     monkeypatch.setattr(run_worker, "claim_and_dispatch_due_jobs", fake_claim_and_dispatch_due_jobs)
     monkeypatch.setattr(run_worker, "reconcile_coding_turns", fake_reconcile_coding_turns)
+    monkeypatch.setattr(run_worker, "reconcile_delegations", fake_reconcile_delegations)
+    monkeypatch.setattr(run_worker, "reconcile_channel_sync", fake_reconcile_channel_sync)
     options_module = importlib.import_module("yuxi.config.options")
     monkeypatch.setattr(options_module, "ensure_options_in_db", fake_ensure_options_in_db)
 
@@ -1617,6 +1627,8 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "recover_scheduled_dispatches",
         "claim_and_dispatch_due_jobs",
         "reconcile_coding_turns",
+        "reconcile_delegations",
+        "reconcile_channel_sync",
         "publish_reconciliation_health",
         "reconciliation_loop",
         "task_reconciliation_loop",

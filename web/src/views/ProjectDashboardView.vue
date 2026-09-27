@@ -2,6 +2,7 @@
   <div class="project-dashboard-page">
     <PageHeader title="项目 Dashboard" :loading="loading" show-border>
       <template #actions>
+        <a-button size="small" @click="openWorkbench">项目工作台</a-button>
         <a-button size="small" :disabled="loading" @click="load">
           <template #icon><RefreshCw :size="14" /></template>
           刷新
@@ -31,23 +32,35 @@
         </template>
       </a-alert>
 
-      <div v-else-if="page.state === 'empty'" class="dashboard-state">
-        <LayoutDashboard :size="32" />
-        <p>该项目还没有 Dashboard 页面。</p>
-        <a-button type="primary" @click="openEditor">在项目对话中生成</a-button>
-      </div>
-
-      <a-alert
-        v-else-if="page.state === 'repair_required'"
-        type="warning"
-        show-icon
-        message="页面未通过完整性或静态安全检查，暂不渲染"
-        description="入口文件可能被通用工具直接修改、存在未提交写入，或包含第一版不支持的页面标记。请通过项目对话重新提交页面。"
-      >
-        <template #action>
-          <a-button size="small" @click="load">刷新</a-button>
-        </template>
-      </a-alert>
+      <template v-else-if="page.state === 'empty' || page.state === 'repair_required'">
+        <a-alert
+          v-if="page.state === 'repair_required'"
+          type="warning"
+          show-icon
+          message="自定义页面需要修复，当前展示项目默认概览"
+          description="自定义页面未通过完整性或静态安全检查。请通过项目对话重新提交页面。"
+        />
+        <a-alert
+          v-if="boardError"
+          type="error"
+          show-icon
+          message="项目概览加载失败"
+          :description="boardError"
+        >
+          <template #action><a-button size="small" @click="load">重试</a-button></template>
+        </a-alert>
+        <DefaultProjectDashboard
+          v-else
+          :project-id="projectId"
+          :board="board"
+          :blueprints="blueprints"
+          :selected-blueprint="selectedBlueprint"
+          :blueprint-content="blueprintContent"
+          :blueprint-loading="blueprintLoading"
+          :blueprint-error="blueprintError"
+          @select-blueprint="readBlueprint"
+        />
+      </template>
 
       <div v-else class="dashboard-frame-wrap">
         <iframe
@@ -66,12 +79,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LayoutDashboard, MessageSquarePlus, RefreshCw } from '@lucide/vue'
+import { MessageSquarePlus, RefreshCw } from '@lucide/vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
+import DefaultProjectDashboard from '@/components/project/DefaultProjectDashboard.vue'
 import { projectDashboardApi } from '@/apis/project_dashboard_api'
+import { governanceBoardApi } from '@/apis/governance_board_api'
 import { createDashboardSrcdoc } from '@/utils/dashboardFrame'
+import { describeBoardError } from '@/utils/governanceBoard'
 
 const route = useRoute()
 const router = useRouter()
@@ -82,6 +98,15 @@ const errorMessage = ref('')
 const page = ref({ state: 'empty', revision: 0, sha256: null, size: null, html: null })
 const srcdoc = ref('')
 const frameKey = ref(0)
+const board = ref({ project: null, governance: null, execution: null })
+const boardError = ref('')
+const blueprints = ref([])
+const selectedBlueprint = ref('')
+const blueprintContent = ref('')
+const blueprintError = ref('')
+const blueprintLoading = ref(false)
+let loadSeq = 0
+let blueprintSeq = 0
 
 const shortHash = computed(() =>
   typeof page.value.sha256 === 'string' ? page.value.sha256.slice(0, 12) : '-'
@@ -95,19 +120,64 @@ const describeError = (error) => {
 }
 
 const load = async () => {
+  const project = projectId.value
+  const seq = ++loadSeq
+  blueprintSeq += 1
   loading.value = true
   errorMessage.value = ''
+  boardError.value = ''
+  blueprintError.value = ''
+  blueprintLoading.value = false
+  board.value = { project: null, governance: null, execution: null }
+  blueprints.value = []
+  selectedBlueprint.value = ''
+  blueprintContent.value = ''
   try {
-    const result = await projectDashboardApi.getDashboard(projectId.value)
+    const result = await projectDashboardApi.getDashboard(project)
+    if (seq !== loadSeq || projectId.value !== project) return
     page.value = result
     srcdoc.value = result.state === 'ready' ? createDashboardSrcdoc(result.html) : ''
     frameKey.value += 1
+    if (result.state === 'empty' || result.state === 'repair_required') {
+      const [boardResult, docsResult] = await Promise.allSettled([
+        governanceBoardApi.getProjectBoard(project),
+        governanceBoardApi.listBlueprints(project)
+      ])
+      if (seq !== loadSeq || projectId.value !== project) return
+      if (boardResult.status === 'fulfilled') board.value = boardResult.value
+      else boardError.value = describeBoardError(boardResult.reason)
+      if (docsResult.status === 'fulfilled') {
+        blueprints.value = docsResult.value.documents || []
+        if (blueprints.value.length) await readBlueprint(blueprints.value[0].name)
+      } else blueprintError.value = describeBoardError(docsResult.reason)
+    }
   } catch (error) {
+    if (seq !== loadSeq || projectId.value !== project) return
     console.error('Dashboard 加载失败:', error)
     page.value = { state: 'error', revision: 0, sha256: null, size: null, html: null }
     errorMessage.value = describeError(error)
   } finally {
-    loading.value = false
+    if (seq === loadSeq && projectId.value === project) loading.value = false
+  }
+}
+
+/** 读取选中的蓝图，忽略过期项目与文档请求。 */
+const readBlueprint = async (name) => {
+  const project = projectId.value
+  const seq = ++blueprintSeq
+  selectedBlueprint.value = name
+  blueprintLoading.value = true
+  blueprintError.value = ''
+  blueprintContent.value = ''
+  try {
+    const document = await governanceBoardApi.getBlueprint(project, name)
+    if (seq !== blueprintSeq || projectId.value !== project) return
+    blueprintContent.value = document.content || ''
+  } catch (error) {
+    if (seq !== blueprintSeq || projectId.value !== project) return
+    blueprintError.value = describeBoardError(error)
+  } finally {
+    if (seq === blueprintSeq && projectId.value === project) blueprintLoading.value = false
   }
 }
 
@@ -115,6 +185,11 @@ const openEditor = () => {
   router.push({ name: 'AgentComp', query: { project_id: projectId.value } })
 }
 
+const openWorkbench = () => {
+  router.push({ name: 'ProjectInspectionBoardComp', params: { project_id: projectId.value } })
+}
+
+watch(projectId, load)
 onMounted(() => {
   load()
 })
@@ -135,6 +210,8 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
   padding: var(--page-padding);
+  overflow: auto;
+  background: var(--gray-25);
 }
 
 .dashboard-state {

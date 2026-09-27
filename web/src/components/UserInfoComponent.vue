@@ -131,7 +131,7 @@ const goToLogin = () => {
 }
 
 const openDocs = () => {
-  window.open('https://xerrors.github.io/Yuxi/', '_blank', 'noopener,noreferrer')
+  window.open('https://sxyon.github.io/Yuanlei/', '_blank', 'noopener,noreferrer')
 }
 
 const toggleTheme = () => {

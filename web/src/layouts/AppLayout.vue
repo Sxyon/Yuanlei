@@ -5,6 +5,7 @@ import { GithubOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import {
   BarChart3,
+  ClipboardCheck,
   ClipboardList,
   LibraryBig,
   Box,
@@ -88,7 +89,7 @@ const fetchGithubStars = async () => {
   try {
     isLoadingStars.value = true
     // 公共API，可以直接使用fetch
-    const response = await fetch('https://api.github.com/repos/xerrors/Yuxi')
+    const response = await fetch('https://api.github.com/repos/sxyon/Yuanlei')
     const data = await response.json()
     githubStars.value = data.stargazers_count
   } catch (error) {
@@ -194,6 +195,13 @@ const mainList = computed(() => {
     activeIcon: LibraryBig
   })
 
+  items.push({
+    name: '督查板',
+    path: '/inspection',
+    icon: ClipboardCheck,
+    activeIcon: ClipboardCheck
+  })
+
   if (userStore.isSuperAdmin) {
     items.push({
       name: '数据总览',
@@ -278,6 +286,11 @@ const handleCreateProjectChat = async (projectId) => {
 const handleOpenProjectDashboard = (project) => {
   if (!project?.id) return
   router.push({ name: 'ProjectDashboardComp', params: { project_id: project.id } })
+}
+
+const handleOpenProjectWorkbench = (project) => {
+  if (!project?.id) return
+  router.push({ name: 'ProjectInspectionBoardComp', params: { project_id: project.id } })
 }
 
 const searchWorkspace = (query) => searchWorkspaceFiles(query)
@@ -489,6 +502,7 @@ provide('settingsModal', {
           @delete-project="handleDeleteProject"
           @manage-project-git="handleManageProjectGit"
           @open-project-dashboard="handleOpenProjectDashboard"
+          @open-project-workbench="handleOpenProjectWorkbench"
           @create-project-chat="handleCreateProjectChat"
           @retry-projects="loadProjects"
           @load-more-chats="() => chatThreadsStore.loadMoreThreads()"
@@ -498,7 +512,7 @@ provide('settingsModal', {
         <div class="github nav-item" @click.stop>
           <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
             <template #title>欢迎 Star</template>
-            <a href="https://github.com/xerrors/Yuxi" target="_blank" class="github-link">
+            <a href="https://github.com/sxyon/Yuanlei" target="_blank" class="github-link">
               <GithubOutlined class="icon" />
               <span class="nav-text">GitHub</span>
               <span v-if="githubStars > 0" class="github-stars">

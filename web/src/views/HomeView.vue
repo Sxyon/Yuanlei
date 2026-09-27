@@ -116,7 +116,7 @@
         <div class="header-actions">
           <a
             class="github-link"
-            href="https://github.com/xerrors/Yuxi"
+            href="https://github.com/sxyon/Yuanlei"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="GitHub"
@@ -187,7 +187,7 @@ import { ArrowRight, BookText } from '@lucide/vue'
 const router = useRouter()
 const userStore = useUserStore()
 const infoStore = useInfoStore()
-const docsUrl = 'https://xerrors.github.io/Yuxi/'
+const docsUrl = 'https://sxyon.github.io/Yuanlei/'
 
 // 加载状态
 const isLoading = ref(true)

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ctypes
 import errno
 import itertools
 import os
 import stat
+import sys
 import uuid
 from pathlib import Path, PurePosixPath
 
@@ -13,6 +15,22 @@ from yuxi.utils.paths import open_directory_fd, open_regular_file_fd
 
 from .errors import FileTransferLimitError, WorkspaceContainsSymlinkError
 from .paths import user_workspace_dir
+
+
+def _rename_noreplace(source_fd: int, source_name: str, target_fd: int, target_name: str) -> None:
+    """使用 Linux renameat2 原子移动目录项，目标存在时不覆盖。"""
+    if sys.platform != "linux":
+        raise OSError(errno.ENOTSUP, "no-clobber move requires Linux")
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OSError(errno.ENOTSUP, "renameat2 is unavailable")
+    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.restype = ctypes.c_int
+    result = renameat2(source_fd, os.fsencode(source_name), target_fd, os.fsencode(target_name), 1)
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), target_name)
 
 
 class Workspace:
@@ -214,6 +232,70 @@ class Workspace:
             except FileNotFoundError:
                 pass
             os.close(parent_fd)
+
+    def create_authorized_file(self, path: str, content: bytes) -> dict:
+        """在 no-follow 目录边界内原子独占创建文件。"""
+        base, parts = self._resolve_path(path)
+        if not parts:
+            raise IsADirectoryError(path)
+        parent_fd = self._open_directory(base, parts[:-1])
+        target_fd = None
+        temp_name = f".yuxi-create-{uuid.uuid4().hex}"
+        try:
+            target_fd = os.open(
+                temp_name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=parent_fd,
+            )
+            self._write_all(target_fd, content)
+            os.fsync(target_fd)
+            metadata = self._metadata_from_stat(os.fstat(target_fd))
+            os.close(target_fd)
+            target_fd = None
+            os.link(
+                temp_name,
+                parts[-1],
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+            os.fsync(parent_fd)
+            return metadata
+        finally:
+            if target_fd is not None:
+                os.close(target_fd)
+            try:
+                os.unlink(temp_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+            os.close(parent_fd)
+
+    def move_authorized_file(self, source_path: str, target_path: str, *, root: str) -> dict:
+        """在同一 Workdir 内原子移动普通文件，拒绝覆盖已有目标。"""
+        self._require_within(source_path, root, allow_root=False)
+        self._require_within(target_path, root, allow_root=False)
+        source_base, source_parts = self._resolve_path(source_path)
+        target_base, target_parts = self._resolve_path(target_path)
+        source_parent_fd = self._open_directory(source_base, source_parts[:-1])
+        target_parent_fd = None
+        try:
+            target_parent_fd = self._open_directory(target_base, target_parts[:-1])
+            source_stat = os.stat(source_parts[-1], dir_fd=source_parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(source_stat.st_mode):
+                raise PermissionError("only regular files can be moved")
+            _rename_noreplace(source_parent_fd, source_parts[-1], target_parent_fd, target_parts[-1])
+            target_stat = os.stat(target_parts[-1], dir_fd=target_parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(target_stat.st_mode):
+                _rename_noreplace(target_parent_fd, target_parts[-1], source_parent_fd, source_parts[-1])
+                raise PermissionError("only regular files can be moved")
+            os.fsync(source_parent_fd)
+            os.fsync(target_parent_fd)
+            return self._metadata_from_stat(target_stat)
+        finally:
+            if target_parent_fd is not None:
+                os.close(target_parent_fd)
+            os.close(source_parent_fd)
 
     def stat_authorized_path(self, path: str, *, root: str) -> dict:
         """在 no-follow 边界内读取普通文件或真实目录元数据。"""
