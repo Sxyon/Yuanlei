@@ -116,7 +116,7 @@
         <div class="header-actions">
           <a
             class="github-link"
-            href="https://github.com/xerrors/Yuxi"
+            href="https://github.com/sxyon/Yuanlei"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="GitHub"
