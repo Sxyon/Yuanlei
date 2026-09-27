@@ -14,6 +14,7 @@ from yuxi.storage.postgres.models_business import (
     GovernanceReport,
     GovernanceTask,
     GovernanceTopic,
+    GovernanceTopicComment,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -87,6 +88,37 @@ class GovernanceRepository:
             select(GovernanceTopic)
             .where(GovernanceTopic.project_id == str(project_id))
             .order_by(GovernanceTopic.created_at, GovernanceTopic.id)
+        )
+        return list(result)
+
+    async def add_topic_comment(
+        self,
+        *,
+        topic_id: str,
+        content: str,
+        author_name: str,
+        operator: str,
+        now: datetime | None = None,
+    ) -> GovernanceTopicComment:
+        """插入一条议题讨论回复并 flush。"""
+        row = GovernanceTopicComment(
+            id=str(uuid.uuid4()),
+            topic_id=str(topic_id),
+            content=content,
+            author_name=author_name,
+            created_by=operator,
+            created_at=now or utc_now_naive(),
+        )
+        self.db.add(row)
+        await self.db.flush()
+        return row
+
+    async def list_topic_comments(self, *, topic_id: str) -> list[GovernanceTopicComment]:
+        """按时间顺序读取议题讨论回复。"""
+        result = await self.db.scalars(
+            select(GovernanceTopicComment)
+            .where(GovernanceTopicComment.topic_id == str(topic_id))
+            .order_by(GovernanceTopicComment.created_at, GovernanceTopicComment.id)
         )
         return list(result)
 

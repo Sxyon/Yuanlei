@@ -26,6 +26,33 @@
       </div>
     </div>
 
+    <ProjectGovernanceGraph :project-id="projectId" :governance="governance" />
+
+    <section v-if="governance.decisions?.length" class="overview-card decision-summary">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">03 / DECISIONS</p>
+          <h2><ScrollText :size="18" /> 最近决策</h2>
+        </div>
+        <RouterLink :to="workbenchAnchor('decisions')"
+          >查看全部 <ArrowUpRight :size="14"
+        /></RouterLink>
+      </div>
+      <div class="decision-summary-list">
+        <article
+          v-for="decision in latest(governance.decisions, 3)"
+          :key="decision.id"
+          class="decision-summary-item"
+        >
+          <header>
+            <strong>{{ decision.title }}</strong>
+            <span>{{ governanceStatusLabel(decision.status) }}</span>
+          </header>
+          <MarkdownPreview :content="decision.conclusion" compact />
+        </article>
+      </div>
+    </section>
+
     <div class="overview-grid">
       <section class="overview-card blueprint-card">
         <div class="card-heading">
@@ -63,86 +90,21 @@
       <section class="overview-card">
         <div class="card-heading">
           <div>
-            <p class="eyebrow">02 / DISCUSSION</p>
-            <h2><MessagesSquare :size="18" /> 议题</h2>
-          </div>
-          <RouterLink :to="workbenchAnchor('topics')"
-            >处理议题 <ArrowUpRight :size="14"
-          /></RouterLink>
-        </div>
-        <ul v-if="governance.topics?.length" class="item-list">
-          <li v-for="topic in latest(governance.topics, 5)" :key="topic.id">
-            <div class="item-title">
-              <strong>{{ topic.title }}</strong
-              ><a-tag :color="governanceStatusColor(topic.status)">{{
-                governanceStatusLabel(topic.status)
-              }}</a-tag>
-            </div>
-            <p v-if="topic.summary">{{ topic.summary }}</p>
-          </li>
-        </ul>
-        <p v-else class="empty-copy">暂无议题。可在工作台提出需要讨论的问题。</p>
-      </section>
-
-      <section class="overview-card">
-        <div class="card-heading">
-          <div>
-            <p class="eyebrow">03 / DELIVERY</p>
-            <h2><ListTodo :size="18" /> 任务</h2>
-          </div>
-          <RouterLink :to="workbenchAnchor('tasks')"
-            >管理任务 <ArrowUpRight :size="14"
-          /></RouterLink>
-        </div>
-        <ul v-if="governance.tasks?.length" class="item-list">
-          <li v-for="task in latest(governance.tasks, 5)" :key="task.id">
-            <div class="item-title">
-              <strong>{{ task.title }}</strong
-              ><a-tag :color="governanceStatusColor(task.status)">{{
-                governanceStatusLabel(task.status)
-              }}</a-tag>
-            </div>
-            <p>
-              {{ task.description || '暂无任务说明'
-              }}<span v-if="task.assignee_agent_slug" class="item-meta">
-                · {{ task.assignee_agent_slug }}</span
-              >
-            </p>
-          </li>
-        </ul>
-        <p v-else class="empty-copy">暂无任务。确认议题后可创建待审核任务。</p>
-      </section>
-
-      <section class="overview-card">
-        <div class="card-heading">
-          <div>
-            <p class="eyebrow">04 / RECORD</p>
-            <h2><ScrollText :size="18" /> 决策与汇报</h2>
+            <p class="eyebrow">03 / RECORD</p>
+            <h2><ScrollText :size="18" /> 项目汇报</h2>
           </div>
           <RouterLink :to="workbenchAnchor('reports')"
             >打开督查 <ArrowUpRight :size="14"
           /></RouterLink>
         </div>
-        <div class="record-group">
-          <h3>最近决策</h3>
-          <ul v-if="governance.decisions?.length" class="item-list">
-            <li v-for="decision in latest(governance.decisions, 3)" :key="decision.id">
-              <strong>{{ decision.title }}</strong>
-              <p>{{ decision.conclusion }}</p>
-            </li>
-          </ul>
-          <p v-else class="empty-copy">暂无决策记录。</p>
-        </div>
-        <div class="record-group">
-          <h3>最近汇报</h3>
-          <ul v-if="governance.reports?.length" class="item-list">
-            <li v-for="report in latest(governance.reports, 3)" :key="report.id">
-              <strong>{{ report.title }}</strong>
-              <p>{{ report.summary }}</p>
-            </li>
-          </ul>
-          <p v-else class="empty-copy">暂无项目汇报。</p>
-        </div>
+        <ul v-if="governance.reports?.length" class="item-list">
+          <li v-for="report in latest(governance.reports, 5)" :key="report.id">
+            <strong>{{ report.title }}</strong>
+            <p>{{ report.summary || '暂无汇报摘要' }}</p>
+            <p v-if="report.artifact_path" class="item-meta">{{ report.artifact_path }}</p>
+          </li>
+        </ul>
+        <p v-else class="empty-copy">暂无项目汇报。</p>
       </section>
     </div>
 
@@ -175,13 +137,9 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { displayBlueprintName } from '@/utils/blueprintName'
-import { Activity, ArrowUpRight, BookOpen, ListTodo, MessagesSquare, ScrollText } from '@lucide/vue'
-import {
-  governanceStatusColor,
-  governanceStatusLabel,
-  runStatusEntries,
-  runStatusLabel
-} from '@/utils/governanceBoard'
+import { Activity, ArrowUpRight, BookOpen, ScrollText } from '@lucide/vue'
+import ProjectGovernanceGraph from '@/components/project/ProjectGovernanceGraph.vue'
+import { governanceStatusLabel, runStatusEntries, runStatusLabel } from '@/utils/governanceBoard'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -202,7 +160,7 @@ const workbenchRoute = computed(() => ({
   params: { project_id: props.projectId }
 }))
 const workbenchAnchor = (anchor) => ({ ...workbenchRoute.value, hash: `#${anchor}` })
-/** 治理列表由后端按创建顺序返回，概览优先显示最新条目。 */
+/** 治理列表由后端按创建顺序返回，保留最新记录供概览回顾。 */
 const latest = (items, limit) => (items || []).slice(-limit).reverse()
 </script>
 
@@ -307,6 +265,40 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+.decision-summary-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.decision-summary-item {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
+  background: var(--gray-25);
+}
+.decision-summary-item header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.decision-summary-item header strong {
+  color: var(--gray-1000);
+  overflow-wrap: anywhere;
+}
+.decision-summary-item header span {
+  flex: 0 0 auto;
+  color: var(--gray-500);
+  font-size: 12px;
+}
+.decision-summary-item :deep(.yk-markdown-preview) {
+  max-height: 112px;
+  overflow: hidden;
+  color: var(--gray-700);
+  line-height: 1.6;
 }
 .overview-card {
   min-width: 0;
@@ -480,6 +472,9 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
   color: var(--gray-900);
 }
 @media (max-width: 900px) {
+  .decision-summary-list {
+    grid-template-columns: 1fr;
+  }
   .overview-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -74,8 +74,7 @@ test('无蓝图和治理记录时显示明确入口与空状态', async () => {
     execution: {}
   })
   assert.match(html, /还没有蓝图内容/)
-  assert.match(html, /暂无议题/)
-  assert.match(html, /暂无任务/)
+  assert.match(html, /提出议题、记录决策或创建任务后，关系图会在这里展示。/)
   assert.match(html, /暂无执行记录/)
   assert.match(html, /ProjectInspectionBoardComp|\/inspection/)
 })
@@ -92,15 +91,15 @@ test('列表超过展示上限时优先显示最新治理记录', async () => {
   const html = await renderDashboard({
     project: { name: '大量记录' },
     governance: {
-      topics: entries(6, 'topic'),
-      tasks: entries(6, 'task'),
-      decisions: entries(4, 'decision'),
-      reports: entries(4, 'report')
+      topics: entries(12, 'topic'),
+      tasks: entries(12, 'task'),
+      decisions: entries(12, 'decision'),
+      reports: entries(6, 'report')
     },
     execution: { blocked_runs: Array.from({ length: 10 }), recent_runs: [] }
   })
   for (const prefix of ['topic', 'task', 'decision', 'report']) {
-    assert.ok(html.includes(`${prefix}-${prefix === 'topic' || prefix === 'task' ? 5 : 3}`))
+    assert.ok(html.includes(`${prefix}-${prefix === 'report' ? 5 : 11}`))
     assert.ok(!html.includes(`${prefix}-0`))
   }
   assert.match(html, /近期阻塞记录/)

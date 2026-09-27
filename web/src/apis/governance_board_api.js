@@ -48,6 +48,26 @@ export const governanceBoardApi = {
     })
   },
 
+  updateTopic(projectId, topicId, payload) {
+    return apiPut(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}`,
+      payload
+    )
+  },
+
+  listTopicComments(projectId, topicId) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments`
+    )
+  },
+
+  createTopicComment(projectId, topicId, content) {
+    return apiPost(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments`,
+      { content }
+    )
+  },
+
   reviewTopic(projectId, topicId, approve) {
     return apiPost(
       `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/review`,

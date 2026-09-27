@@ -12,7 +12,7 @@
 
 ## 必须保留的业务语义
 
-- 蓝图文档是 Project Workdir 下的 `.yuanlei/blueprint/` 目录内的单层小写 Markdown 文件；文档名形如 `[a-z0-9][a-z0-9._-]*.md`，长度不超过 120。
+- 蓝图文档是 Project Workdir 下的 `.yuanlei/blueprint/` 目录内的单层 Markdown 文件；文档名支持中文、英文小写和数字，可在后续字符中使用点、下划线或短横线。名称不超过 120 个字符；为使归档文件仍满足常见文件系统单个分量 255 字节限制，去除 `.md` 后 UTF-8 不超过 194 字节。英文名称保持小写。
 - 蓝图正文的事实 Owner 是文件本身。读取接口每次回读文件；直接改写磁盘文件会改变后续读取结果。数据库没有蓝图行，直接改库不改变蓝图内容。
 - 写入按需幂等创建 `.yuanlei` 与 `blueprint`；任一层被普通文件或符号链接占用时以结构化 409 显式失败，不写入蓝图文件。
 - 只有当前用户 active、selectable 的 Project 可以读取与写入蓝图；其他用户、隐式或已删除项目统一返回 404。
@@ -51,6 +51,7 @@ Yuxi 继续拥有 Project、Conversation、AgentRun、Workdir 的 no-follow 文�
 
 - Decision：[项目蓝图 Workdir 事实源](../decisions/implemented/2026-09-24-project-blueprint-workdir.md)。
 - Decision：[项目蓝图新建与整份归档](../decisions/implemented/2026-09-27-project-blueprint-archive.md)。
+- Decision：[项目议题讨论、决策入口与关系图](../decisions/implemented/2026-09-27-project-governance-discussion-and-graph.md)。
 - 用例实现：`backend/package/yuxi/services/project_blueprint_service.py`。
 - HTTP 入口：`backend/server/routers/project_blueprint_router.py`。
 - 真实 PostgreSQL 与真实文件系统证据：`backend/test/integration/services/test_project_blueprint_service.py`。

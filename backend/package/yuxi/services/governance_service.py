@@ -26,6 +26,7 @@ from yuxi.storage.postgres.models_business import (
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
 MAX_TITLE_LENGTH = 512
+MAX_TOPIC_TEXT_LENGTH = 100_000
 
 
 def normalize_title(title: str) -> str:
@@ -37,6 +38,19 @@ def normalize_title(title: str) -> str:
             detail={"code": "invalid_title", "message": f"标题长度必须为 1-{MAX_TITLE_LENGTH}"},
         )
     return normalized
+
+
+def _normalize_topic_text(content: str | None, *, required: bool) -> str | None:
+    """校验议题正文或回复，保留 Markdown 并限制单篇大小。"""
+    normalized = str(content or "").strip()
+    if required and not normalized:
+        raise HTTPException(status_code=422, detail={"code": "invalid_comment", "message": "回复内容不能为空"})
+    if len(normalized) > MAX_TOPIC_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "topic_text_too_long", "message": f"正文不能超过 {MAX_TOPIC_TEXT_LENGTH} 个字符"},
+        )
+    return normalized or None
 
 
 def normalize_governance_source(
@@ -103,6 +117,17 @@ def _serialize_topic(row: GovernanceTopic) -> dict[str, Any]:
         "created_by": row.created_by,
         "created_at": format_utc_datetime(row.created_at),
         "updated_at": format_utc_datetime(row.updated_at),
+    }
+
+
+def _serialize_topic_comment(row: Any) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "topic_id": row.topic_id,
+        "content": row.content,
+        "author_name": row.author_name,
+        "created_by": row.created_by,
+        "created_at": format_utc_datetime(row.created_at),
     }
 
 
@@ -194,7 +219,7 @@ async def create_governance_topic(
     row = await repo.add_topic(
         project_id=project.id,
         title=normalized_title,
-        summary=summary,
+        summary=_normalize_topic_text(summary, required=False),
         source_channel=channel,
         source_external_id=external_id,
         source_url=url,
@@ -230,6 +255,75 @@ async def get_governance_topic(
     if row is None or row.project_id != project.id:
         raise HTTPException(status_code=404, detail="议题不存在")
     return _serialize_topic(row)
+
+
+async def update_governance_topic(
+    *,
+    project_id: str,
+    topic_id: str,
+    title: str,
+    summary: str | None,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """只允许更新仍待审议议题的标题与 Markdown 正文。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    row = await repo.get_topic_for_update(topic_id=topic_id)
+    if row is None or row.project_id != project.id:
+        raise HTTPException(status_code=404, detail="议题不存在")
+    if row.status != "proposed":
+        raise HTTPException(status_code=409, detail={"code": "invalid_state", "status": row.status})
+    row.title = normalize_title(title)
+    row.summary = _normalize_topic_text(summary, required=False)
+    await db.commit()
+    await db.refresh(row)
+    return _serialize_topic(row)
+
+
+async def list_governance_topic_comments(
+    *,
+    project_id: str,
+    topic_id: str,
+    db: AsyncSession,
+    user: User,
+) -> list[dict[str, Any]]:
+    """读取项目议题讨论串；审核后的议题仍可回看。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    topic = await repo.get_topic(topic_id=topic_id)
+    if topic is None or topic.project_id != project.id:
+        raise HTTPException(status_code=404, detail="议题不存在")
+    rows = await repo.list_topic_comments(topic_id=topic.id)
+    return [_serialize_topic_comment(row) for row in rows]
+
+
+async def create_governance_topic_comment(
+    *,
+    project_id: str,
+    topic_id: str,
+    content: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """在待审议议题下追加回复，并与审核共享议题行锁。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    topic = await repo.get_topic_for_update(topic_id=topic_id)
+    if topic is None or topic.project_id != project.id:
+        raise HTTPException(status_code=404, detail="议题不存在")
+    if topic.status != "proposed":
+        raise HTTPException(status_code=409, detail={"code": "invalid_state", "status": topic.status})
+    normalized_content = _normalize_topic_text(content, required=True)
+    row = await repo.add_topic_comment(
+        topic_id=topic.id,
+        content=normalized_content or "",
+        author_name=user.username,
+        operator=str(user.uid),
+    )
+    await db.commit()
+    await db.refresh(row)
+    return _serialize_topic_comment(row)
 
 
 async def review_governance_topic(

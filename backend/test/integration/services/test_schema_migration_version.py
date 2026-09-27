@@ -951,7 +951,7 @@ async def test_yuanlei_v9_to_v10_converges_governance_tables_idempotently() -> N
                 "uq_governance_topics_source_external",
                 "uq_governance_tasks_source_external",
             }
-        assert YUANLEI_SCHEMA_VERSION == 11
+        assert YUANLEI_SCHEMA_VERSION == 12
     finally:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
@@ -1009,7 +1009,7 @@ async def test_yuanlei_v10_to_v11_converges_channel_delegation_tables_idempotent
                 "uq_channel_delegations_operation_id",
                 "uq_channel_sync_cursors_scope",
             }
-        assert YUANLEI_SCHEMA_VERSION == 11
+        assert YUANLEI_SCHEMA_VERSION == 12
     finally:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 

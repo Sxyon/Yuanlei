@@ -14,7 +14,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_blueprint_name_accepts_normalized_markdown_files():
-    for name in ("product-vision.md", "design.md", "a_b-1.md", "a" * 117 + ".md"):
+    for name in ("product-vision.md", "design.md", "a_b-1.md", "项目蓝图.md", "a" * 117 + ".md"):
         assert validate_blueprint_name(name) == name
 
 
@@ -31,7 +31,6 @@ def test_blueprint_name_rejects_paths_and_non_markdown():
         "vision/../evil.md",
         "\\vision.md",
         "a" * 118 + ".md",
-        "中文.md",
     ):
         with pytest.raises(ValueError):
             validate_blueprint_name(name)

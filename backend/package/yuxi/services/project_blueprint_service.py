@@ -28,18 +28,24 @@ BLUEPRINT_DIRECTORY = f"{YUANLEI_DIR_NAME}/{BLUEPRINT_DIR_NAME}"
 ARCHIVE_DIR_NAME = "archive"
 ARCHIVE_DIRECTORY = f"{BLUEPRINT_DIRECTORY}/{ARCHIVE_DIR_NAME}"
 MAX_BLUEPRINT_NAME_LENGTH = 120
+MAX_BLUEPRINT_STEM_BYTES = 194
 MAX_BLUEPRINT_BYTES = 256 * 1024
-_BLUEPRINT_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*\.md$")
+_BLUEPRINT_NAME_PATTERN = re.compile(r"^[^\W_][\w.-]*\.md$")
 _ARCHIVE_NAME_PATTERN = re.compile(
-    r"^(?P<stem>[a-z0-9][a-z0-9._-]*)--(?P<archived_at>\d{8}T\d{12}Z)--[0-9a-f]{32}\.md$"
+    r"^(?P<stem>[^\W_][\w.-]*)--(?P<archived_at>\d{8}T\d{12}Z)--[0-9a-f]{32}\.md$"
 )
 
 
 def validate_blueprint_name(name: str) -> str:
-    """校验蓝图文档名是单层小写 `.md` 文件名。"""
+    """校验蓝图文档名是支持中文的单层 `.md` 文件名。"""
     normalized = str(name or "").strip()
-    if len(normalized) > MAX_BLUEPRINT_NAME_LENGTH or not _BLUEPRINT_NAME_PATTERN.fullmatch(normalized):
-        raise ValueError("蓝图文档名必须是长度不超过 120 的小写 .md 文件名")
+    if (
+        len(normalized) > MAX_BLUEPRINT_NAME_LENGTH
+        or len(normalized[:-3].encode("utf-8")) > MAX_BLUEPRINT_STEM_BYTES
+        or normalized.lower() != normalized
+        or not _BLUEPRINT_NAME_PATTERN.fullmatch(normalized)
+    ):
+        raise ValueError("蓝图文档名须为不超过 120 字的中文或小写 .md 文件名")
     return normalized
 
 
@@ -146,15 +152,24 @@ async def list_project_blueprint_view(
         entries = []
     except (NotADirectoryError, PermissionError) as exc:
         raise _blueprint_directory_conflict(f"/{BLUEPRINT_DIRECTORY}") from exc
-    documents = [
-        {
-            "name": entry["name"],
-            "size": int(entry["size"]),
-            "modified_at": float(entry["modified_at"]),
-        }
-        for entry in entries
-        if not entry["is_dir"] and _BLUEPRINT_NAME_PATTERN.fullmatch(str(entry["name"]))
-    ]
+    documents = []
+    for entry in entries:
+        if entry["is_dir"]:
+            continue
+        filename = str(entry["name"])
+        try:
+            name = validate_blueprint_name(filename)
+        except ValueError:
+            continue
+        if name != filename:
+            continue
+        documents.append(
+            {
+                "name": name,
+                "size": int(entry["size"]),
+                "modified_at": float(entry["modified_at"]),
+            }
+        )
     documents.sort(key=lambda document: document["name"])
     return {
         "project_id": project.id,
@@ -284,7 +299,13 @@ async def list_project_blueprint_archives_view(
     documents = []
     for entry in entries:
         match = _ARCHIVE_NAME_PATTERN.fullmatch(str(entry["name"]))
-        if entry["is_dir"] or match is None:
+        if (
+            entry["is_dir"]
+            or match is None
+            or len(match.group("stem")) + 3 > MAX_BLUEPRINT_NAME_LENGTH
+            or len(match.group("stem").encode("utf-8")) > MAX_BLUEPRINT_STEM_BYTES
+            or match.group("stem").lower() != match.group("stem")
+        ):
             continue
         documents.append(
             {
@@ -307,7 +328,12 @@ async def get_project_blueprint_archive_view(
 ) -> dict[str, Any]:
     """只读回顾一份归档蓝图。"""
     match = _ARCHIVE_NAME_PATTERN.fullmatch(str(archive_name or ""))
-    if match is None:
+    if (
+        match is None
+        or len(match.group("stem")) + 3 > MAX_BLUEPRINT_NAME_LENGTH
+        or len(match.group("stem").encode("utf-8")) > MAX_BLUEPRINT_STEM_BYTES
+        or match.group("stem").lower() != match.group("stem")
+    ):
         raise ValueError("无效的蓝图归档名称")
     project = await _require_project(project_id=project_id, db=db, user=user)
     workdir = _open_project_workdir(uid=str(user.uid), project=project)

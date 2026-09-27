@@ -97,7 +97,7 @@
             />
             <a-button :disabled="busy || loading" @click="createBlueprint">新建蓝图</a-button>
           </div>
-          <p class="hint">名称使用小写字母、数字、点、下划线或短横线；系统自动补全 .md。</p>
+          <p class="hint">支持中文、英文小写和数字，可含点、下划线或短横线；系统自动补全 .md。</p>
           <a-textarea
             v-model:value="blueprintContent"
             :rows="9"
@@ -160,69 +160,228 @@
               <p>提出问题、审核议题并形成结论</p>
             </div>
           </div>
-          <div class="form-row">
-            <a-input v-model:value="topicTitle" placeholder="议题标题" /><a-input
-              v-model:value="topicSummary"
-              placeholder="背景与待解决的问题"
-            /><a-button :disabled="!topicTitle.trim() || busy" @click="createTopic"
-              >提出议题</a-button
-            >
+          <div v-if="topicComposerVisible" class="topic-composer">
+            <div class="composer-heading">
+              <div>
+                <h3>提出新议题</h3>
+                <p>用 Markdown 记录背景、目标、方案和待讨论的问题。</p>
+              </div>
+              <a-button :disabled="busy" @click="topicComposerVisible = false">收起</a-button>
+            </div>
+            <a-input v-model:value="topicDraftTitle" placeholder="议题标题" />
+            <a-textarea
+              v-model:value="topicDraftSummary"
+              :maxlength="100000"
+              :auto-size="{ minRows: 12, maxRows: 32 }"
+              placeholder="## 背景\n\n描述问题、现状和影响。\n\n## 目标与方案\n\n列出目标、候选方案和需要讨论的事项。"
+            />
+            <div class="form-row">
+              <a-button
+                type="primary"
+                :disabled="!topicDraftTitle.trim() || busy"
+                @click="submitTopic"
+                >创建议题并开始讨论</a-button
+              >
+              <span class="hint">正文支持 Markdown，单篇最多 100,000 字。</span>
+            </div>
           </div>
-          <ul class="workbench-list">
-            <li v-for="topic in board.governance?.topics || []" :key="topic.id">
-              <strong>{{ topic.title }}</strong
-              ><a-tag :color="governanceStatusColor(topic.status)">{{
-                governanceStatusLabel(topic.status)
-              }}</a-tag
-              ><span>{{ topic.summary }}</span>
-              <a-button
-                v-if="topic.status === 'proposed'"
-                size="small"
-                :disabled="busy"
-                @click="reviewTopic(topic, true)"
-                >通过</a-button
-              >
-              <a-button
-                v-if="topic.status === 'proposed'"
-                size="small"
-                :disabled="busy"
-                @click="reviewTopic(topic, false)"
-                >拒绝</a-button
-              >
-            </li>
-          </ul>
-          <div class="form-row">
-            <a-input v-model:value="decisionTitle" placeholder="决策标题" /><a-select
-              v-model:value="decisionTopicId"
-              allow-clear
-              placeholder="关联议题"
-              style="min-width: 180px"
-              ><a-select-option
-                v-for="topic in canonicalTopics"
+          <a-alert v-if="topicCommentError" type="error" show-icon :message="topicCommentError" />
+          <div class="topic-layout">
+            <aside class="topic-sidebar">
+              <div class="topic-sidebar-heading">
+                <strong>议题列表</strong>
+                <span>{{ allTopics.length }}</span>
+                <a-button size="small" :disabled="busy" @click="topicComposerVisible = true">
+                  提出议题
+                </a-button>
+              </div>
+              <p v-if="!allTopics.length" class="hint topic-list-empty">还没有议题。</p>
+              <article
+                v-for="topic in allTopics"
                 :key="topic.id"
-                :value="topic.id"
-                >{{ topic.title }}</a-select-option
-              ></a-select
-            >
+                class="topic-list-card"
+                :class="{ active: selectedTopicId === topic.id }"
+              >
+                <button type="button" class="topic-select" @click="selectTopic(topic)">
+                  <span class="topic-list-title">{{ topic.title }}</span>
+                  <a-tag :color="governanceStatusColor(topic.status)">{{
+                    governanceStatusLabel(topic.status)
+                  }}</a-tag>
+                  <span class="topic-list-summary">{{ topic.summary || '暂无议题说明' }}</span>
+                </button>
+                <a-button size="small" :disabled="busy" @click="createDecisionFromTopic(topic)"
+                  >新增决策</a-button
+                >
+              </article>
+            </aside>
+
+            <div v-if="selectedTopic" class="topic-detail">
+              <header class="topic-detail-heading">
+                <div>
+                  <p class="eyebrow">议题详情</p>
+                  <h3>{{ selectedTopic.title }}</h3>
+                  <a-tag :color="governanceStatusColor(selectedTopic.status)">{{
+                    governanceStatusLabel(selectedTopic.status)
+                  }}</a-tag>
+                </div>
+                <a-button
+                  v-if="selectedTopic.status === 'proposed' && !editingTopic"
+                  :disabled="busy"
+                  @click="beginEditTopic"
+                  >修改提议</a-button
+                >
+              </header>
+
+              <div v-if="editingTopic" class="topic-editor">
+                <a-input v-model:value="editingTopicTitle" aria-label="议题标题" />
+                <a-textarea
+                  v-model:value="editingTopicSummary"
+                  :maxlength="100000"
+                  :auto-size="{ minRows: 16, maxRows: 36 }"
+                  placeholder="使用 Markdown 编辑议题正文"
+                />
+                <div class="form-row">
+                  <a-button type="primary" :disabled="!editingTopicTitle.trim() || busy" @click="saveTopicEdit"
+                    >保存议题修改</a-button
+                  >
+                  <a-button :disabled="busy" @click="editingTopic = false">取消</a-button>
+                </div>
+              </div>
+              <section v-else class="topic-proposal-body">
+                <MarkdownPreview v-if="selectedTopic.summary" :content="selectedTopic.summary" />
+                <p v-else class="hint">暂无议题说明。{{ selectedTopic.status === 'proposed' ? '可以先修改提议，补充背景和方案。' : '' }}</p>
+              </section>
+
+              <section class="discussion-thread">
+                <div class="discussion-heading">
+                  <div>
+                    <h4>讨论</h4>
+                    <p>补充问题、证据和不同意见，确认提议后再审核。</p>
+                  </div>
+                  <span>{{ topicComments.length }} 条回复</span>
+                </div>
+                <a-spin v-if="topicCommentsLoading" />
+                <p v-else-if="!topicComments.length" class="discussion-empty">还没有回复，开始这场讨论。</p>
+                <article v-for="comment in topicComments" :key="comment.id" class="discussion-post">
+                  <header>
+                    <strong>{{ comment.author_name || '项目成员' }}</strong>
+                    <time>{{ timestampLabel(comment.created_at) }}</time>
+                  </header>
+                  <MarkdownPreview :content="comment.content" />
+                </article>
+                <div v-if="selectedTopic.status === 'proposed'" class="discussion-reply">
+                  <a-textarea
+                    v-model:value="commentDraft"
+                    :maxlength="100000"
+                    :auto-size="{ minRows: 8, maxRows: 24 }"
+                    placeholder="写下讨论内容，支持 Markdown。"
+                  />
+                  <div class="form-row">
+                    <a-button
+                      type="primary"
+                      :disabled="!commentDraft.trim() || busy"
+                      @click="postTopicComment"
+                      >发布回复</a-button
+                    >
+                    <span class="hint">议题审核通过或拒绝后，讨论串保留只读。</span>
+                  </div>
+                </div>
+              </section>
+
+              <footer v-if="selectedTopic.status === 'proposed' && !editingTopic" class="topic-review-actions">
+                <div>
+                  <strong>结束讨论并审核</strong>
+                  <p>审核后议题正文和讨论串将保留为历史记录。</p>
+                </div>
+                <div class="form-row">
+                  <a-button danger :disabled="busy" @click="reviewTopic(selectedTopic, false)">拒绝提议</a-button>
+                  <a-button type="primary" :disabled="busy" @click="reviewTopic(selectedTopic, true)">
+                    通过并结束讨论
+                  </a-button>
+                </div>
+              </footer>
+              <p v-else-if="selectedTopic.review?.reviewed_at" class="hint topic-review-note">
+                {{ selectedTopic.status === 'canonical' ? '已通过' : '已拒绝' }} ·
+                {{ timestampLabel(selectedTopic.review.reviewed_at) }}
+                <span v-if="selectedTopic.review.note"> · {{ selectedTopic.review.note }}</span>
+              </p>
+            </div>
+            <div v-else class="topic-detail-empty">
+              <MessagesSquare :size="28" />
+              <strong>选择一个议题查看详情</strong>
+              <p>议题正文、讨论和审核操作会显示在这里。</p>
+              <a-button type="primary" @click="topicComposerVisible = true">提出第一个议题</a-button>
+            </div>
           </div>
-          <a-textarea
-            v-model:value="decisionConclusion"
-            :rows="2"
-            placeholder="明确结论与执行方向"
-          />
-          <div class="form-row">
-            <a-button
-              :disabled="!decisionTitle.trim() || !decisionConclusion.trim() || busy"
-              @click="createDecision"
-              >记录决策</a-button
-            >
+
+          <div id="decision-entry" class="decision-entry">
+            <div class="composer-heading">
+              <div>
+                <h3>新增决策</h3>
+                <p>记录议题结论，并保留决策理由供后续执行和回顾。</p>
+              </div>
+              <a-tag v-if="decisionTopicId">已关联议题</a-tag>
+            </div>
+            <div class="form-row">
+              <a-input v-model:value="decisionTitle" placeholder="决策标题" />
+              <a-select
+                v-model:value="decisionTopicId"
+                allow-clear
+                placeholder="关联议题"
+                style="min-width: 220px"
+              >
+                <a-select-option v-for="topic in allTopics" :key="topic.id" :value="topic.id">
+                  {{ topic.title }}
+                </a-select-option>
+              </a-select>
+            </div>
+            <a-textarea
+              v-model:value="decisionConclusion"
+              :auto-size="{ minRows: 8, maxRows: 24 }"
+              placeholder="明确结论与执行方向，支持 Markdown。"
+            />
+            <a-textarea
+              v-model:value="decisionRationale"
+              :auto-size="{ minRows: 6, maxRows: 20 }"
+              placeholder="决策理由、依据、风险与被否替代方案。"
+            />
+            <div class="form-row">
+              <a-button
+                type="primary"
+                :disabled="!decisionTitle.trim() || !decisionConclusion.trim() || busy"
+                @click="createDecision"
+                >记录决策</a-button
+              >
+            </div>
           </div>
-          <ul class="workbench-list">
-            <li v-for="decision in board.governance?.decisions || []" :key="decision.id">
-              <strong>{{ decision.title }}</strong
-              ><span>{{ decision.conclusion }}</span>
-            </li>
-          </ul>
+          <section id="decisions" class="decision-records">
+            <div class="composer-heading">
+              <div>
+                <h3>已有决策</h3>
+                <p>决策记录保留结论、理由和关联议题。</p>
+              </div>
+              <span class="hint">{{ board.governance?.decisions?.length || 0 }} 条</span>
+            </div>
+            <p v-if="!board.governance?.decisions?.length" class="hint">还没有决策记录。</p>
+            <article
+              v-for="decision in board.governance?.decisions || []"
+              :id="`decision-${decision.id}`"
+              :key="decision.id"
+              class="decision-card"
+              :class="{ 'selected-governance-item': route.query.decision_id === decision.id }"
+            >
+              <header>
+                <strong>{{ decision.title }}</strong>
+                <a-tag :color="governanceStatusColor(decision.status)">{{
+                  governanceStatusLabel(decision.status)
+                }}</a-tag>
+              </header>
+              <p v-if="topicTitleFor(decision.topic_id)" class="hint">
+                关联议题：{{ topicTitleFor(decision.topic_id) }}
+              </p>
+              <MarkdownPreview :content="decisionDetail(decision)" />
+            </article>
+          </section>
         </section>
 
         <section id="tasks" class="workbench-section">
@@ -251,6 +410,16 @@
           />
           <div class="form-row">
             <a-select
+              v-model:value="taskTopicId"
+              allow-clear
+              placeholder="关联议题"
+              style="min-width: 180px"
+            >
+              <a-select-option v-for="topic in allTopics" :key="topic.id" :value="topic.id">
+                {{ topic.title }}
+              </a-select-option>
+            </a-select>
+            <a-select
               v-model:value="taskDecisionId"
               allow-clear
               placeholder="关联决策"
@@ -266,7 +435,12 @@
             >
           </div>
           <ul class="workbench-list">
-            <li v-for="task in board.governance?.tasks || []" :key="task.id">
+            <li
+              v-for="task in board.governance?.tasks || []"
+              :id="`task-${task.id}`"
+              :key="task.id"
+              :class="{ 'selected-governance-item': route.query.task_id === task.id }"
+            >
               <strong>{{ task.title }}</strong
               ><a-tag :color="governanceStatusColor(task.status)">{{
                 governanceStatusLabel(task.status)
@@ -347,6 +521,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
+import { MessagesSquare } from '@lucide/vue'
 import GovernanceBoardPanel from '@/components/inspection/GovernanceBoardPanel.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { displayBlueprintName, normalizeBlueprintName } from '@/utils/blueprintName'
@@ -380,13 +555,24 @@ const archiveError = ref('')
 const archiveLoading = ref(false)
 const agents = ref([])
 const delegations = ref([])
-const topicTitle = ref('')
-const topicSummary = ref('')
+const topicComposerVisible = ref(false)
+const topicDraftTitle = ref('')
+const topicDraftSummary = ref('')
+const selectedTopicId = ref('')
+const topicComments = ref([])
+const topicCommentsLoading = ref(false)
+const topicCommentError = ref('')
+const commentDraft = ref('')
+const editingTopic = ref(false)
+const editingTopicTitle = ref('')
+const editingTopicSummary = ref('')
 const decisionTitle = ref('')
 const decisionConclusion = ref('')
+const decisionRationale = ref('')
 const decisionTopicId = ref(undefined)
 const taskTitle = ref('')
 const taskDescription = ref('')
+const taskTopicId = ref(undefined)
 const taskDecisionId = ref(undefined)
 const taskAgentSlug = ref(undefined)
 const executorKey = ref('codex')
@@ -401,12 +587,17 @@ const jumpTo = (id) =>
 let blueprintReadSeq = 0
 let archiveReadSeq = 0
 let loadSeq = 0
+let topicCommentSeq = 0
 const pageTitle = computed(() =>
   board.value?.project?.name ? `${board.value.project.name} · 项目工作台` : '项目工作台'
 )
-const canonicalTopics = computed(() =>
-  (board.value.governance?.topics || []).filter((item) => item.status === 'canonical')
-)
+const allTopics = computed(() => board.value.governance?.topics || [])
+const selectedTopic = computed(() => allTopics.value.find((item) => item.id === selectedTopicId.value))
+const topicTitleFor = (topicId) => allTopics.value.find((item) => item.id === topicId)?.title || ''
+const decisionDetail = (decision) =>
+  [decision.conclusion, decision.rationale && `---\n\n**决策理由**\n\n${decision.rationale}`]
+    .filter(Boolean)
+    .join('\n\n')
 const taskDelegations = (taskId) =>
   delegations.value.filter((item) => item.governance_task_id === taskId)
 const terminalTurn = (status) =>
@@ -416,6 +607,11 @@ const archiveTimeLabel = (raw) => {
   if (!/^\d{8}T\d{12}Z$/.test(value)) return value
   const iso = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}.${value.slice(15, 18)}Z`
   return new Date(iso).toLocaleString('zh-CN')
+}
+const timestampLabel = (raw) => {
+  if (!raw) return ''
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? String(raw) : date.toLocaleString('zh-CN')
 }
 
 async function readBlueprint() {
@@ -462,6 +658,84 @@ async function readArchive(name) {
   }
 }
 
+function setTopicRoute(topicId) {
+  const query = { ...route.query }
+  if (topicId) query.topic_id = topicId
+  else delete query.topic_id
+  delete query.task_id
+  delete query.decision_id
+  router.replace({
+    name: 'ProjectInspectionBoardComp',
+    params: { project_id: projectId.value },
+    query,
+    hash: route.hash
+  })
+}
+
+function selectTopic(topic) {
+  if (!canLeaveTopicEditor()) return
+  selectedTopicId.value = topic.id
+  editingTopic.value = false
+  commentDraft.value = ''
+  topicCommentError.value = ''
+  setTopicRoute(topic.id)
+}
+
+function createDecisionFromTopic(topic) {
+  if (!canLeaveTopicEditor()) return
+  selectedTopicId.value = topic.id
+  decisionTopicId.value = topic.id
+  decisionTitle.value = topic.title
+  decisionConclusion.value = ''
+  decisionRationale.value = ''
+  setTopicRoute(topic.id)
+  nextTick(() => jumpTo('decision-entry'))
+}
+
+function canLeaveTopicEditor() {
+  if (
+    !editingTopic.value ||
+    !selectedTopic.value ||
+    (editingTopicTitle.value === selectedTopic.value.title &&
+      editingTopicSummary.value === (selectedTopic.value.summary || ''))
+  )
+    return true
+  topicCommentError.value = '当前提议有未保存的修改，请先保存或取消编辑。'
+  return false
+}
+
+function beginEditTopic() {
+  if (!selectedTopic.value || selectedTopic.value.status !== 'proposed') return
+  editingTopicTitle.value = selectedTopic.value.title
+  editingTopicSummary.value = selectedTopic.value.summary || ''
+  editingTopic.value = true
+}
+
+async function loadTopicComments() {
+  const project = projectId.value
+  const topicId = selectedTopicId.value
+  const seq = ++topicCommentSeq
+  topicComments.value = []
+  topicCommentError.value = ''
+  if (!topicId || !project) {
+    topicCommentsLoading.value = false
+    return
+  }
+  topicCommentsLoading.value = true
+  try {
+    const comments = await api.listTopicComments(project, topicId)
+    if (seq !== topicCommentSeq || projectId.value !== project || selectedTopicId.value !== topicId)
+      return
+    topicComments.value = comments
+  } catch (error) {
+    if (seq === topicCommentSeq && projectId.value === project && selectedTopicId.value === topicId)
+      topicCommentError.value = describeBoardError(error)
+  } finally {
+    if (seq === topicCommentSeq && projectId.value === project && selectedTopicId.value === topicId)
+      topicCommentsLoading.value = false
+  }
+}
+
 async function load() {
   const project = projectId.value
   const seq = ++loadSeq
@@ -479,6 +753,15 @@ async function load() {
     if (seq !== loadSeq || projectId.value !== project) return
     if (boardResult.status === 'rejected') throw boardResult.reason
     board.value = boardResult.value
+    const topics = boardResult.value.governance?.topics || []
+    const requestedTopicId = String(route.query.topic_id || '')
+    const nextTopic =
+      topics.find((item) => item.id === requestedTopicId) ||
+      topics.find((item) => item.id === selectedTopicId.value) ||
+      [...topics].reverse().find((item) => item.status === 'proposed') ||
+      [...topics].reverse()[0]
+    selectedTopicId.value = nextTopic?.id || ''
+    if (requestedTopicId && !topics.some((item) => item.id === requestedTopicId)) setTopicRoute('')
     agents.value = agentResult.status === 'fulfilled' ? agentResult.value.agents || [] : []
     delegations.value = delegationResult.status === 'fulfilled' ? delegationResult.value : []
     const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult]
@@ -535,7 +818,7 @@ function createBlueprint() {
   const raw = newBlueprintName.value.trim()
   const name = normalizeBlueprintName(raw)
   if (!name) {
-    blueprintActionError.value = '蓝图名称需使用英文小写字母、数字、点、下划线或短横线'
+    blueprintActionError.value = '名称需以中文、英文小写或数字开头，可含点、下划线或短横线，且不超过 120 字'
     return
   }
   if (blueprints.value.some((doc) => doc.name === name)) {
@@ -578,12 +861,32 @@ const archiveBlueprint = () => {
     await readArchive(archived.archive_name)
   }, blueprintActionError)
 }
-const createTopic = () =>
+const submitTopic = () =>
   act(async () => {
-    await api.createTopic(projectId.value, { title: topicTitle.value, summary: topicSummary.value })
-    topicTitle.value = ''
-    topicSummary.value = ''
+    const created = await api.createTopic(projectId.value, {
+      title: topicDraftTitle.value,
+      summary: topicDraftSummary.value
+    })
+    topicDraftTitle.value = ''
+    topicDraftSummary.value = ''
+    topicComposerVisible.value = false
+    selectedTopicId.value = created.id
+    setTopicRoute(created.id)
   })
+const saveTopicEdit = () =>
+  act(async () => {
+    await api.updateTopic(projectId.value, selectedTopic.value.id, {
+      title: editingTopicTitle.value,
+      summary: editingTopicSummary.value
+    })
+    editingTopic.value = false
+  })
+const postTopicComment = () =>
+  act(async () => {
+    await api.createTopicComment(projectId.value, selectedTopic.value.id, commentDraft.value)
+    commentDraft.value = ''
+    await loadTopicComments()
+  }, topicCommentError)
 const reviewTopic = (topic, approve) =>
   act(() => api.reviewTopic(projectId.value, topic.id, approve))
 const createDecision = () =>
@@ -591,21 +894,26 @@ const createDecision = () =>
     await api.createDecision(projectId.value, {
       title: decisionTitle.value,
       conclusion: decisionConclusion.value,
+      rationale: decisionRationale.value,
       topic_id: decisionTopicId.value || null
     })
     decisionTitle.value = ''
     decisionConclusion.value = ''
+    decisionRationale.value = ''
+    decisionTopicId.value = undefined
   })
 const createTask = () =>
   act(async () => {
     await api.createTask(projectId.value, {
       title: taskTitle.value,
       description: taskDescription.value,
+      topic_id: taskTopicId.value || null,
       decision_id: taskDecisionId.value || null,
       assignee_agent_slug: taskAgentSlug.value || null
     })
     taskTitle.value = ''
     taskDescription.value = ''
+    taskTopicId.value = undefined
   })
 const reviewTask = (task, approve) => act(() => api.reviewTask(projectId.value, task.id, approve))
 const delegateTask = (task) =>
@@ -633,8 +941,49 @@ watch(projectId, () => {
   blueprintContent.value = ''
   savedBlueprintContent.value = ''
   blueprintActionError.value = ''
+  selectedTopicId.value = ''
+  topicComments.value = []
+  topicCommentsLoading.value = false
+  topicCommentSeq += 1
+  topicCommentError.value = ''
+  commentDraft.value = ''
+  topicComposerVisible.value = false
+  topicDraftTitle.value = ''
+  topicDraftSummary.value = ''
+  editingTopic.value = false
+  editingTopicTitle.value = ''
+  editingTopicSummary.value = ''
+  decisionTitle.value = ''
+  decisionConclusion.value = ''
+  decisionRationale.value = ''
+  decisionTopicId.value = undefined
+  taskTopicId.value = undefined
   load()
 })
+watch(
+  () => route.query.topic_id,
+  (topicId) => {
+    const requested = String(topicId || '')
+    if (!requested || !allTopics.value.some((item) => item.id === requested)) return
+    if (requested !== selectedTopicId.value && !canLeaveTopicEditor()) {
+      setTopicRoute(selectedTopicId.value)
+      return
+    }
+    selectedTopicId.value = requested
+  }
+)
+watch(selectedTopicId, loadTopicComments)
+watch(
+  [loading, () => route.query.task_id, () => route.query.decision_id],
+  async ([isLoading, taskId, decisionId]) => {
+    if (isLoading) return
+    const recordId = taskId ? `task-${taskId}` : decisionId ? `decision-${decisionId}` : ''
+    if (!recordId) return
+    await nextTick()
+    jumpTo(recordId)
+  },
+  { immediate: true }
+)
 watch(
   [loading, () => route.hash],
   async ([isLoading, hash]) => {
@@ -823,6 +1172,253 @@ onMounted(load)
 .workbench-list strong {
   color: var(--gray-1000);
 }
+.topic-composer,
+.decision-entry {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--gray-150);
+  border-radius: 9px;
+  background: var(--gray-25);
+}
+.composer-heading,
+.topic-sidebar-heading,
+.discussion-heading,
+.topic-review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.composer-heading h3,
+.discussion-heading h4 {
+  margin: 0;
+  color: var(--gray-1000);
+  font-size: 16px;
+}
+.composer-heading p,
+.discussion-heading p,
+.topic-review-actions p {
+  margin: 4px 0 0;
+  color: var(--gray-500);
+  font-size: 12px;
+}
+.topic-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.topic-sidebar {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.topic-sidebar-heading {
+  justify-content: space-between;
+  padding: 4px 2px;
+  color: var(--gray-800);
+}
+.topic-sidebar-heading span,
+.discussion-heading > span {
+  color: var(--gray-500);
+  font-size: 12px;
+}
+.topic-list-empty {
+  padding: 12px;
+}
+.topic-list-card {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
+  background: var(--gray-0);
+}
+.topic-list-card.active {
+  border-color: var(--main-color);
+  box-shadow: 0 0 0 2px var(--main-30);
+}
+.topic-select {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--gray-800);
+  cursor: pointer;
+  text-align: left;
+}
+.topic-select:focus-visible {
+  outline: 2px solid var(--main-color);
+  outline-offset: 2px;
+}
+.topic-list-title {
+  min-width: 0;
+  color: var(--gray-1000);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.topic-select :deep(.ant-tag) {
+  margin: 0;
+}
+.topic-list-summary {
+  grid-column: 1 / -1;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--gray-500);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.topic-detail,
+.topic-detail-empty {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--gray-150);
+  border-radius: 9px;
+  background: var(--gray-0);
+}
+.topic-detail {
+  display: grid;
+  gap: 18px;
+}
+.topic-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.topic-detail-heading h3 {
+  margin: 0 0 8px;
+  color: var(--gray-1000);
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.topic-detail-heading .eyebrow {
+  margin: 0 0 6px;
+  color: var(--main-color);
+  font-size: 11px;
+}
+.topic-proposal-body,
+.discussion-post {
+  min-width: 0;
+  color: var(--gray-800);
+  overflow-wrap: anywhere;
+}
+.topic-proposal-body :deep(.yk-markdown-preview),
+.discussion-post :deep(.yk-markdown-preview) {
+  line-height: 1.75;
+}
+.topic-editor {
+  display: grid;
+  gap: 12px;
+}
+.discussion-thread {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--gray-100);
+}
+.discussion-heading {
+  align-items: flex-start;
+}
+.discussion-empty {
+  margin: 0;
+  padding: 18px;
+  border-radius: 7px;
+  background: var(--gray-25);
+  color: var(--gray-500);
+  text-align: center;
+}
+.discussion-post {
+  padding: 14px 16px;
+  border: 1px solid var(--gray-100);
+  border-radius: 8px;
+  background: var(--gray-25);
+}
+.discussion-post > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.discussion-post > header strong {
+  color: var(--gray-900);
+}
+.discussion-post time {
+  color: var(--gray-500);
+  font-size: 12px;
+}
+.discussion-reply {
+  display: grid;
+  gap: 9px;
+  padding-top: 8px;
+}
+.topic-review-actions {
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray-100);
+}
+.topic-review-actions strong {
+  color: var(--gray-800);
+}
+.topic-review-note {
+  margin: 0;
+}
+.topic-detail-empty {
+  display: grid;
+  justify-items: start;
+  gap: 9px;
+  color: var(--gray-500);
+}
+.topic-detail-empty strong {
+  color: var(--gray-800);
+}
+.topic-detail-empty p {
+  margin: 0;
+}
+.decision-entry {
+  scroll-margin-top: 16px;
+}
+.decision-records {
+  display: grid;
+  gap: 10px;
+  scroll-margin-top: 16px;
+}
+.decision-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
+  background: var(--gray-0);
+  scroll-margin-top: 16px;
+}
+.decision-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.decision-card > header strong {
+  color: var(--gray-1000);
+}
+.decision-card > p {
+  margin: 0;
+}
+.selected-governance-item {
+  border-color: var(--main-color) !important;
+  box-shadow: 0 0 0 2px var(--main-30);
+}
 .delegation-list {
   flex-basis: 100%;
   margin: 0;
@@ -898,6 +1494,21 @@ onMounted(load)
 @media (max-width: 680px) {
   .archive-layout {
     grid-template-columns: 1fr;
+  }
+  .topic-layout {
+    grid-template-columns: 1fr;
+  }
+  .topic-sidebar {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  .topic-review-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .topic-detail,
+  .topic-detail-empty {
+    padding: 15px;
   }
 }
 </style>

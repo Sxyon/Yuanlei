@@ -7,7 +7,7 @@
 
 ## 需求与失败场景
 
-元垒需要一个督查与汇报面：由上游用户自建定时任务驱动项目数字员工，只读汇聚 Run、任务、产物与失败，产出周期汇报，并在 Dashboard/Taskboard 呈现跨项目的 open 议题、阻塞项与待决策队列，且可由汇报打开新议题。汇报的载体是定时任务产出的 artifact，元垒只保存结构化引用。跨项目页面只读呈现督查板；单项目页面把只读督查面板嵌入可操作工作台。
+元垒需要一个督查与汇报面：由上游用户自建定时任务驱动项目数字员工，只读汇聚 Run、任务、产物与失败，产出周期汇报，并在 Dashboard/Taskboard 呈现跨项目的 open 议题、阻塞项与待决策队列，且可由汇报打开新议题。汇报的载体是定时任务产出的 artifact，元垒只保存结构化引用。跨项目页面只读呈现督查板；单项目页面把只读督查面板嵌入可操作工作台，并支持议题长文讨论、审核前修改和只读历史。
 
 失败场景：为展示另建镜像表导致议题/任务状态与来源漂移；汇报复制或回写 Run 终态，使执行面出现第二个状态 Owner；跨项目待决策队列只能单项目查看；展示面缺失或前端自行解析 Run/治理状态导致展示与唯一事实源分叉；子智能体或越权运行读写项目督查事实。
 
@@ -19,7 +19,7 @@
 - `open` 指仍在 `proposed` 的议题/任务/决策；`blockers` 指 `failed`/`interrupted` 的 Run。
 - Agent 工具只在带 Project 的运行中重建授权并校验当前 worker lease；子智能体拒绝。
 - 跨项目视图只覆盖当前用户 active、selectable 的 Project。
-- 督查面板只消费 board 读视图：跨项目入口消费 `GET /governance/board`，单项目工作台消费 `GET /projects/{id}/governance/board`；治理与执行操作由单项目工作台通过各自 API 完成，后端拥有最终状态。
+- 督查面板只消费 board 读视图：跨项目入口消费 `GET /governance/board`，单项目工作台消费 `GET /projects/{id}/governance/board`；治理与执行操作由单项目工作台通过各自 API 完成，后端拥有最终状态。Dashboard 的关系图直接派生议题、决策和任务外键，节点选中后展示详情并跳转到工作台对应记录。
 - 展示面读取授权由后端执行：读接口要求登录用户，单项目 board 对不可见项目 404；前端路由守卫只提供体验约束。
 
 ## 与 Yuxi 的边界
@@ -53,6 +53,7 @@
 ## 决策与证据
 
 - Decision：[元垒督查板](../decisions/implemented/2026-09-25-yuanlei-inspection-board.md)。
+- Decision：[项目议题讨论、决策入口与关系图](../decisions/implemented/2026-09-27-project-governance-discussion-and-graph.md)。
 - 读模型与持久化：`backend/package/yuxi/services/inspection_board_service.py`、`backend/package/yuxi/repositories/inspection_board_repository.py`。
 - Agent 工具与授权：`backend/package/yuxi/agents/toolkits/buildin/governance_tools.py`、`project_run_scope.py`。
 - 真实 PostgreSQL 行为证据：`backend/test/integration/services/test_inspection_board_service.py`。

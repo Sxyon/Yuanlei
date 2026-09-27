@@ -2,7 +2,14 @@
 export function normalizeBlueprintName(input) {
   const raw = String(input || '').trim()
   const name = raw.endsWith('.md') ? raw : `${raw}.md`
-  if (name.length > 120 || !/^[a-z0-9][a-z0-9._-]*\.md$/.test(name)) return null
+  const stem = name.slice(0, -3)
+  if (
+    Array.from(name).length > 120 ||
+    new TextEncoder().encode(stem).length > 194 ||
+    name.toLowerCase() !== name ||
+    !/^[\p{L}\p{N}][\p{L}\p{N}._-]*\.md$/u.test(name)
+  )
+    return null
   return name
 }
 

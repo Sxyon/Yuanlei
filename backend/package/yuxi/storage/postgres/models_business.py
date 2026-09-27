@@ -829,6 +829,25 @@ class GovernanceTopic(Base):
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
+class GovernanceTopicComment(Base):
+    """项目议题讨论回复；按议题追加保存作者、正文与时间。"""
+
+    __tablename__ = "governance_topic_comments"
+    __table_args__ = (Index("ix_governance_topic_comments_topic_created", "topic_id", "created_at", "id"),)
+
+    id = Column(String(64), primary_key=True, comment="议题回复 UUID")
+    topic_id = Column(
+        String(64),
+        ForeignKey("governance_topics.id", ondelete="CASCADE", name="fk_governance_topic_comments_topic_id"),
+        nullable=False,
+        comment="所属议题",
+    )
+    content = Column(Text, nullable=False, comment="Markdown 回复正文")
+    author_name = Column(Text, nullable=False, comment="发帖时作者显示名快照")
+    created_by = Column(String(64), nullable=True, comment="作者 uid，不建立用户外键以保留历史回复")
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
 class GovernanceDecision(Base):
     """项目治理决策：人拍板的结论、理由与被否替代（yuanlei 域）。"""
 

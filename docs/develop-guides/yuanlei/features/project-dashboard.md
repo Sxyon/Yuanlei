@@ -20,7 +20,7 @@
 - 页面字节的事实 Owner 是 Workdir，页面 revision 的事实 Owner 是 yuanlei `project_dashboards`。二者 hash 不一致时读取为 `repair_required`，不返回可能过期的页面。可读但违反静态策略的旧页不被采纳，只允许持有当前 revision 的安全写入覆盖修复；不可信路径、坏编码和超限仍拒绝覆盖。
 - 命名 JSON 的事实 Owner 是 yuanlei `project_documents`，以 `(project_id, key)` 唯一；它供受控 HTTP API 与未来能力使用，不向 iframe 暴露。
 - Dashboard 的读接口和 Agent 工具只对当前用户 active、selectable 的 Project 开放；不可见项目返回 404。
-- 默认概览固定展示项目蓝图、议题、任务、决策、汇报和执行动态；它只读取已有授权接口，不创建默认 HTML，也不向自定义 iframe 注入数据。
+- 默认概览固定展示项目蓝图、议题—决策—任务关系图、汇报和执行动态；关系图从治理事实外键派生，节点可选中查看详情并跳转工作台，每类最多绘制最近 10 条。它只读取已有授权接口，不创建默认 HTML，也不向自定义 iframe 注入数据。
 - Redis 不拥有页面、JSON、版本或锁的最终事实。
 
 ## 与 Yuxi 的边界
@@ -56,5 +56,6 @@ Yuxi 继续拥有 Project、认证、Conversation、AgentRun 以及 Workdir 的 
 
 - [项目自定义 Dashboard v0](../decisions/implemented/2026-09-21-project-dashboard.md)
 - [项目默认 Dashboard 与工作台导航](../decisions/implemented/2026-09-26-default-project-dashboard.md)
+- [项目议题讨论、决策入口与关系图](../decisions/implemented/2026-09-27-project-governance-discussion-and-graph.md)
 - 实现 Owner：`backend/package/yuxi/services/project_dashboard_service.py`
 - 代码与测试是当前实现事实；Decision 的验证记录保留实际证据与已知环境限制。

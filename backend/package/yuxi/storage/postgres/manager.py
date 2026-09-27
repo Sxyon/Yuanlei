@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 11
+YUANLEI_SCHEMA_VERSION = 12
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -562,6 +562,21 @@ GOVERNANCE_SCHEMA_STATEMENTS = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS ix_governance_reports_project_id ON governance_reports(project_id)",
+)
+GOVERNANCE_TOPIC_DISCUSSION_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS governance_topic_comments (
+        id VARCHAR(64) PRIMARY KEY,
+        topic_id VARCHAR(64) NOT NULL CONSTRAINT fk_governance_topic_comments_topic_id
+            REFERENCES governance_topics(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        author_name TEXT NOT NULL,
+        created_by VARCHAR(64),
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_governance_topic_comments_topic_created "
+    "ON governance_topic_comments(topic_id, created_at, id)",
 )
 # 元垒外部执行器委派域：委派事实与入向同步游标。本地 dispatch_state 与远端
 # remote_status 投影分离；投递意图先持久化，结果只引用发起 Run。
@@ -1275,6 +1290,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in CHANNEL_DELEGATION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v11_to_v12(self) -> None:
+        """新增项目议题讨论回复表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in GOVERNANCE_TOPIC_DISCUSSION_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):
