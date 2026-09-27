@@ -128,8 +128,8 @@
           >
             <img
               class="star-card-link-image"
-              src="https://img.shields.io/github/stars/xerrors/Yuxi?label=Yuxi&style=social"
-              alt="GitHub stars for Yuxi"
+              src="https://img.shields.io/github/stars/sxyon/Yuanlei?label=Yuanlei&style=social"
+              alt="GitHub stars for Yuanlei"
             />
             <ExternalLink :size="13" />
           </a>

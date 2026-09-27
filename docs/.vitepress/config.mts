@@ -54,11 +54,16 @@ export default defineConfig({
         items: [
           { text: '认识 Yuanlei', link: '/intro/project-overview' },
           { text: '快速开始', link: '/intro/quick-start' },
-          { text: 'Project Git 仓库', link: '/intro/project-git' },
           { text: '命令行工具', link: '/intro/cli' },
           { text: '模型配置', link: '/intro/model-config' },
           { text: '知识库与知识图谱', link: '/intro/knowledge-base' },
           { text: '知识库评估', link: '/intro/evaluation' }
+        ]
+      },
+      {
+        text: '项目管理',
+        items: [
+          { text: 'Project Git 仓库', link: '/intro/project-git' },
         ]
       },
       {

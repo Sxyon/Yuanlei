@@ -1136,7 +1136,7 @@ const getAuthHeaders = () => {
 
 const openDocLink = () => {
   window.open(
-    'https://xerrors.github.io/Yuxi/advanced/document-processing.html',
+    'https://sxyon.github.io/Yuanlei/advanced/document-processing.html',
     '_blank',
     'noopener'
   )
