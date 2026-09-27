@@ -69,6 +69,7 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         )
     headers = {"Authorization": f"Bearer {AuthUtils.create_access_token({'sub': str(user_id)})}"}
     outsider_headers = {"Authorization": f"Bearer {AuthUtils.create_access_token({'sub': str(outsider_id)})}"}
+    task_id = None
     try:
         root = f"/api/projects/{project_id}/work"
         code = f"W{uuid.uuid4().hex[:8].upper()}"
@@ -102,6 +103,53 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         assert detail.status_code == 200, detail.text
         assert [item["content"] for item in detail.json()["comments"]] == ["Verified outcome"]
 
+        completed = await test_client.patch(f"{root}/tasks/{task_id}", headers=headers, json={"status": "done"})
+        assert completed.status_code == 200, completed.text
+        unread = await test_client.get("/api/inbox?folder=unread", headers=headers)
+        assert unread.status_code == 200, unread.text
+        notices = [item for item in unread.json() if item["source_id"] == task_id]
+        assert len(notices) == 1 and notices[0]["kind"] == "task_completed"
+        notice_id = notices[0]["id"]
+        async with engine.connect() as db:
+            assert (
+                await db.scalar(text("SELECT count(*) FROM user_inbox_items WHERE source_id = :id"), {"id": task_id})
+                == 1
+            )
+        outsider_notice = await test_client.patch(
+            f"/api/inbox/{notice_id}", headers=outsider_headers, json={"read": True}
+        )
+        assert outsider_notice.status_code == 404
+        read_notice = await test_client.patch(f"/api/inbox/{notice_id}", headers=headers, json={"read": True})
+        assert read_notice.status_code == 200 and read_notice.json()["read_at"]
+        archived_notice = await test_client.patch(f"/api/inbox/{notice_id}", headers=headers, json={"archived": True})
+        assert archived_notice.status_code == 200 and archived_notice.json()["archived_at"]
+        archived_list = await test_client.get("/api/inbox?folder=archived", headers=headers)
+        assert any(item["id"] == notice_id for item in archived_list.json())
+        async with engine.begin() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO user_inbox_items (id, uid, kind, source_id, title) "
+                    "SELECT :prefix || '-' || n, :uid, 'run_question', :prefix || '-' || n, 'Question' "
+                    "FROM generate_series(1, 51) AS n"
+                ),
+                {"prefix": f"notice-{marker}", "uid": uid},
+            )
+        first_page = await test_client.get("/api/inbox?folder=unread", headers=headers)
+        assert len(first_page.json()) == 50
+        moved = await test_client.patch(
+            f"/api/inbox/{first_page.json()[0]['id']}", headers=headers, json={"read": True}
+        )
+        assert moved.status_code == 200
+        cursor = first_page.json()[-1]["id"]
+        second_page = await test_client.get(f"/api/inbox?folder=unread&before={cursor}", headers=headers)
+        assert len(second_page.json()) == 1
+        assert second_page.json()[0]["id"] not in {item["id"] for item in first_page.json()}
+        assert (await test_client.get("/api/inbox?folder=unread&before=missing", headers=headers)).status_code == 422
+        assert (
+            await test_client.get(f"/api/inbox?folder=unread&before={cursor}", headers=outsider_headers)
+        ).status_code == 422
+        assert (await test_client.get("/api/inbox?folder=unread", headers=outsider_headers)).json() == []
+
         foreign = await test_client.get(
             f"/api/projects/{other_id}/work/tasks/{task_id}",
             headers=headers,
@@ -117,6 +165,7 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         assert deleted.status_code == 404
     finally:
         async with engine.begin() as db:
+            await db.execute(text("DELETE FROM user_inbox_items WHERE uid = :uid"), {"uid": uid})
             await db.execute(
                 text("DELETE FROM projects WHERE id IN (:first, :second)"),
                 {"first": project_id, "second": other_id},

@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.repositories.agent_run_scope_repository import AgentRunScopeRepository
+from yuxi.repositories.user_inbox_repository import UserInboxRepository
 from yuxi.storage.postgres.models_business import (
     AGENT_RUN_TERMINAL_STATUSES,
     AUDIT_MESSAGE_TYPES,
@@ -689,11 +690,7 @@ class AgentRunRepository:
         pending_parent_ids = [root_run.id]
         seen_ids: set[str] = set()
         root_scope_row = await AgentRunScopeRepository(self.db).get(str(root_run.id))
-        root_scope_key = (
-            str(root_scope_row.scope_key)
-            if root_scope_row is not None
-            else str(root_run.runtime_scope_id)
-        )
+        root_scope_key = str(root_scope_row.scope_key) if root_scope_row is not None else str(root_run.runtime_scope_id)
         scope_run_ids = await AgentRunScopeRepository(self.db).list_run_ids(scope_key=root_scope_key)
         while pending_parent_ids:
             parent_ids = pending_parent_ids
@@ -820,6 +817,18 @@ class AgentRunRepository:
             error_message=error_message,
             now=current_time,
         )
+        if (
+            status == "interrupted"
+            and error_type in {"ask_user_question_required", "human_approval_required"}
+            and run.run_type in TOP_LEVEL_RUN_TYPES
+        ):
+            await UserInboxRepository(self.db).add_once(
+                uid=run.uid,
+                kind="run_question",
+                source_id=run.id,
+                title="智能体等待你的答复" if error_type == "ask_user_question_required" else "智能体等待你的审批",
+                summary=error_message,
+            )
         await self.db.flush()
         return run, True
 

@@ -4,7 +4,7 @@
 类型：feature
 Owner：backend/package/yuxi/services/project_work_service.py
 
-已落地的任务底座由[第一阶段决定](../implemented/2026-09-27-project-work-task-foundation.md)与[Feature](../../features/project-work-tasks.md)说明；本提案保存尚未完成的整体方向与验收边界。
+已落地的任务底座由[第一阶段决定](../implemented/2026-09-27-project-work-task-foundation.md)与[Feature](../../features/project-work-tasks.md)说明；项目任务完成及 Run 待答复通知由[收件箱决定](../implemented/2026-09-27-user-inbox.md)与[Feature](../../features/user-inbox.md)说明。本提案保存尚未完成的整体方向与验收边界。
 
 ## 问题
 

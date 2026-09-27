@@ -1,6 +1,6 @@
 # 独立项目工作任务与 Issue
 
-状态：一期已接入；智能体执行、收件箱和自动巡检尚未实现
+状态：一期已接入；智能体执行和自动巡检尚未实现
 类型：有意产品差异
 主要 Owner：`backend/package/yuxi/services/project_work_service.py`
 

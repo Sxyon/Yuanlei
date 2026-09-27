@@ -12,6 +12,7 @@ from yuxi.repositories.governance_repository import GovernanceRepository
 from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
+from yuxi.repositories.user_inbox_repository import UserInboxRepository
 from yuxi.storage.postgres.models_business import ProjectWorkComment, ProjectWorkIssue, ProjectWorkTask, User
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
@@ -247,6 +248,15 @@ async def update_task(
     if status is not None:
         if status not in TASK_STATUSES:
             raise HTTPException(status_code=422, detail="任务状态无效")
+        if status == "done" and task.status != "done":
+            await UserInboxRepository(db).add_once(
+                uid=task.created_by,
+                kind="task_completed",
+                source_id=task.id,
+                project_id=project_id,
+                title=f"任务已完成：{task.title}",
+                summary=task.number,
+            )
         task.status = status
     if update_owner:
         if primary_owner_agent_slug is not None:

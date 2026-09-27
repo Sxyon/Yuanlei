@@ -954,6 +954,28 @@ class ProjectWorkComment(Base):
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
 
 
+class UserInboxItem(Base):
+    """用户收件箱中的持久通知。"""
+
+    __tablename__ = "user_inbox_items"
+    __table_args__ = (
+        UniqueConstraint("uid", "kind", "source_id", name="uq_user_inbox_items_source"),
+        CheckConstraint("kind IN ('task_completed', 'run_question')", name="ck_user_inbox_items_kind"),
+        Index("ix_user_inbox_items_uid_created", "uid", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    uid = Column(String(64), nullable=False)
+    kind = Column(String(32), nullable=False)
+    source_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), nullable=True)
+    title = Column(String(512), nullable=False)
+    summary = Column(Text, nullable=True)
+    read_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+
+
 class GovernanceDecision(Base):
     """项目治理决策：人拍板的结论、理由与被否替代（yuanlei 域）。"""
 

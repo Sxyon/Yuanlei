@@ -40,6 +40,7 @@ from yuxi.storage.postgres.models_business import (
     SubagentThread,
     ToolCall,
     User,
+    UserInboxItem,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -222,6 +223,8 @@ async def _cleanup_runs(session_factory, thread_ids: list[str]) -> None:
             message_ids = select(Message.id).where(Message.conversation_id.in_(conversation_ids))
             await db.execute(delete(ToolCall).where(ToolCall.message_id.in_(message_ids)))
             await db.execute(delete(Message).where(Message.conversation_id.in_(conversation_ids)))
+        run_ids = select(AgentRun.id).where(AgentRun.conversation_thread_id.in_(thread_ids))
+        await db.execute(delete(UserInboxItem).where(UserInboxItem.source_id.in_(run_ids)))
         await db.execute(delete(AgentRun).where(AgentRun.conversation_thread_id.in_(thread_ids)))
         await db.execute(delete(SubagentThread).where(SubagentThread.child_thread_id.in_(thread_ids)))
         await db.execute(delete(Conversation).where(Conversation.thread_id.in_(thread_ids)))
@@ -1521,6 +1524,19 @@ async def test_interrupt_message_and_run_terminal_commit_together(lease_database
         assert run.status == "interrupted"
         assert run.error_type == "ask_user_question_required"
         assert output_message.content == "waiting"
+        async with session_factory() as db:
+            notices = (await db.scalars(select(UserInboxItem).where(UserInboxItem.source_id == run_id))).all()
+            assert len(notices) == 1
+            assert notices[0].kind == "run_question"
+            assert notices[0].summary == "请选择"
+            _run, changed = await AgentRunRepository(db).set_terminal_status(
+                run_id,
+                status="interrupted",
+                error_type="ask_user_question_required",
+                worker_id=owner,
+            )
+            assert changed is False
+            assert len((await db.scalars(select(UserInboxItem).where(UserInboxItem.source_id == run_id))).all()) == 1
     finally:
         await _cleanup_runs(session_factory, [thread_id])
 

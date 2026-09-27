@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 13
+YUANLEI_SCHEMA_VERSION = 14
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -643,6 +643,23 @@ PROJECT_WORK_SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS ix_project_work_comments_task_created ON project_work_comments(task_id, created_at)",
     "CREATE INDEX IF NOT EXISTS ix_project_work_comments_issue_created ON project_work_comments(issue_id, created_at)",
 )
+USER_INBOX_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS user_inbox_items (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        source_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64),
+        title VARCHAR(512) NOT NULL,
+        summary TEXT,
+        read_at TIMESTAMP WITHOUT TIME ZONE,
+        archived_at TIMESTAMP WITHOUT TIME ZONE,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_user_inbox_items_source UNIQUE (uid, kind, source_id),
+        CONSTRAINT ck_user_inbox_items_kind CHECK (kind IN ('task_completed', 'run_question'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_user_inbox_items_uid_created ON user_inbox_items(uid, created_at)",
+)
 # 元垒外部执行器委派域：委派事实与入向同步游标。本地 dispatch_state 与远端
 # remote_status 投影分离；投递意图先持久化，结果只引用发起 Run。
 CHANNEL_DELEGATION_SCHEMA_STATEMENTS = (
@@ -703,10 +720,7 @@ CHANNEL_DELEGATION_SCHEMA_STATEMENTS = (
         CONSTRAINT ck_channel_sync_cursors_channel CHECK (channel IN ('multica'))
     )
     """,
-    (
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_sync_cursors_scope "
-        "ON channel_sync_cursors(channel, project_id)"
-    ),
+    ("CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_sync_cursors_scope ON channel_sync_cursors(channel, project_id)"),
 )
 CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     """
@@ -744,14 +758,8 @@ CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     ),
 )
 CODING_CREDENTIAL_REFERENCE_STATEMENTS = (
-    (
-        "ALTER TABLE IF EXISTS coding_credentials "
-        "ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual'"
-    ),
-    (
-        "ALTER TABLE IF EXISTS coding_credentials "
-        "ADD COLUMN IF NOT EXISTS model_provider_id VARCHAR(100)"
-    ),
+    ("ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual'"),
+    ("ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS model_provider_id VARCHAR(100)"),
     "ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS key_mode VARCHAR(16)",
     # 同一 scope 同一执行器只保留最近更新的一条生效记录，其余软删并清理密文。
     """
@@ -1370,6 +1378,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_WORK_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v13_to_v14(self) -> None:
+        """新增用户收件箱。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in USER_INBOX_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

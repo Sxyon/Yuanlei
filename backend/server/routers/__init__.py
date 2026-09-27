@@ -29,6 +29,7 @@ from server.routers.project_dashboard_router import project_dashboard
 from server.routers.project_document_router import project_documents
 from server.routers.project_router import projects
 from server.routers.project_work_router import project_work
+from server.routers.user_inbox_router import user_inbox
 from server.routers.scheduled_agent_router import scheduled_agents
 from server.routers.skill_router import skills, user_skills
 from server.routers.system_router import system
@@ -49,6 +50,7 @@ router.include_router(agent_invocation_eval_router)  # /api/agent-invocation/eva
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
 router.include_router(projects)  # /api/projects* 项目创建与选择
 router.include_router(project_work)  # /api/projects/{id}/work/* 独立项目工作任务
+router.include_router(user_inbox)  # /api/inbox 当前用户收件箱
 router.include_router(project_agents)  # /api/projects/{id}/agents* 项目数字员工归属与覆盖配置
 router.include_router(project_documents)  # /api/projects/{id}/documents* 项目命名 JSON 文档
 router.include_router(project_blueprints)  # /api/projects/{id}/blueprint* 项目蓝图 Workdir 文档

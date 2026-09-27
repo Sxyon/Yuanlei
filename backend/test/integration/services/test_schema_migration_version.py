@@ -89,6 +89,35 @@ async def _drop_isolated_schema(schema: str, admin_engine, scoped_engine) -> Non
     await admin_engine.dispose()
 
 
+async def test_yuanlei_v13_to_v14_creates_inbox_idempotently() -> None:
+    """存量 v13 升级后可保存收件箱通知，重复升级保留通知。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_inbox_schema")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE user_inbox_items"))
+        await manager.upgrade_yuanlei_schema_v13_to_v14()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO user_inbox_items (id, uid, kind, source_id, title) "
+                    "VALUES ('notice-1', 'user-1', 'run_question', 'run-1', 'Question')"
+                )
+            )
+        await manager.upgrade_yuanlei_schema_v13_to_v14()
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text("SELECT count(*) FROM user_inbox_items")) == 1
+            constraints = {
+                row[0]
+                for row in await connection.execute(
+                    text("SELECT conname FROM pg_constraint WHERE connamespace = current_schema()::regnamespace")
+                )
+            }
+            assert "uq_user_inbox_items_source" in constraints
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")
@@ -150,7 +179,8 @@ async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> 
             assert "uq_project_work_tasks_project_number" in constraints
             assert "ck_project_work_comments_one_parent" in constraints
             indexes = {
-                row[0] for row in await connection.execute(
+                row[0]
+                for row in await connection.execute(
                     text("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()")
                 )
             }

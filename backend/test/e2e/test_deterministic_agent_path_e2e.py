@@ -1188,6 +1188,7 @@ async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
     thread_id: str | None = None
     workdir_path: str | None = None
     active_run_id: str | None = None
+    parent_run_id: str | None = None
     try:
         agent_slug = await _create_agent(
             e2e_client,
@@ -1226,6 +1227,22 @@ async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
         assert parent_run["status"] == "interrupted", parent_run
         assert parent_run["error_type"] == "human_approval_required", parent_run
         await _wait_for_runtime_cleanup(parent_run_id)
+        inbox_response = await e2e_client.get("/api/inbox?folder=unread", headers=e2e_headers)
+        assert inbox_response.status_code == 200, inbox_response.text
+        notices = [item for item in inbox_response.json() if item["source_id"] == parent_run_id]
+        assert len(notices) == 1 and notices[0]["kind"] == "run_question"
+        conn = await asyncpg.connect(postgres_dsn())
+        try:
+            assert (
+                await conn.fetchval(
+                    "SELECT count(*) FROM user_inbox_items WHERE source_id = $1 AND uid = $2",
+                    parent_run_id,
+                    uid,
+                )
+                == 1
+            )
+        finally:
+            await conn.close()
 
         # 刷新读取持久化审批时，模型供应商可以不可用；恢复执行前再装配供应商。
         await _delete_provider(e2e_client, e2e_headers)
@@ -1336,6 +1353,12 @@ async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
             assert thread_delete.status_code in {200, 404}, thread_delete.text
         if agent_slug:
             await delete_agent(e2e_client, e2e_headers, agent_slug)
+        if parent_run_id:
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                await conn.execute("DELETE FROM user_inbox_items WHERE source_id = $1", parent_run_id)
+            finally:
+                await conn.close()
         await _delete_provider(e2e_client, e2e_headers)
 
 

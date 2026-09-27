@@ -73,6 +73,32 @@ const router = createRouter({
       ]
     },
     {
+      path: '/inbox',
+      name: 'Inbox',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'InboxView',
+          component: () => import('../views/InboxView.vue'),
+          meta: { requiresAuth: true }
+        }
+      ]
+    },
+    {
+      path: '/projects/:project_id/work/tasks/:task_id',
+      name: 'ProjectWorkTask',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'ProjectWorkTaskView',
+          component: () => import('../views/ProjectWorkTaskView.vue'),
+          meta: { requiresAuth: true }
+        }
+      ]
+    },
+    {
       path: '/projects/:project_id/dashboard',
       name: 'ProjectDashboard',
       component: AppLayout,
