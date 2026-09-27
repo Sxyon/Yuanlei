@@ -12,6 +12,12 @@
         <template v-else>{{ projectName }}</template>
       </h2>
       <span v-if="generatedAt" class="board-panel-time">生成于 {{ generatedAt }}</span>
+      <RouterLink
+        v-if="projectLink && projectId"
+        :to="{ name: 'ProjectDashboardComp', params: { project_id: projectId } }"
+        class="board-project-link"
+        >项目概览</RouterLink
+      >
     </header>
 
     <div class="board-grid">
@@ -29,7 +35,9 @@
               </div>
               <p v-if="itemNote(item)" class="board-item-note">{{ itemNote(item) }}</p>
               <div class="board-item-meta">
-                <span v-if="item.source?.channel">{{ sourceChannelLabel(item.source.channel) }}</span>
+                <span v-if="item.source?.channel">{{
+                  sourceChannelLabel(item.source.channel)
+                }}</span>
                 <span v-if="item.assignee_agent_slug">执行 {{ item.assignee_agent_slug }}</span>
                 <span v-if="item.created_at">{{ item.created_at }}</span>
               </div>

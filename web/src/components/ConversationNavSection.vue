@@ -91,6 +91,11 @@
                             >项目 Dashboard</a-menu-item
                           >
                           <a-menu-item
+                            key="workbench"
+                            @click="emit('open-project-workbench', group.project)"
+                            >项目工作台</a-menu-item
+                          >
+                          <a-menu-item
                             key="git"
                             :icon="h(GitFork, { size: 14 })"
                             @click="emit('manage-project-git', group.project)"
@@ -238,6 +243,7 @@ const emit = defineEmits([
   'delete-project',
   'manage-project-git',
   'open-project-dashboard',
+  'open-project-workbench',
   'create-project-chat',
   'retry-projects'
 ])

@@ -2,6 +2,11 @@
   <div class="inspection-page">
     <PageHeader :title="pageTitle" :loading="loading" show-border>
       <template #actions>
+        <a-button
+          size="small"
+          @click="router.push({ name: 'ProjectDashboardComp', params: { project_id: projectId } })"
+          >项目概览</a-button
+        >
         <a-button size="small" @click="router.push({ name: 'InspectionBoardComp' })"
           >返回督查板</a-button
         >
@@ -29,17 +34,40 @@
           closable
           @close="actionError = ''"
         />
-        <div class="workbench-links">
-          <RouterLink :to="{ name: 'AgentManageComp', query: { tab: 'projects' } }"
-            >配置项目数字员工</RouterLink
+        <header class="workbench-intro">
+          <div>
+            <p class="workbench-kicker">PROJECT WORKBENCH</p>
+            <h1>{{ board.project?.name || '项目工作台' }}</h1>
+            <p>维护蓝图，审核议题和任务，发起执行并查看汇报。</p>
+          </div>
+          <div class="workbench-links">
+            <RouterLink :to="{ name: 'AgentManageComp', query: { tab: 'projects' } }"
+              >项目数字员工</RouterLink
+            >
+            <RouterLink :to="{ name: 'AgentManageComp', query: { tab: 'schedules' } }"
+              >定时汇报</RouterLink
+            >
+          </div>
+        </header>
+        <nav class="workbench-nav" aria-label="工作台栏目">
+          <button
+            v-for="item in sectionLinks"
+            :key="item.id"
+            type="button"
+            @click="jumpTo(item.id)"
           >
-          <RouterLink :to="{ name: 'AgentManageComp', query: { tab: 'schedules' } }"
-            >配置定时汇报</RouterLink
-          >
-        </div>
+            {{ item.label }}
+          </button>
+        </nav>
 
-        <section class="workbench-section">
-          <h2>项目蓝图</h2>
+        <section id="blueprint" class="workbench-section">
+          <div class="section-heading">
+            <span class="section-index">01</span>
+            <div>
+              <h2>项目蓝图</h2>
+              <p>记录目标、范围和验收标准</p>
+            </div>
+          </div>
           <div class="form-row">
             <a-select
               v-model:value="blueprintName"
@@ -78,8 +106,14 @@
           </div>
         </section>
 
-        <section class="workbench-section">
-          <h2>议题与决策</h2>
+        <section id="topics" class="workbench-section">
+          <div class="section-heading">
+            <span class="section-index">02</span>
+            <div>
+              <h2>议题与决策</h2>
+              <p>提出问题、审核议题并形成结论</p>
+            </div>
+          </div>
           <div class="form-row">
             <a-input v-model:value="topicTitle" placeholder="议题标题" /><a-input
               v-model:value="topicSummary"
@@ -91,7 +125,9 @@
           <ul class="workbench-list">
             <li v-for="topic in board.governance?.topics || []" :key="topic.id">
               <strong>{{ topic.title }}</strong
-              ><a-tag>{{ topic.status }}</a-tag
+              ><a-tag :color="governanceStatusColor(topic.status)">{{
+                governanceStatusLabel(topic.status)
+              }}</a-tag
               ><span>{{ topic.summary }}</span>
               <a-button
                 v-if="topic.status === 'proposed'"
@@ -143,8 +179,14 @@
           </ul>
         </section>
 
-        <section class="workbench-section">
-          <h2>任务与本地执行</h2>
+        <section id="tasks" class="workbench-section">
+          <div class="section-heading">
+            <span class="section-index">03</span>
+            <div>
+              <h2>任务与本地执行</h2>
+              <p>审核任务并追踪委派结果</p>
+            </div>
+          </div>
           <div class="form-row">
             <a-input v-model:value="taskTitle" placeholder="任务标题" /><a-select
               v-model:value="taskAgentSlug"
@@ -180,7 +222,9 @@
           <ul class="workbench-list">
             <li v-for="task in board.governance?.tasks || []" :key="task.id">
               <strong>{{ task.title }}</strong
-              ><a-tag>{{ task.status }}</a-tag
+              ><a-tag :color="governanceStatusColor(task.status)">{{
+                governanceStatusLabel(task.status)
+              }}</a-tag
               ><span>{{ task.assignee_agent_slug || '未指派' }}</span>
               <a-button
                 v-if="task.status === 'proposed'"
@@ -231,8 +275,14 @@
           </ul>
         </section>
 
-        <section class="workbench-section">
-          <h2>督查与汇报</h2>
+        <section id="reports" class="workbench-section">
+          <div class="section-heading">
+            <span class="section-index">04</span>
+            <div>
+              <h2>督查与汇报</h2>
+              <p>查看待处理事项、阻塞执行和项目汇报</p>
+            </div>
+          </div>
           <GovernanceBoardPanel :board="board" />
           <ul class="workbench-list">
             <li v-for="report in board.governance?.reports || []" :key="report.id">
@@ -248,13 +298,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import GovernanceBoardPanel from '@/components/inspection/GovernanceBoardPanel.vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
-import { describeBoardError } from '@/utils/governanceBoard'
+import {
+  describeBoardError,
+  governanceStatusColor,
+  governanceStatusLabel
+} from '@/utils/governanceBoard'
 
 const route = useRoute()
 const router = useRouter()
@@ -283,6 +337,14 @@ const taskDescription = ref('')
 const taskDecisionId = ref(undefined)
 const taskAgentSlug = ref(undefined)
 const executorKey = ref('codex')
+const sectionLinks = [
+  { id: 'blueprint', label: '项目蓝图' },
+  { id: 'topics', label: '议题与决策' },
+  { id: 'tasks', label: '任务与执行' },
+  { id: 'reports', label: '督查与汇报' }
+]
+const jumpTo = (id) =>
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 let blueprintReadSeq = 0
 let loadSeq = 0
 const pageTitle = computed(() =>
@@ -346,7 +408,8 @@ async function load() {
     const auxiliaryErrors = [docsResult, agentResult, delegationResult]
       .filter((result) => result.status === 'rejected')
       .map((result) => describeBoardError(result.reason))
-    if (auxiliaryErrors.length) actionError.value = `部分工作台数据加载失败：${auxiliaryErrors.join('；')}`
+    if (auxiliaryErrors.length)
+      actionError.value = `部分工作台数据加载失败：${auxiliaryErrors.join('；')}`
     if (docsResult.status === 'fulfilled') {
       blueprints.value = docsResult.value.documents || []
       if (!blueprintName.value && blueprints.value.length)
@@ -468,6 +531,15 @@ watch(projectId, () => {
   newBlueprintPending.value = false
   load()
 })
+watch(
+  [loading, () => route.hash],
+  async ([isLoading, hash]) => {
+    if (isLoading || !hash || !sectionLinks.some((item) => `#${item.id}` === hash)) return
+    await nextTick()
+    jumpTo(hash.slice(1))
+  },
+  { immediate: true }
+)
 onMounted(load)
 </script>
 
@@ -484,8 +556,52 @@ onMounted(load)
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   padding: var(--page-padding);
+  background: var(--gray-25);
+}
+.workbench-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px 28px;
+  border: 1px solid var(--gray-150);
+  border-radius: 10px;
+  background: var(--gray-0);
+}
+.workbench-kicker {
+  margin: 0 0 8px;
+  color: var(--main-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.workbench-intro h1 {
+  margin: 0;
+  color: var(--gray-1000);
+  font-size: 25px;
+}
+.workbench-intro p:last-child {
+  margin: 8px 0 0;
+  color: var(--gray-600);
+}
+.workbench-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.workbench-nav button {
+  padding: 7px 12px;
+  border: 1px solid var(--gray-150);
+  border-radius: 6px;
+  background: var(--gray-0);
+  color: var(--gray-700);
+  cursor: pointer;
+}
+.workbench-nav button:hover {
+  border-color: var(--main-color);
+  color: var(--main-color);
 }
 .inspection-state {
   margin: 40px auto;
@@ -493,15 +609,43 @@ onMounted(load)
 .workbench-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 16px;
+  padding: 24px;
   border: 1px solid var(--gray-150);
   border-radius: 10px;
   background: var(--gray-0);
+  scroll-margin-top: 16px;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.section-index {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--main-30);
+  color: var(--main-color);
+  font-size: 12px;
+  font-weight: 700;
+}
+.section-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--gray-1000);
+}
+.section-heading p {
+  margin: 4px 0 0;
+  color: var(--gray-500);
+  font-size: 12px;
 }
 .workbench-section h2 {
-  margin: 0;
-  font-size: 16px;
   color: var(--gray-1000);
 }
 .form-row,
@@ -516,7 +660,37 @@ onMounted(load)
   min-width: 180px;
 }
 .workbench-links {
-  gap: 16px;
+  gap: 8px;
+}
+.workbench-links a {
+  padding: 7px 10px;
+  border: 1px solid var(--gray-150);
+  border-radius: 6px;
+  background: var(--gray-0);
+  font-size: 13px;
+}
+.workbench-links a:hover {
+  border-color: var(--main-color);
+}
+.workbench-list > li {
+  align-items: flex-start;
+}
+.workbench-list > li > strong {
+  min-width: 150px;
+}
+.workbench-list > li > span:not(.ant-tag) {
+  color: var(--gray-600);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .workbench-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 20px;
+  }
+  .workbench-section {
+    padding: 18px;
+  }
 }
 .workbench-list {
   margin: 0;

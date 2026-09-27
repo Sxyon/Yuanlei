@@ -1,12 +1,12 @@
 # 项目自定义 Dashboard
 
-状态：已实现（静态 Dashboard v0）
+状态：已实现（静态自定义页面与统一默认概览）
 类型：新增能力
 主要 Owner：[项目自定义 Dashboard v0 Decision](../decisions/implemented/2026-09-21-project-dashboard.md)
 
 ## 需求与失败场景
 
-每个 Project 可以由带项目上下文的 Agent 创建和维护一个项目页面。第一版交付的是可进入、可安全渲染的静态 HTML/CSS Dashboard，不是智能体管理工作台，也不提供在页面中新增智能体、跳转对象或编辑项目资料的能力。
+每个 Project 可以由带项目上下文的 Agent 创建和维护一个项目页面。没有自定义页面时，受信任的前端自动呈现统一的项目概览，从项目督查读视图与蓝图接口展示当前事实。自定义页面是可安全渲染的静态 HTML/CSS Dashboard；项目蓝图和治理操作由独立的项目工作台承载。
 
 页面以 `dashboard/index.html` 保存到 Project Workdir，数据库只保存 revision、hash 与大小元数据。页面或命名 JSON 的并发更新不能静默覆盖；文件系统与数据库提交失配必须显式显示待修复状态。Agent 只能在所属用户、正在运行的根 Project Run 中调用专用读写工具，浏览器没有写接口。
 
@@ -20,6 +20,7 @@
 - 页面字节的事实 Owner 是 Workdir，页面 revision 的事实 Owner 是 yuanlei `project_dashboards`。二者 hash 不一致时读取为 `repair_required`，不返回可能过期的页面。可读但违反静态策略的旧页不被采纳，只允许持有当前 revision 的安全写入覆盖修复；不可信路径、坏编码和超限仍拒绝覆盖。
 - 命名 JSON 的事实 Owner 是 yuanlei `project_documents`，以 `(project_id, key)` 唯一；它供受控 HTTP API 与未来能力使用，不向 iframe 暴露。
 - Dashboard 的读接口和 Agent 工具只对当前用户 active、selectable 的 Project 开放；不可见项目返回 404。
+- 默认概览固定展示项目蓝图、议题、任务、决策、汇报和执行动态；它只读取已有授权接口，不创建默认 HTML，也不向自定义 iframe 注入数据。
 - Redis 不拥有页面、JSON、版本或锁的最终事实。
 
 ## 与 Yuxi 的边界
@@ -35,7 +36,7 @@ Yuxi 继续拥有 Project、认证、Conversation、AgentRun 以及 Workdir 的 
 | 页面 revision | `project_dashboards` 与 Dashboard service | advisory lock、乐观 revision、hash 对账与 repair |
 | 命名 JSON | `project_documents` 与 document service | key 唯一、行锁、单调 version 与 409 |
 | Agent 编辑 | 根 Project Run 的 `dashboard_read`/`dashboard_write` | 从 Run→Conversation→Project 重建授权并核验当前 worker lease，只写静态页面 |
-| 浏览器展示 | `ProjectDashboardView`、`dashboardFrame` | 无脚本 sandbox 与无网络 CSP，不提供 bridge |
+| 浏览器展示 | `ProjectDashboardView`、`dashboardFrame` | 默认概览由受信任 Vue 页面展示；自定义页保持无脚本 sandbox 与无网络 CSP，不提供 bridge |
 
 ## 上游依赖
 
@@ -49,10 +50,11 @@ Yuxi 继续拥有 Project、认证、Conversation、AgentRun 以及 Workdir 的 
 
 上游提供等价的项目页面 revision、Workdir 恢复与无脚本预览时可删除重复实现。项目工作台取代展示入口时，仍保留页面与 JSON 数据迁移路径，并以新的 Decision 定义工作台权限与设置语义。
 
-下一版“项目工作台”若需要项目目标、智能体列表、详情跳转、创建智能体或 Dashboard 设置，必须新建 Decision：明确受信任 UI Owner、每个写操作的授权/审计/冲突契约，以及 JSON 如何被读取和编辑。不得重新向任意 Agent 生成 HTML 页面授予项目数据 bridge。
+新增项目工作台设置、智能体创建或命名 JSON 编辑时，需要 Decision 定义受信任 UI Owner，以及写操作的授权、审计和冲突契约。不得向任意 Agent 生成 HTML 页面授予项目数据 bridge。
 
 ## 决策与证据
 
 - [项目自定义 Dashboard v0](../decisions/implemented/2026-09-21-project-dashboard.md)
+- [项目默认 Dashboard 与工作台导航](../decisions/implemented/2026-09-26-default-project-dashboard.md)
 - 实现 Owner：`backend/package/yuxi/services/project_dashboard_service.py`
 - 代码与测试是当前实现事实；Decision 的验证记录保留实际证据与已知环境限制。

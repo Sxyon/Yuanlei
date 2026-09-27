@@ -288,6 +288,11 @@ const handleOpenProjectDashboard = (project) => {
   router.push({ name: 'ProjectDashboardComp', params: { project_id: project.id } })
 }
 
+const handleOpenProjectWorkbench = (project) => {
+  if (!project?.id) return
+  router.push({ name: 'ProjectInspectionBoardComp', params: { project_id: project.id } })
+}
+
 const searchWorkspace = (query) => searchWorkspaceFiles(query)
 
 // 侧边栏搜索到工作区文件后跳转到工作区并打开对应文件
@@ -497,6 +502,7 @@ provide('settingsModal', {
           @delete-project="handleDeleteProject"
           @manage-project-git="handleManageProjectGit"
           @open-project-dashboard="handleOpenProjectDashboard"
+          @open-project-workbench="handleOpenProjectWorkbench"
           @create-project-chat="handleCreateProjectChat"
           @retry-projects="loadProjects"
           @load-more-chats="() => chatThreadsStore.loadMoreThreads()"
