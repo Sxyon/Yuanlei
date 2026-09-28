@@ -1174,13 +1174,17 @@ async def test_scheduled_task_run_now_reaches_exact_conversation_and_result(
         await _delete_provider(e2e_client, e2e_headers)
 
 
-@pytest.mark.parametrize("auto_accept", [False, True])
+@pytest.mark.parametrize(
+    ("auto_accept", "scenario"),
+    [(False, "complete"), (True, "complete"), (False, "resume"), (False, "rate_limit")],
+)
 async def test_project_work_assignment_reaches_worker_result_and_task_comment(
     e2e_client: httpx.AsyncClient,
     e2e_headers: dict[str, str],
     auto_accept: bool,
+    scenario: str,
 ) -> None:
-    """真实 worker 执行已接受任务，结果只归属本次 Request/Run 和任务评论。"""
+    """真实 worker 的完成、失败及恢复结果只归属本次项目任务执行。"""
     me = await e2e_client.get("/api/auth/me", headers=e2e_headers)
     assert me.status_code == 200, me.text
     uid = str(me.json()["uid"])
@@ -1188,8 +1192,13 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
     agent_slug = project_id = directory_name = thread_id = run_id = None
     assignment_path = execution_id = None
     execution_status = None
+    parent_run_id = None
     try:
-        agent_slug = await _create_agent(e2e_client, e2e_headers, uid)
+        marker = {
+            "complete": "", "resume": LARGE_TOOL_RESULT_MARKER,
+            "rate_limit": "DETERMINISTIC_RATE_LIMIT RATE_LIMIT_FIRST_CALL",
+        }[scenario]
+        agent_slug = await _create_agent(e2e_client, e2e_headers, uid, system_prompt_suffix=marker)
         directory_name = f"pytest-project-work-e2e-{uuid.uuid4().hex[:10]}"
         directory = await e2e_client.post(
             "/api/workspace/directory", headers=e2e_headers,
@@ -1212,7 +1221,10 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         )
         assert bound.status_code == 200, bound.text
         root = f"/api/projects/{project_id}/work"
-        code = await e2e_client.put(f"{root}/code", headers=e2e_headers, json={"code": "PWE2E"})
+        code = await e2e_client.put(
+            f"{root}/code", headers=e2e_headers,
+            json={"code": f"P{uuid.uuid4().hex[:8].upper()}"},
+        )
         assert code.status_code == 200, code.text
         created = await e2e_client.post(
             f"{root}/tasks", headers=e2e_headers,
@@ -1247,24 +1259,94 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         )
         assert reset_config.status_code == 200, reset_config.text
 
-        deadline = asyncio.get_running_loop().time() + 240
-        execution = None
-        while asyncio.get_running_loop().time() < deadline:
-            listed = await e2e_client.get(assignment_path, headers=e2e_headers)
-            assert listed.status_code == 200, listed.text
-            execution = next(item for item in listed.json() if item["id"] == execution_id)
+        async def wait_execution_status(targets: set[str]) -> dict:
+            """等待持久任务执行尝试进入目标状态。"""
+            deadline = asyncio.get_running_loop().time() + 240
+            latest = None
+            while asyncio.get_running_loop().time() < deadline:
+                listed = await e2e_client.get(assignment_path, headers=e2e_headers)
+                assert listed.status_code == 200, listed.text
+                latest = next(item for item in listed.json() if item["id"] == execution_id)
+                if latest["status"] in targets:
+                    return latest
+                await asyncio.sleep(2)
+            pytest.fail(f"project work execution did not reach {targets}: {latest}")
+
+        targets = {"interrupted", "failed", "cancelled"} if scenario == "resume" else {
+            "completed", "failed", "cancelled"
+        }
+        execution = await wait_execution_status(targets)
+        execution_status = execution["status"]
+        run_id = execution["current_run_id"] or run_id
+        thread_id = execution["thread_id"] or thread_id
+        if scenario == "resume":
+            assert execution_status == "interrupted", execution
+            parent_run_id = run_id
+            parent = await wait_for_run(e2e_client, e2e_headers, parent_run_id)
+            assert parent["status"] == "interrupted" and parent["error_type"] == "human_approval_required", parent
+            await _wait_for_runtime_cleanup(parent_run_id)
+            workbench = await e2e_client.get(
+                f"/api/projects/{project_id}/agents/{agent_slug}/workbench", headers=e2e_headers
+            )
+            assert workbench.status_code == 200, workbench.text
+            assert workbench.json()["current"]["id"] == execution_id
+            assert workbench.json()["current"]["status"] == "interrupted"
+            response = await e2e_client.post(
+                "/api/agent/runs", headers=e2e_headers,
+                json={
+                    "agent_slug": agent_slug, "thread_id": thread_id,
+                    "meta": {"request_id": f"project-work-resume-{uuid.uuid4()}"},
+                    "resume": {"decisions": [{"type": "approve"}]},
+                    "created_by_run_id": parent_run_id,
+                },
+            )
+            assert response.status_code == 200, response.text
+            run_id = str(response.json()["run_id"])
+            execution = await wait_execution_status({"completed", "failed", "cancelled"})
             execution_status = execution["status"]
-            run_id = execution["current_run_id"] or run_id
-            thread_id = execution["thread_id"] or thread_id
-            if execution_status in {"completed", "failed", "cancelled"}:
-                break
-            await asyncio.sleep(2)
+            assert execution["current_run_id"] == run_id, execution
+        elif scenario == "rate_limit":
+            assert execution_status == "failed", execution
+            assert run_id and thread_id, execution
+            failed_run = await wait_for_run(e2e_client, e2e_headers, run_id)
+            assert failed_run["status"] == "failed" and "DETERMINISTIC_RATE_LIMIT" in failed_run["error_message"]
+            detail = await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)
+            assert detail.status_code == 200, detail.text
+            assert not detail.json()["comments"]
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                row = await conn.fetchrow(
+                    """SELECT e.request_id, e.thread_id, q.source AS request_source,
+                              q.external_id AS request_external_id, r.request_id AS run_request_id,
+                              r.source AS run_source, r.external_id AS run_external_id,
+                              r.conversation_thread_id
+                       FROM project_work_executions e
+                       JOIN agent_run_requests q ON q.request_id = e.request_id
+                       JOIN agent_runs r ON r.id = $2
+                       WHERE e.id = $1""",
+                    execution_id, run_id,
+                )
+                assert row is not None
+                assert row["request_id"] == row["run_request_id"] == execution["request_id"]
+                assert row["thread_id"] == row["conversation_thread_id"] == thread_id
+                assert row["request_source"] == row["run_source"] == "project_work"
+                assert row["request_external_id"] == row["run_external_id"] == execution_id
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM project_work_comments WHERE task_id = $1 AND source_run_id IS NOT NULL",
+                    task_id,
+                ) == 0
+            finally:
+                await conn.close()
+            return
         assert execution is not None and execution["status"] == "completed", execution
         assert run_id and thread_id, execution
         assert execution["model_spec"] == MODEL_SPEC
         request_id = str(execution["request_id"])
         run = await wait_for_run(e2e_client, e2e_headers, run_id)
-        assert run["status"] == "completed" and run["request_id"] == request_id, run
+        assert run["status"] == "completed", run
+        assert run["created_by_run_id"] == parent_run_id, run
+        if parent_run_id is None:
+            assert run["request_id"] == request_id, run
         result = await e2e_client.get(f"/api/agent/runs/{run_id}/result", headers=e2e_headers)
         assert result.status_code == 200, result.text
         assert result.json()["output"] == EXPECTED_OUTPUT
@@ -1279,7 +1361,7 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             row = await conn.fetchrow(
                 """SELECT e.request_id, e.thread_id, q.status AS request_status,
                           q.source AS request_source, q.external_id AS request_external_id,
-                          r.source, r.external_id,
+                          r.source, r.external_id, r.created_by_run_id,
                           r.conversation_thread_id, m.run_id AS output_run_id,
                           c.source_run_id AS comment_run_id
                    FROM project_work_executions e
@@ -1297,7 +1379,12 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             assert row["request_external_id"] == execution_id
             assert row["thread_id"] == row["conversation_thread_id"] == thread_id
             assert row["source"] == "project_work" and row["external_id"] == execution_id
+            assert row["created_by_run_id"] == parent_run_id
             assert row["output_run_id"] == row["comment_run_id"] == run_id
+            if parent_run_id:
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM project_work_comments WHERE source_run_id = $1", parent_run_id
+                ) == 0
         finally:
             await conn.close()
     finally:
@@ -1313,6 +1400,8 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                 thread_id = current["thread_id"] or thread_id
                 if execution_status in {"completed", "failed", "cancelled"}:
                     break
+                if execution_status == "interrupted":
+                    break
                 if execution_status in {"pending_acceptance", "queued"}:
                     cancelled = await e2e_client.post(
                         f"{assignment_path}/{execution_id}/cancel", headers=e2e_headers,
@@ -1322,7 +1411,7 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                     await cancel_run(e2e_client, e2e_headers, run_id)
                     cancelled_run_ids.add(run_id)
                 await asyncio.sleep(2)
-            assert execution_status in {"completed", "failed", "cancelled"}, execution_status
+            assert execution_status in {"completed", "failed", "cancelled", "interrupted"}, execution_status
         if thread_id:
             deleted = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
             assert deleted.status_code in {200, 404}, deleted.text

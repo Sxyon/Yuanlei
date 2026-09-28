@@ -53,3 +53,4 @@
 - [后续工作提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL：`backend/test/integration/services/test_project_work_service.py` 与 `test_schema_migration_version.py`。
 - 真实 HTTP：`backend/test/integration/api/test_project_work_api.py`。
+- 真实 worker E2E：`backend/test/e2e/test_deterministic_agent_path_e2e.py::test_project_work_assignment_reaches_worker_result_and_task_comment`；手动/自动接受完成、限流失败和中断恢复四个确定性回放场景均回读执行尝试、Run 与评论归属。

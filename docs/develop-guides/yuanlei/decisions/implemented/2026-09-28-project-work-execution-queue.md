@@ -28,4 +28,4 @@ Owner：backend/package/yuxi/services/project_work_execution_service.py
 - `backend/test/integration/services/test_schema_migration_version.py`：v14→v15 重复升级、活跃任务和 Agent 唯一约束。
 - `backend/test/integration/api/test_project_work_api.py`：真实 HTTP 分配、跨用户拒绝、工作台及任务完成 guard。
 - `backend/test/integration/services/test_project_work_execution_service.py`：隔离 PostgreSQL 验证接受、撤回、并发队头锁与 FIFO 认领、终态评论幂等、被拒 Request 释放执行槽及错误 Run 绑定拒绝。
-- `backend/test/e2e/test_deterministic_agent_path_e2e.py::test_project_work_assignment_reaches_worker_result_and_task_comment`：使用确定性模型回放，经真实 HTTP、worker、Request/Run 与 PostgreSQL 回读验证已接受任务的输出归属；由 system-tests 工作流执行。中断恢复链 E2E 仍需补证据；未通过前不把完整执行闭环标记为验收完成。
+- `backend/test/e2e/test_deterministic_agent_path_e2e.py::test_project_work_assignment_reaches_worker_result_and_task_comment`：使用确定性模型回放，经真实 HTTP、worker、Request/Run 与 PostgreSQL 回读验证手动及自动接受的完成路径、限流失败路径、人工审批中断与恢复链；完成评论绑定最终 Run，失败不生成完成评论，恢复前的 Run 不生成评论。本地四个场景全部通过（`4 passed`）；失联投递恢复仍需独立 E2E 证据。
