@@ -118,6 +118,76 @@ async def test_yuanlei_v13_to_v14_creates_inbox_idempotently() -> None:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v14_to_v15_creates_project_work_queue_idempotently() -> None:
+    """存量 v14 升级后创建执行队列与结果来源唯一索引，重复升级保留数据。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_queue_schema")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE project_work_executions"))
+            await connection.execute(text("ALTER TABLE project_work_comments DROP COLUMN source_run_id"))
+        await manager.upgrade_yuanlei_schema_v14_to_v15()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO users (username, uid, password_hash, role, login_failed_count, is_deleted) "
+                "VALUES ('queue-user', 'queue-user', 'x', 'user', 0, 0)"
+            ))
+            await connection.execute(text(
+                "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                "VALUES ('queue-project', 'queue-user', 'Queue', 'selectable', 'projects/queue', 'managed')"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('queue-task', 'queue-project', 'QUEUE-GEN-000001', 'Queue task', 'todo', 'queue-user', NOW(), NOW()), "
+                "('queue-other', 'queue-project', 'QUEUE-GEN-000002', 'Other task', 'todo', 'queue-user', NOW(), NOW())"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_work_executions "
+                "(id, task_id, project_id, uid, agent_slug, status, prompt, request_id, thread_id) "
+                "VALUES ('queue-1', 'queue-task', 'queue-project', 'queue-user', 'agent-a', "
+                "'pending_acceptance', 'Do work', 'request-1', 'thread-1')"
+            ))
+        await manager.upgrade_yuanlei_schema_v14_to_v15()
+        async with scoped_engine.begin() as connection:
+            with pytest.raises(IntegrityError):
+                async with connection.begin_nested():
+                    await connection.execute(text(
+                        "INSERT INTO project_work_executions "
+                        "(id, task_id, project_id, uid, agent_slug, status, prompt, request_id, thread_id) "
+                        "VALUES ('queue-conflict', 'queue-task', 'queue-project', 'queue-user', 'agent-b', "
+                        "'queued', 'Do work', 'request-conflict', 'thread-conflict')"
+                    ))
+            await connection.execute(text(
+                "UPDATE project_work_executions SET status = 'completed' WHERE id = 'queue-1'"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_work_executions "
+                "(id, task_id, project_id, uid, agent_slug, status, prompt, request_id, thread_id) "
+                "VALUES ('queue-2', 'queue-task', 'queue-project', 'queue-user', 'agent-b', "
+                "'queued', 'Do more', 'request-2', 'thread-2')"
+            ))
+            await connection.execute(text(
+                "UPDATE project_work_executions SET status = 'submitted' WHERE id = 'queue-2'"
+            ))
+            with pytest.raises(IntegrityError):
+                async with connection.begin_nested():
+                    await connection.execute(text(
+                        "INSERT INTO project_work_executions "
+                        "(id, task_id, project_id, uid, agent_slug, status, prompt, request_id, thread_id) "
+                        "VALUES ('queue-agent-conflict', 'queue-other', 'queue-project', 'queue-user', 'agent-b', "
+                        "'dispatching', 'Do work', 'request-agent-conflict', 'thread-agent-conflict')"
+                    ))
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text("SELECT count(*) FROM project_work_executions")) == 2
+            assert await connection.scalar(text(
+                "SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() "
+                "AND indexname IN ('uq_project_work_executions_active_task', "
+                "'uq_project_work_executions_active_agent', 'uq_project_work_comments_source_run')"
+            )) == 3
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")

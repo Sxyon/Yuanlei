@@ -91,6 +91,47 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         task_id = task["id"]
         rejected_delete = await test_client.delete(f"/api/agent/{agent_slug}", headers=headers)
         assert rejected_delete.status_code == 409, rejected_delete.text
+        execution_task = await test_client.post(
+            f"{root}/tasks", headers=headers, json={"title": "Queue task"}
+        )
+        assert execution_task.status_code == 200, execution_task.text
+        execution_task_id = execution_task.json()["id"]
+        assignment_path = f"{root}/tasks/{execution_task_id}/executions"
+        assert (await test_client.post(
+            assignment_path, headers=outsider_headers, json={"agent_slug": agent_slug}
+        )).status_code == 404
+        assigned = await test_client.post(assignment_path, headers=headers, json={"agent_slug": agent_slug})
+        assert assigned.status_code == 200, assigned.text
+        execution_id = assigned.json()["id"]
+        assert assigned.json()["status"] == "pending_acceptance"
+        assert (await test_client.post(
+            assignment_path, headers=headers, json={"agent_slug": agent_slug}
+        )).status_code == 409
+        assert (await test_client.patch(
+            f"{root}/tasks/{execution_task_id}", headers=headers, json={"status": "done"}
+        )).status_code == 409
+        workbench_path = f"/api/projects/{project_id}/agents/{agent_slug}/workbench"
+        assert (await test_client.get(workbench_path, headers=outsider_headers)).status_code == 404
+        workbench = await test_client.get(workbench_path, headers=headers)
+        assert workbench.status_code == 200, workbench.text
+        assert [item["id"] for item in workbench.json()["pending_acceptance"]] == [execution_id]
+        assert (await test_client.get(assignment_path, headers=headers)).json()[0]["id"] == execution_id
+        async with engine.connect() as db:
+            assert await db.scalar(text(
+                "SELECT status FROM project_work_executions WHERE id = :id"
+            ), {"id": execution_id}) == "pending_acceptance"
+        cancelled = await test_client.post(
+            f"{assignment_path}/{execution_id}/cancel", headers=headers
+        )
+        assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled", cancelled.text
+        assert (await test_client.post(
+            f"{assignment_path}/{execution_id}/cancel", headers=outsider_headers
+        )).status_code == 404
+        assert (await test_client.post(
+            f"{assignment_path}/{execution_id}/cancel", headers=headers
+        )).status_code == 409
+        reassigned = await test_client.post(assignment_path, headers=headers, json={"agent_slug": agent_slug})
+        assert reassigned.status_code == 200 and reassigned.json()["id"] != execution_id, reassigned.text
         issue_response = await test_client.post(
             f"{root}/tasks/{task_id}/issues",
             headers=headers,

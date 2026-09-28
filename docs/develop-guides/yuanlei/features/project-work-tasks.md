@@ -1,6 +1,6 @@
 # 独立项目工作任务与 Issue
 
-状态：任务底座与页面管理已接入；智能体执行和自动巡检尚未实现
+状态：任务底座与页面管理已接入；智能体执行队列开发中，自动巡检尚未实现
 类型：有意产品差异
 主要 Owner：`backend/package/yuxi/services/project_work_service.py`
 
@@ -14,6 +14,8 @@
 - 项目缩写全局唯一，议题缩写在所属项目唯一。两种缩写首次配置后固化；项目内行锁串行分配序号，历史编号不随标题或配置变化。`GEN` 保留给无议题任务，不能配置为议题缩写。当前 API 要求在建任务前配置项目缩写；关联议题时要求先配置议题缩写。
 - 子任务、Issue、评论与任务均通过后端 service 和 repository 检查当前用户的 active selectable Project 归属。组合外键阻止跨项目议题缩写、任务议题和父任务关联。Issue 必须在当前任务下。任务和 Issue 评论仅追加，保存作者 UID、显示名快照与时间。
 - 第一负责人当前可设置或转移到项目已绑定数字员工，也可为空；解绑或直接删除仍负责任务的数字员工会被拒绝，须先转移或清空责任。这个字段不等同于当前执行者。周期核查尚未接入，界面和外部消费者不能将设置负责人解释为已经启用自动巡检。
+- 执行尝试与任务状态分离。任务可依次交给不同智能体，但同一任务只能有一个待接受、排队或执行中的尝试；同一智能体只能有一个派发、执行或等待答复中的尝试。待接受任务不进入执行队列，接受后按创建时间 FIFO 派发。中断保留执行槽位直到原 Run 的恢复链结束。
+- 待接受或仍在队列中的分配可撤回并释放任务槽位；派发开始后须由对应 Run 的生命周期结束。终态评论仅引用本次执行初始 Request 所产生的 Run 或其合法恢复后代；完成但无对应输出时执行尝试显式失败。
 
 ## 与 Yuxi 的边界
 
@@ -23,7 +25,8 @@
 
 - `project_work_service.py` 负责权限、编号分配、父子关系、负责人绑定与评论边界。
 - `project_work_repository.py` 负责 PostgreSQL 读写；`project_work_router.py` 提供 `/projects/{id}/work/*`。
-- `storage/postgres/models_business.py` 与 `manager.py` 拥有表结构和 v12→v13 幂等迁移。
+- `project_work_execution_service.py` 与 repository 拥有分配、接受、队列认领和 Run 结果收敛；Run 仍由上游 Request/Run 链路执行。
+- `storage/postgres/models_business.py` 与 `manager.py` 拥有表结构和 v12→v13、v14→v15 幂等迁移。
 
 ## 上游依赖
 
@@ -41,6 +44,7 @@
 
 - [项目工作任务第一阶段](../decisions/implemented/2026-09-27-project-work-task-foundation.md)
 - [项目工作任务页面入口](../decisions/implemented/2026-09-28-project-work-task-interface.md)
+- [项目任务执行队列](../decisions/implemented/2026-09-28-project-work-execution-queue.md)
 - [后续工作提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL：`backend/test/integration/services/test_project_work_service.py` 与 `test_schema_migration_version.py`。
 - 真实 HTTP：`backend/test/integration/api/test_project_work_api.py`。

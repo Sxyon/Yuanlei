@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 14
+YUANLEI_SCHEMA_VERSION = 15
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -659,6 +659,42 @@ USER_INBOX_SCHEMA_STATEMENTS = (
         CONSTRAINT ck_user_inbox_items_kind CHECK (kind IN ('task_completed', 'run_question'))
     )""",
     "CREATE INDEX IF NOT EXISTS ix_user_inbox_items_uid_created ON user_inbox_items(uid, created_at)",
+)
+PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_work_executions (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        uid VARCHAR(64) NOT NULL,
+        agent_slug VARCHAR(80) NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'pending_acceptance',
+        prompt TEXT NOT NULL,
+        model_spec VARCHAR(512),
+        request_id VARCHAR(64) NOT NULL UNIQUE,
+        thread_id VARCHAR(64) NOT NULL UNIQUE,
+        current_run_id VARCHAR(64) REFERENCES agent_runs(id) ON DELETE SET NULL,
+        error_message TEXT,
+        accepted_at TIMESTAMP WITHOUT TIME ZONE,
+        submitted_at TIMESTAMP WITHOUT TIME ZONE,
+        finished_at TIMESTAMP WITHOUT TIME ZONE,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_project_work_executions_task_project FOREIGN KEY (task_id, project_id)
+            REFERENCES project_work_tasks(id, project_id) ON DELETE CASCADE,
+        CONSTRAINT ck_project_work_executions_status CHECK (
+            status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted',
+                       'interrupted', 'completed', 'failed', 'cancelled'))
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS uq_project_work_executions_active_task
+        ON project_work_executions(task_id)
+        WHERE status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted')""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS uq_project_work_executions_active_agent
+        ON project_work_executions(agent_slug)
+        WHERE status IN ('dispatching', 'submitted', 'interrupted')""",
+    """CREATE INDEX IF NOT EXISTS ix_project_work_executions_agent_queue
+        ON project_work_executions(agent_slug, status, created_at)""",
+    "ALTER TABLE project_work_comments ADD COLUMN IF NOT EXISTS source_run_id VARCHAR(64)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_project_work_comments_source_run ON project_work_comments(source_run_id)",
 )
 # 元垒外部执行器委派域：委派事实与入向同步游标。本地 dispatch_state 与远端
 # remote_status 投影分离；投递意图先持久化，结果只引用发起 Run。
@@ -1385,6 +1421,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v14_to_v15(self) -> None:
+        """新增项目工作任务执行队列与 Run 结果来源。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

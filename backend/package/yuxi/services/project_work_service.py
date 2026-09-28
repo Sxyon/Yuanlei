@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.repositories.governance_repository import GovernanceRepository
 from yuxi.repositories.project_agent_repository import ProjectAgentRepository
+from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
 from yuxi.repositories.user_inbox_repository import UserInboxRepository
@@ -113,6 +114,7 @@ def _comment_data(row: ProjectWorkComment) -> dict:
         "content": row.content,
         "author_uid": row.author_uid,
         "author_name": row.author_name,
+        "source_run_id": row.source_run_id,
         "created_at": format_utc_datetime(row.created_at),
     }
 
@@ -255,6 +257,8 @@ async def update_task(
     if status is not None:
         if status not in TASK_STATUSES:
             raise HTTPException(status_code=422, detail="任务状态无效")
+        if status in {"done", "cancelled"} and await ProjectWorkExecutionRepository(db).has_active_task_work(task.id):
+            raise HTTPException(status_code=409, detail="任务仍有待接受或执行中的智能体工作")
         if status == "done" and task.status != "done":
             await UserInboxRepository(db).add_once(
                 uid=task.created_by,

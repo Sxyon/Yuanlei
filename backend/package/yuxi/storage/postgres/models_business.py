@@ -915,6 +915,60 @@ class ProjectWorkTask(Base):
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
+PROJECT_WORK_ACTIVE_STATUSES = ("pending_acceptance", "queued", "dispatching", "submitted", "interrupted")
+PROJECT_WORK_EXECUTING_STATUSES = ("dispatching", "submitted", "interrupted")
+
+
+class ProjectWorkExecution(Base):
+    """任务分配与一次 Agent 执行尝试的持久队列事实。"""
+
+    __tablename__ = "project_work_executions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_project_work_executions_task_project",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', "
+            "'interrupted', 'completed', 'failed', 'cancelled')",
+            name="ck_project_work_executions_status",
+        ),
+        Index(
+            "uq_project_work_executions_active_task",
+            "task_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted')"),
+        ),
+        Index(
+            "uq_project_work_executions_active_agent",
+            "agent_slug",
+            unique=True,
+            postgresql_where=text("status IN ('dispatching', 'submitted', 'interrupted')"),
+        ),
+        Index("ix_project_work_executions_agent_queue", "agent_slug", "status", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    uid = Column(String(64), nullable=False)
+    agent_slug = Column(String(80), nullable=False)
+    status = Column(String(24), nullable=False, default="pending_acceptance")
+    prompt = Column(Text, nullable=False)
+    model_spec = Column(String(512), nullable=True)
+    request_id = Column(String(64), nullable=False, unique=True)
+    thread_id = Column(String(64), nullable=False, unique=True)
+    current_run_id = Column(String(64), ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True)
+    error_message = Column(Text, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    submitted_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
 class ProjectWorkIssue(Base):
     """任务下独立问题单。"""
 
@@ -948,6 +1002,7 @@ class ProjectWorkComment(Base):
     id = Column(String(64), primary_key=True)
     task_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="CASCADE"), nullable=True)
     issue_id = Column(String(64), ForeignKey("project_work_issues.id", ondelete="CASCADE"), nullable=True)
+    source_run_id = Column(String(64), nullable=True, unique=True)
     content = Column(Text, nullable=False)
     author_uid = Column(String(64), nullable=False)
     author_name = Column(Text, nullable=False)

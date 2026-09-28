@@ -38,6 +38,26 @@
         </section>
 
         <section class="work-task-section">
+          <h2>智能体执行</h2>
+          <div class="work-task-controls">
+            <a-select v-model:value="selectedExecutor" :disabled="saving || ['done', 'cancelled'].includes(task.status)" placeholder="选择执行智能体" style="min-width: 220px">
+              <a-select-option v-for="agent in agents" :key="agent.slug" :value="agent.slug">{{ agent.name || agent.slug }}</a-select-option>
+            </a-select>
+            <a-button :loading="saving" :disabled="!selectedExecutor || executions.some((item) => activeExecutionStatuses.includes(item.status)) || ['done', 'cancelled'].includes(task.status)" @click="assignExecution">分配任务</a-button>
+          </div>
+          <p v-if="!executions.length" class="work-task-muted">暂无执行记录</p>
+          <ul v-else>
+            <li v-for="item in executions" :key="item.id">
+              <span>{{ item.agent_slug }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}</span>
+              <span>
+                <RouterLink :to="{ name: 'ProjectAgentWorkbenchView', params: { project_id: route.params.project_id, agent_slug: item.agent_slug } }">查看工作台</RouterLink>
+                <a-button v-if="['pending_acceptance', 'queued'].includes(item.status)" type="link" :loading="saving" @click="cancelExecution(item)">撤回分配</a-button>
+              </span>
+            </li>
+          </ul>
+        </section>
+
+        <section class="work-task-section">
           <h2>问题单</h2>
           <div class="work-task-controls">
             <a-input v-model:value="issueTitle" maxlength="512" :disabled="saving" placeholder="新问题单标题" />
@@ -100,6 +120,7 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
+import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 
 const route = useRoute()
 const router = useRouter()
@@ -110,6 +131,8 @@ const error = ref('')
 const actionError = ref('')
 const draft = ref('')
 const agents = ref([])
+const executions = ref([])
+const selectedExecutor = ref(undefined)
 const selectedStatus = ref('todo')
 const selectedOwner = ref(undefined)
 const issueTitle = ref('')
@@ -127,6 +150,11 @@ const statuses = [
   { value: 'cancelled', label: '已取消' }
 ]
 const statusLabel = (status) => statuses.find((item) => item.value === status)?.label || status
+const activeExecutionStatuses = ['pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted']
+const executionStatusLabel = (status) => ({
+  pending_acceptance: '待接受', queued: '排队中', dispatching: '派发中', submitted: '执行中',
+  interrupted: '等待答复', completed: '已完成', failed: '失败', cancelled: '已取消'
+})[status] || status
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
 
 async function load() {
@@ -136,9 +164,10 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [result, bindings] = await Promise.all([
+    const [result, bindings, history] = await Promise.all([
       projectWorkApi.getTask(projectId, taskId),
-      projectAgentApi.list(projectId)
+      projectAgentApi.list(projectId),
+      projectWorkExecutionApi.listForTask(projectId, taskId)
     ])
     if (version !== loadVersion) return
     const sameTask = task.value?.id === result.id
@@ -146,6 +175,7 @@ async function load() {
     const ownerWasSaved = (selectedOwner.value || null) === task.value?.primary_owner_agent_slug
     task.value = result
     agents.value = bindings.agents || []
+    executions.value = history
     if (!sameTask || statusWasSaved) selectedStatus.value = result.status
     if (!sameTask || ownerWasSaved) selectedOwner.value = result.primary_owner_agent_slug || undefined
     if (selectedIssue.value && !result.issues.some((item) => item.id === selectedIssue.value.id)) selectedIssue.value = null
@@ -183,6 +213,19 @@ function updateOwner() {
   const taskId = route.params.task_id
   const primaryOwner = selectedOwner.value || null
   return runAction(() => projectWorkApi.updateTask(projectId, taskId, { primary_owner_agent_slug: primaryOwner }), '负责人保存失败')
+}
+
+function assignExecution() {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  const agentSlug = selectedExecutor.value
+  return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, agentSlug), '任务分配失败')
+}
+
+function cancelExecution(item) {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(() => projectWorkExecutionApi.cancel(projectId, taskId, item.id), '撤回分配失败')
 }
 
 function createIssue() {
@@ -263,6 +306,8 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
   issueTitle.value = ''
   issueDescription.value = ''
   issueDraft.value = ''
+  selectedExecutor.value = undefined
+  executions.value = []
   draft.value = ''
   actionError.value = ''
   load()

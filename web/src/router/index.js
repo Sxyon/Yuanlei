@@ -112,6 +112,19 @@ const router = createRouter({
       ]
     },
     {
+      path: '/projects/:project_id/agents/:agent_slug/workbench',
+      name: 'ProjectAgentWorkbench',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'ProjectAgentWorkbenchView',
+          component: () => import('../views/ProjectAgentWorkbenchView.vue'),
+          meta: { requiresAuth: true }
+        }
+      ]
+    },
+    {
       path: '/projects/:project_id/dashboard',
       name: 'ProjectDashboard',
       component: AppLayout,

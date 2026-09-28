@@ -5,13 +5,14 @@ import { createRenderer, getCurrentInstance, h, nextTick, ssrContextKey } from '
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createServer } from 'vite'
 
-let vite, View, projectWorkApi, projectAgentApi
+let vite, View, projectWorkApi, projectAgentApi, projectWorkExecutionApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/views/ProjectWorkTaskView.vue'))
   ;({ projectWorkApi } = await vite.ssrLoadModule('/src/apis/project_work_api.js'))
   ;({ projectAgentApi } = await vite.ssrLoadModule('/src/apis/project_agent_api.js'))
+  ;({ projectWorkExecutionApi } = await vite.ssrLoadModule('/src/apis/project_work_execution_api.js'))
 })
 after(async () => {
   await vite?.close()
@@ -30,6 +31,7 @@ const settle = async () => {
 
 test('快速切换任务时迟到的旧任务响应不能覆盖当前详情', async (t) => {
   t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
   let finishA, finishB
   t.mock.method(projectWorkApi, 'getTask', (_projectId, taskId) => new Promise((resolve) => {
     if (taskId === 'a') finishA = resolve
@@ -73,6 +75,7 @@ test('回读保留未提交负责人草稿，旧 Issue 评论不覆盖新选择'
   t.mock.method(projectWorkApi, 'updateIssue', async () => ({}))
   t.mock.method(projectWorkApi, 'addIssueComment', () => new Promise((resolve) => { finishComment = resolve }))
   t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }]
