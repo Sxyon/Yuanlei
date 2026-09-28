@@ -1,6 +1,6 @@
 # 独立项目工作任务与 Issue
 
-状态：一期已接入；智能体执行和自动巡检尚未实现
+状态：任务底座与页面管理已接入；智能体执行和自动巡检尚未实现
 类型：有意产品差异
 主要 Owner：`backend/package/yuxi/services/project_work_service.py`
 
@@ -40,6 +40,7 @@
 ## 决策与证据
 
 - [项目工作任务第一阶段](../decisions/implemented/2026-09-27-project-work-task-foundation.md)
+- [项目工作任务页面入口](../decisions/implemented/2026-09-28-project-work-task-interface.md)
 - [后续工作提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL：`backend/test/integration/services/test_project_work_service.py` 与 `test_schema_migration_version.py`。
 - 真实 HTTP：`backend/test/integration/api/test_project_work_api.py`。

@@ -73,8 +73,13 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
     try:
         root = f"/api/projects/{project_id}/work"
         code = f"W{uuid.uuid4().hex[:8].upper()}"
+        assert (await test_client.get(f"{root}/code", headers=headers)).json() == {
+            "project_id": project_id, "code": None
+        }
+        assert (await test_client.get(f"{root}/code", headers=outsider_headers)).status_code == 404
         configured = await test_client.put(f"{root}/code", headers=headers, json={"code": code})
         assert configured.status_code == 200, configured.text
+        assert (await test_client.get(f"{root}/code", headers=headers)).json()["code"] == code
         created = await test_client.post(
             f"{root}/tasks",
             headers=headers,
@@ -163,6 +168,7 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
             await db.execute(text("UPDATE projects SET status = 'deleted' WHERE id = :id"), {"id": project_id})
         deleted = await test_client.get(f"{root}/tasks/{task_id}", headers=headers)
         assert deleted.status_code == 404
+        assert (await test_client.get(f"{root}/code", headers=headers)).status_code == 404
     finally:
         async with engine.begin() as db:
             await db.execute(text("DELETE FROM user_inbox_items WHERE uid = :uid"), {"uid": uid})

@@ -59,6 +59,16 @@ class WorkCommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
 
 
+@project_work.get("/projects/{project_id}/work/code")
+async def get_project_code(
+    project_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取项目工作任务缩写。"""
+    return await work.get_project_code(db=db, user=user, project_id=project_id)
+
+
 @project_work.put("/projects/{project_id}/work/code")
 async def configure_project_code(
     project_id: str,

@@ -4,7 +4,7 @@
 类型：feature
 Owner：backend/package/yuxi/services/project_work_service.py
 
-已落地的任务底座由[第一阶段决定](../implemented/2026-09-27-project-work-task-foundation.md)与[Feature](../../features/project-work-tasks.md)说明；项目任务完成及 Run 待答复通知由[收件箱决定](../implemented/2026-09-27-user-inbox.md)与[Feature](../../features/user-inbox.md)说明。本提案保存尚未完成的整体方向与验收边界。
+已落地的任务底座由[第一阶段决定](../implemented/2026-09-27-project-work-task-foundation.md)、[页面入口决定](../implemented/2026-09-28-project-work-task-interface.md)与[Feature](../../features/project-work-tasks.md)说明；项目任务完成及 Run 待答复通知由[收件箱决定](../implemented/2026-09-27-user-inbox.md)与[Feature](../../features/user-inbox.md)说明。本提案保存尚未完成的整体方向与验收边界。
 
 ## 问题
 
@@ -46,3 +46,7 @@ Owner：backend/package/yuxi/services/project_work_service.py
 - 任务派发和 AgentRun 终态跨不同事务，必须定义可重试的 outbox 或 publisher 收敛，避免提交后进程崩溃造成漏投递/漏通知。
 - Issue 已确认为任务下的独立问题单；Issue 编号、关闭条件以及与任务状态的联动仍需在实现阶段固定契约。
 - 模型生成缩写涉及不稳定外部输出；候选校验、冲突处理和失败可观察性须通过真实 provider 探针补证据。
+
+## 后续接续点
+
+下一阶段先实现 `project_work_tasks` 的执行尝试与项目数字员工队列，保证数据库唯一约束阻止同任务的并行执行，并让接受后的任务复用 `submit_agent_request`。提交任务尝试与派发之间要有可恢复的持久状态；Run 的完成、中断、失联回收以及 resume 必须回写同一次尝试的投影。工作台从该事实读当前、待接收、排队和最近记录，再接自动接受与默认模型配置。随后补附件/引用、议题缩写自动固化和第一负责人定时检查。每项以真实 PostgreSQL/HTTP 及 worker E2E 验证，不把手动设置的任务 `in_progress` 视为 AgentRun 正在运行。

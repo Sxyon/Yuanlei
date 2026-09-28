@@ -41,6 +41,9 @@
             <p>维护蓝图，审核议题和任务，发起执行并查看汇报。</p>
           </div>
           <div class="workbench-links">
+            <RouterLink :to="{ name: 'ProjectWorkTasksView', params: { project_id: projectId } }"
+              >项目工作任务</RouterLink
+            >
             <RouterLink :to="{ name: 'AgentManageComp', query: { tab: 'projects' } }"
               >项目数字员工</RouterLink
             >

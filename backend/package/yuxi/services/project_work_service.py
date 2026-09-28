@@ -138,6 +138,13 @@ async def configure_project_code(*, db: AsyncSession, user: User, project_id: st
     return {"project_id": project_id, "code": normalized}
 
 
+async def get_project_code(*, db: AsyncSession, user: User, project_id: str) -> dict:
+    """读取当前项目已固化的缩写。"""
+    await _project(db, user, project_id)
+    row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_project_code(project_id)
+    return {"project_id": project_id, "code": row.code if row else None}
+
+
 async def configure_topic_code(*, db: AsyncSession, user: User, project_id: str, topic_id: str, code: str) -> dict:
     """为当前项目议题固化缩写。"""
     normalized = _code(code)
