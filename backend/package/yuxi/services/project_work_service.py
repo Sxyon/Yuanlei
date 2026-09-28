@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from fastapi import HTTPException
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
@@ -87,6 +88,8 @@ def _task_data(row: ProjectWorkTask) -> dict:
         "title": row.title,
         "description": row.description,
         "status": row.status,
+        "start_date": row.start_date.isoformat() if row.start_date else None,
+        "due_date": row.due_date.isoformat() if row.due_date else None,
         "primary_owner_agent_slug": row.primary_owner_agent_slug,
         "created_by": row.created_by,
         "created_at": format_utc_datetime(row.created_at),
@@ -145,14 +148,14 @@ async def configure_project_code(*, db: AsyncSession, user: User, project_id: st
     existing = await repo.get_project_code(project_id)
     if existing is not None:
         if existing.code != normalized:
-            raise HTTPException(status_code=409, detail="项目缩写已经固化")
+            raise HTTPException(status_code=409, detail={"code": "project_code_locked", "message": "项目缩写已固定，不能修改"})
         return {"project_id": project_id, "code": existing.code}
     try:
         await repo.set_project_code(project_id, normalized)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="项目缩写已被使用") from exc
+        raise HTTPException(status_code=409, detail={"code": "project_code_taken", "message": "项目缩写已被其他项目使用，请换一个"}) from exc
     return {"project_id": project_id, "code": normalized}
 
 
@@ -197,9 +200,13 @@ async def create_task(
     topic_id: str | None,
     parent_id: str | None,
     primary_owner_agent_slug: str | None,
+    start_date: date | None = None,
+    due_date: date | None = None,
 ) -> dict:
     """在项目缩写行锁内分配唯一编号并创建任务。"""
     normalized_title = _text(title, limit=512, label="标题")
+    if start_date and due_date and start_date > due_date:
+        raise HTTPException(status_code=422, detail="计划结束日期不能早于开始日期")
     await _writable_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
     if parent_id is not None:
@@ -219,7 +226,7 @@ async def create_task(
             raise HTTPException(status_code=404, detail="第一负责人未绑定该项目")
     project_code = await repo.get_project_code(project_id, lock=True)
     if project_code is None:
-        raise HTTPException(status_code=409, detail="项目缩写尚未配置")
+        raise HTTPException(status_code=409, detail={"code": "project_code_required", "message": "请先设置项目编号缩写，再创建任务"})
     number = f"{project_code.code}-{topic_code}-{project_code.next_number:06d}"
     project_code.next_number += 1
     row = await repo.add_task(
@@ -230,6 +237,8 @@ async def create_task(
         topic_id=topic_id,
         parent_id=parent_id,
         primary_owner_agent_slug=primary_owner_agent_slug,
+        start_date=start_date,
+        due_date=due_date,
         created_by=str(user.uid),
     )
     await db.commit()
@@ -311,6 +320,10 @@ async def update_task(
     status: str | None = None,
     primary_owner_agent_slug: str | None = None,
     update_owner: bool = False,
+    start_date: date | None = None,
+    due_date: date | None = None,
+    update_start_date: bool = False,
+    update_due_date: bool = False,
 ) -> dict:
     """修改任务状态或转移第一负责人。"""
     await _writable_project(db, user, project_id)
@@ -336,6 +349,13 @@ async def update_task(
             if binding is None:
                 raise HTTPException(status_code=404, detail="第一负责人未绑定该项目")
         task.primary_owner_agent_slug = primary_owner_agent_slug
+    if update_start_date or update_due_date:
+        next_start = start_date if update_start_date else task.start_date
+        next_due = due_date if update_due_date else task.due_date
+        if next_start and next_due and next_start > next_due:
+            raise HTTPException(status_code=422, detail="计划结束日期不能早于开始日期")
+        task.start_date = next_start
+        task.due_date = next_due
     task.updated_at = utc_now_naive()
     await db.commit()
     return _task_data(task)

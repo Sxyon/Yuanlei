@@ -77,18 +77,37 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
             "project_id": project_id, "code": None
         }
         assert (await test_client.get(f"{root}/code", headers=outsider_headers)).status_code == 404
+        missing_code = await test_client.post(f"{root}/tasks", headers=headers, json={"title": "Before setup"})
+        assert missing_code.status_code == 409
+        assert missing_code.json()["detail"]["code"] == "project_code_required"
         configured = await test_client.put(f"{root}/code", headers=headers, json={"code": code})
         assert configured.status_code == 200, configured.text
         assert (await test_client.get(f"{root}/code", headers=headers)).json()["code"] == code
+        invalid_creation = await test_client.post(
+            f"{root}/tasks", headers=headers,
+            json={"title": "Invalid plan", "start_date": "2026-10-08", "due_date": "2026-10-01"},
+        )
+        assert invalid_creation.status_code == 422
         created = await test_client.post(
             f"{root}/tasks",
             headers=headers,
-            json={"title": "Integration task", "primary_owner_agent_slug": agent_slug},
+            json={"title": "Integration task", "primary_owner_agent_slug": agent_slug,
+                  "start_date": "2026-10-01", "due_date": "2026-10-08"},
         )
         assert created.status_code == 200, created.text
         task = created.json()
         assert task["number"] == f"{code}-GEN-000001"
+        assert (task["start_date"], task["due_date"]) == ("2026-10-01", "2026-10-08")
         task_id = task["id"]
+        invalid_plan = await test_client.patch(
+            f"{root}/tasks/{task_id}", headers=headers, json={"due_date": "2026-09-30"}
+        )
+        assert invalid_plan.status_code == 422
+        assert (await test_client.get(f"{root}/tasks/{task_id}", headers=headers)).json()["due_date"] == "2026-10-08"
+        changed_plan = await test_client.patch(
+            f"{root}/tasks/{task_id}", headers=headers, json={"due_date": "2026-10-12"}
+        )
+        assert changed_plan.status_code == 200 and changed_plan.json()["due_date"] == "2026-10-12"
         references_path = f"{root}/tasks/{task_id}/references"
         assert (await test_client.post(
             references_path, headers=headers, json={"title": "Unsafe", "url": "javascript:alert(1)"}

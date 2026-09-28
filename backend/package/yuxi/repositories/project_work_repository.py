@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,6 +126,8 @@ class ProjectWorkRepository:
         parent_id: str | None,
         primary_owner_agent_slug: str | None,
         created_by: str,
+        start_date: date | None = None,
+        due_date: date | None = None,
     ) -> ProjectWorkTask:
         """新增任务并 flush。"""
         await self._require_project()
@@ -161,6 +164,8 @@ class ProjectWorkRepository:
             title=title,
             description=description,
             status="todo",
+            start_date=start_date,
+            due_date=due_date,
             primary_owner_agent_slug=primary_owner_agent_slug,
             created_by=created_by,
             created_at=now,

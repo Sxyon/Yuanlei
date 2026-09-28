@@ -391,8 +391,8 @@
           <div class="section-heading">
             <span class="section-index">03</span>
             <div>
-              <h2>任务与本地执行</h2>
-              <p>审核任务并追踪委派结果</p>
+              <h2>治理审核任务与本地执行</h2>
+              <p>这里处理治理审核任务；长期工作任务请前往项目工作任务管理。</p>
             </div>
           </div>
           <div class="form-row">
@@ -464,18 +464,21 @@
                 >拒绝</a-button
               >
               <template v-if="task.status === 'canonical' && task.assignee_agent_slug">
-                <a-select v-model:value="executorKey" style="width: 120px"
-                  ><a-select-option value="codex">Codex</a-select-option
-                  ><a-select-option value="opencode">OpenCode</a-select-option></a-select
+                <a-select :value="selectedExecutorFor(task)" style="width: 120px"
+                  :disabled="!configuredExecutors(task).length" placeholder="未启用"
+                  @change="(value) => executorSelection[task.id] = value"
+                  ><a-select-option v-for="key in configuredExecutors(task)" :key="key" :value="key">{{ key === 'codex' ? 'Codex' : 'OpenCode' }}</a-select-option></a-select
                 >
-                <a-button size="small" :disabled="busy" @click="delegateTask(task)"
+                <a-button size="small" :disabled="busy || !configuredExecutors(task).length" @click="delegateTask(task)"
                   >委派执行</a-button
                 >
+                <span v-if="!configuredExecutors(task).length" class="workbench-muted">请先在数字员工设置中启用执行器</span>
               </template>
               <ul v-if="taskDelegations(task.id).length" class="delegation-list">
                 <li v-for="item in taskDelegations(task.id)" :key="item.operation_id">
-                  {{ item.executor_key }} · {{ item.remote_status || item.dispatch_state }}
+                  {{ item.executor_key }} · {{ delegationStatusLabel(item) }}
                   <span v-if="item.error_code"> · {{ item.error_code }}</span>
+                  <span v-if="item.remote_status === 'failed'"> · 执行会话失败</span>
                   <a-button
                     v-if="item.dispatch_state === 'dispatched'"
                     size="small"
@@ -492,6 +495,12 @@
                   >
                   <p v-if="item.result?.summary">{{ item.result.summary }}</p>
                   <p v-if="item.artifact_path">产物：{{ item.artifact_path }}</p>
+                  <a-button v-if="item.session_id" type="link" size="small" @click="showSession(item)">查看执行详情</a-button>
+                  <p v-if="sessionDetails[item.session_id]" class="delegation-detail">
+                    会话 {{ item.session_id }} · {{ sessionDetails[item.session_id].status }}
+                    <span v-if="sessionDetails[item.session_id].error_code"> · {{ sessionDetails[item.session_id].error_code }}</span>
+                    <span v-if="sessionDetails[item.session_id].error_message"> · {{ sessionDetails[item.session_id].error_message }}</span>
+                  </p>
                 </li>
               </ul>
             </li>
@@ -521,10 +530,11 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import { MessagesSquare } from '@lucide/vue'
+import { codingSessionApi } from '@/apis/coding_session_api'
 import GovernanceBoardPanel from '@/components/inspection/GovernanceBoardPanel.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { displayBlueprintName, normalizeBlueprintName } from '@/utils/blueprintName'
@@ -578,7 +588,8 @@ const taskDescription = ref('')
 const taskTopicId = ref(undefined)
 const taskDecisionId = ref(undefined)
 const taskAgentSlug = ref(undefined)
-const executorKey = ref('codex')
+const executorSelection = ref({})
+const sessionDetails = ref({})
 const sectionLinks = [
   { id: 'blueprint', label: '项目蓝图' },
   { id: 'topics', label: '议题与决策' },
@@ -603,6 +614,23 @@ const decisionDetail = (decision) =>
     .join('\n\n')
 const taskDelegations = (taskId) =>
   delegations.value.filter((item) => item.governance_task_id === taskId)
+const configuredExecutors = (task) => {
+  const agent = agents.value.find((item) => item.slug === task.assignee_agent_slug)
+  const coding = { ...(agent?.config_json?.coding || {}), ...(agent?.config_overrides?.coding || {}) }
+  return Array.isArray(coding.executors)
+    ? coding.executors.filter((key) => ['codex', 'opencode'].includes(key))
+    : []
+}
+const selectedExecutorFor = (task) => {
+  const enabled = configuredExecutors(task)
+  return enabled.includes(executorSelection.value[task.id])
+    ? executorSelection.value[task.id]
+    : enabled[0]
+}
+const delegationStatusLabel = (item) => ({
+  queued: '等待派发', dispatching: '派发中', dispatched: '已派发', reclaimed: '已回收',
+  running: '执行中', completed: '已完成', failed: '失败', cancelled: '已取消'
+})[item.remote_status || item.dispatch_state] || item.remote_status || item.dispatch_state
 const terminalTurn = (status) =>
   ['completed', 'failed', 'cancelled', 'interrupted'].includes(status)
 const archiveTimeLabel = (raw) => {
@@ -920,7 +948,27 @@ const createTask = () =>
   })
 const reviewTask = (task, approve) => act(() => api.reviewTask(projectId.value, task.id, approve))
 const delegateTask = (task) =>
-  act(() => api.delegateTask(projectId.value, task.id, executorKey.value))
+  act(() => api.delegateTask(projectId.value, task.id, selectedExecutorFor(task)))
+async function showSession(item) {
+  try {
+    const detail = await codingSessionApi.detail(item.session_id)
+    sessionDetails.value = { ...sessionDetails.value, [item.session_id]: detail.session || detail }
+  } catch (error) {
+    actionError.value = describeBoardError(error)
+  }
+}
+let delegationPoll = null
+async function pollDelegations() {
+  if (loading.value || busy.value || !delegations.value.some((item) =>
+    item.dispatch_state !== 'reclaimed' && !terminalTurn(item.remote_status))) return
+  const project = projectId.value
+  try {
+    const rows = await api.listDelegations(project)
+    if (project === projectId.value) delegations.value = rows
+  } catch {
+    // 手动刷新仍可重试；轮询不覆盖页面上的其他错误。
+  }
+}
 const refreshDelegation = (item) =>
   act(async () => {
     await api.getDelegation(projectId.value, item.operation_id)
@@ -996,7 +1044,11 @@ watch(
   },
   { immediate: true }
 )
-onMounted(load)
+onMounted(() => {
+  load()
+  delegationPoll = setInterval(pollDelegations, 10000)
+})
+onUnmounted(() => clearInterval(delegationPoll))
 </script>
 
 <style scoped lang="less">

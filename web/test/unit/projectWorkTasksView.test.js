@@ -93,3 +93,45 @@ test('保存缩写后迟到的旧读取不能清除固化状态', async (t) => {
   assert.equal(instance.setupState.projectCode, 'YL')
   assert.equal(instance.setupState.codeSaved, true)
 })
+
+test('首次创建先固化项目缩写，再持久化带计划日期的任务', async (t) => {
+  const calls = []
+  let code = null
+  t.mock.method(projectWorkApi, 'listTasks', async () => [])
+  t.mock.method(projectWorkApi, 'getCode', async () => ({ code }))
+  t.mock.method(projectWorkApi, 'configureCode', async (_projectId, value) => {
+    calls.push(['code', value])
+    code = value
+    return { code }
+  })
+  t.mock.method(projectWorkApi, 'createTask', async (_projectId, payload) => {
+    calls.push(['task', payload])
+    return { id: 'created-task' }
+  })
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/projects/:project_id/work/tasks', component: View },
+      { name: 'ProjectWorkTaskView', path: '/projects/:project_id/work/tasks/:task_id', component: { render: () => h('div') } }
+    ]
+  })
+  await router.push('/projects/a/work/tasks')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  instance.setupState.projectCode = 'YL'
+  instance.setupState.title = '访谈客户'
+  instance.setupState.startDate = '2026-10-01'
+  instance.setupState.dueDate = '2026-10-08'
+  await instance.setupState.createTask()
+  assert.deepEqual(calls.map((item) => item[0]), ['code', 'task'])
+  assert.equal(calls[1][1].due_date, '2026-10-08')
+  assert.equal(router.currentRoute.value.params.task_id, 'created-task')
+})

@@ -14,6 +14,7 @@
 - 项目缩写全局唯一，议题缩写在所属项目唯一。两种缩写首次配置后固化；项目内行锁串行分配序号，历史编号不随标题或配置变化。`GEN` 保留给无议题任务，不能配置为议题缩写。当前 API 要求在建任务前配置项目缩写；关联议题时要求先配置议题缩写。
 - 子任务、Issue、评论与任务均通过后端 service 和 repository 检查当前用户的 active selectable Project 归属。组合外键阻止跨项目议题缩写、任务议题和父任务关联。Issue 必须在当前任务下。任务和 Issue 评论仅追加，保存作者 UID、显示名快照与时间。
 - 第一负责人当前可设置或转移到项目已绑定数字员工，也可为空；解绑或直接删除仍负责任务的数字员工会被拒绝，须先转移或清空责任。这个字段不等同于当前执行者。周期核查尚未接入，界面和外部消费者不能将设置负责人解释为已经启用自动巡检。
+- 计划开始和结束日期可为空；两者都有值时结束日期不得早于开始日期。计划日期属于任务事实，与 AgentRun 的开始、结束时间分开。任务看板、列表和按月甘特图读取同一项目任务 API；看板状态修改及甘特图计划修改由后端保存后回读。
 - 执行尝试与任务状态分离。任务可依次交给不同智能体，但同一任务只能有一个待接受、排队或执行中的尝试；同一智能体只能有一个派发、执行或等待答复中的尝试。待接受任务不进入执行队列，接受后按创建时间 FIFO 派发。中断保留执行槽位直到原 Run 的恢复链结束。
 - 待接受或仍在队列中的分配可撤回并释放任务槽位；派发开始后须由对应 Run 的生命周期结束。终态评论仅引用本次执行初始 Request 所产生的 Run 或其合法恢复后代；完成但无对应输出时执行尝试显式失败。
 - 项目数字员工绑定拥有独立的任务自动接受开关与默认工作模型。关闭自动接受是默认值；开启后新分配在同一事务进入队列。手动接受和自动接受均在接受事务中固化当前可用聊天模型，后续配置变化不改写旧尝试。模型留空时先继承项目有效 Agent 模型，再继承系统默认模型。
@@ -50,6 +51,7 @@
 - [项目任务执行队列](../decisions/implemented/2026-09-28-project-work-execution-queue.md)
 - [项目数字员工任务队列配置](../decisions/implemented/2026-09-28-project-agent-work-queue-config.md)
 - [项目任务网页引用](../decisions/implemented/2026-09-28-project-work-web-references.md)
+- [任务管理视图与委派反馈](../decisions/implemented/2026-09-28-project-task-management-views.md)
 - [后续工作提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL：`backend/test/integration/services/test_project_work_service.py` 与 `test_schema_migration_version.py`。
 - 真实 HTTP：`backend/test/integration/api/test_project_work_api.py`。

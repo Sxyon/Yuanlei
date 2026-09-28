@@ -273,6 +273,44 @@ async def test_yuanlei_v16_to_v17_creates_task_references_idempotently() -> None
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v17_to_v18_preserves_tasks_and_adds_plan_dates() -> None:
+    """旧任务升级后保留编号，计划日期可写且重复升级无损。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schedule")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("ALTER TABLE project_work_tasks DROP COLUMN start_date, DROP COLUMN due_date"))
+            await connection.execute(text(
+                "INSERT INTO users (username, uid, password_hash, role, login_failed_count, is_deleted) "
+                "VALUES ('schedule-user', 'schedule-user', 'x', 'user', 0, 0)"
+            ))
+            await connection.execute(text(
+                "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                "VALUES ('schedule-project', 'schedule-user', 'Schedule', 'selectable', 'projects/schedule', 'managed')"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('schedule-task', 'schedule-project', 'SCH-GEN-000001', 'Old task', 'todo', "
+                "'schedule-user', NOW(), NOW())"
+            ))
+        await manager.upgrade_yuanlei_schema_v17_to_v18()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "UPDATE project_work_tasks SET start_date = DATE '2026-10-01', due_date = DATE '2026-10-08' "
+                "WHERE id = 'schedule-task'"
+            ))
+        await manager.upgrade_yuanlei_schema_v17_to_v18()
+        async with scoped_engine.connect() as connection:
+            row = (await connection.execute(text(
+                "SELECT number, start_date, due_date FROM project_work_tasks WHERE id = 'schedule-task'"
+            ))).one()
+            assert row[0] == "SCH-GEN-000001"
+            assert row[1].isoformat() == "2026-10-01"
+            assert row[2].isoformat() == "2026-10-08"
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")

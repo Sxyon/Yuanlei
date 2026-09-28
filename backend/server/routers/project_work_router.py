@@ -1,5 +1,7 @@
 """独立项目工作任务与问题单 HTTP 入口。"""
 
+from datetime import date
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +29,8 @@ class WorkTaskCreate(BaseModel):
     topic_id: str | None = Field(default=None, max_length=64)
     parent_id: str | None = Field(default=None, max_length=64)
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
+    start_date: date | None = None
+    due_date: date | None = None
 
 
 class WorkTaskUpdate(BaseModel):
@@ -35,6 +39,8 @@ class WorkTaskUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: str | None = None
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
+    start_date: date | None = None
+    due_date: date | None = None
 
 
 class WorkIssueCreate(BaseModel):
@@ -149,6 +155,8 @@ async def update_task(
         project_id=project_id,
         task_id=task_id,
         update_owner="primary_owner_agent_slug" in payload.model_fields_set,
+        update_start_date="start_date" in payload.model_fields_set,
+        update_due_date="due_date" in payload.model_fields_set,
         **payload.model_dump(),
     )
 

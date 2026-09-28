@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -913,6 +914,8 @@ class ProjectWorkTask(Base):
     title = Column(String(512), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(16), nullable=False, default="todo")
+    start_date = Column(Date, nullable=True)
+    due_date = Column(Date, nullable=True)
     primary_owner_agent_slug = Column(String(80), ForeignKey("agents.slug", ondelete="SET NULL"), nullable=True)
     created_by = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)

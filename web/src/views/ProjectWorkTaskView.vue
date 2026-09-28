@@ -1,7 +1,7 @@
 <template>
   <div class="work-task-page">
     <PageHeader title="项目任务" :loading="loading" show-border>
-      <template #actions><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务列表</a-button></template>
+      <template #actions><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
     </PageHeader>
     <main class="work-task-content">
       <a-spin v-if="loading" class="work-task-state" />
@@ -35,6 +35,13 @@
             </a-select>
             <a-button :loading="saving" :disabled="(selectedOwner || null) === task.primary_owner_agent_slug" @click="updateOwner">保存负责人</a-button>
           </div>
+          <div class="work-task-controls">
+            <label for="task-start">计划时间</label>
+            <input id="task-start" v-model="selectedStart" type="date" :disabled="saving" aria-label="计划开始日期" />
+            <span>至</span>
+            <input v-model="selectedDue" type="date" :disabled="saving" aria-label="计划结束日期" />
+            <a-button :loading="saving" :disabled="selectedStart === (task.start_date || '') && selectedDue === (task.due_date || '')" @click="updateSchedule">保存计划</a-button>
+          </div>
         </section>
 
         <section class="work-task-section">
@@ -55,19 +62,21 @@
         </section>
 
         <section class="work-task-section">
-          <h2>智能体执行</h2>
+          <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
             <a-select v-model:value="selectedExecutor" :disabled="saving || ['done', 'cancelled'].includes(task.status)" placeholder="选择执行智能体" style="min-width: 220px">
               <a-select-option v-for="agent in agents" :key="agent.slug" :value="agent.slug">{{ agent.name || agent.slug }}</a-select-option>
             </a-select>
             <a-button :loading="saving" :disabled="!selectedExecutor || executions.some((item) => activeExecutionStatuses.includes(item.status)) || ['done', 'cancelled'].includes(task.status)" @click="assignExecution">分配任务</a-button>
           </div>
+          <p class="work-task-muted">分配后若显示“待接受”，可在此处接单启动；开启工作台自动接受后，新分配会自动进入队列。</p>
           <p v-if="!executions.length" class="work-task-muted">暂无执行记录</p>
           <ul v-else>
             <li v-for="item in executions" :key="item.id">
-              <span>{{ item.agent_slug }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}</span>
+              <span>{{ item.agent_slug }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}<span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span></span>
               <span>
                 <RouterLink :to="{ name: 'ProjectAgentWorkbenchView', params: { project_id: route.params.project_id, agent_slug: item.agent_slug } }">查看工作台</RouterLink>
+                <a-button v-if="item.status === 'pending_acceptance'" type="link" :loading="saving" @click="acceptExecution(item)">接受并执行</a-button>
                 <a-button v-if="['pending_acceptance', 'queued'].includes(item.status)" type="link" :loading="saving" @click="cancelExecution(item)">撤回分配</a-button>
               </span>
             </li>
@@ -152,6 +161,8 @@ const executions = ref([])
 const selectedExecutor = ref(undefined)
 const selectedStatus = ref('todo')
 const selectedOwner = ref(undefined)
+const selectedStart = ref('')
+const selectedDue = ref('')
 const issueTitle = ref('')
 const issueDescription = ref('')
 const selectedIssue = ref(null)
@@ -193,11 +204,16 @@ async function load() {
     const sameTask = task.value?.id === result.id
     const statusWasSaved = selectedStatus.value === task.value?.status
     const ownerWasSaved = (selectedOwner.value || null) === task.value?.primary_owner_agent_slug
+    const scheduleWasSaved = selectedStart.value === (task.value?.start_date || '') && selectedDue.value === (task.value?.due_date || '')
     task.value = result
     agents.value = bindings.agents || []
     executions.value = history
     if (!sameTask || statusWasSaved) selectedStatus.value = result.status
     if (!sameTask || ownerWasSaved) selectedOwner.value = result.primary_owner_agent_slug || undefined
+    if (!sameTask || scheduleWasSaved) {
+      selectedStart.value = result.start_date || ''
+      selectedDue.value = result.due_date || ''
+    }
     if (selectedIssue.value && !result.issues.some((item) => item.id === selectedIssue.value.id)) selectedIssue.value = null
   } catch (cause) {
     if (version === loadVersion) error.value = cause?.message || '任务加载失败'
@@ -234,6 +250,19 @@ function updateOwner() {
   const taskId = route.params.task_id
   const primaryOwner = selectedOwner.value || null
   return runAction(() => projectWorkApi.updateTask(projectId, taskId, { primary_owner_agent_slug: primaryOwner }), '负责人保存失败')
+}
+
+function updateSchedule() {
+  if (selectedStart.value && selectedDue.value && selectedStart.value > selectedDue.value) {
+    actionError.value = '计划结束日期不能早于开始日期'
+    return
+  }
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(() => projectWorkApi.updateTask(projectId, taskId, {
+    start_date: selectedStart.value || null,
+    due_date: selectedDue.value || null
+  }), '计划保存失败')
 }
 
 async function addReference() {
@@ -275,6 +304,14 @@ function assignExecution() {
   const taskId = route.params.task_id
   const agentSlug = selectedExecutor.value
   return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, agentSlug), '任务分配失败')
+}
+
+function acceptExecution(item) {
+  const projectId = route.params.project_id
+  return runAction(
+    () => projectWorkExecutionApi.accept(projectId, item.agent_slug, item.id),
+    '任务接受失败'
+  )
 }
 
 function cancelExecution(item) {
@@ -365,6 +402,8 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
   referenceUrl.value = ''
   referenceError.value = ''
   selectedExecutor.value = undefined
+  selectedStart.value = ''
+  selectedDue.value = ''
   executions.value = []
   draft.value = ''
   actionError.value = ''
@@ -385,6 +424,7 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
 .work-task-section h3 { font-size: 15px; color: var(--gray-900); }
 .work-task-controls { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
 .work-task-controls label { min-width: 72px; }
+.work-task-controls input[type='date'] { border: 1px solid var(--gray-200); border-radius: 6px; padding: 5px 8px; color: var(--gray-900); background: var(--gray-0, #fff); }
 .work-task-issue { padding: 16px; background: var(--gray-25); border: 1px solid var(--gray-150); border-radius: 8px; }
 .work-task-section ul { list-style: none; margin: 0 0 18px; padding: 0; }
 .work-task-section li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }

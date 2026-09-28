@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 17
+YUANLEI_SCHEMA_VERSION = 18
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -620,6 +620,8 @@ PROJECT_WORK_SCHEMA_STATEMENTS = (
         title VARCHAR(512) NOT NULL,
         description TEXT,
         status VARCHAR(16) NOT NULL DEFAULT 'todo',
+        start_date DATE,
+        due_date DATE,
         primary_owner_agent_slug VARCHAR(80) REFERENCES agents(slug) ON DELETE SET NULL,
         created_by VARCHAR(64) NOT NULL,
         created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
@@ -1460,6 +1462,13 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_WORK_REFERENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v17_to_v18(self) -> None:
+        """为独立项目任务增加可选计划起止日期。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS start_date DATE"))
+            await conn.execute(text("ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS due_date DATE"))
 
     async def drop_tables(self):
         """删除所有表（慎用！）"""
