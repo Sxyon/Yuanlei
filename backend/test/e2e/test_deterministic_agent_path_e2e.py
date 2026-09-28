@@ -1174,6 +1174,155 @@ async def test_scheduled_task_run_now_reaches_exact_conversation_and_result(
         await _delete_provider(e2e_client, e2e_headers)
 
 
+async def test_project_work_assignment_reaches_worker_result_and_task_comment(
+    e2e_client: httpx.AsyncClient,
+    e2e_headers: dict[str, str],
+) -> None:
+    """真实 worker 执行已接受任务，结果只归属本次 Request/Run 和任务评论。"""
+    me = await e2e_client.get("/api/auth/me", headers=e2e_headers)
+    assert me.status_code == 200, me.text
+    uid = str(me.json()["uid"])
+    await _create_provider(e2e_client, e2e_headers)
+    agent_slug = project_id = directory_name = thread_id = run_id = None
+    assignment_path = execution_id = None
+    execution_status = None
+    try:
+        agent_slug = await _create_agent(e2e_client, e2e_headers, uid)
+        directory_name = f"pytest-project-work-e2e-{uuid.uuid4().hex[:10]}"
+        directory = await e2e_client.post(
+            "/api/workspace/directory", headers=e2e_headers,
+            json={"parent_path": "/", "name": directory_name},
+        )
+        assert directory.status_code == 200, directory.text
+        project = await e2e_client.post(
+            "/api/projects", headers=e2e_headers,
+            json={
+                "request_id": f"project-work-e2e-{uuid.uuid4()}",
+                "name": directory_name,
+                "workdir": {"mode": "linked", "path": directory_name},
+            },
+        )
+        assert project.status_code == 200, project.text
+        project_id = str(project.json()["id"])
+        bound = await e2e_client.post(
+            f"/api/projects/{project_id}/agents/bind", headers=e2e_headers,
+            json={"agent_slug": agent_slug},
+        )
+        assert bound.status_code == 200, bound.text
+        root = f"/api/projects/{project_id}/work"
+        code = await e2e_client.put(f"{root}/code", headers=e2e_headers, json={"code": "PWE2E"})
+        assert code.status_code == 200, code.text
+        created = await e2e_client.post(
+            f"{root}/tasks", headers=e2e_headers,
+            json={"title": f"Verify worker {EXPECTED_OUTPUT}"},
+        )
+        assert created.status_code == 200, created.text
+        task_id = str(created.json()["id"])
+        assignment_path = f"{root}/tasks/{task_id}/executions"
+        assigned = await e2e_client.post(
+            assignment_path, headers=e2e_headers, json={"agent_slug": agent_slug},
+        )
+        assert assigned.status_code == 200, assigned.text
+        execution_id = str(assigned.json()["id"])
+        execution_status = assigned.json()["status"]
+        assert execution_status == "pending_acceptance"
+        accepted = await e2e_client.post(
+            f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
+            headers=e2e_headers,
+        )
+        assert accepted.status_code == 200, accepted.text
+
+        deadline = asyncio.get_running_loop().time() + 240
+        execution = None
+        while asyncio.get_running_loop().time() < deadline:
+            listed = await e2e_client.get(assignment_path, headers=e2e_headers)
+            assert listed.status_code == 200, listed.text
+            execution = next(item for item in listed.json() if item["id"] == execution_id)
+            execution_status = execution["status"]
+            run_id = execution["current_run_id"] or run_id
+            thread_id = execution["thread_id"] or thread_id
+            if execution_status in {"completed", "failed", "cancelled"}:
+                break
+            await asyncio.sleep(2)
+        assert execution is not None and execution["status"] == "completed", execution
+        assert run_id and thread_id, execution
+        request_id = str(execution["request_id"])
+        run = await wait_for_run(e2e_client, e2e_headers, run_id)
+        assert run["status"] == "completed" and run["request_id"] == request_id, run
+        result = await e2e_client.get(f"/api/agent/runs/{run_id}/result", headers=e2e_headers)
+        assert result.status_code == 200, result.text
+        assert result.json()["output"] == EXPECTED_OUTPUT
+        detail = await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)
+        assert detail.status_code == 200, detail.text
+        comments = detail.json()["comments"]
+        assert [item["content"] for item in comments if EXPECTED_OUTPUT in item["content"]] == [
+            f"智能体 {agent_slug} 执行结论：\n\n{EXPECTED_OUTPUT}"
+        ]
+        conn = await asyncpg.connect(postgres_dsn())
+        try:
+            row = await conn.fetchrow(
+                """SELECT e.request_id, e.thread_id, q.status AS request_status,
+                          q.source AS request_source, q.external_id AS request_external_id,
+                          r.source, r.external_id,
+                          r.conversation_thread_id, m.run_id AS output_run_id,
+                          c.source_run_id AS comment_run_id
+                   FROM project_work_executions e
+                   JOIN agent_run_requests q ON q.request_id = e.request_id
+                   JOIN agent_runs r ON r.id = $2
+                   JOIN messages m ON m.id = r.output_message_id
+                   JOIN project_work_comments c ON c.source_run_id = r.id
+                   WHERE e.id = $1""",
+                execution_id, run_id,
+            )
+            assert row is not None
+            assert row["request_id"] == request_id
+            assert row["request_status"] == "dispatched"
+            assert row["request_source"] == "project_work"
+            assert row["request_external_id"] == execution_id
+            assert row["thread_id"] == row["conversation_thread_id"] == thread_id
+            assert row["source"] == "project_work" and row["external_id"] == execution_id
+            assert row["output_run_id"] == row["comment_run_id"] == run_id
+        finally:
+            await conn.close()
+    finally:
+        if execution_id and assignment_path and execution_status not in {"completed", "failed", "cancelled"}:
+            cleanup_deadline = asyncio.get_running_loop().time() + 90
+            cancelled_run_ids: set[str] = set()
+            while asyncio.get_running_loop().time() < cleanup_deadline:
+                listed = await e2e_client.get(assignment_path, headers=e2e_headers)
+                assert listed.status_code == 200, listed.text
+                current = next(item for item in listed.json() if item["id"] == execution_id)
+                execution_status = current["status"]
+                run_id = current["current_run_id"] or run_id
+                thread_id = current["thread_id"] or thread_id
+                if execution_status in {"completed", "failed", "cancelled"}:
+                    break
+                if execution_status in {"pending_acceptance", "queued"}:
+                    cancelled = await e2e_client.post(
+                        f"{assignment_path}/{execution_id}/cancel", headers=e2e_headers,
+                    )
+                    assert cancelled.status_code in {200, 409}, cancelled.text
+                elif run_id and run_id not in cancelled_run_ids:
+                    await cancel_run(e2e_client, e2e_headers, run_id)
+                    cancelled_run_ids.add(run_id)
+                await asyncio.sleep(2)
+            assert execution_status in {"completed", "failed", "cancelled"}, execution_status
+        if thread_id:
+            deleted = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
+            assert deleted.status_code in {200, 404}, deleted.text
+        if project_id:
+            deleted = await e2e_client.delete(f"/api/projects/{project_id}", headers=e2e_headers)
+            assert deleted.status_code in {200, 404}, deleted.text
+        if directory_name:
+            deleted = await e2e_client.delete(
+                "/api/workspace/file", headers=e2e_headers, params={"path": f"/{directory_name}"},
+            )
+            assert deleted.status_code in {200, 404}, deleted.text
+        if agent_slug:
+            await delete_agent(e2e_client, e2e_headers, agent_slug)
+        await _delete_provider(e2e_client, e2e_headers)
+
+
 async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
     e2e_client: httpx.AsyncClient,
     e2e_headers: dict[str, str],
