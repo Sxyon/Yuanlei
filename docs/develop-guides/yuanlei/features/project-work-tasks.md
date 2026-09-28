@@ -1,6 +1,6 @@
 # 独立项目工作任务与 Issue
 
-状态：任务底座、页面管理与智能体执行队列已接入；自动巡检尚未实现
+状态：任务底座、页面管理、智能体执行队列与网页引用已接入；文件附件和自动巡检尚未实现
 类型：有意产品差异
 主要 Owner：`backend/package/yuxi/services/project_work_service.py`
 
@@ -17,6 +17,7 @@
 - 执行尝试与任务状态分离。任务可依次交给不同智能体，但同一任务只能有一个待接受、排队或执行中的尝试；同一智能体只能有一个派发、执行或等待答复中的尝试。待接受任务不进入执行队列，接受后按创建时间 FIFO 派发。中断保留执行槽位直到原 Run 的恢复链结束。
 - 待接受或仍在队列中的分配可撤回并释放任务槽位；派发开始后须由对应 Run 的生命周期结束。终态评论仅引用本次执行初始 Request 所产生的 Run 或其合法恢复后代；完成但无对应输出时执行尝试显式失败。
 - 项目数字员工绑定拥有独立的任务自动接受开关与默认工作模型。关闭自动接受是默认值；开启后新分配在同一事务进入队列。手动接受和自动接受均在接受事务中固化当前可用聊天模型，后续配置变化不改写旧尝试。模型留空时先继承项目有效 Agent 模型，再继承系统默认模型。
+- 任务网页引用独立保存标题、HTTP(S) URL、添加人和时间；当前项目用户可添加与移除。服务器不抓取目标网页。文件附件仍未实现，不能把网页引用当作文件副本。
 
 ## 与 Yuxi 的边界
 
@@ -27,7 +28,7 @@
 - `project_work_service.py` 负责权限、编号分配、父子关系、负责人绑定与评论边界。
 - `project_work_repository.py` 负责 PostgreSQL 读写；`project_work_router.py` 提供 `/projects/{id}/work/*`。
 - `project_work_execution_service.py` 与 repository 拥有分配、接受、队列认领和 Run 结果收敛；Run 仍由上游 Request/Run 链路执行。
-- `storage/postgres/models_business.py` 与 `manager.py` 拥有表结构和 v12→v13、v14→v15 幂等迁移。
+- `storage/postgres/models_business.py` 与 `manager.py` 拥有表结构和 yuanlei 域幂等迁移。
 - 项目任务接收配置属于 yuanlei schema v15→v16 的 `project_agents` 绑定列；工作台读写入口属于 `project_work_execution_router.py`。
 
 ## 上游依赖
@@ -48,6 +49,7 @@
 - [项目工作任务页面入口](../decisions/implemented/2026-09-28-project-work-task-interface.md)
 - [项目任务执行队列](../decisions/implemented/2026-09-28-project-work-execution-queue.md)
 - [项目数字员工任务队列配置](../decisions/implemented/2026-09-28-project-agent-work-queue-config.md)
+- [项目任务网页引用](../decisions/implemented/2026-09-28-project-work-web-references.md)
 - [后续工作提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL：`backend/test/integration/services/test_project_work_service.py` 与 `test_schema_migration_version.py`。
 - 真实 HTTP：`backend/test/integration/api/test_project_work_api.py`。

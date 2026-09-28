@@ -89,6 +89,45 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         task = created.json()
         assert task["number"] == f"{code}-GEN-000001"
         task_id = task["id"]
+        references_path = f"{root}/tasks/{task_id}/references"
+        assert (await test_client.post(
+            references_path, headers=headers, json={"title": "Unsafe", "url": "javascript:alert(1)"}
+        )).status_code == 422
+        assert (await test_client.post(
+            references_path, headers=headers, json={"title": "Credentials", "url": "https://user:pass@example.com"}
+        )).status_code == 422
+        for invalid_url in (
+            "https://example.com:abc/path", "https://example.com:99999/path",
+            "https://%20example.com/path", "https:example.com", "https:/example.com",
+        ):
+            assert (await test_client.post(
+                references_path, headers=headers, json={"title": "Invalid", "url": invalid_url}
+            )).status_code == 422
+        assert (await test_client.post(
+            references_path, headers=outsider_headers, json={"title": "Hidden", "url": "https://example.com"}
+        )).status_code == 404
+        reference = await test_client.post(
+            references_path, headers=headers, json={"title": "Design", "url": "https://example.com/spec"}
+        )
+        assert reference.status_code == 200, reference.text
+        reference_id = reference.json()["id"]
+        assert reference.json()["created_by"] == uid
+        assert (await test_client.get(f"{root}/tasks/{task_id}", headers=headers)).json()["references"] == [
+            reference.json()
+        ]
+        assert (await test_client.delete(
+            f"/api/projects/{other_id}/work/tasks/{task_id}/references/{reference_id}", headers=headers
+        )).status_code == 404
+        assert (await test_client.delete(
+            f"{references_path}/{reference_id}", headers=outsider_headers
+        )).status_code == 404
+        async with engine.connect() as db:
+            assert await db.scalar(text(
+                "SELECT count(*) FROM project_work_references WHERE id = :id"
+            ), {"id": reference_id}) == 1
+        removed = await test_client.delete(f"{references_path}/{reference_id}", headers=headers)
+        assert removed.status_code == 200 and removed.json()["deleted"] is True
+        assert (await test_client.get(f"{root}/tasks/{task_id}", headers=headers)).json()["references"] == []
         rejected_delete = await test_client.delete(f"/api/agent/{agent_slug}", headers=headers)
         assert rejected_delete.status_code == 409, rejected_delete.text
         execution_task = await test_client.post(

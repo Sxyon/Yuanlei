@@ -15,6 +15,7 @@ from yuxi.storage.postgres.models_business import (
     ProjectWorkCode,
     ProjectWorkComment,
     ProjectWorkIssue,
+    ProjectWorkReference,
     ProjectWorkTask,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -239,6 +240,47 @@ class ProjectWorkRepository:
             select(ProjectWorkIssue).where(ProjectWorkIssue.task_id == task_id).order_by(ProjectWorkIssue.sequence)
         )
         return list(rows)
+
+    async def add_reference(
+        self, *, task_id: str, title: str, url: str, created_by: str
+    ) -> ProjectWorkReference:
+        """为当前项目任务追加网页引用。"""
+        await self._require_project()
+        if created_by != self.uid or await self.get_task(task_id) is None:
+            raise PermissionError("任务不属于当前用户 Project")
+        row = ProjectWorkReference(
+            id=str(uuid.uuid4()), task_id=task_id, title=title, url=url,
+            created_by=created_by, created_at=utc_now_naive(),
+        )
+        self.db.add(row)
+        await self.db.flush()
+        return row
+
+    async def list_references(self, task_id: str) -> list[ProjectWorkReference]:
+        """读取当前项目任务的网页引用。"""
+        if await self.get_task(task_id) is None:
+            return []
+        rows = await self.db.scalars(
+            select(ProjectWorkReference)
+            .where(ProjectWorkReference.task_id == task_id)
+            .order_by(ProjectWorkReference.created_at, ProjectWorkReference.id)
+        )
+        return list(rows)
+
+    async def get_reference(self, reference_id: str) -> ProjectWorkReference | None:
+        """按当前项目和用户归属读取网页引用。"""
+        return await self.db.scalar(
+            select(ProjectWorkReference)
+            .join(ProjectWorkTask, ProjectWorkTask.id == ProjectWorkReference.task_id)
+            .join(Project, Project.id == ProjectWorkTask.project_id)
+            .where(
+                ProjectWorkReference.id == reference_id,
+                ProjectWorkTask.project_id == self.project_id,
+                Project.uid == self.uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+            )
+        )
 
     async def add_comment(
         self, *, task_id: str | None, issue_id: str | None, content: str, author_uid: str, author_name: str

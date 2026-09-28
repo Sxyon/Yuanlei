@@ -993,6 +993,20 @@ class ProjectWorkIssue(Base):
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
+class ProjectWorkReference(Base):
+    """项目任务中追加的网页引用。"""
+
+    __tablename__ = "project_work_references"
+    __table_args__ = (Index("ix_project_work_references_task_created", "task_id", "created_at"),)
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(512), nullable=False)
+    url = Column(String(2048), nullable=False)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
 class ProjectWorkComment(Base):
     """任务或问题单的追加式讨论记录。"""
 

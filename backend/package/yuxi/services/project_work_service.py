@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from fastapi import HTTPException
+from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +15,15 @@ from yuxi.repositories.project_work_execution_repository import ProjectWorkExecu
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
 from yuxi.repositories.user_inbox_repository import UserInboxRepository
-from yuxi.storage.postgres.models_business import ProjectWorkComment, ProjectWorkIssue, ProjectWorkTask, User
+from yuxi.storage.postgres.models_business import (
+    ProjectWorkComment, ProjectWorkIssue, ProjectWorkReference, ProjectWorkTask, User,
+)
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
 CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9]{1,11}\Z")
 TASK_STATUSES = frozenset({"todo", "in_progress", "blocked", "done", "cancelled"})
 ISSUE_STATUSES = frozenset({"open", "resolved", "closed"})
+HTTP_URL = TypeAdapter(AnyHttpUrl)
 
 
 def _code(value: str) -> str:
@@ -115,6 +119,18 @@ def _comment_data(row: ProjectWorkComment) -> dict:
         "author_uid": row.author_uid,
         "author_name": row.author_name,
         "source_run_id": row.source_run_id,
+        "created_at": format_utc_datetime(row.created_at),
+    }
+
+
+def _reference_data(row: ProjectWorkReference) -> dict:
+    """序列化任务网页引用。"""
+    return {
+        "id": row.id,
+        "task_id": row.task_id,
+        "title": row.title,
+        "url": row.url,
+        "created_by": row.created_by,
         "created_at": format_utc_datetime(row.created_at),
     }
 
@@ -234,11 +250,56 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     task = await _task(db, user, project_id, task_id)
     issues = await repo.list_issues(task.id)
     comments = await repo.list_comments(task_id=task.id)
+    references = await repo.list_references(task.id)
     return {
         **_task_data(task),
         "issues": [_issue_data(row, task.number) for row in issues],
         "comments": [_comment_data(row) for row in comments],
+        "references": [_reference_data(row) for row in references],
     }
+
+
+async def add_reference(
+    *, db: AsyncSession, user: User, project_id: str, task_id: str, title: str, url: str
+) -> dict:
+    """在项目归属边界内追加 HTTP(S) 网页引用。"""
+    normalized_title = _text(title, limit=512, label="引用标题")
+    normalized_url = url.strip()
+    try:
+        parsed = HTTP_URL.validate_python(normalized_url)
+        valid = (
+            len(normalized_url) <= 2048
+            and len(str(parsed)) <= 2048
+            and normalized_url.lower().startswith(("http://", "https://"))
+            and parsed.host is not None
+            and parsed.username is None
+            and parsed.password is None
+            and not any(char.isspace() or ord(char) < 32 for char in normalized_url)
+        )
+    except ValidationError:
+        valid = False
+    if not valid:
+        raise HTTPException(status_code=422, detail="引用 URL 须为不含凭据的 HTTP(S) 地址")
+    await _writable_project(db, user, project_id)
+    await _task(db, user, project_id, task_id)
+    row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).add_reference(
+        task_id=task_id, title=normalized_title, url=str(parsed), created_by=str(user.uid)
+    )
+    await db.commit()
+    return _reference_data(row)
+
+
+async def remove_reference(
+    *, db: AsyncSession, user: User, project_id: str, task_id: str, reference_id: str
+) -> dict:
+    """从当前项目任务移除网页引用。"""
+    await _writable_project(db, user, project_id)
+    row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_reference(reference_id)
+    if row is None or row.task_id != task_id:
+        raise HTTPException(status_code=404, detail="任务引用不存在")
+    await db.delete(row)
+    await db.commit()
+    return {"id": reference_id, "deleted": True}
 
 
 async def update_task(

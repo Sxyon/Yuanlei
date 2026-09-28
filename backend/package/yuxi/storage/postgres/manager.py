@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 16
+YUANLEI_SCHEMA_VERSION = 17
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -341,6 +341,17 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
 PROJECT_AGENT_WORK_QUEUE_SCHEMA_STATEMENTS = (
     "ALTER TABLE project_agents ADD COLUMN IF NOT EXISTS auto_accept_work BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE project_agents ADD COLUMN IF NOT EXISTS work_default_model_spec VARCHAR(512)",
+)
+PROJECT_WORK_REFERENCE_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_work_references (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES project_work_tasks(id) ON DELETE CASCADE,
+        title VARCHAR(512) NOT NULL,
+        url VARCHAR(2048) NOT NULL,
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_references_task_created ON project_work_references(task_id, created_at)",
 )
 AGENT_SANDBOX_SCHEMA_STATEMENTS = (
     """
@@ -1441,6 +1452,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_AGENT_WORK_QUEUE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v16_to_v17(self) -> None:
+        """创建项目任务网页引用表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_WORK_REFERENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

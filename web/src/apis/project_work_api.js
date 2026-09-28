@@ -14,6 +14,12 @@ export const projectWorkApi = {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}`, {
       method: 'PATCH', body: JSON.stringify(payload)
     }),
+  addReference: (projectId, taskId, payload) =>
+    apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/references`, payload),
+  removeReference: (projectId, taskId, referenceId) =>
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/references/${encodeURIComponent(referenceId)}`, {
+      method: 'DELETE'
+    }),
   createIssue: (projectId, taskId, payload) =>
     apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/issues`, payload),
   getIssue: (projectId, taskId, issueId) =>

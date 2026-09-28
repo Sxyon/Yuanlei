@@ -108,3 +108,36 @@ test('回读保留未提交负责人草稿，旧 Issue 评论不覆盖新选择'
   assert.equal(instance.setupState.selectedIssue.id, 'b')
   assert.equal(instance.setupState.issueDraft, 'B 的草稿')
 })
+
+test('网页引用提交失败时在表单旁显示错误并保留输入', async (t) => {
+  t.mock.method(projectWorkApi, 'getTask', async () => ({
+    id: 'task', status: 'todo', primary_owner_agent_slug: null,
+    issues: [], comments: [], references: []
+  }))
+  t.mock.method(projectWorkApi, 'addReference', async () => { throw new Error('引用 URL 无效') })
+  t.mock.method(projectWorkApi, 'removeReference', async () => { throw new Error('引用移除失败') })
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }]
+  })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  instance.setupState.referenceTitle = '资料'
+  instance.setupState.referenceUrl = 'bad-url'
+  await instance.setupState.addReference()
+  assert.equal(instance.setupState.referenceError, '引用 URL 无效')
+  assert.equal(instance.setupState.referenceUrl, 'bad-url')
+  await instance.setupState.removeReference('reference-one')
+  assert.equal(instance.setupState.referenceError, '引用移除失败')
+})

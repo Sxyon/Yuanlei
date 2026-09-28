@@ -59,6 +59,14 @@ class WorkCommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
 
 
+class WorkReferenceCreate(BaseModel):
+    """任务网页引用请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=512)
+    url: str = Field(min_length=1, max_length=2048)
+
+
 @project_work.get("/projects/{project_id}/work/code")
 async def get_project_code(
     project_id: str,
@@ -142,6 +150,32 @@ async def update_task(
         task_id=task_id,
         update_owner="primary_owner_agent_slug" in payload.model_fields_set,
         **payload.model_dump(),
+    )
+
+
+@project_work.post("/projects/{project_id}/work/tasks/{task_id}/references")
+async def add_reference(
+    project_id: str,
+    task_id: str,
+    payload: WorkReferenceCreate,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """追加任务网页引用。"""
+    return await work.add_reference(db=db, user=user, project_id=project_id, task_id=task_id, **payload.model_dump())
+
+
+@project_work.delete("/projects/{project_id}/work/tasks/{task_id}/references/{reference_id}")
+async def remove_reference(
+    project_id: str,
+    task_id: str,
+    reference_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """移除任务网页引用。"""
+    return await work.remove_reference(
+        db=db, user=user, project_id=project_id, task_id=task_id, reference_id=reference_id
     )
 
 

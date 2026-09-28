@@ -235,6 +235,44 @@ async def test_yuanlei_v15_to_v16_adds_project_agent_queue_config_idempotently()
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v16_to_v17_creates_task_references_idempotently() -> None:
+    """旧项目任务保留，新增引用表重复升级不丢数据。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_references")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE project_work_references"))
+            await connection.execute(text(
+                "INSERT INTO users (username, uid, password_hash, role, login_failed_count, is_deleted) "
+                "VALUES ('reference-user', 'reference-user', 'x', 'user', 0, 0)"
+            ))
+            await connection.execute(text(
+                "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                "VALUES ('reference-project', 'reference-user', 'Reference', 'selectable', 'projects/reference', 'managed')"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('reference-task', 'reference-project', 'REF-GEN-000001', 'Old task', 'todo', "
+                "'reference-user', NOW(), NOW())"
+            ))
+        await manager.upgrade_yuanlei_schema_v16_to_v17()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO project_work_references (id, task_id, title, url, created_by) "
+                "VALUES ('reference-one', 'reference-task', 'Evidence', 'https://example.com', 'reference-user')"
+            ))
+        await manager.upgrade_yuanlei_schema_v16_to_v17()
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text(
+                "SELECT url FROM project_work_references WHERE id = 'reference-one'"
+            )) == "https://example.com"
+            assert await connection.scalar(text(
+                "SELECT title FROM project_work_tasks WHERE id = 'reference-task'"
+            )) == "Old task"
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")
@@ -242,6 +280,8 @@ async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> 
         await manager.create_business_tables()
         async with scoped_engine.begin() as connection:
             for table in (
+                "project_work_executions",
+                "project_work_references",
                 "project_work_comments",
                 "project_work_issues",
                 "project_work_tasks",

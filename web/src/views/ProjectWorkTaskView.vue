@@ -38,6 +38,23 @@
         </section>
 
         <section class="work-task-section">
+          <h2>网页引用</h2>
+          <p v-if="!task.references?.length" class="work-task-muted">暂无引用</p>
+          <ul v-else>
+            <li v-for="reference in task.references" :key="reference.id">
+              <a :href="reference.url" target="_blank" rel="noopener noreferrer">{{ reference.title }}</a>
+              <a-button type="link" :loading="saving" @click="removeReference(reference.id)">移除</a-button>
+            </li>
+          </ul>
+          <div class="work-task-controls">
+            <a-input v-model:value="referenceTitle" :disabled="saving" maxlength="512" placeholder="引用标题" />
+            <a-input v-model:value="referenceUrl" :disabled="saving" maxlength="2048" placeholder="https://example.com" />
+            <a-button :loading="saving" :disabled="!referenceTitle.trim() || !referenceUrl.trim()" @click="addReference">添加引用</a-button>
+          </div>
+          <p v-if="referenceError" class="work-task-error" role="alert">{{ referenceError }}</p>
+        </section>
+
+        <section class="work-task-section">
           <h2>智能体执行</h2>
           <div class="work-task-controls">
             <a-select v-model:value="selectedExecutor" :disabled="saving || ['done', 'cancelled'].includes(task.status)" placeholder="选择执行智能体" style="min-width: 220px">
@@ -140,6 +157,9 @@ const issueDescription = ref('')
 const selectedIssue = ref(null)
 const issueStatus = ref('open')
 const issueDraft = ref('')
+const referenceTitle = ref('')
+const referenceUrl = ref('')
+const referenceError = ref('')
 let loadVersion = 0
 let issueVersion = 0
 const statuses = [
@@ -186,16 +206,17 @@ async function load() {
   }
 }
 
-async function runAction(action, fallback) {
+async function runAction(action, fallback, errorTarget = actionError) {
   if (saving.value) return
   const version = loadVersion
   saving.value = true
   actionError.value = ''
+  errorTarget.value = ''
   try {
     await action()
     if (version === loadVersion) await load()
   } catch (cause) {
-    if (version === loadVersion) actionError.value = cause?.message || fallback
+    if (version === loadVersion) errorTarget.value = cause?.message || fallback
   } finally {
     saving.value = false
   }
@@ -213,6 +234,40 @@ function updateOwner() {
   const taskId = route.params.task_id
   const primaryOwner = selectedOwner.value || null
   return runAction(() => projectWorkApi.updateTask(projectId, taskId, { primary_owner_agent_slug: primaryOwner }), '负责人保存失败')
+}
+
+async function addReference() {
+  if (saving.value) return
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  const title = referenceTitle.value.trim()
+  const url = referenceUrl.value.trim()
+  const version = loadVersion
+  saving.value = true
+  referenceError.value = ''
+  try {
+    await projectWorkApi.addReference(projectId, taskId, { title, url })
+    if (version !== loadVersion) return
+    if (projectId === route.params.project_id && taskId === route.params.task_id) {
+      referenceTitle.value = ''
+      referenceUrl.value = ''
+    }
+    await load()
+  } catch (cause) {
+    if (version === loadVersion) referenceError.value = cause?.message || '引用添加失败'
+  } finally {
+    saving.value = false
+  }
+}
+
+function removeReference(referenceId) {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(
+    () => projectWorkApi.removeReference(projectId, taskId, referenceId),
+    '引用移除失败',
+    referenceError
+  )
 }
 
 function assignExecution() {
@@ -306,6 +361,9 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
   issueTitle.value = ''
   issueDescription.value = ''
   issueDraft.value = ''
+  referenceTitle.value = ''
+  referenceUrl.value = ''
+  referenceError.value = ''
   selectedExecutor.value = undefined
   executions.value = []
   draft.value = ''
