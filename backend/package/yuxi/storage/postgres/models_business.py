@@ -621,6 +621,8 @@ class ProjectAgent(Base):
         comment="Agent slug",
     )
     config_overrides = Column(JSON_VALUE, nullable=False, default=dict, comment="项目级配置覆盖层")
+    auto_accept_work = Column(Boolean, nullable=False, default=False, server_default="false")
+    work_default_model_spec = Column(String(512), nullable=True)
     created_by = Column(String(64), nullable=True, comment="创建者 uid")
     updated_by = Column(String(64), nullable=True, comment="最近更新者 uid")
     created_at = Column(DateTime, default=utc_now_naive)
@@ -632,6 +634,8 @@ class ProjectAgent(Base):
             "project_id": self.project_id,
             "agent_slug": self.agent_slug,
             "config_overrides": self.config_overrides or {},
+            "auto_accept_work": self.auto_accept_work,
+            "work_default_model_spec": self.work_default_model_spec,
             "created_by": self.created_by,
             "updated_by": self.updated_by,
             "created_at": format_utc_datetime(self.created_at),

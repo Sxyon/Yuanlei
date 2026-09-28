@@ -49,4 +49,4 @@ Owner：backend/package/yuxi/services/project_work_service.py
 
 ## 后续接续点
 
-执行尝试与工作台代码已接入；[队列决策](../implemented/2026-09-28-project-work-execution-queue.md)记录当前语义和已验证范围。下一步先补真实 worker E2E：接受后派发、失联重试、Run 完成或失败、用户答复后的 resume 链，都要按同一次执行尝试回写且不串入相邻 Run 输出。然后实现自动接受与默认模型配置，确保新接受的任务固化模型且旧任务不被配置变更改写。随后补附件/引用、议题缩写自动固化和第一负责人定时检查。每项以真实 PostgreSQL/HTTP 及 worker E2E 验证，不把手动设置的任务 `in_progress` 视为 AgentRun 正在运行。
+执行尝试、工作台、自动接受与默认模型配置已接入；[队列决策](../implemented/2026-09-28-project-work-execution-queue.md)与[配置决策](../implemented/2026-09-28-project-agent-work-queue-config.md)记录当前语义和已验证范围。下一步补真实 worker E2E：失联重试、Run 完成或失败、用户答复后的 resume 链，都要按同一次执行尝试回写且不串入相邻 Run 输出。随后补附件/引用、议题缩写自动固化和第一负责人定时检查。每项以真实 PostgreSQL/HTTP 及 worker E2E 验证，不把手动设置的任务 `in_progress` 视为 AgentRun 正在运行。

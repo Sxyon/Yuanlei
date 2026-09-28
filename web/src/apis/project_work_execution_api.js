@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './base'
+import { apiGet, apiPost, apiPut } from './base'
 
 /** 项目任务分配与数字员工工作台。 */
 export const projectWorkExecutionApi = {
@@ -10,6 +10,8 @@ export const projectWorkExecutionApi = {
     apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/executions`),
   getWorkbench: (projectId, agentSlug) =>
     apiGet(`/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentSlug)}/workbench`),
+  updateWorkbenchConfig: (projectId, agentSlug, config) =>
+    apiPut(`/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentSlug)}/workbench/config`, config),
   accept: (projectId, agentSlug, executionId) =>
     apiPost(`/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentSlug)}/workbench/${encodeURIComponent(executionId)}/accept`, {}),
   cancel: (projectId, taskId, executionId) =>

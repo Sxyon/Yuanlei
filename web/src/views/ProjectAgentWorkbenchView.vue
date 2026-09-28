@@ -7,6 +7,24 @@
       <a-spin v-if="loading" class="agent-workbench-state" />
       <a-alert v-else-if="error" type="error" show-icon :message="error" />
       <template v-else-if="workbench">
+        <section class="agent-workbench-section agent-workbench-config">
+          <h2>任务接收设置</h2>
+          <label class="agent-workbench-setting">
+            <span>自动接受新分配的任务</span>
+            <a-switch v-model:checked="autoAcceptWork" :disabled="settingsSaving" />
+          </label>
+          <div class="agent-workbench-setting agent-workbench-model">
+            <span>任务默认模型</span>
+            <ModelSelectorComponent
+              :model_spec="workDefaultModelSpec"
+              clearable
+              :disabled="settingsSaving"
+              @select-model="selectWorkModel"
+            />
+          </div>
+          <p class="agent-workbench-muted">未选择时使用该智能体的项目模型。接受任务时固化模型，后续设置变更不影响已接受任务。</p>
+          <a-button type="primary" :loading="settingsSaving" :disabled="!settingsChanged || settingsSaving" @click="saveSettings">保存设置</a-button>
+        </section>
         <section v-for="section in sections" :key="section.key" class="agent-workbench-section">
           <h2>{{ section.title }}</h2>
           <p v-if="!section.items.length" class="agent-workbench-muted">{{ section.empty }}</p>
@@ -17,6 +35,7 @@
                   {{ item.task_number }} · {{ item.task_title }}
                 </RouterLink>
                 <p>{{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</p>
+                <p v-if="item.model_spec">执行模型：{{ item.model_spec }}</p>
                 <p v-if="item.error_message" class="agent-workbench-error">{{ item.error_message }}</p>
                 <RouterLink v-if="item.thread_id && ['submitted', 'interrupted'].includes(item.status)" :to="{ name: 'AgentCompWithThreadId', params: { thread_id: item.thread_id } }">进入执行会话</RouterLink>
               </div>
@@ -37,6 +56,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
+import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 
 const route = useRoute()
@@ -45,7 +65,16 @@ const loading = ref(false)
 const error = ref('')
 const actionError = ref('')
 const working = ref(null)
+const settingsSaving = ref(false)
+const autoAcceptWork = ref(false)
+const workDefaultModelSpec = ref('')
 let loadVersion = 0
+
+const settingsChanged = computed(() => workbench.value && (
+  autoAcceptWork.value !== workbench.value.auto_accept_work ||
+  workDefaultModelSpec.value !== (workbench.value.work_default_model_spec || '')
+))
+const selectWorkModel = (spec) => { workDefaultModelSpec.value = spec || '' }
 
 const sections = computed(() => [
   { key: 'current', title: '当前工作', items: workbench.value?.current ? [workbench.value.current] : [], empty: '当前没有执行中的任务' },
@@ -67,11 +96,32 @@ async function load() {
   error.value = ''
   try {
     const result = await projectWorkExecutionApi.getWorkbench(projectId, agentSlug)
-    if (version === loadVersion) workbench.value = result
+    if (version === loadVersion) {
+      workbench.value = result
+      autoAcceptWork.value = Boolean(result.auto_accept_work)
+      workDefaultModelSpec.value = result.work_default_model_spec || ''
+    }
   } catch (cause) {
     if (version === loadVersion) error.value = cause?.message || '工作台加载失败'
   } finally {
     if (version === loadVersion) loading.value = false
+  }
+}
+
+async function saveSettings() {
+  if (!settingsChanged.value || settingsSaving.value) return
+  settingsSaving.value = true
+  actionError.value = ''
+  try {
+    await projectWorkExecutionApi.updateWorkbenchConfig(route.params.project_id, route.params.agent_slug, {
+      auto_accept_work: autoAcceptWork.value,
+      work_default_model_spec: workDefaultModelSpec.value || null
+    })
+    await load()
+  } catch (cause) {
+    actionError.value = cause?.message || '保存任务设置失败'
+  } finally {
+    settingsSaving.value = false
   }
 }
 
@@ -117,6 +167,9 @@ watch(() => [route.params.project_id, route.params.agent_slug], () => {
 .agent-workbench-state { display: block; margin: 56px auto; }
 .agent-workbench-section { border-bottom: 1px solid var(--gray-150); padding: 12px 0 22px; }
 .agent-workbench-section h2 { font-size: 17px; color: var(--gray-900); }
+.agent-workbench-setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 14px 0; }
+.agent-workbench-setting > span { flex: 1; }
+.agent-workbench-model > :last-child { flex: 2; }
 .agent-workbench-section ul { list-style: none; padding: 0; }
 .agent-workbench-section li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--gray-100); }
 .agent-workbench-actions { display: flex; gap: 8px; }

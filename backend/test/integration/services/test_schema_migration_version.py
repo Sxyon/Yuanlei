@@ -188,6 +188,53 @@ async def test_yuanlei_v14_to_v15_creates_project_work_queue_idempotently() -> N
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v15_to_v16_adds_project_agent_queue_config_idempotently() -> None:
+    """存量项目数字员工保持手动接受，重复升级保留已设置的接收策略。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_agent_queue_config")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO users (username, uid, password_hash, role, login_failed_count, is_deleted) "
+                "VALUES ('config-user', 'config-user', 'x', 'user', 0, 0)"
+            ))
+            await connection.execute(text(
+                "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                "VALUES ('config-project', 'config-user', 'Config', 'selectable', 'projects/config', 'managed')"
+            ))
+            await connection.execute(text(
+                "INSERT INTO agents (slug, backend_id, name, pics, config_json, share_config, is_default, is_subagent) "
+                "VALUES ('config-agent', 'ChatbotAgent', 'Config', '[]'::jsonb, '{}'::jsonb, "
+                "'{}'::jsonb, FALSE, FALSE)"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_agents (id, project_id, agent_slug, config_overrides) "
+                "VALUES ('config-binding', 'config-project', 'config-agent', '{}'::jsonb)"
+            ))
+            await connection.execute(text("ALTER TABLE project_agents DROP COLUMN auto_accept_work"))
+            await connection.execute(text("ALTER TABLE project_agents DROP COLUMN work_default_model_spec"))
+        await manager.upgrade_yuanlei_schema_v15_to_v16()
+        async with scoped_engine.begin() as connection:
+            row = (await connection.execute(text(
+                "SELECT auto_accept_work, work_default_model_spec FROM project_agents "
+                "WHERE id = 'config-binding'"
+            ))).one()
+            assert row == (False, None)
+            await connection.execute(text(
+                "UPDATE project_agents SET auto_accept_work = TRUE, "
+                "work_default_model_spec = 'provider:model' WHERE id = 'config-binding'"
+            ))
+        await manager.upgrade_yuanlei_schema_v15_to_v16()
+        async with scoped_engine.connect() as connection:
+            row = (await connection.execute(text(
+                "SELECT auto_accept_work, work_default_model_spec FROM project_agents "
+                "WHERE id = 'config-binding'"
+            ))).one()
+            assert row == (True, "provider:model")
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")

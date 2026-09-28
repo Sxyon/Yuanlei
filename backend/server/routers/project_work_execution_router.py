@@ -18,6 +18,14 @@ class TaskAssignment(BaseModel):
     agent_slug: str = Field(min_length=1, max_length=80)
 
 
+class WorkQueueConfig(BaseModel):
+    """项目数字员工的任务接收策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+    auto_accept_work: bool
+    work_default_model_spec: str | None = Field(default=None, max_length=512)
+
+
 @project_work_executions.post("/projects/{project_id}/work/tasks/{task_id}/executions")
 async def assign_task(
     project_id: str,
@@ -66,6 +74,20 @@ async def get_agent_workbench(
 ):
     """读取智能体当前、待接受、排队和最近工作。"""
     return await work.get_agent_workbench(db=db, user=user, project_id=project_id, agent_slug=agent_slug)
+
+
+@project_work_executions.put("/projects/{project_id}/agents/{agent_slug}/workbench/config")
+async def update_work_queue_config(
+    project_id: str,
+    agent_slug: str,
+    payload: WorkQueueConfig,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新任务自动接受与默认模型。"""
+    return await work.update_work_queue_config(
+        db=db, user=user, project_id=project_id, agent_slug=agent_slug, **payload.model_dump()
+    )
 
 
 @project_work_executions.post("/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept")

@@ -10,12 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
 from yuxi.services.agent_request_service import AgentRequestInput, RunOrigin, submit_agent_request
+from yuxi.services.agent_run_service import resolve_agent_run_model_spec
 from yuxi.services.input_message_service import build_chat_input_message
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import (
@@ -76,6 +78,41 @@ async def _run_matches_execution(db: AsyncSession, run: AgentRun, row: ProjectWo
     return False
 
 
+async def _snapshot_work_model(db: AsyncSession, binding) -> str:
+    """在接受事务中解析项目数字员工的工作模型并固化。"""
+    agent = await AgentRepository(db).get_by_slug(binding.agent_slug)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    base = (agent.config_json or {}).get("context")
+    override = (binding.config_overrides or {}).get("context")
+    base = base if isinstance(base, dict) else {}
+    override = override if isinstance(override, dict) else {}
+    configured_model = override.get("model", base.get("model"))
+    return await resolve_agent_run_model_spec(binding.work_default_model_spec, configured_model, db)
+
+
+async def update_work_queue_config(
+    *, db: AsyncSession, user: User, project_id: str, agent_slug: str,
+    auto_accept_work: bool, work_default_model_spec: str | None,
+) -> dict:
+    """更新当前项目数字员工的任务接收策略。"""
+    project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project 不存在")
+    binding = await ProjectAgentRepository(db).get_for_update(project_id, agent_slug)
+    if binding is None:
+        raise HTTPException(status_code=404, detail="智能体未绑定该项目")
+    model_spec = work_default_model_spec.strip() if work_default_model_spec else None
+    if model_spec:
+        await resolve_agent_run_model_spec(model_spec, None, db)
+    binding.auto_accept_work = auto_accept_work
+    binding.work_default_model_spec = model_spec
+    binding.updated_by = str(user.uid)
+    binding.updated_at = utc_now_naive()
+    await db.commit()
+    return {"auto_accept_work": binding.auto_accept_work, "work_default_model_spec": binding.work_default_model_spec}
+
+
 async def assign_task(
     *, db: AsyncSession, user: User, project_id: str, task_id: str, agent_slug: str
 ) -> dict:
@@ -90,6 +127,8 @@ async def assign_task(
     if binding is None:
         raise HTTPException(status_code=404, detail="智能体未绑定该项目")
 
+    auto_accept = bool(binding.auto_accept_work)
+    model_spec = await _snapshot_work_model(db, binding) if auto_accept else None
     prompt = f"请执行项目任务 {task.number}：{task.title}\n\n{task.description or ''}\n\n完成后汇报结论、产物及未解决的问题。"
     try:
         row = await ProjectWorkExecutionRepository(db).create(
@@ -99,11 +138,22 @@ async def assign_task(
             agent_slug=agent_slug,
             prompt=prompt,
         )
+        if auto_accept:
+            row.status = "queued"
+            row.model_spec = model_spec
+            row.accepted_at = utc_now_naive()
+            row.updated_at = row.accepted_at
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="任务已有待接受或执行中的分配") from exc
-    return _execution_data(row, task)
+    result = _execution_data(row, task)
+    if auto_accept:
+        try:
+            await dispatch_agent_queue(agent_slug)
+        except Exception:
+            logger.error(f"项目工作任务自动接受后即时派发失败: agent={agent_slug}", exc_info=True)
+    return result
 
 
 async def accept_task(
@@ -113,7 +163,8 @@ async def accept_task(
     project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
     if project is None:
         raise HTTPException(status_code=404, detail="Project 不存在")
-    if await ProjectAgentRepository(db).get_for_update(project_id, agent_slug) is None:
+    binding = await ProjectAgentRepository(db).get_for_update(project_id, agent_slug)
+    if binding is None:
         raise HTTPException(status_code=404, detail="智能体未绑定该项目")
     row = await ProjectWorkExecutionRepository(db).get_for_user(
         execution_id=execution_id, project_id=project_id, uid=str(user.uid), lock=True
@@ -125,6 +176,7 @@ async def accept_task(
     task = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_task(row.task_id)
     if task is None or task.status in {"done", "cancelled"}:
         raise HTTPException(status_code=409, detail="任务已结束")
+    row.model_spec = await _snapshot_work_model(db, binding)
     row.status = "queued"
     row.accepted_at = utc_now_naive()
     row.updated_at = row.accepted_at
@@ -189,6 +241,8 @@ async def get_agent_workbench(*, db: AsyncSession, user: User, project_id: str, 
     return {
         "project_id": project_id,
         "agent_slug": agent_slug,
+        "auto_accept_work": binding.auto_accept_work,
+        "work_default_model_spec": binding.work_default_model_spec,
         "current": next((item for item in entries if item["status"] in {"dispatching", "submitted", "interrupted"}), None),
         "pending_acceptance": [item for item in entries if item["status"] == "pending_acceptance"],
         "queued": list(reversed([item for item in entries if item["status"] == "queued"])),

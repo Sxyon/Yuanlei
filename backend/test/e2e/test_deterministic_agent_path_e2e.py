@@ -1174,9 +1174,11 @@ async def test_scheduled_task_run_now_reaches_exact_conversation_and_result(
         await _delete_provider(e2e_client, e2e_headers)
 
 
+@pytest.mark.parametrize("auto_accept", [False, True])
 async def test_project_work_assignment_reaches_worker_result_and_task_comment(
     e2e_client: httpx.AsyncClient,
     e2e_headers: dict[str, str],
+    auto_accept: bool,
 ) -> None:
     """真实 worker 执行已接受任务，结果只归属本次 Request/Run 和任务评论。"""
     me = await e2e_client.get("/api/auth/me", headers=e2e_headers)
@@ -1218,6 +1220,12 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         )
         assert created.status_code == 200, created.text
         task_id = str(created.json()["id"])
+        config_path = f"/api/projects/{project_id}/agents/{agent_slug}/workbench/config"
+        queue_config = await e2e_client.put(
+            config_path, headers=e2e_headers,
+            json={"auto_accept_work": auto_accept, "work_default_model_spec": MODEL_SPEC},
+        )
+        assert queue_config.status_code == 200, queue_config.text
         assignment_path = f"{root}/tasks/{task_id}/executions"
         assigned = await e2e_client.post(
             assignment_path, headers=e2e_headers, json={"agent_slug": agent_slug},
@@ -1225,12 +1233,19 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         assert assigned.status_code == 200, assigned.text
         execution_id = str(assigned.json()["id"])
         execution_status = assigned.json()["status"]
-        assert execution_status == "pending_acceptance"
-        accepted = await e2e_client.post(
-            f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
+        assert execution_status == ("queued" if auto_accept else "pending_acceptance")
+        if not auto_accept:
+            accepted = await e2e_client.post(
+                f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
+                headers=e2e_headers,
+            )
+            assert accepted.status_code == 200, accepted.text
+        reset_config = await e2e_client.put(
+            config_path,
             headers=e2e_headers,
+            json={"auto_accept_work": False, "work_default_model_spec": None},
         )
-        assert accepted.status_code == 200, accepted.text
+        assert reset_config.status_code == 200, reset_config.text
 
         deadline = asyncio.get_running_loop().time() + 240
         execution = None
@@ -1246,6 +1261,7 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             await asyncio.sleep(2)
         assert execution is not None and execution["status"] == "completed", execution
         assert run_id and thread_id, execution
+        assert execution["model_spec"] == MODEL_SPEC
         request_id = str(execution["request_id"])
         run = await wait_for_run(e2e_client, e2e_headers, run_id)
         assert run["status"] == "completed" and run["request_id"] == request_id, run

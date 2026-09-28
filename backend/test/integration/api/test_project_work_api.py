@@ -114,7 +114,30 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         assert (await test_client.get(workbench_path, headers=outsider_headers)).status_code == 404
         workbench = await test_client.get(workbench_path, headers=headers)
         assert workbench.status_code == 200, workbench.text
+        assert workbench.json()["auto_accept_work"] is False
+        assert workbench.json()["work_default_model_spec"] is None
         assert [item["id"] for item in workbench.json()["pending_acceptance"]] == [execution_id]
+        config_path = f"{workbench_path}/config"
+        assert (await test_client.put(
+            config_path, headers=outsider_headers,
+            json={"auto_accept_work": True, "work_default_model_spec": None},
+        )).status_code == 404
+        invalid_model = await test_client.put(
+            config_path, headers=headers,
+            json={"auto_accept_work": True, "work_default_model_spec": "missing:no-such-chat-model"},
+        )
+        assert invalid_model.status_code == 422, invalid_model.text
+        assert (await test_client.get(workbench_path, headers=headers)).json()["auto_accept_work"] is False
+        configured_queue = await test_client.put(
+            config_path, headers=headers,
+            json={"auto_accept_work": True, "work_default_model_spec": None},
+        )
+        assert configured_queue.status_code == 200 and configured_queue.json()["auto_accept_work"] is True
+        reset_queue = await test_client.put(
+            config_path, headers=headers,
+            json={"auto_accept_work": False, "work_default_model_spec": None},
+        )
+        assert reset_queue.status_code == 200 and reset_queue.json()["auto_accept_work"] is False
         assert (await test_client.get(assignment_path, headers=headers)).json()[0]["id"] == execution_id
         async with engine.connect() as db:
             assert await db.scalar(text(

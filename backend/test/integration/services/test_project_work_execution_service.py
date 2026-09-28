@@ -6,6 +6,7 @@ import os
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.services import project_work_execution_service as work
+from yuxi.services import agent_run_service
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import ProjectWorkExecution, User
 
@@ -69,7 +71,8 @@ async def test_assignment_acceptance_and_agent_fifo(monkeypatch):
             ))
             await connection.execute(text(
                 "INSERT INTO project_agents (id, project_id, agent_slug, config_overrides) "
-                "VALUES ('queue-binding', 'queue-project', 'queue-agent', '{}'::jsonb)"
+                "VALUES ('queue-binding', 'queue-project', 'queue-agent', "
+                "'{\"context\": {\"model\": \"project:model\"}}'::jsonb)"
             ))
             await connection.execute(text(
                 "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
@@ -79,6 +82,16 @@ async def test_assignment_acceptance_and_agent_fifo(monkeypatch):
         sessions = async_sessionmaker(scoped_engine, expire_on_commit=False)
         user = User(uid="queue-user", username="queue-user")
         monkeypatch.setattr(work, "dispatch_agent_queue", AsyncMock(return_value=0))
+        monkeypatch.setattr(
+            agent_run_service.model_cache, "get_model_info",
+            lambda spec: SimpleNamespace(model_type="chat") if spec in {
+                "project:model", "system:model", "provider:first", "provider:second", "provider:third"
+            } else None,
+        )
+        monkeypatch.setattr(
+            agent_run_service, "system_options",
+            SimpleNamespace(get=AsyncMock(return_value={"default_model": "system:model"})),
+        )
         async with sessions() as db:
             first = await work.assign_task(
                 db=db, user=user, project_id="queue-project", task_id="queue-task-1", agent_slug="queue-agent"
@@ -91,6 +104,7 @@ async def test_assignment_acceptance_and_agent_fifo(monkeypatch):
             await work.accept_task(
                 db=db, user=user, project_id="queue-project", agent_slug="queue-agent", execution_id=first["id"]
             )
+            assert (await db.get(ProjectWorkExecution, first["id"])).model_spec == "project:model"
             with pytest.raises(HTTPException) as repeated:
                 await work.accept_task(
                     db=db, user=user, project_id="queue-project", agent_slug="queue-agent", execution_id=first["id"]
@@ -272,6 +286,81 @@ async def test_assignment_acceptance_and_agent_fifo(monkeypatch):
             assert await connection.scalar(text(
                 "SELECT count(*) FROM project_work_comments WHERE task_id = 'queue-task-4'"
             )) == 0
+
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('queue-task-5', 'queue-project', 'QUEUE-GEN-000005', 'Auto', 'todo', 'queue-user', NOW(), NOW())"
+            ))
+        async with sessions() as db:
+            configured = await work.update_work_queue_config(
+                db=db, user=user, project_id="queue-project", agent_slug="queue-agent",
+                auto_accept_work=True, work_default_model_spec="provider:first",
+            )
+            assert configured == {"auto_accept_work": True, "work_default_model_spec": "provider:first"}
+        async with sessions() as db:
+            automatic = await work.assign_task(
+                db=db, user=user, project_id="queue-project", task_id="queue-task-5", agent_slug="queue-agent"
+            )
+            assert automatic["status"] == "queued"
+            assert automatic["model_spec"] == "provider:first"
+            assert automatic["accepted_at"] is not None
+        async with sessions() as db:
+            await work.update_work_queue_config(
+                db=db, user=user, project_id="queue-project", agent_slug="queue-agent",
+                auto_accept_work=False, work_default_model_spec="provider:second",
+            )
+            row = await db.get(ProjectWorkExecution, automatic["id"])
+            assert row.model_spec == "provider:first"
+            board = await work.get_agent_workbench(
+                db=db, user=user, project_id="queue-project", agent_slug="queue-agent"
+            )
+            assert board["auto_accept_work"] is False
+            assert board["work_default_model_spec"] == "provider:second"
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('queue-task-6', 'queue-project', 'QUEUE-GEN-000006', 'Manual', 'todo', 'queue-user', NOW(), NOW())"
+            ))
+        async with sessions() as db:
+            pending = await work.assign_task(
+                db=db, user=user, project_id="queue-project", task_id="queue-task-6", agent_slug="queue-agent"
+            )
+            assert pending["status"] == "pending_acceptance" and pending["model_spec"] is None
+        async with sessions() as db:
+            await work.update_work_queue_config(
+                db=db, user=user, project_id="queue-project", agent_slug="queue-agent",
+                auto_accept_work=False, work_default_model_spec="provider:third",
+            )
+            accepted = await work.accept_task(
+                db=db, user=user, project_id="queue-project", agent_slug="queue-agent", execution_id=pending["id"]
+            )
+            assert accepted["model_spec"] == "provider:third"
+
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks (id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('queue-task-7', 'queue-project', 'QUEUE-GEN-000007', 'Inherited', 'todo', 'queue-user', NOW(), NOW()), "
+                "('queue-task-8', 'queue-project', 'QUEUE-GEN-000008', 'System', 'todo', 'queue-user', NOW(), NOW())"
+            ))
+        async with sessions() as db:
+            await work.update_work_queue_config(
+                db=db, user=user, project_id="queue-project", agent_slug="queue-agent",
+                auto_accept_work=True, work_default_model_spec=None,
+            )
+            inherited = await work.assign_task(
+                db=db, user=user, project_id="queue-project", task_id="queue-task-7", agent_slug="queue-agent"
+            )
+            assert inherited["model_spec"] == "project:model"
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "UPDATE project_agents SET config_overrides = '{}'::jsonb WHERE id = 'queue-binding'"
+            ))
+        async with sessions() as db:
+            system = await work.assign_task(
+                db=db, user=user, project_id="queue-project", task_id="queue-task-8", agent_slug="queue-agent"
+            )
+            assert system["model_spec"] == "system:model"
     finally:
         await scoped_engine.dispose()
         async with admin_engine.begin() as connection:

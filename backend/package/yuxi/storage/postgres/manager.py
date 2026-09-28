@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 15
+YUANLEI_SCHEMA_VERSION = 16
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -326,6 +326,8 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
         agent_slug VARCHAR(80) NOT NULL CONSTRAINT fk_project_agents_agent_slug
             REFERENCES agents(slug) ON DELETE CASCADE,
         config_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+        auto_accept_work BOOLEAN NOT NULL DEFAULT FALSE,
+        work_default_model_spec VARCHAR(512),
         created_by VARCHAR(64),
         updated_by VARCHAR(64),
         created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
@@ -335,6 +337,10 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id ON project_agents(project_id)",
     "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug ON project_agents(agent_slug)",
+)
+PROJECT_AGENT_WORK_QUEUE_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_agents ADD COLUMN IF NOT EXISTS auto_accept_work BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE project_agents ADD COLUMN IF NOT EXISTS work_default_model_spec VARCHAR(512)",
 )
 AGENT_SANDBOX_SCHEMA_STATEMENTS = (
     """
@@ -1428,6 +1434,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v15_to_v16(self) -> None:
+        """为项目数字员工增加任务自动接受与默认模型配置。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_AGENT_WORK_QUEUE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):
