@@ -87,6 +87,42 @@ test('离开工作台后不再用空路由参数请求智能体队列', async (t
   assert.deepEqual(calls, [['project', 'agent']])
 })
 
+test('最近失败工作可重新执行并创建新的执行意图', async (t) => {
+  const assigned = []
+  t.mock.method(projectWorkExecutionApi, 'getWorkbench', async () => ({
+    agent_slug: 'agent',
+    auto_accept_work: false,
+    work_default_model_spec: null,
+    current: null,
+    pending_acceptance: [],
+    queued: [],
+    recent: [
+      { id: 'exec-1', task_id: 'task-9', agent_slug: 'agent', status: 'failed', current_run_id: 'run-1', error_message: '失败' }
+    ]
+  }))
+  t.mock.method(projectWorkExecutionApi, 'assign', async (projectId, taskId, agentSlug) => {
+    assigned.push([projectId, taskId, agentSlug])
+    return { id: 'exec-2' }
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/agents/:agent_slug/workbench', component: View }]
+  })
+  await router.push('/projects/project/agents/agent/workbench')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  assert.equal(instance.setupState.workbench.recent[0].current_run_id, 'run-1')
+  await instance.setupState.retry(instance.setupState.workbench.recent[0])
+  assert.deepEqual(assigned, [['project', 'task-9', 'agent']])
+})
+
 test('设置保存完成时页面已离开，不再触发空路由回读', async (t) => {
   const reads = []
   let finishSave

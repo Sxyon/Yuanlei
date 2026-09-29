@@ -70,12 +70,19 @@
             <a-button :loading="saving" :disabled="!selectedExecutor || executions.some((item) => activeExecutionStatuses.includes(item.status)) || ['done', 'cancelled'].includes(task.status)" @click="assignExecution">分配任务</a-button>
           </div>
           <p class="work-task-muted">分配后若显示“待接受”，可在此处接单启动；开启工作台自动接受后，新分配会自动进入队列。</p>
+          <p class="work-task-muted">“重新执行”只针对失败或已取消的尝试，会创建新的执行意图并绑定新的 Run，旧尝试保留可追踪。</p>
           <p v-if="!executions.length" class="work-task-muted">暂无执行记录</p>
           <ul v-else>
             <li v-for="item in executions" :key="item.id">
-              <span>{{ item.agent_slug }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}<span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span></span>
-              <span>
+              <span class="work-execution-main">
+                {{ item.agent_slug }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}
+                <span v-if="item.current_run_id" class="work-execution-run"> · Run {{ item.current_run_id }}</span>
+                <span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span>
+              </span>
+              <span class="work-execution-actions">
+                <RouterLink v-if="item.thread_id && ['submitted', 'interrupted'].includes(item.status)" :to="{ name: 'AgentCompWithThreadId', params: { thread_id: item.thread_id } }">进入执行会话</RouterLink>
                 <RouterLink :to="{ name: 'ProjectAgentWorkbenchView', params: { project_id: route.params.project_id, agent_slug: item.agent_slug } }">查看工作台</RouterLink>
+                <a-button v-if="retryableStatuses.includes(item.status)" type="link" :loading="saving" @click="retryExecution(item)">重新执行</a-button>
                 <a-button v-if="item.status === 'pending_acceptance'" type="link" :loading="saving" @click="acceptExecution(item)">接受并执行</a-button>
                 <a-button v-if="['pending_acceptance', 'queued'].includes(item.status)" type="link" :loading="saving" @click="cancelExecution(item)">撤回分配</a-button>
               </span>
@@ -182,6 +189,7 @@ const statuses = [
 ]
 const statusLabel = (status) => statuses.find((item) => item.value === status)?.label || status
 const activeExecutionStatuses = ['pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted']
+const retryableStatuses = ['failed', 'cancelled']
 const executionStatusLabel = (status) => ({
   pending_acceptance: '待接受', queued: '排队中', dispatching: '派发中', submitted: '执行中',
   interrupted: '等待答复', completed: '已完成', failed: '失败', cancelled: '已取消'
@@ -320,6 +328,12 @@ function cancelExecution(item) {
   return runAction(() => projectWorkExecutionApi.cancel(projectId, taskId, item.id), '撤回分配失败')
 }
 
+function retryExecution(item) {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, item.agent_slug), '重新执行失败')
+}
+
 function createIssue() {
   const title = issueTitle.value.trim()
   const description = issueDescription.value.trim() || null
@@ -435,6 +449,8 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
 .work-task-section ul { list-style: none; margin: 0 0 18px; padding: 0; }
 .work-task-section li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
 .work-task-muted { color: var(--gray-500); }
+.work-execution-main { min-width: 0; overflow-wrap: anywhere; }.work-execution-run { color: var(--gray-500); font-size: 12px; }
+.work-execution-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .work-task-comment { display: block !important; }
 .work-task-comment p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .work-task-section :deep(textarea) { margin-bottom: 12px; }

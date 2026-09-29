@@ -16,6 +16,7 @@ from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
+from yuxi.repositories.user_inbox_repository import UserInboxRepository
 from yuxi.services.agent_request_service import AgentRequestInput, RunOrigin, submit_agent_request
 from yuxi.services.agent_run_service import resolve_agent_run_model_spec
 from yuxi.services.input_message_service import build_chat_input_message
@@ -53,6 +54,25 @@ def _execution_data(row: ProjectWorkExecution, task: ProjectWorkTask | None = No
         "task_number": task.number if task else None,
         "task_title": task.title if task else None,
     }
+
+
+async def _notify_execution_outcome(db: AsyncSession, row: ProjectWorkExecution, kind: str) -> None:
+    """在执行的源状态事务内写入一次失败或中断通知。"""
+    task = await db.get(ProjectWorkTask, row.task_id)
+    if task is None:
+        return
+    label = "任务执行失败" if kind == "task_failed" else "任务执行中断"
+    summary = row.error_message
+    if kind == "task_interrupted" and not summary:
+        summary = "执行中断，等待原 Run 恢复"
+    await UserInboxRepository(db).add_once(
+        uid=row.uid,
+        kind=kind,
+        source_id=row.task_id,
+        project_id=row.project_id,
+        title=f"{label}：{task.number} {task.title}",
+        summary=summary,
+    )
 
 
 async def _run_matches_execution(db: AsyncSession, run: AgentRun, row: ProjectWorkExecution) -> bool:
@@ -311,6 +331,7 @@ async def dispatch_execution(execution_id: str) -> None:
             row.error_message = str(exc.detail)
             row.finished_at = utc_now_naive()
             row.updated_at = row.finished_at
+            await _notify_execution_outcome(db, row, "task_failed")
             await db.commit()
             return
         row.status = "submitted"
@@ -361,6 +382,8 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
                     row.error_message = request.error_message
                     row.finished_at = utc_now_naive()
                     row.updated_at = row.finished_at
+                    if row.status == "failed":
+                        await _notify_execution_outcome(db, row, "task_failed")
                     await db.commit()
                     changed += 1
                 continue
@@ -369,6 +392,7 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
                 row.error_message = "关联 Run 不属于本次任务执行"
                 row.finished_at = utc_now_naive()
                 row.updated_at = row.finished_at
+                await _notify_execution_outcome(db, row, "task_failed")
                 await db.commit()
                 changed += 1
                 continue
@@ -393,6 +417,7 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
                     row.status = "submitted"
                 else:
                     row.status = "interrupted"
+                    await _notify_execution_outcome(db, row, "task_interrupted")
             elif run.status in {"completed", "failed", "cancelled"}:
                 row.status = run.status
                 row.finished_at = run.finished_at or utc_now_naive()
@@ -425,6 +450,8 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
                             ))
             else:
                 row.status = "submitted"
+            if row.status == "failed":
+                await _notify_execution_outcome(db, row, "task_failed")
             row.updated_at = utc_now_naive()
             await db.commit()
             changed += 1

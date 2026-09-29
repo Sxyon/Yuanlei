@@ -1190,7 +1190,7 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
     uid = str(me.json()["uid"])
     await _create_provider(e2e_client, e2e_headers)
     agent_slug = project_id = directory_name = thread_id = run_id = None
-    assignment_path = execution_id = None
+    assignment_path = execution_id = task_id = None
     execution_status = None
     parent_run_id = None
     try:
@@ -1284,6 +1284,14 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             parent_run_id = run_id
             parent = await wait_for_run(e2e_client, e2e_headers, parent_run_id)
             assert parent["status"] == "interrupted" and parent["error_type"] == "human_approval_required", parent
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_interrupted' AND source_id = $1",
+                    task_id,
+                ) == 1
+            finally:
+                await conn.close()
             await _wait_for_runtime_cleanup(parent_run_id)
             workbench = await e2e_client.get(
                 f"/api/projects/{project_id}/agents/{agent_slug}/workbench", headers=e2e_headers
@@ -1335,6 +1343,10 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                     "SELECT count(*) FROM project_work_comments WHERE task_id = $1 AND source_run_id IS NOT NULL",
                     task_id,
                 ) == 0
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_failed' AND source_id = $1",
+                    task_id,
+                ) == 1
             finally:
                 await conn.close()
             return
@@ -1412,6 +1424,12 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                     cancelled_run_ids.add(run_id)
                 await asyncio.sleep(2)
             assert execution_status in {"completed", "failed", "cancelled", "interrupted"}, execution_status
+        if task_id:
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                await conn.execute("DELETE FROM user_inbox_items WHERE source_id = $1", task_id)
+            finally:
+                await conn.close()
         if thread_id:
             deleted = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
             assert deleted.status_code in {200, 404}, deleted.text

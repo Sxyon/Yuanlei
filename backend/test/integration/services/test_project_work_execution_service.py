@@ -286,6 +286,50 @@ async def test_assignment_acceptance_and_agent_fifo(monkeypatch):
             assert await connection.scalar(text(
                 "SELECT count(*) FROM project_work_comments WHERE task_id = 'queue-task-4'"
             )) == 0
+            assert await connection.scalar(text(
+                "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_failed' AND source_id = 'queue-task-2'"
+            )) == 1
+        assert await work.reconcile_project_work_executions() >= 0
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text(
+                "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_failed' AND source_id = 'queue-task-2'"
+            )) == 1
+
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO project_work_tasks "
+                "(id, project_id, number, title, status, created_by, created_at, updated_at) "
+                "VALUES ('queue-task-int', 'queue-project', 'QUEUE-GEN-000009', 'Interrupted', 'todo', "
+                "'queue-user', NOW(), NOW())"
+            ))
+            await connection.execute(text(
+                "INSERT INTO agent_runs "
+                "(id, conversation_thread_id, runtime_scope_id, agent_slug, uid, status, request_id, "
+                "source, channel, external_id, run_type, origin_metadata, input_payload, token_usage) "
+                "VALUES ('queue-run-int', 'queue-thread-int', 'queue-thread-int', 'queue-agent', 'queue-user', "
+                "'interrupted', 'queue-request-int', 'project_work', 'worker', 'queue-execution-int', 'chat', "
+                "'{}'::jsonb, '{}'::jsonb, '{}'::jsonb)"
+            ))
+            await connection.execute(text(
+                "INSERT INTO project_work_executions (id, task_id, project_id, uid, agent_slug, status, "
+                "prompt, request_id, thread_id, current_run_id, created_at, updated_at) "
+                "VALUES ('queue-execution-int', 'queue-task-int', 'queue-project', 'queue-user', 'queue-agent', "
+                "'submitted', 'Do work', 'queue-request-int', 'queue-thread-int', 'queue-run-int', "
+                "NOW(), NOW() - INTERVAL '1 minute')"
+            ))
+        assert await work.reconcile_project_work_executions() >= 1
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text(
+                "SELECT status FROM project_work_executions WHERE id = 'queue-execution-int'"
+            )) == "interrupted"
+            assert await connection.scalar(text(
+                "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_interrupted' AND source_id = 'queue-task-int'"
+            )) == 1
+        assert await work.reconcile_project_work_executions() >= 0
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text(
+                "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_interrupted' AND source_id = 'queue-task-int'"
+            )) == 1
 
         async with scoped_engine.begin() as connection:
             await connection.execute(text(

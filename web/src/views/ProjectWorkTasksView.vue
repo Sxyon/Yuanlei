@@ -3,6 +3,7 @@
     <PageHeader title="项目工作任务" :loading="loading" show-border>
       <template #actions>
         <a-button size="small" @click="router.push({ name: 'ProjectInspectionBoardComp', params: { project_id: projectId } })">项目工作台</a-button>
+        <a-button size="small" @click="openTopicCodes">议题编号</a-button>
         <a-button size="small" :disabled="loading" @click="load">刷新</a-button>
       </template>
     </PageHeader>
@@ -124,6 +125,14 @@
           <a-input v-model:value="projectCode" maxlength="12" placeholder="例如 YL" aria-label="项目编号缩写" />
         </div>
         <label><span class="field-title">任务标题 <em>*</em></span><a-input v-model:value="title" maxlength="512" placeholder="例如：完成季度客户访谈" /></label>
+        <label>归属议题
+          <a-select v-model:value="topicId" allow-clear :disabled="saving" placeholder="可选：归入项目议题">
+            <a-select-option v-for="topic in topics" :key="topic.id" :value="topic.id">
+              {{ topic.title }}{{ topic.code ? ` · ${topic.code}` : ' · 未设缩写' }}
+            </a-select-option>
+          </a-select>
+        </label>
+        <p v-if="selectedTopicMissingCode" class="tasks-hint">所选议题尚未配置缩写，任务编号需要它。<a @click.prevent="openTopicCodes">前往配置议题编号</a></p>
         <label>任务详情<a-textarea v-model:value="description" :rows="4" placeholder="写明目标、交付物和验收条件" /></label>
         <div class="form-pair">
           <label>计划开始 <input v-model="startDate" type="date" /></label>
@@ -135,6 +144,21 @@
         </div>
         <p v-if="formError" class="tasks-error" role="alert">{{ formError }}</p>
         <div class="form-actions"><a-button @click="createOpen = false">取消</a-button><a-button type="primary" :loading="saving" :disabled="!title.trim() || (!codeSaved && !projectCode.trim())" @click="createTask">创建任务</a-button></div>
+      </div>
+    </a-modal>
+    <a-modal v-model:open="topicCodeOpen" title="议题编号缩写" :footer="null" :width="560">
+      <div class="task-form">
+        <p class="tasks-hint">议题缩写首次保存后固化，任务编号形如 <code>{项目缩写}-{议题缩写}-{序号}</code>。</p>
+        <p v-if="!topics.length" class="tasks-hint">当前项目还没有议题，请先在项目工作台创建议题。</p>
+        <div v-for="topic in topics" :key="topic.id" class="topic-code-row">
+          <div class="topic-code-name"><strong>{{ topic.title }}</strong><small>{{ topic.status }}</small></div>
+          <span v-if="topic.code" class="topic-code-locked">{{ topic.code }} · 已固化</span>
+          <template v-else>
+            <a-input v-model:value="topicCodeDrafts[topic.id]" maxlength="12" placeholder="例如 REG" aria-label="议题编号缩写" />
+            <a-button :loading="saving" :disabled="!(topicCodeDrafts[topic.id] || '').trim()" @click="saveTopicCode(topic)">保存</a-button>
+          </template>
+        </div>
+        <p v-if="formError" class="tasks-error" role="alert">{{ formError }}</p>
       </div>
     </a-modal>
     <a-modal v-model:open="scheduleOpen" title="设置任务计划" :footer="null" :width="440">
@@ -160,6 +184,10 @@ const router = useRouter()
 const projectId = computed(() => String(route.params.project_id || ''))
 const tasks = ref([])
 const agents = ref([])
+const topics = ref([])
+const topicId = ref(undefined)
+const topicCodeOpen = ref(false)
+const topicCodeDrafts = ref({})
 const loading = ref(false)
 const saving = ref(false)
 const updatingId = ref('')
@@ -202,6 +230,10 @@ const taskRoute = (item) => ({ name: 'ProjectWorkTaskView', params: { project_id
 const countStatus = (status) => tasks.value.filter((item) => item.status === status).length
 const matchesSearch = (item) => `${item.number} ${item.title}`.toLowerCase().includes(search.value.trim().toLowerCase())
 const visibleTasks = computed(() => tasks.value.filter((item) => matchesSearch(item) && (filter.value === 'all' || item.status === filter.value)))
+const selectedTopicMissingCode = computed(() => {
+  const topic = topics.value.find((item) => item.id === topicId.value)
+  return Boolean(topic && !topic.code)
+})
 const matchingTasks = (status) => tasks.value.filter((item) => item.status === status && matchesSearch(item))
 const monthDays = computed(() => {
   const [year, month] = ganttMonth.value.split('-').map(Number)
@@ -231,12 +263,14 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [items, bindings, code] = await Promise.all([
-      projectWorkApi.listTasks(project), projectAgentApi.list(project), projectWorkApi.getCode(project)
+    const [items, bindings, code, topicRows] = await Promise.all([
+      projectWorkApi.listTasks(project), projectAgentApi.list(project),
+      projectWorkApi.getCode(project), projectWorkApi.listTopics(project)
     ])
     if (version !== loadVersion || project !== projectId.value) return
     tasks.value = items
     agents.value = bindings.agents || []
+    topics.value = topicRows
     if (codeVersion === codeWriteVersion) {
       projectCode.value = code.code || ''
       codeSaved.value = Boolean(code.code)
@@ -263,6 +297,32 @@ async function saveCode() {
   }
 }
 
+function openTopicCodes() {
+  formError.value = ''
+  topicCodeDrafts.value = Object.fromEntries(
+    topics.value.filter((topic) => !topic.code).map((topic) => [topic.id, ''])
+  )
+  topicCodeOpen.value = true
+}
+
+async function saveTopicCode(topic) {
+  if (saving.value) return
+  const project = projectId.value
+  const code = (topicCodeDrafts.value[topic.id] || '').trim()
+  if (!code) return
+  saving.value = true
+  formError.value = ''
+  try {
+    const saved = await projectWorkApi.configureTopicCode(project, topic.id, code)
+    if (project !== projectId.value) return
+    topics.value = topics.value.map((item) => (item.id === topic.id ? { ...item, code: saved.code } : item))
+  } catch (cause) {
+    if (project === projectId.value) formError.value = cause?.message || '议题缩写保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+
 async function createTask() {
   if (saving.value) return
   if (startDate.value && dueDate.value && startDate.value > dueDate.value) {
@@ -279,6 +339,7 @@ async function createTask() {
     }
     const created = await projectWorkApi.createTask(project, {
       title: title.value.trim(), description: description.value.trim() || null,
+      topic_id: topicId.value || null,
       parent_id: parentId.value || null, primary_owner_agent_slug: ownerSlug.value || null,
       start_date: startDate.value || null, due_date: dueDate.value || null
     })
@@ -288,6 +349,7 @@ async function createTask() {
     description.value = ''
     startDate.value = ''
     dueDate.value = ''
+    topicId.value = undefined
     parentId.value = undefined
     ownerSlug.value = undefined
     await load()
@@ -344,9 +406,13 @@ async function saveSchedule() {
 watch(projectId, () => {
   tasks.value = []
   agents.value = []
+  topics.value = []
+  topicId.value = undefined
+  topicCodeDrafts.value = {}
   projectCode.value = ''
   codeSaved.value = false
   createOpen.value = false
+  topicCodeOpen.value = false
   scheduleOpen.value = false
   title.value = ''
   description.value = ''
@@ -416,6 +482,10 @@ onUnmounted(() => clearInterval(calendarTimer))
 .gantt-task { padding: 10px 15px; border-bottom: 1px solid var(--gray-100); display: flex; flex-direction: column; gap: 4px; min-height: 60px; }.gantt-task a { color: var(--gray-900); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.gantt-task small { color: var(--main-color); display: block; font-size: 10px; }.gantt-task button { text-align: left; padding: 0; border: 0; background: transparent; color: var(--main-color); font-size: 11px; cursor: pointer; }
 .gantt-track { position: relative; border-bottom: 1px solid var(--gray-100); min-height: 60px; }.gantt-track > span:not(.gantt-unplanned) { border-left: 1px solid var(--gray-100); }.gantt-bar { position: absolute; top: 22px; height: 16px; border-radius: 4px; background: #94a3b8; }.gantt-bar.status-in_progress { background: #3b82f6; }.gantt-bar.status-blocked { background: #f59e0b; }.gantt-bar.status-done { background: #10b981; }.gantt-unplanned { position: absolute; top: 21px; left: 12px; color: var(--gray-500); font-size: 11px; }
 .view-empty { padding: 55px 20px; text-align: center; color: var(--gray-500); }.tasks-error { color: var(--color-error-700); margin: 12px 0; }
+.tasks-hint { color: var(--gray-600); font-size: 12px; margin: 0; }.tasks-hint code { color: var(--gray-800); background: var(--gray-100); border-radius: 4px; padding: 1px 5px; }
+.topic-code-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--gray-100); }
+.topic-code-row:first-of-type { border-top: 0; }.topic-code-name { min-width: 0; display: flex; flex-direction: column; gap: 2px; }.topic-code-name strong { color: var(--gray-800); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.topic-code-name small { color: var(--gray-500); }
+.topic-code-locked { color: var(--gray-600); font-size: 12px; }
 .task-form { display: flex; flex-direction: column; gap: 17px; padding-top: 8px; }.task-form label { display: flex; flex-direction: column; gap: 7px; color: var(--gray-700); font-weight: 600; font-size: 13px; }.field-title { color: var(--gray-700); }.field-title em { color: var(--color-error-700); font-style: normal; }.task-form label :deep(.ant-select) { width: 100%; }
 .form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }.form-actions { display: flex; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--gray-150); padding-top: 16px; }
 .code-setup { padding: 14px; border-radius: 9px; background: var(--gray-50, #f8fafc); border: 1px solid var(--gray-150); }.code-setup p { color: var(--gray-600); font-size: 12px; margin: 4px 0 10px; }.schedule-title { color: var(--gray-700); margin: 0; }

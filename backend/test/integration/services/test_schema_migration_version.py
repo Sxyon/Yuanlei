@@ -311,6 +311,41 @@ async def test_yuanlei_v17_to_v18_preserves_tasks_and_adds_plan_dates() -> None:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v18_to_v19_extends_inbox_kinds_idempotently() -> None:
+    """存量 v18 升级后保留通知，并允许写入失败与中断通知。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_inbox_kinds")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("ALTER TABLE user_inbox_items DROP CONSTRAINT ck_user_inbox_items_kind"))
+            await connection.execute(text(
+                "ALTER TABLE user_inbox_items ADD CONSTRAINT ck_user_inbox_items_kind "
+                "CHECK (kind IN ('task_completed', 'run_question'))"
+            ))
+            await connection.execute(text(
+                "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                "VALUES ('legacy-notice', 'kinds-user', 'task_completed', 'legacy-task', 'Done', NOW())"
+            ))
+        with pytest.raises(IntegrityError):
+            async with scoped_engine.begin() as connection:
+                await connection.execute(text(
+                    "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                    "VALUES ('too-early', 'kinds-user', 'task_failed', 'early-task', 'Early', NOW())"
+                ))
+        await manager.upgrade_yuanlei_schema_v18_to_v19()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                "VALUES ('failed-notice', 'kinds-user', 'task_failed', 'failed-task', 'Failed', NOW()), "
+                "('interrupted-notice', 'kinds-user', 'task_interrupted', 'interrupted-task', 'Interrupted', NOW())"
+            ))
+        await manager.upgrade_yuanlei_schema_v18_to_v19()
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text("SELECT count(*) FROM user_inbox_items")) == 3
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")

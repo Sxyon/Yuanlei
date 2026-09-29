@@ -179,15 +179,30 @@ async def configure_topic_code(*, db: AsyncSession, user: User, project_id: str,
     existing = await repo.get_topic_code(topic_id)
     if existing is not None:
         if existing.code != normalized:
-            raise HTTPException(status_code=409, detail="议题缩写已经固化")
+            raise HTTPException(
+                status_code=409, detail={"code": "topic_code_locked", "message": "议题缩写已经固化，不能修改"}
+            )
         return {"topic_id": topic_id, "code": existing.code}
     try:
         await repo.set_topic_code(project_id, topic_id, normalized)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="议题缩写已被使用") from exc
+        raise HTTPException(
+            status_code=409, detail={"code": "topic_code_taken", "message": "议题缩写已被其他议题使用，请换一个"}
+        ) from exc
     return {"topic_id": topic_id, "code": normalized}
+
+
+async def list_topics(*, db: AsyncSession, user: User, project_id: str) -> list[dict]:
+    """列出当前项目议题及其已固化缩写，供建任务时选择。"""
+    await _project(db, user, project_id)
+    topics = await GovernanceRepository(db).list_topics(project_id=project_id)
+    codes = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).list_topic_codes()
+    return [
+        {"id": row.id, "title": row.title, "status": row.status, "code": codes.get(row.id)}
+        for row in topics
+    ]
 
 
 async def create_task(
@@ -218,7 +233,9 @@ async def create_task(
             raise HTTPException(status_code=404, detail="议题不存在")
         configured = await repo.get_topic_code(topic_id)
         if configured is None:
-            raise HTTPException(status_code=409, detail="议题缩写尚未固化")
+            raise HTTPException(
+                status_code=409, detail={"code": "topic_code_required", "message": "请先为所选议题配置缩写，再创建任务"}
+            )
         topic_code = configured.code
     if primary_owner_agent_slug is not None:
         binding = await ProjectAgentRepository(db).get_for_update(project_id, primary_owner_agent_slug)

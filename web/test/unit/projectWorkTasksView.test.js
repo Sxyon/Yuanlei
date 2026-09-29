@@ -32,6 +32,7 @@ test('切换项目清空任务草稿并忽略迟到的旧项目响应', async (t
   const finish = {}
   t.mock.method(projectWorkApi, 'listTasks', (projectId) => new Promise((resolve) => { finish[projectId] = resolve }))
   t.mock.method(projectWorkApi, 'getCode', async (projectId) => ({ code: projectId.toUpperCase() }))
+  t.mock.method(projectWorkApi, 'listTopics', async () => [])
   t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
   const router = createRouter({
     history: createMemoryHistory(),
@@ -71,6 +72,7 @@ test('保存缩写后迟到的旧读取不能清除固化状态', async (t) => {
   t.mock.method(projectWorkApi, 'listTasks', async () => [])
   t.mock.method(projectWorkApi, 'getCode', () => new Promise((resolve) => { finishCode = resolve }))
   t.mock.method(projectWorkApi, 'configureCode', async () => ({ code: 'YL' }))
+  t.mock.method(projectWorkApi, 'listTopics', async () => [])
   t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
   const router = createRouter({
     history: createMemoryHistory(),
@@ -104,6 +106,9 @@ test('首次创建先固化项目缩写，再持久化带计划日期的任务',
     code = value
     return { code }
   })
+  t.mock.method(projectWorkApi, 'listTopics', async () => [
+    { id: 'topic-1', title: '议题', status: 'proposed', code: 'TOP' }
+  ])
   t.mock.method(projectWorkApi, 'createTask', async (_projectId, payload) => {
     calls.push(['task', payload])
     return { id: 'created-task' }
@@ -130,8 +135,42 @@ test('首次创建先固化项目缩写，再持久化带计划日期的任务',
   instance.setupState.title = '访谈客户'
   instance.setupState.startDate = '2026-10-01'
   instance.setupState.dueDate = '2026-10-08'
+  instance.setupState.topicId = 'topic-1'
   await instance.setupState.createTask()
   assert.deepEqual(calls.map((item) => item[0]), ['code', 'task'])
   assert.equal(calls[1][1].due_date, '2026-10-08')
+  assert.equal(calls[1][1].topic_id, 'topic-1')
   assert.equal(router.currentRoute.value.params.task_id, 'created-task')
+})
+
+test('为未设缩写的议题保存编号并更新本地列表', async (t) => {
+  const calls = []
+  t.mock.method(projectWorkApi, 'listTasks', async () => [])
+  t.mock.method(projectWorkApi, 'getCode', async () => ({ code: 'YL' }))
+  t.mock.method(projectWorkApi, 'listTopics', async () => [
+    { id: 'topic-1', title: '议题', status: 'proposed', code: null }
+  ])
+  t.mock.method(projectWorkApi, 'configureTopicCode', async (_projectId, topicId, value) => {
+    calls.push([topicId, value])
+    return { topic_id: topicId, code: value.toUpperCase() }
+  })
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks', component: View }]
+  })
+  await router.push('/projects/a/work/tasks')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  instance.setupState.topicCodeDrafts = { 'topic-1': 'reg' }
+  await instance.setupState.saveTopicCode({ id: 'topic-1' })
+  assert.deepEqual(calls, [['topic-1', 'reg']])
+  assert.equal(instance.setupState.topics[0].code, 'REG')
 })

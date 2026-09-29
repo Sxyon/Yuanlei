@@ -100,6 +100,20 @@ class ProjectWorkRepository:
             )
         )
 
+    async def list_topic_codes(self) -> dict[str, str]:
+        """读取当前项目已固化的议题缩写映射。"""
+        rows = await self.db.scalars(
+            select(ProjectTopicCode)
+            .join(Project, Project.id == ProjectTopicCode.project_id)
+            .where(
+                ProjectTopicCode.project_id == self.project_id,
+                Project.uid == self.uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+            )
+        )
+        return {row.topic_id: row.code for row in rows}
+
     async def set_topic_code(self, project_id: str, topic_id: str, code: str) -> ProjectTopicCode:
         """插入议题缩写并 flush。"""
         await self._require_project()

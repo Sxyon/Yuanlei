@@ -1036,7 +1036,10 @@ class UserInboxItem(Base):
     __tablename__ = "user_inbox_items"
     __table_args__ = (
         UniqueConstraint("uid", "kind", "source_id", name="uq_user_inbox_items_source"),
-        CheckConstraint("kind IN ('task_completed', 'run_question')", name="ck_user_inbox_items_kind"),
+        CheckConstraint(
+            "kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted')",
+            name="ck_user_inbox_items_kind",
+        ),
         Index("ix_user_inbox_items_uid_created", "uid", "created_at"),
     )
 

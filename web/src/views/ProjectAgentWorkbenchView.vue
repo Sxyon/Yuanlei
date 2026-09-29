@@ -36,12 +36,16 @@
                 </RouterLink>
                 <p>{{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</p>
                 <p v-if="item.model_spec">执行模型：{{ item.model_spec }}</p>
+                <p v-if="item.current_run_id">Run：{{ item.current_run_id }}</p>
                 <p v-if="item.error_message" class="agent-workbench-error">{{ item.error_message }}</p>
                 <RouterLink v-if="item.thread_id && ['submitted', 'interrupted'].includes(item.status)" :to="{ name: 'AgentCompWithThreadId', params: { thread_id: item.thread_id } }">进入执行会话</RouterLink>
               </div>
               <div v-if="['pending_acceptance', 'queued'].includes(item.status)" class="agent-workbench-actions">
                 <a-button v-if="item.status === 'pending_acceptance'" type="primary" :loading="working === item.id" :disabled="Boolean(working)" @click="accept(item)">接受任务</a-button>
                 <a-button :loading="working === item.id" :disabled="Boolean(working)" @click="cancel(item)">撤回分配</a-button>
+              </div>
+              <div v-else-if="['failed', 'cancelled'].includes(item.status)" class="agent-workbench-actions">
+                <a-button :loading="working === item.id" :disabled="Boolean(working)" @click="retry(item)">重新执行</a-button>
               </div>
             </li>
           </ul>
@@ -157,6 +161,21 @@ async function cancel(item) {
     if (version === loadVersion) await load()
   } catch (cause) {
     if (version === loadVersion) actionError.value = cause?.message || '撤回分配失败'
+  } finally {
+    working.value = null
+  }
+}
+
+async function retry(item) {
+  if (working.value) return
+  const version = loadVersion
+  working.value = item.id
+  actionError.value = ''
+  try {
+    await projectWorkExecutionApi.assign(route.params.project_id, item.task_id, item.agent_slug)
+    if (version === loadVersion) await load()
+  } catch (cause) {
+    if (version === loadVersion) actionError.value = cause?.message || '重新执行失败'
   } finally {
     working.value = null
   }

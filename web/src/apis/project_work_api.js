@@ -6,6 +6,9 @@ export const projectWorkApi = {
   getCode: (projectId) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/code`),
   configureCode: (projectId, code) =>
     apiPut(`/api/projects/${encodeURIComponent(projectId)}/work/code`, { code }),
+  listTopics: (projectId) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/topics`),
+  configureTopicCode: (projectId, topicId, code) =>
+    apiPut(`/api/projects/${encodeURIComponent(projectId)}/work/topics/${encodeURIComponent(topicId)}/code`, { code }),
   createTask: (projectId, payload) =>
     apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks`, payload),
   getTask: (projectId, taskId) =>

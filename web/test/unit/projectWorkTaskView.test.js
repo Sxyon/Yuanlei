@@ -147,6 +147,41 @@ test('回读保留未提交负责人草稿，旧 Issue 评论不覆盖新选择'
   assert.equal(instance.setupState.issueDraft, 'B 的草稿')
 })
 
+test('失败尝试展示 Run 与错误并可重新执行', async (t) => {
+  const assigned = []
+  t.mock.method(projectWorkApi, 'getTask', async () => ({
+    id: 'task', status: 'in_progress', primary_owner_agent_slug: null,
+    issues: [], comments: [], references: []
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => ([
+    { id: 'exec-1', agent_slug: 'agent-a', status: 'failed', error_message: '执行失败', current_run_id: 'run-1', thread_id: 'thread-1' }
+  ]))
+  t.mock.method(projectWorkExecutionApi, 'assign', async (projectId, taskId, agentSlug) => {
+    assigned.push([projectId, taskId, agentSlug])
+    return { id: 'exec-2' }
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }]
+  })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  assert.deepEqual(instance.setupState.retryableStatuses, ['failed', 'cancelled'])
+  assert.equal(instance.setupState.executions[0].current_run_id, 'run-1')
+  await instance.setupState.retryExecution(instance.setupState.executions[0])
+  assert.deepEqual(assigned, [['project', 'task', 'agent-a']])
+})
+
 test('网页引用提交失败时在表单旁显示错误并保留输入', async (t) => {
   t.mock.method(projectWorkApi, 'getTask', async () => ({
     id: 'task', status: 'todo', primary_owner_agent_slug: null,

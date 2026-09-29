@@ -20,6 +20,7 @@ from yuxi.services.project_work_service import (
     create_task,
     get_issue,
     get_task,
+    list_topics,
     update_task,
 )
 from yuxi.services.project_agent_service import unbind_project_agent_view
@@ -107,10 +108,23 @@ async def test_project_work_numbering_issue_discussion_and_scope() -> None:
         async with sessions() as db:
             await configure_project_code(db=db, user=user, project_id="work-b", code="WORKB")
         async with sessions() as db:
+            assert await list_topics(db=db, user=user, project_id="work-a") == [
+                {"id": "work-topic", "title": "Topic", "status": "proposed", "code": None}
+            ]
+            with pytest.raises(HTTPException) as outsider_topics:
+                await list_topics(
+                    db=db, user=User(uid="work-outsider", username="work-outsider"), project_id="work-a"
+                )
+            assert outsider_topics.value.status_code == 404
+        async with sessions() as db:
             with pytest.raises(HTTPException) as reserved:
                 await configure_topic_code(db=db, user=user, project_id="work-a", topic_id="work-topic", code="GEN")
             assert reserved.value.status_code == 422
             await configure_topic_code(db=db, user=user, project_id="work-a", topic_id="work-topic", code="TOP")
+        async with sessions() as db:
+            assert await list_topics(db=db, user=user, project_id="work-a") == [
+                {"id": "work-topic", "title": "Topic", "status": "proposed", "code": "TOP"}
+            ]
 
         async def make_task(title: str) -> dict:
             async with sessions() as db:

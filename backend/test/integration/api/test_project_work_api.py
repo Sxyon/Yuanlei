@@ -51,6 +51,14 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
                 ),
                 {"id": pid, "uid": uid, "path": f"projects/{pid}"},
             )
+        topic_id = f"pytest-topic-{marker}"
+        await db.execute(
+            text(
+                "INSERT INTO governance_topics (id, project_id, title, status, source_channel, created_at, updated_at) "
+                "VALUES (:id, :project_id, 'Integration topic', 'proposed', 'project', NOW(), NOW())"
+            ),
+            {"id": topic_id, "project_id": project_id},
+        )
         await db.execute(
             text(
                 "INSERT INTO agents "
@@ -108,6 +116,43 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
             f"{root}/tasks/{task_id}", headers=headers, json={"due_date": "2026-10-12"}
         )
         assert changed_plan.status_code == 200 and changed_plan.json()["due_date"] == "2026-10-12"
+        topics_path = f"{root}/topics"
+        assert (await test_client.get(topics_path, headers=outsider_headers)).status_code == 404
+        listed_topics = await test_client.get(topics_path, headers=headers)
+        assert listed_topics.status_code == 200, listed_topics.text
+        assert listed_topics.json() == [
+            {"id": topic_id, "title": "Integration topic", "status": "proposed", "code": None}
+        ]
+        no_topic_code = await test_client.post(
+            f"{root}/tasks", headers=headers, json={"title": "Topic before code", "topic_id": topic_id}
+        )
+        assert no_topic_code.status_code == 409
+        assert no_topic_code.json()["detail"]["code"] == "topic_code_required"
+        topic_code = f"T{uuid.uuid4().hex[:6].upper()}"
+        assert (await test_client.put(
+            f"{root}/topics/{topic_id}/code", headers=outsider_headers, json={"code": topic_code}
+        )).status_code == 404
+        assert (await test_client.put(
+            f"/api/projects/{other_id}/work/topics/{topic_id}/code", headers=headers, json={"code": topic_code}
+        )).status_code == 404
+        configured_topic = await test_client.put(
+            f"{root}/topics/{topic_id}/code", headers=headers, json={"code": topic_code}
+        )
+        assert configured_topic.status_code == 200, configured_topic.text
+        assert configured_topic.json() == {"topic_id": topic_id, "code": topic_code}
+        assert (await test_client.put(
+            f"{root}/topics/{topic_id}/code", headers=headers, json={"code": topic_code}
+        )).status_code == 200
+        assert (await test_client.put(
+            f"{root}/topics/{topic_id}/code", headers=headers, json={"code": f"X{topic_code}"}
+        )).status_code == 409
+        topic_task = await test_client.post(
+            f"{root}/tasks", headers=headers, json={"title": "Topic task", "topic_id": topic_id}
+        )
+        assert topic_task.status_code == 200, topic_task.text
+        assert topic_task.json()["number"] == f"{code}-{topic_code}-000002"
+        assert topic_task.json()["topic_id"] == topic_id
+        assert (await test_client.get(topics_path, headers=headers)).json()[0]["code"] == topic_code
         references_path = f"{root}/tasks/{task_id}/references"
         assert (await test_client.post(
             references_path, headers=headers, json={"title": "Unsafe", "url": "javascript:alert(1)"}

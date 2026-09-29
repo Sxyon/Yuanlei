@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 18
+YUANLEI_SCHEMA_VERSION = 19
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -675,9 +675,17 @@ USER_INBOX_SCHEMA_STATEMENTS = (
         archived_at TIMESTAMP WITHOUT TIME ZONE,
         created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
         CONSTRAINT uq_user_inbox_items_source UNIQUE (uid, kind, source_id),
-        CONSTRAINT ck_user_inbox_items_kind CHECK (kind IN ('task_completed', 'run_question'))
+        CONSTRAINT ck_user_inbox_items_kind CHECK (
+            kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted'))
     )""",
     "CREATE INDEX IF NOT EXISTS ix_user_inbox_items_uid_created ON user_inbox_items(uid, created_at)",
+)
+# 元垒收件箱通知词表扩展：执行失败与中断恢复。旧库以幂等 DROP/ADD 收敛 CHECK，
+# 保留既有通知行。
+USER_INBOX_KIND_SCHEMA_STATEMENTS = (
+    "ALTER TABLE user_inbox_items DROP CONSTRAINT IF EXISTS ck_user_inbox_items_kind",
+    "ALTER TABLE user_inbox_items ADD CONSTRAINT ck_user_inbox_items_kind CHECK "
+    "(kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted'))",
 )
 PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_work_executions (
@@ -1469,6 +1477,13 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             await conn.execute(text("ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS start_date DATE"))
             await conn.execute(text("ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS due_date DATE"))
+
+    async def upgrade_yuanlei_schema_v18_to_v19(self) -> None:
+        """扩展用户收件箱通知词表：执行失败与中断恢复。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in USER_INBOX_KIND_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
 
     async def drop_tables(self):
         """删除所有表（慎用！）"""

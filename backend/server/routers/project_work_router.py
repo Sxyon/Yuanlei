@@ -94,6 +94,16 @@ async def configure_project_code(
     return await work.configure_project_code(db=db, user=user, project_id=project_id, code=payload.code)
 
 
+@project_work.get("/projects/{project_id}/work/topics")
+async def list_topics(
+    project_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出项目议题及其已固化缩写。"""
+    return await work.list_topics(db=db, user=user, project_id=project_id)
+
+
 @project_work.put("/projects/{project_id}/work/topics/{topic_id}/code")
 async def configure_topic_code(
     project_id: str,

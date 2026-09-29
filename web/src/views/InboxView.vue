@@ -28,14 +28,14 @@
       <ul v-else class="inbox-list">
         <li v-for="item in items" :key="item.id" class="inbox-item">
           <div class="inbox-item-main">
-            <span class="inbox-kind">{{ item.kind === 'task_completed' ? '任务完成' : '等待答复' }}</span>
+            <span class="inbox-kind">{{ kindInfo(item.kind).label }}</span>
             <h2>{{ item.title }}</h2>
             <p v-if="item.summary">{{ item.summary }}</p>
             <time :datetime="item.created_at">{{ formatTime(item.created_at) }}</time>
           </div>
           <div class="inbox-actions">
             <a-button size="small" type="primary" :loading="busyId === item.id" @click="openItem(item)">
-              {{ item.kind === 'task_completed' ? '查看任务' : '前往答复' }}
+              {{ kindInfo(item.kind).action }}
             </a-button>
             <a-button size="small" :disabled="busyId === item.id" @click="changeItem(item, { read: !item.read_at })">
               {{ item.read_at ? '标为未读' : '标为已读' }}
@@ -79,6 +79,13 @@ const nextCursor = ref(null)
 let loadVersion = 0
 
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
+const KIND_META = {
+  task_completed: { label: '任务完成', action: '查看任务', target: 'task' },
+  task_failed: { label: '任务失败', action: '查看任务', target: 'task' },
+  task_interrupted: { label: '任务中断', action: '查看任务', target: 'task' },
+  run_question: { label: '等待答复', action: '前往答复', target: 'run' }
+}
+const kindInfo = (kind) => KIND_META[kind] || { label: kind, action: '查看来源', target: 'task' }
 
 async function load() {
   const version = ++loadVersion
@@ -135,7 +142,7 @@ async function openItem(item) {
   actionError.value = ''
   try {
     let destination
-    if (item.kind === 'task_completed') {
+    if (kindInfo(item.kind).target === 'task') {
       destination = `/projects/${encodeURIComponent(item.project_id)}/work/tasks/${encodeURIComponent(item.source_id)}`
     } else {
       const response = await agentApi.getAgentRun(item.source_id)
