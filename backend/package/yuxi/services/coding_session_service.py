@@ -73,6 +73,7 @@ class CodingSessionService:
                 "started_at": turn.started_at.isoformat() if turn.started_at else None,
                 "ended_at": turn.ended_at.isoformat() if turn.ended_at else None,
                 "error_code": turn.error_code,
+                "error_message": turn.error_message,
             }
             for turn in turns
         ]

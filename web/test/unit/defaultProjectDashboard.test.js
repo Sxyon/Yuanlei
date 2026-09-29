@@ -3,9 +3,15 @@ import test from 'node:test'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { createPinia } from 'pinia'
 import { createServer } from 'vite'
 
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
+globalThis.document = {
+  documentElement: { classList: { add() {}, remove() {} } },
+  getElementsByTagName: () => []
+}
+globalThis.window = { addEventListener() {}, removeEventListener() {} }
 const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
 const { default: DefaultProjectDashboard } = await vite.ssrLoadModule(
   '/src/components/project/DefaultProjectDashboard.vue'
@@ -14,6 +20,8 @@ const { default: DefaultProjectDashboard } = await vite.ssrLoadModule(
 test.after(async () => {
   await vite.close()
   delete globalThis.localStorage
+  delete globalThis.document
+  delete globalThis.window
 })
 
 async function renderDashboard(board, blueprintContent = '') {
@@ -40,6 +48,7 @@ async function renderDashboard(board, blueprintContent = '') {
     })
   )
   app.use(router)
+  app.use(createPinia())
   app.component('a-tag', {
     render() {
       return h('span', this.$slots.default?.())

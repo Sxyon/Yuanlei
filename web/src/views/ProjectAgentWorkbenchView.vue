@@ -89,9 +89,14 @@ const statusLabel = (status) => ({
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
 
 async function load() {
-  const version = ++loadVersion
   const projectId = route.params.project_id
   const agentSlug = route.params.agent_slug
+  if (!projectId || !agentSlug) {
+    ++loadVersion
+    loading.value = false
+    return
+  }
+  const version = ++loadVersion
   loading.value = true
   error.value = ''
   try {
@@ -109,15 +114,17 @@ async function load() {
 }
 
 async function saveSettings() {
-  if (!settingsChanged.value || settingsSaving.value) return
+  const projectId = route.params.project_id
+  const agentSlug = route.params.agent_slug
+  if (!projectId || !agentSlug || !settingsChanged.value || settingsSaving.value) return
   settingsSaving.value = true
   actionError.value = ''
   try {
-    await projectWorkExecutionApi.updateWorkbenchConfig(route.params.project_id, route.params.agent_slug, {
+    await projectWorkExecutionApi.updateWorkbenchConfig(projectId, agentSlug, {
       auto_accept_work: autoAcceptWork.value,
       work_default_model_spec: workDefaultModelSpec.value || null
     })
-    await load()
+    if (projectId === route.params.project_id && agentSlug === route.params.agent_slug) await load()
   } catch (cause) {
     actionError.value = cause?.message || '保存任务设置失败'
   } finally {
@@ -156,6 +163,11 @@ async function cancel(item) {
 }
 
 watch(() => [route.params.project_id, route.params.agent_slug], () => {
+  if (!route.params.project_id || !route.params.agent_slug) {
+    ++loadVersion
+    loading.value = false
+    return
+  }
   workbench.value = null
   actionError.value = ''
   load()

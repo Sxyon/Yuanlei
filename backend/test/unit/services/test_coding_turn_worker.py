@@ -63,9 +63,10 @@ class _FakeProvider:
 
 
 class _FakeBackend:
-    def __init__(self, output: str, *, state_present: bool = True, on_execute=None):
+    def __init__(self, output: str, *, state_present: bool = True, exit_code: int = 0, on_execute=None):
         self.output = output
         self.state_present = state_present
+        self.exit_code = exit_code
         self.on_execute = on_execute
         self.commands: list[str] = []
 
@@ -76,7 +77,7 @@ class _FakeBackend:
             return SimpleNamespace(output=output, exit_code=0, truncated=False)
         if self.on_execute is not None:
             self.on_execute()
-        return SimpleNamespace(output=self.output, exit_code=0, truncated=False)
+        return SimpleNamespace(output=self.output, exit_code=self.exit_code, truncated=False)
 
 
 class _FakeLeaseService:
@@ -207,6 +208,25 @@ async def test_job_executes_pending_turn(session, monkeypatch):
     assert "turn_queued" in [event["kind"] for event in detail["events"]]
     assert any("--agent plan" in command for command in backend.commands)
     assert "pending_turn" not in (created.policy_json or {})
+
+
+async def test_job_timeout_error_is_visible_in_session_detail(session, monkeypatch):
+    monkeypatch.setattr(execution_module, "coding_cancel_requested", _async_false)
+    created, turn = await _seed_pending_turn(session)
+
+    result = await run_coding_turn_job(
+        session_id=created.id,
+        turn_id=turn.id,
+        session_factory=_factory_for(session),
+        provider=_FakeProvider(),
+        backend=_FakeBackend("Error: timed out", exit_code=1),
+        lease_service=_FakeLeaseService(),
+    )
+
+    assert result["status"] == "failed"
+    detail = await CodingSessionService(session).session_detail(uid="user-1", session_id=created.id)
+    assert detail["error_message"] == "编码执行超时"
+    assert detail["turns"][0]["error_message"] == "编码执行超时"
 
 
 async def test_job_commits_lifecycle_row_lock_before_cli_execution(session, monkeypatch):

@@ -24,7 +24,10 @@
         <div v-for="turn in turns" :key="turn.seq" class="coding-turn">
           <span class="turn-seq">#{{ turn.seq }}</span>
           <span class="turn-status" :class="turn.status">{{ turn.status }}</span>
-          <span class="turn-summary">{{ turn.summary || '（无摘要）' }}</span>
+          <div class="turn-output">
+            <span class="turn-summary">{{ turn.summary || '（无摘要）' }}</span>
+            <span v-if="turn.error_message" class="turn-error">{{ turn.error_message }}</span>
+          </div>
         </div>
       </div>
     </template>
@@ -179,5 +182,16 @@ onUnmounted(stopPolling)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.turn-output {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.turn-error {
+  color: var(--color-error, #ff4d4f);
+  overflow-wrap: anywhere;
 }
 </style>

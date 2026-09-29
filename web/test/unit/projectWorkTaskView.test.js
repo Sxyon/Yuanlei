@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import { setImmediate } from 'node:timers'
-import { createRenderer, getCurrentInstance, h, nextTick, ssrContextKey } from 'vue'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createRenderer, getCurrentInstance, h, KeepAlive, nextTick, ssrContextKey } from 'vue'
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createServer } from 'vite'
 
 let vite, View, projectWorkApi, projectAgentApi, projectWorkExecutionApi
@@ -60,6 +60,44 @@ test('快速切换任务时迟到的旧任务响应不能覆盖当前详情', as
   await settle()
   assert.equal(instance.setupState.task.id, 'b')
   assert.equal(instance.setupState.loading, false)
+})
+
+test('离开任务页面后不再用空路由参数请求任务', async (t) => {
+  let taskReads = 0
+  let executionReads = 0
+  let agentReads = 0
+  t.mock.method(projectWorkApi, 'getTask', async () => {
+    taskReads += 1
+    return { id: 'task', status: 'todo', issues: [], comments: [], references: [] }
+  })
+  t.mock.method(projectAgentApi, 'list', async () => {
+    agentReads += 1
+    return { agents: [] }
+  })
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => {
+    executionReads += 1
+    return []
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/projects/:project_id/work/tasks/:task_id', component: View },
+      { path: '/inbox', component: { render: () => h('div') } }
+    ]
+  })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  const Component = { render() { return h(RouterView, null, { default: ({ Component: Current }) => h(KeepAlive, null, { default: () => h(Current) }) }) } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  await router.push('/inbox')
+  await settle()
+
+  assert.deepEqual([taskReads, agentReads, executionReads], [1, 1, 1])
 })
 
 test('回读保留未提交负责人草稿，旧 Issue 评论不覆盖新选择', async (t) => {

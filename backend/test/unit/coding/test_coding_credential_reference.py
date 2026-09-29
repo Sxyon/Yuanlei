@@ -46,11 +46,12 @@ async def _seed_provider(
     models: list[dict] | None = None,
     base_url: str = "https://api.siliconflow.cn/v1",
     display_name: str = "SiliconFlow",
+    provider_type: str = "openai",
 ) -> ModelProvider:
     provider = ModelProvider(
         provider_id=provider_id,
         display_name=display_name,
-        provider_type="openai",
+        provider_type=provider_type,
         base_url=base_url,
         api_key=api_key,
         capabilities=["chat"],
@@ -125,6 +126,27 @@ async def test_reference_custom_key_keeps_provider_channel(session):
 
     row = (await session.execute(select(CodingCredential))).scalars().one()
     assert row.api_key_cipher is not None
+
+
+async def test_anthropic_provider_reference_selects_anthropic_opencode_adapter(session):
+    await _seed_provider(
+        session,
+        provider_id="deepseek",
+        provider_type="anthropic",
+        base_url="https://api.deepseek.com/anthropic",
+    )
+    service = CodingCredentialService(session, owner=CodingCredentialOwner(key=b"0" * 32))
+    await service.upsert(
+        scope="user",
+        uid="user-1",
+        payload=_reference_write(model_provider_id="deepseek"),
+        actor="user-1",
+    )
+
+    environment = await service.build_coding_environment(uid="user-1", executors=["opencode"])
+
+    assert environment.env["OPENCODE_PROVIDER_NPM"] == "@ai-sdk/anthropic"
+    assert environment.env["OPENCODE_BASE_URL"] == "https://api.deepseek.com/anthropic"
 
 
 async def test_reference_write_rejects_invalid_combinations(session):

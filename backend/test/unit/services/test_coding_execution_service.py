@@ -90,9 +90,10 @@ class _FakeProvider:
 
 
 class _FakeBackend:
-    def __init__(self, output: str, *, state_present: bool = True):
+    def __init__(self, output: str, *, state_present: bool = True, exit_code: int = 0):
         self.output = output
         self.state_present = state_present
+        self.exit_code = exit_code
         self.commands: list[str] = []
 
     def execute(self, command: str, timeout: int | None = None):
@@ -100,7 +101,7 @@ class _FakeBackend:
         if command.startswith("test -d"):
             output = "__PRESENT__" if self.state_present else ""
             return SimpleNamespace(output=output, exit_code=0, truncated=False)
-        return SimpleNamespace(output=self.output, exit_code=0, truncated=False)
+        return SimpleNamespace(output=self.output, exit_code=self.exit_code, truncated=False)
 
 
 @pytest_asyncio.fixture()
@@ -270,6 +271,34 @@ async def test_executor_error_fails_session_explicitly(session):
     assert outcome.error_code == "executor_error"
     status = await service.status(outcome.session_id)
     assert status["session"]["status"] == "failed"
+
+
+async def test_nonzero_executor_exit_keeps_safe_timeout_diagnostic(session):
+    await _seed_credential(session)
+    service = _service(session, _FakeBackend("Error: timed out", exit_code=1), _FakeProvider())
+
+    outcome = await service.run_turn(executor="opencode", task="会超时", agent_config=AGENT_CONFIG)
+
+    assert outcome.status == "failed"
+    assert outcome.error_code == "executor_error"
+    assert outcome.error_message == "编码执行超时"
+    status = await service.status(outcome.session_id)
+    assert status["turns"][0]["error_message"] == "编码执行超时"
+    assert status["session"]["error_message"] == "编码执行超时"
+
+
+async def test_nonzero_executor_output_is_not_persisted_as_an_error(session):
+    await _seed_credential(session)
+    private_output = "credential=ghp-private-token"
+    service = _service(session, _FakeBackend(private_output, exit_code=1), _FakeProvider())
+
+    outcome = await service.run_turn(executor="opencode", task="失败", agent_config=AGENT_CONFIG)
+
+    assert outcome.status == "failed"
+    assert outcome.error_message == "编码执行器退出码：1"
+    status = await service.status(outcome.session_id)
+    assert private_output not in status["session"]["error_message"]
+    assert private_output not in status["turns"][0]["error_message"]
 
 
 async def test_shared_scope_is_rejected(session):

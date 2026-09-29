@@ -393,6 +393,12 @@ async function addComment() {
 }
 
 watch(() => [route.params.project_id, route.params.task_id], () => {
+  if (!route.params.project_id || !route.params.task_id) {
+    ++loadVersion
+    ++issueVersion
+    loading.value = false
+    return
+  }
   ++issueVersion
   selectedIssue.value = null
   issueTitle.value = ''
