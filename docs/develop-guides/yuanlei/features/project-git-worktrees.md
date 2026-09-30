@@ -49,4 +49,5 @@ Project 需要绑定多个远端仓库，并让同一根任务的 Root Agent 与
 
 - [Project 多仓库与根任务 Git Worktree](../decisions/implemented/2026-09-14-project-multi-repository-git-worktrees.md)
 - [按根任务显式分配 worktree](../decisions/proposed/2026-09-16-on-demand-project-git-worktrees.md)
+- [开发 Gitea 局域网端口](../decisions/implemented/2026-09-29-gitea-lan-ports.md)
 - `backend/test/unit/services/test_project_git_service.py`、`test_git_executor.py`、真实 PostgreSQL migration 和 `test_gitea_git_integration.py` 拥有主要证据；显式分配提案中的 assembled-path 证据仍以 Decision 当前结果为准。

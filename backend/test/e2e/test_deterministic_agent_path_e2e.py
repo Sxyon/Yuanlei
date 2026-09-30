@@ -1174,6 +1174,278 @@ async def test_scheduled_task_run_now_reaches_exact_conversation_and_result(
         await _delete_provider(e2e_client, e2e_headers)
 
 
+@pytest.mark.parametrize(
+    ("auto_accept", "scenario"),
+    [(False, "complete"), (True, "complete"), (False, "resume"), (False, "rate_limit")],
+)
+async def test_project_work_assignment_reaches_worker_result_and_task_comment(
+    e2e_client: httpx.AsyncClient,
+    e2e_headers: dict[str, str],
+    auto_accept: bool,
+    scenario: str,
+) -> None:
+    """真实 worker 的完成、失败及恢复结果只归属本次项目任务执行。"""
+    me = await e2e_client.get("/api/auth/me", headers=e2e_headers)
+    assert me.status_code == 200, me.text
+    uid = str(me.json()["uid"])
+    await _create_provider(e2e_client, e2e_headers)
+    agent_slug = project_id = directory_name = thread_id = run_id = None
+    assignment_path = execution_id = task_id = None
+    execution_status = None
+    parent_run_id = None
+    try:
+        marker = {
+            "complete": "", "resume": LARGE_TOOL_RESULT_MARKER,
+            "rate_limit": "DETERMINISTIC_RATE_LIMIT RATE_LIMIT_FIRST_CALL",
+        }[scenario]
+        agent_slug = await _create_agent(e2e_client, e2e_headers, uid, system_prompt_suffix=marker)
+        directory_name = f"pytest-project-work-e2e-{uuid.uuid4().hex[:10]}"
+        directory = await e2e_client.post(
+            "/api/workspace/directory", headers=e2e_headers,
+            json={"parent_path": "/", "name": directory_name},
+        )
+        assert directory.status_code == 200, directory.text
+        project = await e2e_client.post(
+            "/api/projects", headers=e2e_headers,
+            json={
+                "request_id": f"project-work-e2e-{uuid.uuid4()}",
+                "name": directory_name,
+                "workdir": {"mode": "linked", "path": directory_name},
+            },
+        )
+        assert project.status_code == 200, project.text
+        project_id = str(project.json()["id"])
+        bound = await e2e_client.post(
+            f"/api/projects/{project_id}/agents/bind", headers=e2e_headers,
+            json={"agent_slug": agent_slug},
+        )
+        assert bound.status_code == 200, bound.text
+        root = f"/api/projects/{project_id}/work"
+        code = await e2e_client.put(
+            f"{root}/code", headers=e2e_headers,
+            json={"code": f"P{uuid.uuid4().hex[:8].upper()}"},
+        )
+        assert code.status_code == 200, code.text
+        created = await e2e_client.post(
+            f"{root}/tasks", headers=e2e_headers,
+            json={"title": f"Verify worker {EXPECTED_OUTPUT}"},
+        )
+        assert created.status_code == 200, created.text
+        task_id = str(created.json()["id"])
+        config_path = f"/api/projects/{project_id}/agents/{agent_slug}/workbench/config"
+        queue_config = await e2e_client.put(
+            config_path, headers=e2e_headers,
+            json={"auto_accept_work": auto_accept, "work_default_model_spec": MODEL_SPEC},
+        )
+        assert queue_config.status_code == 200, queue_config.text
+        assignment_path = f"{root}/tasks/{task_id}/executions"
+        assigned = await e2e_client.post(
+            assignment_path, headers=e2e_headers, json={"agent_slug": agent_slug},
+        )
+        assert assigned.status_code == 200, assigned.text
+        execution_id = str(assigned.json()["id"])
+        execution_status = assigned.json()["status"]
+        assert execution_status == ("queued" if auto_accept else "pending_acceptance")
+        if not auto_accept:
+            accepted = await e2e_client.post(
+                f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
+                headers=e2e_headers,
+            )
+            assert accepted.status_code == 200, accepted.text
+        reset_config = await e2e_client.put(
+            config_path,
+            headers=e2e_headers,
+            json={"auto_accept_work": False, "work_default_model_spec": None},
+        )
+        assert reset_config.status_code == 200, reset_config.text
+
+        async def wait_execution_status(targets: set[str]) -> dict:
+            """等待持久任务执行尝试进入目标状态。"""
+            deadline = asyncio.get_running_loop().time() + 240
+            latest = None
+            while asyncio.get_running_loop().time() < deadline:
+                listed = await e2e_client.get(assignment_path, headers=e2e_headers)
+                assert listed.status_code == 200, listed.text
+                latest = next(item for item in listed.json() if item["id"] == execution_id)
+                if latest["status"] in targets:
+                    return latest
+                await asyncio.sleep(2)
+            pytest.fail(f"project work execution did not reach {targets}: {latest}")
+
+        targets = {"interrupted", "failed", "cancelled"} if scenario == "resume" else {
+            "completed", "failed", "cancelled"
+        }
+        execution = await wait_execution_status(targets)
+        execution_status = execution["status"]
+        run_id = execution["current_run_id"] or run_id
+        thread_id = execution["thread_id"] or thread_id
+        if scenario == "resume":
+            assert execution_status == "interrupted", execution
+            parent_run_id = run_id
+            parent = await wait_for_run(e2e_client, e2e_headers, parent_run_id)
+            assert parent["status"] == "interrupted" and parent["error_type"] == "human_approval_required", parent
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_interrupted' AND source_id = $1",
+                    task_id,
+                ) == 1
+            finally:
+                await conn.close()
+            await _wait_for_runtime_cleanup(parent_run_id)
+            workbench = await e2e_client.get(
+                f"/api/projects/{project_id}/agents/{agent_slug}/workbench", headers=e2e_headers
+            )
+            assert workbench.status_code == 200, workbench.text
+            assert workbench.json()["current"]["id"] == execution_id
+            assert workbench.json()["current"]["status"] == "interrupted"
+            response = await e2e_client.post(
+                "/api/agent/runs", headers=e2e_headers,
+                json={
+                    "agent_slug": agent_slug, "thread_id": thread_id,
+                    "meta": {"request_id": f"project-work-resume-{uuid.uuid4()}"},
+                    "resume": {"decisions": [{"type": "approve"}]},
+                    "created_by_run_id": parent_run_id,
+                },
+            )
+            assert response.status_code == 200, response.text
+            run_id = str(response.json()["run_id"])
+            execution = await wait_execution_status({"completed", "failed", "cancelled"})
+            execution_status = execution["status"]
+            assert execution["current_run_id"] == run_id, execution
+        elif scenario == "rate_limit":
+            assert execution_status == "failed", execution
+            assert run_id and thread_id, execution
+            failed_run = await wait_for_run(e2e_client, e2e_headers, run_id)
+            assert failed_run["status"] == "failed" and "DETERMINISTIC_RATE_LIMIT" in failed_run["error_message"]
+            detail = await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)
+            assert detail.status_code == 200, detail.text
+            assert not detail.json()["comments"]
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                row = await conn.fetchrow(
+                    """SELECT e.request_id, e.thread_id, q.source AS request_source,
+                              q.external_id AS request_external_id, r.request_id AS run_request_id,
+                              r.source AS run_source, r.external_id AS run_external_id,
+                              r.conversation_thread_id
+                       FROM project_work_executions e
+                       JOIN agent_run_requests q ON q.request_id = e.request_id
+                       JOIN agent_runs r ON r.id = $2
+                       WHERE e.id = $1""",
+                    execution_id, run_id,
+                )
+                assert row is not None
+                assert row["request_id"] == row["run_request_id"] == execution["request_id"]
+                assert row["thread_id"] == row["conversation_thread_id"] == thread_id
+                assert row["request_source"] == row["run_source"] == "project_work"
+                assert row["request_external_id"] == row["run_external_id"] == execution_id
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM project_work_comments WHERE task_id = $1 AND source_run_id IS NOT NULL",
+                    task_id,
+                ) == 0
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM user_inbox_items WHERE kind = 'task_failed' AND source_id = $1",
+                    task_id,
+                ) == 1
+            finally:
+                await conn.close()
+            return
+        assert execution is not None and execution["status"] == "completed", execution
+        assert run_id and thread_id, execution
+        assert execution["model_spec"] == MODEL_SPEC
+        request_id = str(execution["request_id"])
+        run = await wait_for_run(e2e_client, e2e_headers, run_id)
+        assert run["status"] == "completed", run
+        assert run["created_by_run_id"] == parent_run_id, run
+        if parent_run_id is None:
+            assert run["request_id"] == request_id, run
+        result = await e2e_client.get(f"/api/agent/runs/{run_id}/result", headers=e2e_headers)
+        assert result.status_code == 200, result.text
+        assert result.json()["output"] == EXPECTED_OUTPUT
+        detail = await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)
+        assert detail.status_code == 200, detail.text
+        comments = detail.json()["comments"]
+        assert [item["content"] for item in comments if EXPECTED_OUTPUT in item["content"]] == [
+            f"智能体 {agent_slug} 执行结论：\n\n{EXPECTED_OUTPUT}"
+        ]
+        conn = await asyncpg.connect(postgres_dsn())
+        try:
+            row = await conn.fetchrow(
+                """SELECT e.request_id, e.thread_id, q.status AS request_status,
+                          q.source AS request_source, q.external_id AS request_external_id,
+                          r.source, r.external_id, r.created_by_run_id,
+                          r.conversation_thread_id, m.run_id AS output_run_id,
+                          c.source_run_id AS comment_run_id
+                   FROM project_work_executions e
+                   JOIN agent_run_requests q ON q.request_id = e.request_id
+                   JOIN agent_runs r ON r.id = $2
+                   JOIN messages m ON m.id = r.output_message_id
+                   JOIN project_work_comments c ON c.source_run_id = r.id
+                   WHERE e.id = $1""",
+                execution_id, run_id,
+            )
+            assert row is not None
+            assert row["request_id"] == request_id
+            assert row["request_status"] == "dispatched"
+            assert row["request_source"] == "project_work"
+            assert row["request_external_id"] == execution_id
+            assert row["thread_id"] == row["conversation_thread_id"] == thread_id
+            assert row["source"] == "project_work" and row["external_id"] == execution_id
+            assert row["created_by_run_id"] == parent_run_id
+            assert row["output_run_id"] == row["comment_run_id"] == run_id
+            if parent_run_id:
+                assert await conn.fetchval(
+                    "SELECT count(*) FROM project_work_comments WHERE source_run_id = $1", parent_run_id
+                ) == 0
+        finally:
+            await conn.close()
+    finally:
+        if execution_id and assignment_path and execution_status not in {"completed", "failed", "cancelled"}:
+            cleanup_deadline = asyncio.get_running_loop().time() + 90
+            cancelled_run_ids: set[str] = set()
+            while asyncio.get_running_loop().time() < cleanup_deadline:
+                listed = await e2e_client.get(assignment_path, headers=e2e_headers)
+                assert listed.status_code == 200, listed.text
+                current = next(item for item in listed.json() if item["id"] == execution_id)
+                execution_status = current["status"]
+                run_id = current["current_run_id"] or run_id
+                thread_id = current["thread_id"] or thread_id
+                if execution_status in {"completed", "failed", "cancelled"}:
+                    break
+                if execution_status == "interrupted":
+                    break
+                if execution_status in {"pending_acceptance", "queued"}:
+                    cancelled = await e2e_client.post(
+                        f"{assignment_path}/{execution_id}/cancel", headers=e2e_headers,
+                    )
+                    assert cancelled.status_code in {200, 409}, cancelled.text
+                elif run_id and run_id not in cancelled_run_ids:
+                    await cancel_run(e2e_client, e2e_headers, run_id)
+                    cancelled_run_ids.add(run_id)
+                await asyncio.sleep(2)
+            assert execution_status in {"completed", "failed", "cancelled", "interrupted"}, execution_status
+        if task_id:
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                await conn.execute("DELETE FROM user_inbox_items WHERE source_id = $1", task_id)
+            finally:
+                await conn.close()
+        if thread_id:
+            deleted = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
+            assert deleted.status_code in {200, 404}, deleted.text
+        if project_id:
+            deleted = await e2e_client.delete(f"/api/projects/{project_id}", headers=e2e_headers)
+            assert deleted.status_code in {200, 404}, deleted.text
+        if directory_name:
+            deleted = await e2e_client.delete(
+                "/api/workspace/file", headers=e2e_headers, params={"path": f"/{directory_name}"},
+            )
+            assert deleted.status_code in {200, 404}, deleted.text
+        if agent_slug:
+            await delete_agent(e2e_client, e2e_headers, agent_slug)
+        await _delete_provider(e2e_client, e2e_headers)
+
+
 async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
     e2e_client: httpx.AsyncClient,
     e2e_headers: dict[str, str],
@@ -1188,6 +1460,7 @@ async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
     thread_id: str | None = None
     workdir_path: str | None = None
     active_run_id: str | None = None
+    parent_run_id: str | None = None
     try:
         agent_slug = await _create_agent(
             e2e_client,
@@ -1226,6 +1499,22 @@ async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
         assert parent_run["status"] == "interrupted", parent_run
         assert parent_run["error_type"] == "human_approval_required", parent_run
         await _wait_for_runtime_cleanup(parent_run_id)
+        inbox_response = await e2e_client.get("/api/inbox?folder=unread", headers=e2e_headers)
+        assert inbox_response.status_code == 200, inbox_response.text
+        notices = [item for item in inbox_response.json() if item["source_id"] == parent_run_id]
+        assert len(notices) == 1 and notices[0]["kind"] == "run_question"
+        conn = await asyncpg.connect(postgres_dsn())
+        try:
+            assert (
+                await conn.fetchval(
+                    "SELECT count(*) FROM user_inbox_items WHERE source_id = $1 AND uid = $2",
+                    parent_run_id,
+                    uid,
+                )
+                == 1
+            )
+        finally:
+            await conn.close()
 
         # 刷新读取持久化审批时，模型供应商可以不可用；恢复执行前再装配供应商。
         await _delete_provider(e2e_client, e2e_headers)
@@ -1336,6 +1625,12 @@ async def test_resume_with_offloaded_tool_result_publishes_stream_owned_audit(
             assert thread_delete.status_code in {200, 404}, thread_delete.text
         if agent_slug:
             await delete_agent(e2e_client, e2e_headers, agent_slug)
+        if parent_run_id:
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                await conn.execute("DELETE FROM user_inbox_items WHERE source_id = $1", parent_run_id)
+            finally:
+                await conn.close()
         await _delete_provider(e2e_client, e2e_headers)
 
 

@@ -194,7 +194,8 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
                     """INSERT INTO agents
                     (slug, backend_id, name, pics, config_json, share_config, is_default, is_subagent)
                     VALUES ('project-worker', 'ChatbotAgent', 'Worker', '[]'::jsonb,
-                    '{}'::jsonb, CAST(:share_config AS jsonb), FALSE, FALSE)"""
+                    '{"coding": {"executors": ["codex"]}}'::jsonb,
+                    CAST(:share_config AS jsonb), FALSE, FALSE)"""
                 ),
                 {
                     "share_config": json.dumps(
@@ -295,6 +296,40 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
                 ),
                 {"uids": json.dumps(["uid-owner"])},
             )
+            await db.commit()
+            db.expire_all()
+            await db.refresh(user)
+            await db.execute(text(
+                "UPDATE project_agents SET config_overrides = "
+                "'{\"coding\": {\"default_executor\": \"codex\"}}'::jsonb WHERE id = 'binding-1'"
+            ))
+            await db.commit()
+            db.expire_all()
+            await db.refresh(user)
+            with pytest.raises(HTTPException) as disabled_executor:
+                await service.dispatch_project_task(
+                    project_id="project-owner", task_id=task["id"], executor_key="opencode", user=user
+                )
+            assert disabled_executor.value.status_code == 422
+            assert disabled_executor.value.detail["code"] == "executor_not_enabled"
+            assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 0
+            await db.execute(text(
+                "UPDATE project_agents SET config_overrides = "
+                "'{\"coding\": {\"executors\": []}}'::jsonb WHERE id = 'binding-1'"
+            ))
+            await db.commit()
+            db.expire_all()
+            await db.refresh(user)
+            with pytest.raises(HTTPException) as empty_executors:
+                await service.dispatch_project_task(
+                    project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+                )
+            assert empty_executors.value.status_code == 422
+            assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 0
+            await db.execute(text(
+                "UPDATE project_agents SET config_overrides = "
+                "'{\"coding\": {\"default_executor\": \"codex\"}}'::jsonb WHERE id = 'binding-1'"
+            ))
             await db.commit()
             db.expire_all()
             await db.refresh(user)

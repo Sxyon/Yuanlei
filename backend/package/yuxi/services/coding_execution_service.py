@@ -383,6 +383,13 @@ class CodingExecutionService:
             events.append(NormalizedEvent("error", {"message": infra_error}))
         events = [NormalizedEvent(event.kind, _redact_event_payload(event.payload, secrets)) for event in events]
         result = extract_turn_result(events)
+        execution_error = result.error or infra_error
+        if not execution_error and exit_code != 0:
+            execution_error = (
+                "编码执行超时" if "timed out" in raw_output.casefold() else f"编码执行器退出码：{exit_code}"
+            )
+        if execution_error:
+            execution_error = CodingCredentialService.redact(execution_error, secrets)[:2000]
         if ownership_guard is not None and not await ownership_guard():
             await self.db.rollback()
             raise CodingTurnOwnershipLostError("coding turn sandbox lease is no longer active")
@@ -408,7 +415,7 @@ class CodingExecutionService:
                 result_summary=summary,
                 usage=result.usage,
                 error_code="executor_error" if failed else None,
-                error_message=CodingCredentialService.redact(result.error or infra_error or "", secrets) or None,
+                error_message=execution_error,
                 cli_session_ref=result.session_ref,
             )
         await clear_coding_cancel_signal(session.id)
@@ -424,7 +431,7 @@ class CodingExecutionService:
             event_count=len(events),
             resume_degraded=resume_degraded,
             error_code=None if cancelled else ("executor_error" if failed else None),
-            error_message=None if cancelled else (result.error or infra_error),
+            error_message=None if cancelled else execution_error,
         )
 
     async def status(self, session_id: str, *, event_limit: int = 20) -> dict:
@@ -448,6 +455,7 @@ class CodingExecutionService:
                 "created_at": session.created_at.isoformat() if session.created_at else None,
                 "terminal_at": session.terminal_at.isoformat() if session.terminal_at else None,
                 "error_code": session.error_code,
+                "error_message": session.error_message,
             },
             "turns": [
                 {
@@ -456,6 +464,8 @@ class CodingExecutionService:
                     "summary": turn.result_summary,
                     "usage": turn.usage_json or {},
                     "started_at": turn.started_at.isoformat() if turn.started_at else None,
+                    "error_code": turn.error_code,
+                    "error_message": turn.error_message,
                 }
                 for turn in turns
             ],

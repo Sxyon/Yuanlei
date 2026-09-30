@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { Bot, Plus, RefreshCw, SquarePen, Link2, Unlink } from '@lucide/vue'
+import { Bot, Plus, RefreshCw, SquarePen, Link2, Unlink, ListTodo } from '@lucide/vue'
 
 import { agentApi } from '@/apis/agent_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
@@ -16,6 +17,7 @@ import { normalizeAgent, normalizeAgentBackendOption } from '@/utils/agentConfig
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 
 const projectsStore = useProjectsStore()
+const router = useRouter()
 
 const selectedProjectId = ref('')
 const managedAgents = ref([])
@@ -316,6 +318,12 @@ defineExpose({
 
             <template #card-more-action-corner>
               <a-menu>
+                <a-menu-item key="workbench" @click.stop="router.push({ name: 'ProjectAgentWorkbenchView', params: { project_id: agent.project_id, agent_slug: agent.slug } })">
+                  <span class="lucide-menu-item">
+                    <ListTodo :size="14" />
+                    <span>工作台</span>
+                  </span>
+                </a-menu-item>
                 <a-menu-item key="edit" @click.stop="openEditModal(agent)">
                   <span class="lucide-menu-item">
                     <SquarePen :size="14" />

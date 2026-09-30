@@ -148,6 +148,17 @@ class DelegationService:
         if not user_can_manage_agent(user, agent):
             raise HTTPException(status_code=403, detail="需要该项目数字员工的管理权限")
 
+        from yuxi.services.coding_execution_service import coding_agent_config_snapshot
+
+        agent_config = {**(agent.config_json or {}), **(binding.config_overrides or {})}
+        agent_config.update(coding_agent_config_snapshot(agent.config_json, binding.config_overrides))
+        enabled_executors = (agent_config.get("coding") or {}).get("executors")
+        if not isinstance(enabled_executors, list) or executor_key not in enabled_executors:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "executor_not_enabled", "message": "该数字员工未启用所选执行器，请选择已配置的执行器"},
+            )
+
         uid = str(user.uid)
         scope = SandboxScope.agent_project(uid=uid, agent_slug=agent.slug, project_id=project.id)
         prompt = task.title if not task.description else f"{task.title}\n\n{task.description}"
@@ -161,7 +172,7 @@ class DelegationService:
                     "uid": uid,
                     "runtime_scope_id": scope.cache_key,
                     "workdir_relative_path": project.workdir_path,
-                    "agent_config": agent.config_json or {},
+                    "agent_config": agent_config,
                     "governance_task_id": task.id,
                 },
             ),

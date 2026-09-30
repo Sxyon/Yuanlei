@@ -25,6 +25,9 @@
 - 入向同步完成时核对游标的当前 owner 与租约；失去租约的旧执行者不能覆盖新游标。Multica 列表未提供快照游标，远端在 `offset` 翻页期间删除或重排工作项仍有遗漏风险；关键历史导入需另行核对来源总量与外部标识。
 - 无 Multica 凭据时 Multica 适配器不注册，治理、Channel、Run 与 coding 路径独立可用。
 - 单项目的人用 HTTP 本地入口从已审核且已指派项目数字员工的任务发起。服务端重验项目数字员工的当前可见与管理权限，并按用户、项目、Agent 绑定与 Workdir 派生专属沙盒范围，通用 HTTP 委派入口不接受无范围的 codex/opencode 请求。委派请求快照保留来源任务 ID，读视图可关联同一任务的多次尝试。既有 Agent Run 内工具仍可按其运行授权范围执行独立编码委派。
+- 人工委派的执行器须属于该项目数字员工当前启用的编码执行器；无效选择在创建委派意图前拒绝。单项目工作台展示委派状态和对应编码会话的终态或错误，执行中的委派定期刷新状态。
+- 通过模型供应商引用凭据时，OpenCode 按供应商协议选择 SDK 适配器；Anthropic 协议使用 `@ai-sdk/anthropic`，其他协议使用 `@ai-sdk/openai-compatible`。模型供应商配置的 Base URL 仍由供应商配置拥有。
+- 本地编码 turn 超时或以非零退出码结束时，turn 与 session 收敛为失败并保存可读的固定超时或退出码诊断；未知 CLI 输出不作为错误文本持久化。会话详情和编码会话工具展示已保存的 turn 错误；不自动重跑可能已产生副作用的命令，用户可显式发起新委派。
 - 本地编码会话/turn 与委派句柄同事务提交后再发布队列；编码 pending turn 的既有恢复流程处理提交后投递失败。首次沙盒创建前刷新用户 Skill 投影，避免缺目录导致 provisioner 拒绝。
 
 ## 与 Yuxi 的边界
@@ -61,6 +64,7 @@
 ## 决策与证据
 
 - Decision：[外部执行器委派抽象与 Multica 桥接](../decisions/implemented/2026-09-25-external-executor-delegation-multica-bridge.md)。
+- Decision：[编码超时错误与页面离开请求](../decisions/implemented/2026-09-29-coding-timeout-and-route-departure-errors.md)。
 - 既有可复用事实：[Agent 专属沙盒与编码 CLI 协作](agent-coding-sandbox.md)、[项目治理域数据模型](project-governance.md)。
 - Multica 创建/查询/幂等契约依据 `multica` CLI 帮助与 `multica-platform` skill reference 核实，workspace 必填、`updated_after` 被忽略与列表排序行为由 2026-09-26 真实实例只读探测确认；同日两次受控写实测确认 `POST /api/issues` 的 workspace 作用域在查询参数（请求体带 `workspace_id` 返回 400，查询参数带返回 2xx 并真实建单），`create_issue` 据此把作用域经查询参数附带、请求体只放内容字段。结论写在 Decision 的 Multica 桥接一节。
 - 代码 Owner：`backend/package/yuxi/delegation/`（接口与适配器）、`backend/package/yuxi/services/delegation_service.py`、`backend/package/yuxi/services/channel_sync_service.py`、`backend/package/yuxi/repositories/channel_delegation_repository.py`、`backend/server/routers/delegation_router.py`、`backend/package/yuxi/agents/toolkits/buildin/delegation_tools.py`。

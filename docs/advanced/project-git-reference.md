@@ -45,7 +45,7 @@ docker compose up -d --force-recreate api worker
 docker compose --profile git-integration up -d gitea
 ```
 
-默认 host HTTP 入口是 `http://127.0.0.1:3300`，host SSH 端口是 `2222`。端口占用时可在启动命令前设置 `YUXI_GITEA_HTTP_PORT` 或 `YUXI_GITEA_SSH_PORT`。
+默认 host HTTP 端口是 `3300`，host SSH 端口是 `2222`，均监听 `0.0.0.0`。同一局域网中的设备可通过宿主机局域网 IP 访问；实际可达性还取决于宿主机防火墙和网络隔离。端口占用时可在启动命令前设置 `YUXI_GITEA_HTTP_PORT` 或 `YUXI_GITEA_SSH_PORT`。Gitea 的 `ROOT_URL` 仍为容器网络地址 `http://gitea:3000/`，页面生成的绝对链接可能无法从局域网设备打开。
 
 Yuxi API 和 worker 与 Gitea 位于同一 Compose network，因此 connection 使用容器可访问的 endpoint：
 

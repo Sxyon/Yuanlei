@@ -29,6 +29,8 @@
 
 [Project 规划归档](./planning/project-opc/README.md)保存 V0.1 整体草稿与四个场景，以及 V0.2 方向修正。后续按最小可执行版本和实际使用反馈推进；具体上线范围尚未确定。
 
+智能体工作台、用户收件箱与独立项目工作任务按[元垒提案](./yuanlei/decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)分阶段推进。任务和 Issue 的持久化底座见[项目工作 Feature](./yuanlei/features/project-work-tasks.md)，完成与待答复通知见[收件箱 Feature](./yuanlei/features/user-inbox.md)。后续仍需自动固化议题缩写、附件与引用、任务执行尝试和单任务互斥、智能体队列与工作台、自动接受配置及第一负责人周期检查；一般 Run 完成通知和收件箱真实页面证据尚未闭合。恢复开发时先核对提案的验收矩阵、当前代码与 `git status`，按对应高风险链路补真实 PostgreSQL、HTTP、worker 和页面证据。
+
 ## 其他
 
 - 继续完善基于 DeepAgents 文件后端的 Memory 方案，并明确它与现有用户级 Memory 的边界。

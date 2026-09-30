@@ -364,20 +364,25 @@ class CodingCredentialService:
                     "引用的模型供应商未配置 API Key",
                 )
         base_url = _provider_base_url(provider, entry)
+        extra = (
+            {"provider_npm": "@ai-sdk/anthropic"}
+            if row.executor == "opencode" and provider.provider_type == "anthropic"
+            else {}
+        )
         return ResolvedCodingCredential(
             executor=row.executor,
             provider=provider.provider_id,
             base_url=base_url,
             model=model_id,
             api_key=api_key,
-            extra={},
+            extra=extra,
             fingerprint=credential_fingerprint(
                 executor=row.executor,
                 provider=provider.provider_id,
                 base_url=base_url,
                 model=model_id,
                 secret_version=int(row.version or 0),
-                extra={"source": "model_provider", "key_mode": key_mode},
+                extra={"source": "model_provider", "key_mode": key_mode, **extra},
                 key_hash=key_fingerprint(api_key),
             ),
             source=source,

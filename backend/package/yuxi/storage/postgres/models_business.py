@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -621,6 +622,8 @@ class ProjectAgent(Base):
         comment="Agent slug",
     )
     config_overrides = Column(JSON_VALUE, nullable=False, default=dict, comment="项目级配置覆盖层")
+    auto_accept_work = Column(Boolean, nullable=False, default=False, server_default="false")
+    work_default_model_spec = Column(String(512), nullable=True)
     created_by = Column(String(64), nullable=True, comment="创建者 uid")
     updated_by = Column(String(64), nullable=True, comment="最近更新者 uid")
     created_at = Column(DateTime, default=utc_now_naive)
@@ -632,6 +635,8 @@ class ProjectAgent(Base):
             "project_id": self.project_id,
             "agent_slug": self.agent_slug,
             "config_overrides": self.config_overrides or {},
+            "auto_accept_work": self.auto_accept_work,
+            "work_default_model_spec": self.work_default_model_spec,
             "created_by": self.created_by,
             "updated_by": self.updated_by,
             "created_at": format_utc_datetime(self.created_at),
@@ -694,9 +699,7 @@ class AgentSandboxEvent(Base):
     """专属沙盒生命周期事件（yuanlei 域），供管理面板时间线与审计。"""
 
     __tablename__ = "agent_sandbox_events"
-    __table_args__ = (
-        Index("ix_agent_sandbox_events_sandbox_created", "sandbox_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_agent_sandbox_events_sandbox_created", "sandbox_id", "created_at"),)
 
     id = Column(String(64), primary_key=True, comment="事件 UUID")
     sandbox_id = Column(String(64), nullable=False, comment="确定性沙盒 id")
@@ -792,6 +795,7 @@ class GovernanceTopic(Base):
 
     __tablename__ = "governance_topics"
     __table_args__ = (
+        UniqueConstraint("id", "project_id", name="uq_governance_topics_id_project"),
         CheckConstraint(_GOVERNANCE_STATUS_SQL, name="ck_governance_topics_status"),
         CheckConstraint(_GOVERNANCE_SOURCE_CHANNEL_SQL, name="ck_governance_topics_source_channel"),
         CheckConstraint(_GOVERNANCE_SOURCE_SHAPE_SQL, name="ck_governance_topics_source_shape"),
@@ -846,6 +850,209 @@ class GovernanceTopicComment(Base):
     author_name = Column(Text, nullable=False, comment="发帖时作者显示名快照")
     created_by = Column(String(64), nullable=True, comment="作者 uid，不建立用户外键以保留历史回复")
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class ProjectWorkCode(Base):
+    """项目工作任务编号配置与项目内序号。"""
+
+    __tablename__ = "project_work_codes"
+    __table_args__ = (UniqueConstraint("code", name="uq_project_work_codes_code"),)
+
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    code = Column(String(12), nullable=False)
+    next_number = Column(Integer, nullable=False, default=1)
+
+
+class ProjectTopicCode(Base):
+    """议题编号缩写，固化后不随标题变化。"""
+
+    __tablename__ = "project_topic_codes"
+    __table_args__ = (
+        UniqueConstraint("project_id", "code", name="uq_project_topic_codes_project_code"),
+        ForeignKeyConstraint(
+            ["topic_id", "project_id"],
+            ["governance_topics.id", "governance_topics.project_id"],
+            name="fk_project_topic_codes_topic_project",
+            ondelete="CASCADE",
+        ),
+    )
+
+    topic_id = Column(String(64), primary_key=True)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    code = Column(String(12), nullable=False)
+
+
+class ProjectWorkTask(Base):
+    """独立项目工作任务，状态不复用治理任务或 AgentRun。"""
+
+    __tablename__ = "project_work_tasks"
+    __table_args__ = (
+        UniqueConstraint("id", "project_id", name="uq_project_work_tasks_id_project"),
+        UniqueConstraint("project_id", "number", name="uq_project_work_tasks_project_number"),
+        ForeignKeyConstraint(
+            ["topic_id", "project_id"],
+            ["governance_topics.id", "governance_topics.project_id"],
+            name="fk_project_work_tasks_topic_project",
+        ),
+        ForeignKeyConstraint(
+            ["parent_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_project_work_tasks_parent_project",
+        ),
+        CheckConstraint(
+            "status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled')",
+            name="ck_project_work_tasks_status",
+        ),
+        Index("ix_project_work_tasks_project_created", "project_id", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    topic_id = Column(String(64), ForeignKey("governance_topics.id", ondelete="SET NULL"), nullable=True)
+    parent_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="SET NULL"), nullable=True)
+    number = Column(String(48), nullable=False)
+    title = Column(String(512), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, default="todo")
+    start_date = Column(Date, nullable=True)
+    due_date = Column(Date, nullable=True)
+    primary_owner_agent_slug = Column(String(80), ForeignKey("agents.slug", ondelete="SET NULL"), nullable=True)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+PROJECT_WORK_ACTIVE_STATUSES = ("pending_acceptance", "queued", "dispatching", "submitted", "interrupted")
+PROJECT_WORK_EXECUTING_STATUSES = ("dispatching", "submitted", "interrupted")
+
+
+class ProjectWorkExecution(Base):
+    """任务分配与一次 Agent 执行尝试的持久队列事实。"""
+
+    __tablename__ = "project_work_executions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_project_work_executions_task_project",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', "
+            "'interrupted', 'completed', 'failed', 'cancelled')",
+            name="ck_project_work_executions_status",
+        ),
+        Index(
+            "uq_project_work_executions_active_task",
+            "task_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted')"),
+        ),
+        Index(
+            "uq_project_work_executions_active_agent",
+            "agent_slug",
+            unique=True,
+            postgresql_where=text("status IN ('dispatching', 'submitted', 'interrupted')"),
+        ),
+        Index("ix_project_work_executions_agent_queue", "agent_slug", "status", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    uid = Column(String(64), nullable=False)
+    agent_slug = Column(String(80), nullable=False)
+    status = Column(String(24), nullable=False, default="pending_acceptance")
+    prompt = Column(Text, nullable=False)
+    model_spec = Column(String(512), nullable=True)
+    request_id = Column(String(64), nullable=False, unique=True)
+    thread_id = Column(String(64), nullable=False, unique=True)
+    current_run_id = Column(String(64), ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True)
+    error_message = Column(Text, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    submitted_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class ProjectWorkIssue(Base):
+    """任务下独立问题单。"""
+
+    __tablename__ = "project_work_issues"
+    __table_args__ = (
+        UniqueConstraint("task_id", "sequence", name="uq_project_work_issues_task_sequence"),
+        CheckConstraint("status IN ('open', 'resolved', 'closed')", name="ck_project_work_issues_status"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="CASCADE"), nullable=False)
+    sequence = Column(Integer, nullable=False)
+    title = Column(String(512), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, default="open")
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class ProjectWorkReference(Base):
+    """项目任务中追加的网页引用。"""
+
+    __tablename__ = "project_work_references"
+    __table_args__ = (Index("ix_project_work_references_task_created", "task_id", "created_at"),)
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(512), nullable=False)
+    url = Column(String(2048), nullable=False)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class ProjectWorkComment(Base):
+    """任务或问题单的追加式讨论记录。"""
+
+    __tablename__ = "project_work_comments"
+    __table_args__ = (
+        CheckConstraint("(task_id IS NOT NULL) <> (issue_id IS NOT NULL)", name="ck_project_work_comments_one_parent"),
+        Index("ix_project_work_comments_task_created", "task_id", "created_at"),
+        Index("ix_project_work_comments_issue_created", "issue_id", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="CASCADE"), nullable=True)
+    issue_id = Column(String(64), ForeignKey("project_work_issues.id", ondelete="CASCADE"), nullable=True)
+    source_run_id = Column(String(64), nullable=True, unique=True)
+    content = Column(Text, nullable=False)
+    author_uid = Column(String(64), nullable=False)
+    author_name = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class UserInboxItem(Base):
+    """用户收件箱中的持久通知。"""
+
+    __tablename__ = "user_inbox_items"
+    __table_args__ = (
+        UniqueConstraint("uid", "kind", "source_id", name="uq_user_inbox_items_source"),
+        CheckConstraint(
+            "kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted')",
+            name="ck_user_inbox_items_kind",
+        ),
+        Index("ix_user_inbox_items_uid_created", "uid", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    uid = Column(String(64), nullable=False)
+    kind = Column(String(32), nullable=False)
+    source_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), nullable=True)
+    title = Column(String(512), nullable=False)
+    summary = Column(Text, nullable=True)
+    read_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class GovernanceDecision(Base):
@@ -1205,9 +1412,7 @@ class CodingSessionEvent(Base):
     """编码会话归一化事件（yuanlei 域）；seq 在会话内递增，供 SSE 回放。"""
 
     __tablename__ = "coding_session_events"
-    __table_args__ = (
-        UniqueConstraint("session_id", "seq", name="uq_coding_session_events_seq"),
-    )
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_coding_session_events_seq"),)
 
     id = Column(String(64), primary_key=True, comment="事件 UUID")
     session_id = Column(

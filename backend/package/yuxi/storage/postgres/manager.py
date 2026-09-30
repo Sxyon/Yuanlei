@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 12
+YUANLEI_SCHEMA_VERSION = 19
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -326,6 +326,8 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
         agent_slug VARCHAR(80) NOT NULL CONSTRAINT fk_project_agents_agent_slug
             REFERENCES agents(slug) ON DELETE CASCADE,
         config_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+        auto_accept_work BOOLEAN NOT NULL DEFAULT FALSE,
+        work_default_model_spec VARCHAR(512),
         created_by VARCHAR(64),
         updated_by VARCHAR(64),
         created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
@@ -335,6 +337,21 @@ PROJECT_AGENT_SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS ix_project_agents_project_id ON project_agents(project_id)",
     "CREATE INDEX IF NOT EXISTS ix_project_agents_agent_slug ON project_agents(agent_slug)",
+)
+PROJECT_AGENT_WORK_QUEUE_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_agents ADD COLUMN IF NOT EXISTS auto_accept_work BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE project_agents ADD COLUMN IF NOT EXISTS work_default_model_spec VARCHAR(512)",
+)
+PROJECT_WORK_REFERENCE_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_work_references (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES project_work_tasks(id) ON DELETE CASCADE,
+        title VARCHAR(512) NOT NULL,
+        url VARCHAR(2048) NOT NULL,
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_references_task_created ON project_work_references(task_id, created_at)",
 )
 AGENT_SANDBOX_SCHEMA_STATEMENTS = (
     """
@@ -578,6 +595,134 @@ GOVERNANCE_TOPIC_DISCUSSION_SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS ix_governance_topic_comments_topic_created "
     "ON governance_topic_comments(topic_id, created_at, id)",
 )
+
+PROJECT_WORK_SCHEMA_STATEMENTS = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_topics_id_project ON governance_topics(id, project_id)",
+    """CREATE TABLE IF NOT EXISTS project_work_codes (
+        project_id VARCHAR(64) PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        code VARCHAR(12) NOT NULL CONSTRAINT uq_project_work_codes_code UNIQUE,
+        next_number INTEGER NOT NULL DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_topic_codes (
+        topic_id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        code VARCHAR(12) NOT NULL,
+        CONSTRAINT uq_project_topic_codes_project_code UNIQUE (project_id, code),
+        CONSTRAINT fk_project_topic_codes_topic_project FOREIGN KEY (topic_id, project_id)
+            REFERENCES governance_topics(id, project_id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_work_tasks (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        topic_id VARCHAR(64) REFERENCES governance_topics(id) ON DELETE SET NULL,
+        parent_id VARCHAR(64) REFERENCES project_work_tasks(id) ON DELETE SET NULL,
+        number VARCHAR(48) NOT NULL,
+        title VARCHAR(512) NOT NULL,
+        description TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'todo',
+        start_date DATE,
+        due_date DATE,
+        primary_owner_agent_slug VARCHAR(80) REFERENCES agents(slug) ON DELETE SET NULL,
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_project_work_tasks_id_project UNIQUE (id, project_id),
+        CONSTRAINT uq_project_work_tasks_project_number UNIQUE (project_id, number),
+        CONSTRAINT fk_project_work_tasks_topic_project FOREIGN KEY (topic_id, project_id)
+            REFERENCES governance_topics(id, project_id),
+        CONSTRAINT fk_project_work_tasks_parent_project FOREIGN KEY (parent_id, project_id)
+            REFERENCES project_work_tasks(id, project_id),
+        CONSTRAINT ck_project_work_tasks_status
+            CHECK (status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_tasks_project_created ON project_work_tasks(project_id, created_at)",
+    """CREATE TABLE IF NOT EXISTS project_work_issues (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES project_work_tasks(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        title VARCHAR(512) NOT NULL,
+        description TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'open',
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_project_work_issues_task_sequence UNIQUE (task_id, sequence),
+        CONSTRAINT ck_project_work_issues_status CHECK (status IN ('open', 'resolved', 'closed'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_work_comments (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) REFERENCES project_work_tasks(id) ON DELETE CASCADE,
+        issue_id VARCHAR(64) REFERENCES project_work_issues(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        author_uid VARCHAR(64) NOT NULL,
+        author_name TEXT NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_project_work_comments_one_parent CHECK ((task_id IS NOT NULL) <> (issue_id IS NOT NULL))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_comments_task_created ON project_work_comments(task_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_project_work_comments_issue_created ON project_work_comments(issue_id, created_at)",
+)
+USER_INBOX_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS user_inbox_items (
+        id VARCHAR(64) PRIMARY KEY,
+        uid VARCHAR(64) NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        source_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64),
+        title VARCHAR(512) NOT NULL,
+        summary TEXT,
+        read_at TIMESTAMP WITHOUT TIME ZONE,
+        archived_at TIMESTAMP WITHOUT TIME ZONE,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_user_inbox_items_source UNIQUE (uid, kind, source_id),
+        CONSTRAINT ck_user_inbox_items_kind CHECK (
+            kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_user_inbox_items_uid_created ON user_inbox_items(uid, created_at)",
+)
+# 元垒收件箱通知词表扩展：执行失败与中断恢复。旧库以幂等 DROP/ADD 收敛 CHECK，
+# 保留既有通知行。
+USER_INBOX_KIND_SCHEMA_STATEMENTS = (
+    "ALTER TABLE user_inbox_items DROP CONSTRAINT IF EXISTS ck_user_inbox_items_kind",
+    "ALTER TABLE user_inbox_items ADD CONSTRAINT ck_user_inbox_items_kind CHECK "
+    "(kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted'))",
+)
+PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_work_executions (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        uid VARCHAR(64) NOT NULL,
+        agent_slug VARCHAR(80) NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'pending_acceptance',
+        prompt TEXT NOT NULL,
+        model_spec VARCHAR(512),
+        request_id VARCHAR(64) NOT NULL UNIQUE,
+        thread_id VARCHAR(64) NOT NULL UNIQUE,
+        current_run_id VARCHAR(64) REFERENCES agent_runs(id) ON DELETE SET NULL,
+        error_message TEXT,
+        accepted_at TIMESTAMP WITHOUT TIME ZONE,
+        submitted_at TIMESTAMP WITHOUT TIME ZONE,
+        finished_at TIMESTAMP WITHOUT TIME ZONE,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_project_work_executions_task_project FOREIGN KEY (task_id, project_id)
+            REFERENCES project_work_tasks(id, project_id) ON DELETE CASCADE,
+        CONSTRAINT ck_project_work_executions_status CHECK (
+            status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted',
+                       'interrupted', 'completed', 'failed', 'cancelled'))
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS uq_project_work_executions_active_task
+        ON project_work_executions(task_id)
+        WHERE status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted')""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS uq_project_work_executions_active_agent
+        ON project_work_executions(agent_slug)
+        WHERE status IN ('dispatching', 'submitted', 'interrupted')""",
+    """CREATE INDEX IF NOT EXISTS ix_project_work_executions_agent_queue
+        ON project_work_executions(agent_slug, status, created_at)""",
+    "ALTER TABLE project_work_comments ADD COLUMN IF NOT EXISTS source_run_id VARCHAR(64)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_project_work_comments_source_run ON project_work_comments(source_run_id)",
+)
 # 元垒外部执行器委派域：委派事实与入向同步游标。本地 dispatch_state 与远端
 # remote_status 投影分离；投递意图先持久化，结果只引用发起 Run。
 CHANNEL_DELEGATION_SCHEMA_STATEMENTS = (
@@ -638,10 +783,7 @@ CHANNEL_DELEGATION_SCHEMA_STATEMENTS = (
         CONSTRAINT ck_channel_sync_cursors_channel CHECK (channel IN ('multica'))
     )
     """,
-    (
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_sync_cursors_scope "
-        "ON channel_sync_cursors(channel, project_id)"
-    ),
+    ("CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_sync_cursors_scope ON channel_sync_cursors(channel, project_id)"),
 )
 CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     """
@@ -679,14 +821,8 @@ CODING_CREDENTIAL_SCHEMA_STATEMENTS = (
     ),
 )
 CODING_CREDENTIAL_REFERENCE_STATEMENTS = (
-    (
-        "ALTER TABLE IF EXISTS coding_credentials "
-        "ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual'"
-    ),
-    (
-        "ALTER TABLE IF EXISTS coding_credentials "
-        "ADD COLUMN IF NOT EXISTS model_provider_id VARCHAR(100)"
-    ),
+    ("ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual'"),
+    ("ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS model_provider_id VARCHAR(100)"),
     "ALTER TABLE IF EXISTS coding_credentials ADD COLUMN IF NOT EXISTS key_mode VARCHAR(16)",
     # 同一 scope 同一执行器只保留最近更新的一条生效记录，其余软删并清理密文。
     """
@@ -774,7 +910,8 @@ CODING_SESSION_SCHEMA_STATEMENTS = (
         CONSTRAINT uq_coding_session_events_seq UNIQUE (session_id, seq)
     )
     """,
-    "CREATE INDEX IF NOT EXISTS ix_coding_session_events_session_created ON coding_session_events(session_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_coding_session_events_session_created "
+    "ON coding_session_events(session_id, created_at)",
 )
 AGENT_RUN_TIMING_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMP WITHOUT TIME ZONE",
@@ -1297,6 +1434,55 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in GOVERNANCE_TOPIC_DISCUSSION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v12_to_v13(self) -> None:
+        """新增独立项目工作任务、问题单及编号配置。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_WORK_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v13_to_v14(self) -> None:
+        """新增用户收件箱。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in USER_INBOX_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v14_to_v15(self) -> None:
+        """新增项目工作任务执行队列与 Run 结果来源。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v15_to_v16(self) -> None:
+        """为项目数字员工增加任务自动接受与默认模型配置。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_AGENT_WORK_QUEUE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v16_to_v17(self) -> None:
+        """创建项目任务网页引用表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_WORK_REFERENCE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v17_to_v18(self) -> None:
+        """为独立项目任务增加可选计划起止日期。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS start_date DATE"))
+            await conn.execute(text("ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS due_date DATE"))
+
+    async def upgrade_yuanlei_schema_v18_to_v19(self) -> None:
+        """扩展用户收件箱通知词表：执行失败与中断恢复。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in USER_INBOX_KIND_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

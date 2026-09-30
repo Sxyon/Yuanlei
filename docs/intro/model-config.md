@@ -12,6 +12,10 @@ Yuxi 在“智能体 → 模型供应商”中统一管理聊天、嵌入和重�
 
 供应商停用后，其模型不会进入运行时模型缓存。Web 管理页面会在系统默认模型仍引用某个供应商或模型时阻止删除或停用，先切换默认模型再修改；直接调用管理 API 时也应先检查并替换默认引用，不能依赖页面保护。
 
+### 协议与 API 地址
+
+协议选项决定客户端和请求格式，不会自动改写 API 地址。保存 Anthropic 协议供应商时，Base URL 必须填写该供应商的 Anthropic-compatible endpoint。DeepSeek Anthropic-compatible API 使用 `https://api.deepseek.com/anthropic`；SDK 会在其后请求 `/v1/messages`。若只填写 `https://api.deepseek.com`，Anthropic 客户端仍按 `/v1/messages` 发送请求，DeepSeek 会返回 404。详见 [DeepSeek Anthropic API 文档](https://api-docs.deepseek.com/guides/anthropic_api/)。
+
 ## 凭证怎么保存
 
 供应商支持两种凭证来源：

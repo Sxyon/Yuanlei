@@ -13,7 +13,8 @@ import {
   PanelLeft,
   PanelLeftOpen,
   MessageCirclePlus,
-  Search
+  Search,
+  Inbox
 } from '@lucide/vue'
 
 import { useConfigStore } from '@/stores/config'
@@ -185,6 +186,13 @@ const mainList = computed(() => {
     path: '/workspace',
     icon: HardDrive,
     activeIcon: HardDrive
+  })
+
+  items.push({
+    name: '收件箱',
+    path: '/inbox',
+    icon: Inbox,
+    activeIcon: Inbox
   })
 
   items.push({
