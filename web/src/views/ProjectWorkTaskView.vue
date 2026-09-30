@@ -75,7 +75,7 @@
           <ul v-else>
             <li v-for="item in executions" :key="item.id">
               <span class="work-execution-main">
-                {{ item.agent_slug }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}
+                {{ agentName(item.agent_slug) }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}
                 <span v-if="item.current_run_id" class="work-execution-run"> · Run {{ item.current_run_id }}</span>
                 <span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span>
               </span>
@@ -101,7 +101,7 @@
           <ul v-else>
             <li v-for="issue in task.issues" :key="issue.id">
               <a-button type="link" @click="openIssue(issue.id)">{{ issue.number }} · {{ issue.title }}</a-button>
-              <span class="work-task-muted">{{ issue.status }}</span>
+              <span class="work-task-muted">{{ issueStatusLabel(issue.status) }}</span>
             </li>
           </ul>
           <div v-if="selectedIssue" class="work-task-issue">
@@ -194,6 +194,8 @@ const executionStatusLabel = (status) => ({
   pending_acceptance: '待接受', queued: '排队中', dispatching: '派发中', submitted: '执行中',
   interrupted: '等待答复', completed: '已完成', failed: '失败', cancelled: '已取消'
 })[status] || status
+const issueStatusLabel = (status) => ({ open: '待处理', resolved: '已解决', closed: '已关闭' })[status] || status
+const agentName = (slug) => agents.value.find((agent) => agent.slug === slug)?.name || slug
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
 
 async function load() {

@@ -174,3 +174,32 @@ test('为未设缩写的议题保存编号并更新本地列表', async (t) => {
   assert.deepEqual(calls, [['topic-1', 'reg']])
   assert.equal(instance.setupState.topics[0].code, 'REG')
 })
+
+test('看板状态更新失败时回读服务端事实，不保留乐观选择', async (t) => {
+  t.mock.method(projectWorkApi, 'listTasks', async () => ([
+    { id: 't1', number: 'P-1', title: '任务', status: 'todo' }
+  ]))
+  t.mock.method(projectWorkApi, 'getCode', async () => ({ code: 'P' }))
+  t.mock.method(projectWorkApi, 'listTopics', async () => [])
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkApi, 'updateTask', async () => { throw new Error('状态更新失败') })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks', component: View }]
+  })
+  await router.push('/projects/p/work/tasks')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  await instance.setupState.changeStatus(instance.setupState.tasks[0], 'in_progress')
+  await settle()
+  assert.equal(instance.setupState.tasks[0].status, 'todo')
+  assert.equal(instance.setupState.actionError, '状态更新失败')
+})

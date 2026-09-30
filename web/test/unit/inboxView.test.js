@@ -93,3 +93,27 @@ test('快速切换分类时迟到的旧响应不能覆盖当前收件箱', async
   assert.deepEqual(instance.setupState.items.map((item) => item.id), ['archived-only'])
   assert.equal(instance.setupState.loading, false)
 })
+
+test('周期巡检通知展示中文标签并跳转任务', async (t) => {
+  t.mock.method(inboxApi, 'list', async () => ([
+    {
+      id: 'notice-inspection', kind: 'task_inspection', source_id: 'task-9', project_id: 'p1',
+      title: '周期巡检发现停滞', summary: null, read_at: null, archived_at: null,
+      created_at: '2026-09-29T00:00:00Z'
+    }
+  ]))
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/inbox', component: View }] })
+  await router.push('/inbox')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  assert.equal(instance.setupState.kindInfo('task_inspection').label, '周期巡检')
+  assert.equal(instance.setupState.kindInfo('task_inspection').target, 'task')
+})

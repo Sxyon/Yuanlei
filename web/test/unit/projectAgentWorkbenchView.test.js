@@ -5,12 +5,13 @@ import { createRenderer, getCurrentInstance, h, KeepAlive, nextTick, ssrContextK
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createServer } from 'vite'
 
-let vite, View, projectWorkExecutionApi
+let vite, View, projectWorkExecutionApi, projectAgentApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/views/ProjectAgentWorkbenchView.vue'))
   ;({ projectWorkExecutionApi } = await vite.ssrLoadModule('/src/apis/project_work_execution_api.js'))
+  ;({ projectAgentApi } = await vite.ssrLoadModule('/src/apis/project_agent_api.js'))
 })
 after(async () => {
   await vite?.close()
@@ -176,4 +177,105 @@ test('设置保存完成时页面已离开，不再触发空路由回读', async
   await settle()
 
   assert.deepEqual(reads, [['project', 'agent']])
+})
+
+test('工作台标题使用项目智能体显示名而非 slug', async (t) => {
+  t.mock.method(projectWorkExecutionApi, 'getWorkbench', async (projectId, agentSlug) => ({
+    agent_slug: agentSlug,
+    auto_accept_work: false,
+    work_default_model_spec: null,
+    current: null,
+    pending_acceptance: [],
+    queued: [],
+    recent: []
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => ({
+    agents: [{ slug: 'agent', name: '调研员码农' }]
+  }))
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/agents/:agent_slug/workbench', component: View }]
+  })
+  await router.push('/projects/project/agents/agent/workbench')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  assert.equal(instance.setupState.workbenchTitle, '智能体工作台 · 调研员码农')
+})
+
+test('归属列表读取失败时工作台标题降级为 slug 且不报错', async (t) => {
+  t.mock.method(projectWorkExecutionApi, 'getWorkbench', async (projectId, agentSlug) => ({
+    agent_slug: agentSlug,
+    auto_accept_work: false,
+    work_default_model_spec: null,
+    current: null,
+    pending_acceptance: [],
+    queued: [],
+    recent: []
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => { throw new Error('归属列表不可用') })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/agents/:agent_slug/workbench', component: View }]
+  })
+  await router.push('/projects/project/agents/agent/workbench')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  assert.equal(instance.setupState.error, '')
+  assert.equal(instance.setupState.workbenchTitle, '智能体工作台 · agent')
+})
+
+test('保存任务设置提交自动接受开关与默认模型', async (t) => {
+  const saves = []
+  t.mock.method(projectWorkExecutionApi, 'getWorkbench', async (projectId, agentSlug) => ({
+    agent_slug: agentSlug,
+    auto_accept_work: false,
+    work_default_model_spec: null,
+    current: null,
+    pending_acceptance: [],
+    queued: [],
+    recent: []
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'updateWorkbenchConfig', async (projectId, agentSlug, config) => {
+    saves.push([projectId, agentSlug, config])
+    return {}
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/agents/:agent_slug/workbench', component: View }]
+  })
+  await router.push('/projects/project/agents/agent/workbench')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  instance.setupState.autoAcceptWork = true
+  instance.setupState.selectWorkModel('deepseek:deepseek-chat')
+  assert.equal(instance.setupState.settingsChanged, true)
+  await instance.setupState.saveSettings()
+  assert.deepEqual(saves, [
+    ['project', 'agent', { auto_accept_work: true, work_default_model_spec: 'deepseek:deepseek-chat' }]
+  ])
 })

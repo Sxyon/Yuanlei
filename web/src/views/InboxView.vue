@@ -83,6 +83,7 @@ const KIND_META = {
   task_completed: { label: '任务完成', action: '查看任务', target: 'task' },
   task_failed: { label: '任务失败', action: '查看任务', target: 'task' },
   task_interrupted: { label: '任务中断', action: '查看任务', target: 'task' },
+  task_inspection: { label: '周期巡检', action: '查看任务', target: 'task' },
   run_question: { label: '等待答复', action: '前往答复', target: 'run' }
 }
 const kindInfo = (kind) => KIND_META[kind] || { label: kind, action: '查看来源', target: 'task' }

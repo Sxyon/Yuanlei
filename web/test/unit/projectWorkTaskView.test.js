@@ -214,3 +214,32 @@ test('网页引用提交失败时在表单旁显示错误并保留输入', async
   await instance.setupState.removeReference('reference-one')
   assert.equal(instance.setupState.referenceError, '引用移除失败')
 })
+
+test('执行记录与问题单展示可读名称与中文状态', async (t) => {
+  t.mock.method(projectWorkApi, 'getTask', async () => ({
+    id: 'task', status: 'todo', primary_owner_agent_slug: null,
+    issues: [{ id: 'i1', status: 'open', title: '问题' }], comments: [], references: []
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [{ slug: 'agent-a', name: '调研员码农' }] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }]
+  })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  assert.equal(instance.setupState.agentName('agent-a'), '调研员码农')
+  assert.equal(instance.setupState.agentName('unknown-slug'), 'unknown-slug')
+  assert.equal(instance.setupState.issueStatusLabel('open'), '待处理')
+  assert.equal(instance.setupState.issueStatusLabel('resolved'), '已解决')
+  assert.equal(instance.setupState.issueStatusLabel('closed'), '已关闭')
+})

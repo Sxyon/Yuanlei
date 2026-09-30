@@ -362,16 +362,18 @@ async function createTask() {
 }
 
 async function changeStatus(item, status) {
+  if (updatingId.value) return
   updatingId.value = item.id
   actionError.value = ''
   try {
     await projectWorkApi.updateTask(projectId.value, item.id, { status })
-    await load()
   } catch (cause) {
     actionError.value = cause?.message || '状态更新失败'
   } finally {
     updatingId.value = ''
   }
+  // 成功或失败都以服务端读回为准，避免看板保留未被持久化的乐观选择。
+  await load()
 }
 
 function openSchedule(item) {
