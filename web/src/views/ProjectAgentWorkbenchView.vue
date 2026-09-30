@@ -78,7 +78,10 @@ const workDefaultModelSpec = ref('')
 const agentName = ref('')
 let loadVersion = 0
 
-const workbenchTitle = computed(() => `智能体工作台 · ${agentName.value || route.params.agent_slug || ''}`)
+const workbenchTitle = computed(() => {
+  const subject = agentName.value || route.params.agent_slug
+  return subject ? `智能体工作台 · ${subject}` : '智能体工作台'
+})
 
 const settingsChanged = computed(() => workbench.value && (
   autoAcceptWork.value !== workbench.value.auto_accept_work ||

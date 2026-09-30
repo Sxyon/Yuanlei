@@ -176,9 +176,13 @@ test('为未设缩写的议题保存编号并更新本地列表', async (t) => {
 })
 
 test('看板状态更新失败时回读服务端事实，不保留乐观选择', async (t) => {
-  t.mock.method(projectWorkApi, 'listTasks', async () => ([
-    { id: 't1', number: 'P-1', title: '任务', status: 'todo' }
-  ]))
+  const reads = []
+  t.mock.method(projectWorkApi, 'listTasks', async () => {
+    // 第二次读取代表失败后服务端事实（此处被其他来源改为 blocked），用于证明确实回读了服务端。
+    const current = reads.length === 0 ? 'todo' : 'blocked'
+    reads.push(current)
+    return [{ id: 't1', number: 'P-1', title: '任务', status: current }]
+  })
   t.mock.method(projectWorkApi, 'getCode', async () => ({ code: 'P' }))
   t.mock.method(projectWorkApi, 'listTopics', async () => [])
   t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
@@ -200,6 +204,8 @@ test('看板状态更新失败时回读服务端事实，不保留乐观选择',
 
   await instance.setupState.changeStatus(instance.setupState.tasks[0], 'in_progress')
   await settle()
-  assert.equal(instance.setupState.tasks[0].status, 'todo')
+  // 更新失败后必须再读一次服务端（共两次），并以服务端事实为准，而非保留乐观选择。
+  assert.deepEqual(reads, ['todo', 'blocked'])
+  assert.equal(instance.setupState.tasks[0].status, 'blocked')
   assert.equal(instance.setupState.actionError, '状态更新失败')
 })
