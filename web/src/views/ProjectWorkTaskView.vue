@@ -62,6 +62,44 @@
         </section>
 
         <section class="work-task-section">
+          <h2>文件附件</h2>
+          <p v-if="!task.attachments?.length" class="work-task-muted">暂无附件</p>
+          <ul v-else>
+            <li v-for="attachment in task.attachments" :key="attachment.id">
+              <button type="button" class="work-task-link" :disabled="saving" @click="downloadAttachment(attachment)">
+                {{ attachment.file_name }}
+              </button>
+              <span class="work-task-muted">{{ formatSize(attachment.file_size) }} · {{ formatTime(attachment.created_at) }}</span>
+              <a-button type="link" :loading="saving" @click="removeAttachment(attachment.id)">移除</a-button>
+            </li>
+          </ul>
+          <div class="work-task-controls">
+            <input ref="attachmentInput" type="file" :disabled="saving" @change="uploadAttachment" />
+          </div>
+          <p v-if="attachmentError" class="work-task-error" role="alert">{{ attachmentError }}</p>
+        </section>
+
+        <section class="work-task-section">
+          <h2>第一负责人周期巡检</h2>
+          <div class="work-task-controls">
+            <label for="task-inspection">启用巡检</label>
+            <a-switch id="task-inspection" v-model:checked="inspectionEnabled" :disabled="saving" />
+            <label for="task-interval">周期（分钟）</label>
+            <a-input-number id="task-interval" v-model:value="inspectionInterval" :min="1" :max="10080" :disabled="saving" />
+            <a-button :loading="saving" @click="saveInspection">保存巡检</a-button>
+          </div>
+          <p class="work-task-muted">启用后由第一负责人按周期只读核查任务状态；发现异常时写入任务评论并通知创建人。进行中但没有待接受或运行中执行尝试会被判为异常。</p>
+          <p v-if="inspectionError" class="work-task-error" role="alert">{{ inspectionError }}</p>
+          <p v-if="!task.inspection_runs?.length" class="work-task-muted">暂无巡检记录</p>
+          <ul v-else>
+            <li v-for="run in task.inspection_runs" :key="run.id">
+              <span>{{ formatTime(run.inspected_at || run.created_at) }} · {{ run.finding ? '异常' : '正常' }}</span>
+              <span class="work-task-muted">{{ run.summary || '未发现异常' }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
             <a-select v-model:value="selectedExecutor" :disabled="saving || ['done', 'cancelled'].includes(task.status)" placeholder="选择执行智能体" style="min-width: 220px">
@@ -178,6 +216,11 @@ const issueDraft = ref('')
 const referenceTitle = ref('')
 const referenceUrl = ref('')
 const referenceError = ref('')
+const attachmentInput = ref(null)
+const attachmentError = ref('')
+const inspectionEnabled = ref(false)
+const inspectionInterval = ref(60)
+const inspectionError = ref('')
 let loadVersion = 0
 let issueVersion = 0
 const statuses = [
@@ -213,6 +256,9 @@ async function load() {
     const statusWasSaved = selectedStatus.value === task.value?.status
     const ownerWasSaved = (selectedOwner.value || null) === task.value?.primary_owner_agent_slug
     const scheduleWasSaved = selectedStart.value === (task.value?.start_date || '') && selectedDue.value === (task.value?.due_date || '')
+    const inspectionWasSaved =
+      inspectionEnabled.value === (task.value?.inspection_enabled ?? false) &&
+      inspectionInterval.value === (task.value?.inspection_interval_minutes ?? null)
     task.value = result
     agents.value = bindings.agents || []
     executions.value = history
@@ -221,6 +267,10 @@ async function load() {
     if (!sameTask || scheduleWasSaved) {
       selectedStart.value = result.start_date || ''
       selectedDue.value = result.due_date || ''
+    }
+    if (!sameTask || inspectionWasSaved) {
+      inspectionEnabled.value = result.inspection_enabled ?? false
+      inspectionInterval.value = result.inspection_interval_minutes ?? 60
     }
     if (selectedIssue.value && !result.issues.some((item) => item.id === selectedIssue.value.id)) selectedIssue.value = null
   } catch (cause) {
@@ -304,6 +354,80 @@ function removeReference(referenceId) {
     () => projectWorkApi.removeReference(projectId, taskId, referenceId),
     '引用移除失败',
     referenceError
+  )
+}
+
+function formatSize(bytes) {
+  const size = Number(bytes) || 0
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+async function uploadAttachment(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || saving.value) return
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  const version = loadVersion
+  saving.value = true
+  attachmentError.value = ''
+  try {
+    await projectWorkApi.uploadAttachment(projectId, taskId, file)
+    if (version === loadVersion) await load()
+  } catch (cause) {
+    if (version === loadVersion) attachmentError.value = cause?.message || '附件上传失败'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function downloadAttachment(attachment) {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  attachmentError.value = ''
+  try {
+    const response = await projectWorkApi.downloadAttachment(projectId, taskId, attachment.id)
+    const blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition')
+    const match = disposition?.match(/filename\*=UTF-8''([^;]+)/i)
+    const fileName = match ? decodeURIComponent(match[1]) : attachment.file_name
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (cause) {
+    attachmentError.value = cause?.message || '附件下载失败'
+  }
+}
+
+function removeAttachment(attachmentId) {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(
+    () => projectWorkApi.removeAttachment(projectId, taskId, attachmentId),
+    '附件移除失败',
+    attachmentError
+  )
+}
+
+function saveInspection() {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  const payload = {
+    inspection_enabled: inspectionEnabled.value,
+    inspection_interval_minutes: inspectionInterval.value || null
+  }
+  return runAction(
+    () => projectWorkApi.updateTask(projectId, taskId, payload),
+    '巡检配置保存失败',
+    inspectionError
   )
 }
 
@@ -421,6 +545,8 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
   referenceTitle.value = ''
   referenceUrl.value = ''
   referenceError.value = ''
+  attachmentError.value = ''
+  inspectionError.value = ''
   selectedExecutor.value = undefined
   selectedStart.value = ''
   selectedDue.value = ''
@@ -449,6 +575,8 @@ watch(() => [route.params.project_id, route.params.task_id], () => {
 .work-task-section ul { list-style: none; margin: 0 0 18px; padding: 0; }
 .work-task-section li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
 .work-task-muted { color: var(--gray-500); }
+.work-task-link { border: none; background: none; padding: 0; color: var(--main-color); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.work-task-link:disabled { color: var(--gray-400); cursor: default; }
 .work-execution-main { min-width: 0; overflow-wrap: anywhere; }.work-execution-run { color: var(--gray-500); font-size: 12px; }
 .work-execution-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .work-task-comment { display: block !important; }

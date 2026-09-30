@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 19
+YUANLEI_SCHEMA_VERSION = 20
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -352,6 +352,58 @@ PROJECT_WORK_REFERENCE_SCHEMA_STATEMENTS = (
         created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
     )""",
     "CREATE INDEX IF NOT EXISTS ix_project_work_references_task_created ON project_work_references(task_id, created_at)",
+)
+PROJECT_WORK_ATTACHMENT_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_work_attachments (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        file_name VARCHAR(512) NOT NULL,
+        content_type VARCHAR(255),
+        file_size BIGINT NOT NULL,
+        object_name VARCHAR(1024) NOT NULL,
+        created_by VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_project_work_attachments_task_project FOREIGN KEY (task_id, project_id)
+            REFERENCES project_work_tasks(id, project_id) ON DELETE CASCADE,
+        CONSTRAINT uq_project_work_attachments_object UNIQUE (object_name)
+    )""",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_project_work_attachments_task_created "
+        "ON project_work_attachments(task_id, created_at)"
+    ),
+)
+PROJECT_WORK_INSPECTION_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS inspection_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS inspection_interval_minutes INTEGER",
+    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS inspection_next_run_at TIMESTAMP WITHOUT TIME ZONE",
+    """CREATE TABLE IF NOT EXISTS project_work_inspection_runs (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        occurrence_key VARCHAR(128) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'claimed',
+        finding VARCHAR(64),
+        summary TEXT,
+        inspected_at TIMESTAMP WITHOUT TIME ZONE,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_project_work_inspection_runs_task_project FOREIGN KEY (task_id, project_id)
+            REFERENCES project_work_tasks(id, project_id) ON DELETE CASCADE,
+        CONSTRAINT uq_project_work_inspection_runs_occurrence UNIQUE (task_id, occurrence_key),
+        CONSTRAINT ck_project_work_inspection_runs_status CHECK (status IN ('claimed', 'completed', 'failed'))
+    )""",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_project_work_inspection_runs_task_created "
+        "ON project_work_inspection_runs(task_id, created_at)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_project_work_inspection_runs_status_created "
+        "ON project_work_inspection_runs(status, created_at)"
+    ),
+    "ALTER TABLE user_inbox_items DROP CONSTRAINT IF EXISTS ck_user_inbox_items_kind",
+    "ALTER TABLE user_inbox_items ADD CONSTRAINT ck_user_inbox_items_kind CHECK "
+    "(kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted', 'task_inspection'))",
 )
 AGENT_SANDBOX_SCHEMA_STATEMENTS = (
     """
@@ -1483,6 +1535,16 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_KIND_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v19_to_v20(self) -> None:
+        """新增任务文件附件、第一负责人周期巡检与巡检通知词表。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in (
+                *PROJECT_WORK_ATTACHMENT_SCHEMA_STATEMENTS,
+                *PROJECT_WORK_INSPECTION_SCHEMA_STATEMENTS,
+            ):
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

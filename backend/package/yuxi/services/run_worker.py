@@ -58,6 +58,10 @@ from yuxi.services.scheduled_agent_service import (
     recover_scheduled_dispatches,
 )
 from yuxi.services.project_work_execution_service import reconcile_project_work_executions
+from yuxi.services.project_work_inspection_service import (
+    recover_stale_inspections,
+    run_project_work_inspection_tick,
+)
 from yuxi.services.sandbox_lifecycle_supervisor_service import (
     run_sandbox_lifecycle_tick,
     sandbox_lifecycle_interval_seconds,
@@ -1723,6 +1727,8 @@ async def _reconcile_agent_run_leases_forever() -> None:
             await recover_scheduled_dispatches()
             await claim_and_dispatch_due_jobs()
             await reconcile_project_work_executions()
+            await recover_stale_inspections()
+            await run_project_work_inspection_tick()
             await _publish_reconciliation_health()
         except asyncio.CancelledError:
             raise
@@ -1867,6 +1873,8 @@ async def _worker_startup(ctx):
     await recover_scheduled_dispatches()
     await claim_and_dispatch_due_jobs()
     await reconcile_project_work_executions()
+    await recover_stale_inspections()
+    await run_project_work_inspection_tick()
     await reconcile_coding_turns()
     await reconcile_delegations()
     await reconcile_channel_sync()
