@@ -256,11 +256,11 @@ const barFor = (item) => {
 let loadVersion = 0
 let codeWriteVersion = 0
 
-async function load() {
+async function load({ silent = false } = {}) {
   const version = ++loadVersion
   const codeVersion = codeWriteVersion
   const project = projectId.value
-  loading.value = true
+  if (!silent) loading.value = true
   error.value = ''
   try {
     const [items, bindings, code, topicRows] = await Promise.all([
@@ -278,7 +278,7 @@ async function load() {
   } catch (cause) {
     if (version === loadVersion) error.value = cause?.message || '任务加载失败'
   } finally {
-    if (version === loadVersion) loading.value = false
+    if (version === loadVersion && !silent) loading.value = false
   }
 }
 
@@ -366,12 +366,13 @@ async function changeStatus(item, status) {
   actionError.value = ''
   try {
     await projectWorkApi.updateTask(projectId.value, item.id, { status })
-    await load()
   } catch (cause) {
     actionError.value = cause?.message || '状态更新失败'
   } finally {
     updatingId.value = ''
   }
+  // 成功或失败都以服务端读回为准，避免看板保留未被持久化的乐观选择；后台回读不切换整页 loading。
+  await load({ silent: true })
 }
 
 function openSchedule(item) {

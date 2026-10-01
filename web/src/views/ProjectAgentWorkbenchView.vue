@@ -1,11 +1,13 @@
 <template>
   <div class="agent-workbench-page">
-    <PageHeader :title="`智能体工作台 · ${route.params.agent_slug}`" :loading="loading" show-border>
+    <PageHeader :title="workbenchTitle" :loading="loading" show-border>
       <template #actions><a-button size="small" @click="load">刷新</a-button></template>
     </PageHeader>
     <main class="agent-workbench-content">
       <a-spin v-if="loading" class="agent-workbench-state" />
-      <a-alert v-else-if="error" type="error" show-icon :message="error" />
+      <a-alert v-else-if="error" type="error" show-icon :message="error">
+        <template #action><a-button size="small" @click="load">重试</a-button></template>
+      </a-alert>
       <template v-else-if="workbench">
         <section class="agent-workbench-section agent-workbench-config">
           <h2>任务接收设置</h2>
@@ -62,6 +64,7 @@ import { useRoute } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
+import { projectAgentApi } from '@/apis/project_agent_api'
 
 const route = useRoute()
 const workbench = ref(null)
@@ -72,7 +75,13 @@ const working = ref(null)
 const settingsSaving = ref(false)
 const autoAcceptWork = ref(false)
 const workDefaultModelSpec = ref('')
+const agentName = ref('')
 let loadVersion = 0
+
+const workbenchTitle = computed(() => {
+  const subject = agentName.value || route.params.agent_slug
+  return subject ? `智能体工作台 · ${subject}` : '智能体工作台'
+})
 
 const settingsChanged = computed(() => workbench.value && (
   autoAcceptWork.value !== workbench.value.auto_accept_work ||
@@ -104,11 +113,16 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const result = await projectWorkExecutionApi.getWorkbench(projectId, agentSlug)
+    const [result, bindings] = await Promise.all([
+      projectWorkExecutionApi.getWorkbench(projectId, agentSlug),
+      // 显示名降级为 slug，不因归属列表读取失败阻断工作台本身。
+      projectAgentApi.list(projectId).then((data) => data.agents || []).catch(() => [])
+    ])
     if (version === loadVersion) {
       workbench.value = result
       autoAcceptWork.value = Boolean(result.auto_accept_work)
       workDefaultModelSpec.value = result.work_default_model_spec || ''
+      agentName.value = bindings.find((agent) => agent.slug === agentSlug)?.name || ''
     }
   } catch (cause) {
     if (version === loadVersion) error.value = cause?.message || '工作台加载失败'
@@ -189,6 +203,7 @@ watch(() => [route.params.project_id, route.params.agent_slug], () => {
   }
   workbench.value = null
   actionError.value = ''
+  agentName.value = ''
   load()
 }, { immediate: true })
 </script>
