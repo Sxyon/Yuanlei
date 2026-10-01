@@ -1565,6 +1565,12 @@ async def test_worker_startup_ensures_builtin_mcp_servers_and_runs_convergence(m
     async def fake_reconcile_project_work_executions():
         calls.append("reconcile_project_work_executions")
 
+    async def fake_recover_stale_inspections():
+        calls.append("recover_stale_inspections")
+
+    async def fake_run_project_work_inspection_tick():
+        calls.append("run_project_work_inspection_tick")
+
     async def fake_reconcile_coding_turns():
         calls.append("reconcile_coding_turns")
         return {"republished": 0, "failed": 0}
@@ -1604,6 +1610,8 @@ async def test_worker_startup_ensures_builtin_mcp_servers_and_runs_convergence(m
     monkeypatch.setattr(run_worker, "recover_scheduled_dispatches", fake_recover_scheduled_dispatches)
     monkeypatch.setattr(run_worker, "claim_and_dispatch_due_jobs", fake_claim_and_dispatch_due_jobs)
     monkeypatch.setattr(run_worker, "reconcile_project_work_executions", fake_reconcile_project_work_executions)
+    monkeypatch.setattr(run_worker, "recover_stale_inspections", fake_recover_stale_inspections)
+    monkeypatch.setattr(run_worker, "run_project_work_inspection_tick", fake_run_project_work_inspection_tick)
     monkeypatch.setattr(run_worker, "reconcile_coding_turns", fake_reconcile_coding_turns)
     monkeypatch.setattr(run_worker, "reconcile_delegations", fake_reconcile_delegations)
     monkeypatch.setattr(run_worker, "reconcile_channel_sync", fake_reconcile_channel_sync)
@@ -1631,6 +1639,8 @@ async def test_worker_startup_ensures_builtin_mcp_servers_and_runs_convergence(m
         "recover_scheduled_dispatches",
         "claim_and_dispatch_due_jobs",
         "reconcile_project_work_executions",
+        "recover_stale_inspections",
+        "run_project_work_inspection_tick",
         "reconcile_coding_turns",
         "reconcile_delegations",
         "reconcile_channel_sync",

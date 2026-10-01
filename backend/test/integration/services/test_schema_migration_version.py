@@ -357,6 +357,8 @@ async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> 
                 "project_work_references",
                 "project_work_comments",
                 "project_work_issues",
+                "project_work_attachments",
+                "project_work_inspection_runs",
                 "project_work_tasks",
                 "project_topic_codes",
                 "project_work_codes",
