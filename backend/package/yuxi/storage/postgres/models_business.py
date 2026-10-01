@@ -917,6 +917,9 @@ class ProjectWorkTask(Base):
     start_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
     primary_owner_agent_slug = Column(String(80), ForeignKey("agents.slug", ondelete="SET NULL"), nullable=True)
+    inspection_enabled = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    inspection_interval_minutes = Column(Integer, nullable=True)
+    inspection_next_run_at = Column(DateTime, nullable=True)
     created_by = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
@@ -1010,6 +1013,64 @@ class ProjectWorkReference(Base):
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
 
 
+class ProjectWorkAttachment(Base):
+    """项目任务的文件附件元数据；内容保存在对象存储。"""
+
+    __tablename__ = "project_work_attachments"
+    __table_args__ = (
+        UniqueConstraint("object_name", name="uq_project_work_attachments_object"),
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_project_work_attachments_task_project",
+            ondelete="CASCADE",
+        ),
+        Index("ix_project_work_attachments_task_created", "task_id", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    file_name = Column(String(512), nullable=False)
+    content_type = Column(String(255), nullable=True)
+    file_size = Column(BigInteger, nullable=False)
+    object_name = Column(String(1024), nullable=False)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class ProjectWorkInspectionRun(Base):
+    """第一负责人周期巡检的一次运行事实。"""
+
+    __tablename__ = "project_work_inspection_runs"
+    __table_args__ = (
+        UniqueConstraint("task_id", "occurrence_key", name="uq_project_work_inspection_runs_occurrence"),
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_project_work_inspection_runs_task_project",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "status IN ('claimed', 'completed', 'failed')",
+            name="ck_project_work_inspection_runs_status",
+        ),
+        Index("ix_project_work_inspection_runs_task_created", "task_id", "created_at"),
+        Index("ix_project_work_inspection_runs_status_created", "status", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    occurrence_key = Column(String(128), nullable=False)
+    status = Column(String(16), nullable=False, default="claimed")
+    finding = Column(String(64), nullable=True)
+    summary = Column(Text, nullable=True)
+    inspected_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
 class ProjectWorkComment(Base):
     """任务或问题单的追加式讨论记录。"""
 
@@ -1037,7 +1098,7 @@ class UserInboxItem(Base):
     __table_args__ = (
         UniqueConstraint("uid", "kind", "source_id", name="uq_user_inbox_items_source"),
         CheckConstraint(
-            "kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted')",
+            "kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted', 'task_inspection')",
             name="ck_user_inbox_items_kind",
         ),
         Index("ix_user_inbox_items_uid_created", "uid", "created_at"),

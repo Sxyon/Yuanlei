@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date
+from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,17 +16,39 @@ from yuxi.repositories.governance_repository import GovernanceRepository
 from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.repositories.project_work_inspection_repository import ProjectWorkInspectionRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
 from yuxi.repositories.user_inbox_repository import UserInboxRepository
+from yuxi.services.project_work_inspection_service import (
+    MAX_INSPECTION_INTERVAL_MINUTES,
+    MIN_INSPECTION_INTERVAL_MINUTES,
+)
+from yuxi.storage.minio import StorageError, get_minio_client
 from yuxi.storage.postgres.models_business import (
-    ProjectWorkComment, ProjectWorkIssue, ProjectWorkReference, ProjectWorkTask, User,
+    ProjectWorkAttachment,
+    ProjectWorkComment,
+    ProjectWorkInspectionRun,
+    ProjectWorkIssue,
+    ProjectWorkReference,
+    ProjectWorkTask,
+    User,
 )
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
+from yuxi.utils.upload_utils import read_upload_with_limit
 
 CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9]{1,11}\Z")
 TASK_STATUSES = frozenset({"todo", "in_progress", "blocked", "done", "cancelled"})
 ISSUE_STATUSES = frozenset({"open", "resolved", "closed"})
 HTTP_URL = TypeAdapter(AnyHttpUrl)
+MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
+ATTACHMENT_ALLOWED_EXTENSIONS = frozenset(
+    {
+        ".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp",
+        ".zip", ".tar", ".gz", ".tgz",
+    }
+)
 
 
 def _code(value: str) -> str:
@@ -91,9 +115,38 @@ def _task_data(row: ProjectWorkTask) -> dict:
         "start_date": row.start_date.isoformat() if row.start_date else None,
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "primary_owner_agent_slug": row.primary_owner_agent_slug,
+        "inspection_enabled": row.inspection_enabled,
+        "inspection_interval_minutes": row.inspection_interval_minutes,
+        "inspection_next_run_at": format_utc_datetime(row.inspection_next_run_at),
         "created_by": row.created_by,
         "created_at": format_utc_datetime(row.created_at),
         "updated_at": format_utc_datetime(row.updated_at),
+    }
+
+
+def _attachment_data(row: ProjectWorkAttachment) -> dict:
+    """序列化任务文件附件元数据。"""
+    return {
+        "id": row.id,
+        "task_id": row.task_id,
+        "file_name": row.file_name,
+        "content_type": row.content_type,
+        "file_size": row.file_size,
+        "created_by": row.created_by,
+        "created_at": format_utc_datetime(row.created_at),
+    }
+
+
+def _inspection_data(row: ProjectWorkInspectionRun) -> dict:
+    """序列化一次巡检结果。"""
+    return {
+        "id": row.id,
+        "task_id": row.task_id,
+        "status": row.status,
+        "finding": row.finding,
+        "summary": row.summary,
+        "inspected_at": format_utc_datetime(row.inspected_at),
+        "created_at": format_utc_datetime(row.created_at),
     }
 
 
@@ -277,11 +330,15 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     issues = await repo.list_issues(task.id)
     comments = await repo.list_comments(task_id=task.id)
     references = await repo.list_references(task.id)
+    attachments = await repo.list_attachments(task.id)
+    inspection_runs = await ProjectWorkInspectionRepository(db).list_runs_for_task(task.id)
     return {
         **_task_data(task),
         "issues": [_issue_data(row, task.number) for row in issues],
         "comments": [_comment_data(row) for row in comments],
         "references": [_reference_data(row) for row in references],
+        "attachments": [_attachment_data(row) for row in attachments],
+        "inspection_runs": [_inspection_data(row) for row in inspection_runs],
     }
 
 
@@ -328,6 +385,97 @@ async def remove_reference(
     return {"id": reference_id, "deleted": True}
 
 
+def _safe_file_name(file_name: str | None) -> str:
+    """去掉目录成分，保留可安全展示的文件名。"""
+    safe = Path(file_name or "").name.replace("/", "_").replace("\\", "_").strip(" .")
+    return safe or "attachment.bin"
+
+
+async def add_attachment(
+    *, db: AsyncSession, user: User, project_id: str, task_id: str, file: UploadFile
+) -> dict:
+    """在项目归属边界内校验并存储任务文件附件。"""
+    await _writable_project(db, user, project_id)
+    await _task(db, user, project_id, task_id)
+    file_name = _safe_file_name(file.filename)
+    if Path(file_name).suffix.lower() not in ATTACHMENT_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=422, detail="不支持该文件类型")
+    try:
+        content = await read_upload_with_limit(
+            file,
+            max_size_bytes=MAX_ATTACHMENT_SIZE_BYTES,
+            too_large_message="附件过大，当前仅支持 5 MB 以内的文件",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    attachment_id = str(uuid.uuid4())
+    object_name = f"project_work/{project_id}/{task_id}/{attachment_id}/{file_name}"
+    minio_client = get_minio_client()
+    bucket_name = minio_client.KB_BUCKETS["documents"]
+    try:
+        await minio_client.aupload_file(
+            bucket_name=bucket_name, object_name=object_name, data=content, content_type=file.content_type
+        )
+    except StorageError as exc:
+        raise HTTPException(status_code=500, detail=f"附件上传失败: {exc}") from exc
+    try:
+        row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).add_attachment(
+            task_id=task_id,
+            file_name=file_name,
+            content_type=file.content_type,
+            file_size=len(content),
+            object_name=object_name,
+            created_by=str(user.uid),
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await _delete_attachment_object(bucket_name, object_name)
+        raise
+    return _attachment_data(row)
+
+
+async def remove_attachment(
+    *, db: AsyncSession, user: User, project_id: str, task_id: str, attachment_id: str
+) -> dict:
+    """移除当前项目任务的文件附件及其对象。"""
+    await _writable_project(db, user, project_id)
+    repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
+    row = await repo.get_attachment(attachment_id)
+    if row is None or row.task_id != task_id:
+        raise HTTPException(status_code=404, detail="任务附件不存在")
+    object_name = row.object_name
+    await db.delete(row)
+    await db.commit()
+    await _delete_attachment_object(get_minio_client().KB_BUCKETS["documents"], object_name)
+    return {"id": attachment_id, "deleted": True}
+
+
+async def get_attachment_for_download(
+    *, db: AsyncSession, user: User, project_id: str, task_id: str, attachment_id: str
+) -> tuple[bytes, ProjectWorkAttachment]:
+    """在项目归属边界内读取附件内容，供下载响应装配。"""
+    await _project(db, user, project_id)
+    row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_attachment(attachment_id)
+    if row is None or row.task_id != task_id:
+        raise HTTPException(status_code=404, detail="任务附件不存在")
+    try:
+        content = await get_minio_client().adownload_file(
+            bucket_name=get_minio_client().KB_BUCKETS["documents"], object_name=row.object_name
+        )
+    except StorageError as exc:
+        raise HTTPException(status_code=404, detail=f"任务附件内容不可用: {exc}") from exc
+    return content, row
+
+
+async def _delete_attachment_object(bucket_name: str, object_name: str) -> None:
+    """尽力删除对象存储内容，失败只记录不回滚已提交的元数据。"""
+    try:
+        await get_minio_client().adelete_file(bucket_name=bucket_name, object_name=object_name)
+    except StorageError:
+        pass
+
+
 async def update_task(
     *,
     db: AsyncSession,
@@ -341,8 +489,11 @@ async def update_task(
     due_date: date | None = None,
     update_start_date: bool = False,
     update_due_date: bool = False,
+    inspection_enabled: bool | None = None,
+    inspection_interval_minutes: int | None = None,
+    update_inspection: bool = False,
 ) -> dict:
-    """修改任务状态或转移第一负责人。"""
+    """修改任务状态、转移第一负责人或调整周期巡检配置。"""
     await _writable_project(db, user, project_id)
     task = await _task(db, user, project_id, task_id, lock=True)
     if status is not None:
@@ -366,6 +517,9 @@ async def update_task(
             if binding is None:
                 raise HTTPException(status_code=404, detail="第一负责人未绑定该项目")
         task.primary_owner_agent_slug = primary_owner_agent_slug
+        if primary_owner_agent_slug is None:
+            task.inspection_enabled = False
+            task.inspection_next_run_at = None
     if update_start_date or update_due_date:
         next_start = start_date if update_start_date else task.start_date
         next_due = due_date if update_due_date else task.due_date
@@ -373,9 +527,37 @@ async def update_task(
             raise HTTPException(status_code=422, detail="计划结束日期不能早于开始日期")
         task.start_date = next_start
         task.due_date = next_due
+    if update_inspection:
+        _apply_inspection_config(
+            task, enabled=inspection_enabled, interval_minutes=inspection_interval_minutes
+        )
     task.updated_at = utc_now_naive()
     await db.commit()
     return _task_data(task)
+
+
+def _apply_inspection_config(
+    task: ProjectWorkTask, *, enabled: bool | None, interval_minutes: int | None
+) -> None:
+    """按当前负责人收敛任务周期巡检计划，启用时立即安排首次核查。"""
+    if interval_minutes is not None:
+        if not MIN_INSPECTION_INTERVAL_MINUTES <= interval_minutes <= MAX_INSPECTION_INTERVAL_MINUTES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"巡检周期须为 {MIN_INSPECTION_INTERVAL_MINUTES}-{MAX_INSPECTION_INTERVAL_MINUTES} 分钟",
+            )
+        task.inspection_interval_minutes = interval_minutes
+    next_enabled = task.inspection_enabled if enabled is None else enabled
+    if next_enabled:
+        if task.primary_owner_agent_slug is None:
+            raise HTTPException(status_code=409, detail="请先设置第一负责人，再启用周期巡检")
+        if task.inspection_interval_minutes is None:
+            raise HTTPException(status_code=422, detail="请先设置巡检周期")
+        task.inspection_enabled = True
+        task.inspection_next_run_at = utc_now_naive()
+    else:
+        task.inspection_enabled = False
+        task.inspection_next_run_at = None
 
 
 async def create_issue(

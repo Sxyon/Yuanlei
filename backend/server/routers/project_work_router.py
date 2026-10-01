@@ -1,8 +1,10 @@
 """独立项目工作任务与问题单 HTTP 入口。"""
 
 from datetime import date
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,13 +36,15 @@ class WorkTaskCreate(BaseModel):
 
 
 class WorkTaskUpdate(BaseModel):
-    """任务状态与第一负责人变更。"""
+    """任务状态、第一负责人、计划与周期巡检变更。"""
 
     model_config = ConfigDict(extra="forbid")
     status: str | None = None
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
     start_date: date | None = None
     due_date: date | None = None
+    inspection_enabled: bool | None = None
+    inspection_interval_minutes: int | None = Field(default=None, ge=1, le=7 * 24 * 60)
 
 
 class WorkIssueCreate(BaseModel):
@@ -167,6 +171,10 @@ async def update_task(
         update_owner="primary_owner_agent_slug" in payload.model_fields_set,
         update_start_date="start_date" in payload.model_fields_set,
         update_due_date="due_date" in payload.model_fields_set,
+        update_inspection=(
+            "inspection_enabled" in payload.model_fields_set
+            or "inspection_interval_minutes" in payload.model_fields_set
+        ),
         **payload.model_dump(),
     )
 
@@ -194,6 +202,52 @@ async def remove_reference(
     """移除任务网页引用。"""
     return await work.remove_reference(
         db=db, user=user, project_id=project_id, task_id=task_id, reference_id=reference_id
+    )
+
+
+@project_work.post("/projects/{project_id}/work/tasks/{task_id}/attachments")
+async def add_attachment(
+    project_id: str,
+    task_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传任务文件附件。"""
+    return await work.add_attachment(db=db, user=user, project_id=project_id, task_id=task_id, file=file)
+
+
+@project_work.get("/projects/{project_id}/work/tasks/{task_id}/attachments/{attachment_id}/download")
+async def download_attachment(
+    project_id: str,
+    task_id: str,
+    attachment_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """下载任务文件附件。"""
+    content, row = await work.get_attachment_for_download(
+        db=db, user=user, project_id=project_id, task_id=task_id, attachment_id=attachment_id
+    )
+    filename = quote(row.file_name)
+    return Response(
+        content=content,
+        media_type=row.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+@project_work.delete("/projects/{project_id}/work/tasks/{task_id}/attachments/{attachment_id}")
+async def remove_attachment(
+    project_id: str,
+    task_id: str,
+    attachment_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """移除任务文件附件。"""
+    return await work.remove_attachment(
+        db=db, user=user, project_id=project_id, task_id=task_id, attachment_id=attachment_id
     )
 
 

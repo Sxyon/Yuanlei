@@ -23,6 +23,26 @@ export const projectWorkApi = {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/references/${encodeURIComponent(referenceId)}`, {
       method: 'DELETE'
     }),
+  uploadAttachment: (projectId, taskId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiPost(
+      `/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/attachments`,
+      form
+    )
+  },
+  downloadAttachment: (projectId, taskId, attachmentId) =>
+    apiGet(
+      `/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}/download`,
+      {},
+      true,
+      'blob'
+    ),
+  removeAttachment: (projectId, taskId, attachmentId) =>
+    apiRequest(
+      `/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      { method: 'DELETE' }
+    ),
   createIssue: (projectId, taskId, payload) =>
     apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/issues`, payload),
   getIssue: (projectId, taskId, issueId) =>

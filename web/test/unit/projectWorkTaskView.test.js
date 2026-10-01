@@ -243,3 +243,82 @@ test('执行记录与问题单展示可读名称与中文状态', async (t) => {
   assert.equal(instance.setupState.issueStatusLabel('resolved'), '已解决')
   assert.equal(instance.setupState.issueStatusLabel('closed'), '已关闭')
 })
+
+test('附件上传成功后刷新详情，失败时展示错误', async (t) => {
+  const uploads = []
+  let attachments = []
+  t.mock.method(projectWorkApi, 'getTask', async () => ({
+    id: 'task', status: 'todo', primary_owner_agent_slug: null,
+    issues: [], comments: [], references: [], attachments: [...attachments]
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  t.mock.method(projectWorkApi, 'uploadAttachment', async (projectId, taskId, file) => {
+    uploads.push([projectId, taskId, file.name])
+    attachments = [{ id: 'att-1', file_name: file.name, file_size: 5 }]
+    return { id: 'att-1' }
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }]
+  })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  const input = { files: [{ name: '设计说明.txt' }], value: 'picked' }
+  await instance.setupState.uploadAttachment({ target: input })
+  assert.deepEqual(uploads, [['project', 'task', '设计说明.txt']])
+  assert.equal(input.value, '')
+  assert.equal(instance.setupState.task.attachments.length, 1)
+  assert.equal(instance.setupState.formatSize(1536), '1.5 KB')
+
+  t.mock.method(projectWorkApi, 'uploadAttachment', async () => { throw new Error('附件过大，当前仅支持 5 MB 以内的文件') })
+  await instance.setupState.uploadAttachment({ target: { files: [{ name: 'big.bin' }], value: 'x' } })
+  assert.equal(instance.setupState.attachmentError, '附件过大，当前仅支持 5 MB 以内的文件')
+})
+
+test('保存周期巡检发送启用状态与周期，失败时展示错误', async (t) => {
+  const updates = []
+  t.mock.method(projectWorkApi, 'getTask', async () => ({
+    id: 'task', status: 'todo', primary_owner_agent_slug: 'agent-a',
+    issues: [], comments: [], references: [], inspection_enabled: false, inspection_interval_minutes: 60
+  }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  t.mock.method(projectWorkApi, 'updateTask', async (_projectId, taskId, payload) => {
+    updates.push(payload)
+    return { id: taskId }
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }]
+  })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+
+  instance.setupState.inspectionEnabled = true
+  instance.setupState.inspectionInterval = 30
+  await instance.setupState.saveInspection()
+  assert.deepEqual(updates, [{ inspection_enabled: true, inspection_interval_minutes: 30 }])
+
+  instance.setupState.inspectionEnabled = true
+  t.mock.method(projectWorkApi, 'updateTask', async () => { throw new Error('请先设置第一负责人，再启用周期巡检') })
+  await instance.setupState.saveInspection()
+  assert.equal(instance.setupState.inspectionError, '请先设置第一负责人，再启用周期巡检')
+})

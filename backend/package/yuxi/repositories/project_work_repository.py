@@ -13,6 +13,7 @@ from yuxi.storage.postgres.models_business import (
     Project,
     ProjectAgent,
     ProjectTopicCode,
+    ProjectWorkAttachment,
     ProjectWorkCode,
     ProjectWorkComment,
     ProjectWorkIssue,
@@ -300,6 +301,62 @@ class ProjectWorkRepository:
                 Project.selection_status == "selectable",
             )
         )
+
+    async def add_attachment(
+        self,
+        *,
+        task_id: str,
+        file_name: str,
+        content_type: str | None,
+        file_size: int,
+        object_name: str,
+        created_by: str,
+    ) -> ProjectWorkAttachment:
+        """为当前项目任务登记文件附件元数据。"""
+        await self._require_project()
+        if created_by != self.uid or await self.get_task(task_id) is None:
+            raise PermissionError("任务不属于当前用户 Project")
+        row = ProjectWorkAttachment(
+            id=str(uuid.uuid4()),
+            task_id=task_id,
+            project_id=self.project_id,
+            file_name=file_name,
+            content_type=content_type,
+            file_size=file_size,
+            object_name=object_name,
+            created_by=created_by,
+            created_at=utc_now_naive(),
+        )
+        self.db.add(row)
+        await self.db.flush()
+        return row
+
+    async def list_attachments(self, task_id: str) -> list[ProjectWorkAttachment]:
+        """读取当前项目任务的文件附件。"""
+        if await self.get_task(task_id) is None:
+            return []
+        rows = await self.db.scalars(
+            select(ProjectWorkAttachment)
+            .where(ProjectWorkAttachment.task_id == task_id)
+            .order_by(ProjectWorkAttachment.created_at, ProjectWorkAttachment.id)
+        )
+        return list(rows)
+
+    async def get_attachment(self, attachment_id: str, *, lock: bool = False) -> ProjectWorkAttachment | None:
+        """按当前项目和用户归属读取附件元数据。"""
+        query = (
+            select(ProjectWorkAttachment)
+            .join(ProjectWorkTask, ProjectWorkTask.id == ProjectWorkAttachment.task_id)
+            .join(Project, Project.id == ProjectWorkTask.project_id)
+            .where(
+                ProjectWorkAttachment.id == attachment_id,
+                ProjectWorkTask.project_id == self.project_id,
+                Project.uid == self.uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+            )
+        )
+        return await self.db.scalar(query.with_for_update(of=ProjectWorkAttachment) if lock else query)
 
     async def add_comment(
         self, *, task_id: str | None, issue_id: str | None, content: str, author_uid: str, author_name: str
