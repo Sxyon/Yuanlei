@@ -35,7 +35,7 @@ YL-25 的 P0 整改合入后，独立审查（YL-29）提出三条非阻塞收�
 - 实执行命令：容器内 `pytest test/integration/services/test_user_inbox_repository.py -q`，真实 PostgreSQL，`2 passed`；覆盖同一来源追加发生过程、不同 `kind`/`source_id` 各自成行、再次发生回到未读与取消归档、以及首个事务未提交时第二个写入等待行锁后追加。
 - 实执行命令：容器内 `pytest test/integration/services/test_schema_migration_version.py -k v20_to_v21 -q`，`1 passed`；存量 v20 行迁移后保留且 `occurrences` 补齐为空数组，迁移可重复执行。
 - 实执行命令：容器内 `pytest test/unit/services/test_storage_migration.py -q`，`19 passed`；v1..v5 升级链包含 v20→v21，新增 v20 存量库只执行 v20→v21 的用例。
-- 实执行命令：容器内 `pytest test/unit -m "not slow" -q`，`2639 passed, 61 skipped`；仅 `test_context_backend_construction_does_not_sync_skill_projection` 因临时容器 skill 目录不可写失败，属运行环境所致，与本变更无关。
+- 实执行命令：容器内 `pytest test/unit -m "not slow" -q`，`2726 passed, 61 skipped, 1 failed`；仅 `test_context_backend_construction_does_not_sync_skill_projection` 因临时容器 skill 目录不可写失败，属运行环境所致，与本变更无关。
 - 实执行命令：容器内 `pytest test/integration/api/test_project_work_api.py -k reexecution -q`，`1 passed`。同文件既有 `test_project_work_http_lifecycle_and_cross_project_guards` 因基线夹具缺 `created_at` 默认值失败，属 YL-33 跟踪的既有缺陷，与本用例无关。
 - `python3 scripts/verify_engineering_contracts.py` 与 `python3 -m unittest scripts.test_verify_engineering_contracts` 通过；`ruff check` 对修改文件通过；`git diff --check` 干净。
 - 未验证范围：文档站 `pnpm run build` 未运行（工作树无 docs `node_modules`）；worker 级 E2E（失败或中断再次发生追加通知、重新执行绑定新 Run 的真实 worker 消费）需要确定性 replay 服务与 worker，本环境未运行，由既有 E2E 归属跟踪。
