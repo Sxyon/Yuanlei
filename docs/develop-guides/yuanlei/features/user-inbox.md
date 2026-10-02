@@ -39,5 +39,6 @@ AgentRun 继续拥有运行状态、输出、interrupt checkpoint 和 resume；�
 
 - [持久通知决定](../decisions/implemented/2026-09-27-user-inbox.md)
 - [议题缩写全链路、执行通知与重新执行](../decisions/implemented/2026-09-29-project-work-topic-inbox-retry-remediation.md)
+- [项目任务重执行集成覆盖与收件箱通知幂等写入](../decisions/implemented/2026-10-02-project-work-reexecution-test-and-inbox-idempotency.md)
 - [整体后续提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL 与 HTTP：`backend/test/integration/services/test_schema_migration_version.py`、`test_agent_run_lease.py`、`backend/test/integration/api/test_project_work_api.py`。
