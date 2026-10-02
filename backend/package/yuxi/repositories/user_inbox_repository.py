@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import and_, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import UserInboxItem
@@ -27,28 +28,32 @@ class UserInboxRepository:
         project_id: str | None = None,
         summary: str | None = None,
     ) -> UserInboxItem:
-        """在来源状态事务内写入一次通知。"""
-        existing = await self.db.scalar(
+        """按 (uid, kind, source_id) 唯一键幂等写入通知，冲突时返回既有行。"""
+        statement = (
+            pg_insert(UserInboxItem)
+            .values(
+                id=str(uuid.uuid4()),
+                uid=uid,
+                kind=kind,
+                source_id=source_id,
+                project_id=project_id,
+                title=title,
+                summary=summary,
+                created_at=utc_now_naive(),
+            )
+            .on_conflict_do_nothing(index_elements=["uid", "kind", "source_id"])
+            .returning(UserInboxItem)
+        )
+        inserted = await self.db.scalar(statement)
+        if inserted is not None:
+            return inserted
+        return await self.db.scalar(
             select(UserInboxItem).where(
                 UserInboxItem.uid == uid,
                 UserInboxItem.kind == kind,
                 UserInboxItem.source_id == source_id,
             )
         )
-        if existing is not None:
-            return existing
-        item = UserInboxItem(
-            id=str(uuid.uuid4()),
-            uid=uid,
-            kind=kind,
-            source_id=source_id,
-            project_id=project_id,
-            title=title,
-            summary=summary,
-        )
-        self.db.add(item)
-        await self.db.flush()
-        return item
 
     async def list_for_user(
         self, *, uid: str, folder: str, before: str | None = None, limit: int = 50

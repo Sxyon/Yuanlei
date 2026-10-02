@@ -58,6 +58,7 @@
 - [任务管理视图与委派反馈](../decisions/implemented/2026-09-28-project-task-management-views.md)
 - [议题缩写全链路、执行通知与重新执行](../decisions/implemented/2026-09-29-project-work-topic-inbox-retry-remediation.md)
 - [项目任务文件附件与第一负责人周期巡检](../decisions/implemented/2026-09-30-project-work-attachments-and-inspection.md)
+- [项目任务重执行集成覆盖与收件箱通知幂等写入](../decisions/implemented/2026-10-02-project-work-reexecution-test-and-inbox-idempotency.md)
 - [后续工作提案](../decisions/proposed/2026-09-27-agent-workbench-inbox-project-work.md)
 - 真实 PostgreSQL：`backend/test/integration/services/test_project_work_service.py` 与 `test_schema_migration_version.py`。
 - 真实 PostgreSQL 附件边界：`backend/test/integration/api/test_project_work_attachments_api.py` 覆盖上传、下载回读、删除、非法类型、超大文件、跨项目与外部用户越权。

@@ -348,3 +348,151 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
             await db.execute(text("DELETE FROM departments WHERE id = :id"), {"id": department_id})
             await db.execute(text("DELETE FROM agents WHERE slug = :slug"), {"slug": agent_slug})
         await engine.dispose()
+
+
+async def test_project_work_reexecution_creates_new_intent_and_keeps_attempts(test_client):
+    """失败/已取消尝试重新执行创建新执行意图（新 Request/Thread），旧尝试与旧 Run 保留。"""
+    marker = uuid.uuid4().hex[:12]
+    uid = f"pytest-retry-{marker}"
+    project_id = f"pytest-retry-project-{marker}"
+    agent_slug = f"pytest-retry-agent-{marker}"
+    engine = create_async_engine(os.environ["POSTGRES_URL"], pool_pre_ping=True)
+    threads: list[str] = []
+    async with engine.begin() as db:
+        department_id = await db.scalar(
+            text("INSERT INTO departments (name) VALUES (:name) RETURNING id"),
+            {"name": uid},
+        )
+        user_id = await db.scalar(
+            text(
+                "INSERT INTO users (username, uid, password_hash, role, department_id, login_failed_count, is_deleted) "
+                "VALUES (:uid, :uid, 'x', 'user', :department_id, 0, 0) RETURNING id"
+            ),
+            {"uid": uid, "department_id": department_id},
+        )
+        await db.execute(
+            text(
+                "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                "VALUES (:id, :uid, 'Pytest', 'selectable', :path, 'managed')"
+            ),
+            {"id": project_id, "uid": uid, "path": f"projects/{project_id}"},
+        )
+        await db.execute(
+            text(
+                "INSERT INTO agents "
+                "(slug, backend_id, name, pics, config_json, share_config, is_default, is_subagent, created_by) "
+                "VALUES (:slug, 'ChatbotAgent', 'Retry Agent', '[]'::jsonb, '{}'::jsonb, "
+                "CAST(:share_config AS jsonb), FALSE, FALSE, :uid)"
+            ),
+            {"slug": agent_slug, "uid": uid, "share_config": json.dumps(DEFAULT_SHARE_CONFIG)},
+        )
+        await db.execute(
+            text(
+                "INSERT INTO project_agents (id, project_id, agent_slug, config_overrides) "
+                "VALUES (:id, :project_id, :slug, '{}'::jsonb)"
+            ),
+            {"id": f"pytest-retry-binding-{marker}", "project_id": project_id, "slug": agent_slug},
+        )
+    headers = {"Authorization": f"Bearer {AuthUtils.create_access_token({'sub': str(user_id)})}"}
+    try:
+        root = f"/api/projects/{project_id}/work"
+        assert (await test_client.put(
+            f"{root}/code", headers=headers, json={"code": f"R{uuid.uuid4().hex[:8].upper()}"}
+        )).status_code == 200
+        created = await test_client.post(f"{root}/tasks", headers=headers, json={"title": "Retry task"})
+        assert created.status_code == 200, created.text
+        task_id = created.json()["id"]
+        assignment_path = f"{root}/tasks/{task_id}/executions"
+
+        first = await test_client.post(assignment_path, headers=headers, json={"agent_slug": agent_slug})
+        assert first.status_code == 200, first.text
+        first_id = first.json()["id"]
+        async with engine.connect() as db:
+            first_request_id, first_thread_id = (await db.execute(
+                text("SELECT request_id, thread_id FROM project_work_executions WHERE id = :id"),
+                {"id": first_id},
+            )).one()
+        threads.append(first_thread_id)
+
+        old_run_id = f"pytest-retry-run-{marker}"
+        async with engine.begin() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO conversations (thread_id, uid, agent_id, project_id, is_pinned) "
+                    "VALUES (:thread_id, :uid, :agent, :project_id, FALSE)"
+                ),
+                {"thread_id": first_thread_id, "uid": uid, "agent": agent_slug, "project_id": project_id},
+            )
+            await db.execute(
+                text(
+                    "INSERT INTO agent_runs (id, conversation_thread_id, runtime_scope_id, agent_slug, uid, "
+                    "status, request_id, source, channel, external_id, run_type, origin_metadata, input_payload, token_usage) "
+                    "VALUES (:run_id, :thread_id, :thread_id, :agent, :uid, 'failed', :request_id, 'project_work', "
+                    "'worker', :execution_id, 'chat', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)"
+                ),
+                {"run_id": old_run_id, "thread_id": first_thread_id, "agent": agent_slug, "uid": uid,
+                 "request_id": first_request_id, "execution_id": first_id},
+            )
+            await db.execute(
+                text(
+                    "UPDATE project_work_executions SET status = 'failed', current_run_id = :run_id, "
+                    "error_message = '模拟模型失败', finished_at = NOW(), updated_at = NOW() WHERE id = :id"
+                ),
+                {"run_id": old_run_id, "id": first_id},
+            )
+
+        second = await test_client.post(assignment_path, headers=headers, json={"agent_slug": agent_slug})
+        assert second.status_code == 200, second.text
+        second_id = second.json()["id"]
+        assert second_id != first_id and second.json()["status"] == "pending_acceptance"
+        async with engine.connect() as db:
+            second_request_id, second_thread_id = (await db.execute(
+                text("SELECT request_id, thread_id FROM project_work_executions WHERE id = :id"),
+                {"id": second_id},
+            )).one()
+        threads.append(second_thread_id)
+        assert second_request_id != first_request_id and second_thread_id != first_thread_id
+
+        assert (await test_client.post(
+            f"{assignment_path}/{second_id}/cancel", headers=headers
+        )).status_code == 200
+        third = await test_client.post(assignment_path, headers=headers, json={"agent_slug": agent_slug})
+        assert third.status_code == 200, third.text
+        third_id = third.json()["id"]
+        async with engine.connect() as db:
+            third_request_id, third_thread_id = (await db.execute(
+                text("SELECT request_id, thread_id FROM project_work_executions WHERE id = :id"),
+                {"id": third_id},
+            )).one()
+        threads.append(third_thread_id)
+        assert len({first_request_id, second_request_id, third_request_id}) == 3
+        assert len({first_thread_id, second_thread_id, third_thread_id}) == 3
+
+        listed = await test_client.get(assignment_path, headers=headers)
+        assert listed.status_code == 200, listed.text
+        by_id = {item["id"]: item for item in listed.json()}
+        assert set(by_id) == {first_id, second_id, third_id}
+        assert by_id[first_id]["status"] == "failed"
+        assert by_id[first_id]["error_message"] == "模拟模型失败"
+        assert by_id[first_id]["request_id"] == first_request_id
+        assert by_id[first_id]["current_run_id"] == old_run_id
+        assert by_id[second_id]["status"] == "cancelled"
+        assert by_id[third_id]["status"] == "pending_acceptance"
+
+        async with engine.connect() as db:
+            assert await db.scalar(
+                text("SELECT count(*) FROM agent_runs WHERE id = :id"), {"id": old_run_id}
+            ) == 1
+    finally:
+        async with engine.begin() as db:
+            await db.execute(
+                text("DELETE FROM agent_runs WHERE conversation_thread_id = ANY(:threads)"),
+                {"threads": threads},
+            )
+            await db.execute(text("DELETE FROM conversations WHERE uid = :uid"), {"uid": uid})
+            await db.execute(text("DELETE FROM user_inbox_items WHERE uid = :uid"), {"uid": uid})
+            await db.execute(text("DELETE FROM projects WHERE id = :id"), {"id": project_id})
+            await db.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+            await db.execute(text("DELETE FROM departments WHERE id = :id"), {"id": department_id})
+            await db.execute(text("DELETE FROM agents WHERE slug = :slug"), {"slug": agent_slug})
+        await engine.dispose()
