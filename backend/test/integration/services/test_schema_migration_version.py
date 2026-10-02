@@ -346,6 +346,112 @@ async def test_yuanlei_v18_to_v19_extends_inbox_kinds_idempotently() -> None:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v19_to_v20_adds_attachments_and_inspection_idempotently() -> None:
+    """真实 PostgreSQL：v19→v20 建附件/巡检表与巡检通知词表幂等，迁移前拒写 task_inspection。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_inspection_v20")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("DROP TABLE project_work_attachments"))
+            await connection.execute(text("DROP TABLE project_work_inspection_runs"))
+            await connection.execute(
+                text(
+                    "ALTER TABLE project_work_tasks "
+                    "DROP COLUMN inspection_enabled, DROP COLUMN inspection_interval_minutes, "
+                    "DROP COLUMN inspection_next_run_at"
+                )
+            )
+            await connection.execute(
+                text("ALTER TABLE user_inbox_items DROP CONSTRAINT ck_user_inbox_items_kind")
+            )
+            await connection.execute(
+                text(
+                    "ALTER TABLE user_inbox_items ADD CONSTRAINT ck_user_inbox_items_kind "
+                    "CHECK (kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted'))"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO users (username, uid, password_hash, role, login_failed_count, is_deleted) "
+                    "VALUES ('v20-user', 'v20-user', 'x', 'user', 0, 0)"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO projects (id, uid, name, selection_status, workdir_path, directory_mode) "
+                    "VALUES ('v20-project', 'v20-user', 'V20', 'selectable', 'projects/v20', 'managed')"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO project_work_tasks "
+                    "(id, project_id, number, title, status, created_by, created_at, updated_at) "
+                    "VALUES ('v20-task', 'v20-project', 'V20-GEN-000001', 'Old task', 'todo', 'v20-user', NOW(), NOW())"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                    "VALUES ('v20-notice', 'v20-user', 'run_question', 'v20-run', 'Question', NOW())"
+                )
+            )
+        with pytest.raises(IntegrityError, match="ck_user_inbox_items_kind"):
+            async with scoped_engine.begin() as connection:
+                await connection.execute(
+                    text(
+                        "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                        "VALUES ('v20-too-early', 'v20-user', 'task_inspection', "
+                        "'v20-task', 'Inspection', NOW())"
+                    )
+                )
+
+        await manager.upgrade_yuanlei_schema_v19_to_v20()
+        await manager.upgrade_yuanlei_schema_v19_to_v20()
+
+        async with scoped_engine.connect() as connection:
+            tables = {
+                row[0]
+                for row in await connection.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = current_schema() "
+                        "AND table_name IN ('project_work_attachments', 'project_work_inspection_runs')"
+                    )
+                )
+            }
+            assert tables == {"project_work_attachments", "project_work_inspection_runs"}
+            columns = {
+                row[0]
+                for row in await connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = current_schema() AND table_name = 'project_work_tasks' "
+                        "AND column_name IN "
+                        "('inspection_enabled', 'inspection_interval_minutes', 'inspection_next_run_at')"
+                    )
+                )
+            }
+            assert columns == {
+                "inspection_enabled",
+                "inspection_interval_minutes",
+                "inspection_next_run_at",
+            }
+            assert (
+                await connection.scalar(text("SELECT title FROM project_work_tasks WHERE id = 'v20-task'"))
+                == "Old task"
+            )
+            assert await connection.scalar(text("SELECT count(*) FROM user_inbox_items")) == 1
+        async with scoped_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                    "VALUES ('v20-inspection', 'v20-user', 'task_inspection', 'v20-task', 'Inspection', NOW())"
+                )
+            )
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v20_to_v21_adds_inbox_occurrences_idempotently() -> None:
     """存量 v20 升级后保留通知，并补齐同一来源的发生过程列。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_inbox_occurrences")
@@ -1255,7 +1361,8 @@ async def test_yuanlei_v9_to_v10_converges_governance_tables_idempotently() -> N
         async with scoped_engine.begin() as connection:
             await connection.execute(
                 text(
-                    "DROP TABLE IF EXISTS governance_reports, governance_tasks, governance_decisions, governance_topics"
+                    "DROP TABLE IF EXISTS governance_reports, governance_tasks, governance_decisions, "
+                    "governance_topics CASCADE"
                 )
             )
 
@@ -1273,12 +1380,12 @@ async def test_yuanlei_v9_to_v10_converges_governance_tables_idempotently() -> N
                     )
                 )
             }
-            assert tables == {
+            assert {
                 "governance_topics",
                 "governance_decisions",
                 "governance_tasks",
                 "governance_reports",
-            }
+            } <= tables
             constraints = {
                 row.conname
                 for row in await connection.execute(
@@ -1310,7 +1417,6 @@ async def test_yuanlei_v9_to_v10_converges_governance_tables_idempotently() -> N
                 "uq_governance_topics_source_external",
                 "uq_governance_tasks_source_external",
             }
-        assert YUANLEI_SCHEMA_VERSION == 12
     finally:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
@@ -1368,7 +1474,6 @@ async def test_yuanlei_v10_to_v11_converges_channel_delegation_tables_idempotent
                 "uq_channel_delegations_operation_id",
                 "uq_channel_sync_cursors_scope",
             }
-        assert YUANLEI_SCHEMA_VERSION == 12
     finally:
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 

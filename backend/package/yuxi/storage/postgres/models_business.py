@@ -1120,7 +1120,7 @@ class UserInboxItem(Base):
     )
     read_at = Column(DateTime, nullable=True)
     archived_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive, server_default=func.now())
 
 
 class GovernanceDecision(Base):
