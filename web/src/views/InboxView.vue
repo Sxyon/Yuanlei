@@ -83,6 +83,7 @@ const KIND_META = {
   task_completed: { label: '任务完成', action: '查看任务', target: 'task' },
   task_failed: { label: '任务失败', action: '查看任务', target: 'task' },
   task_interrupted: { label: '任务中断', action: '查看任务', target: 'task' },
+  task_inspection: { label: '任务巡检', action: '查看任务', target: 'project_tasks' },
   run_question: { label: '等待答复', action: '前往答复', target: 'run' }
 }
 const kindInfo = (kind) => KIND_META[kind] || { label: kind, action: '查看来源', target: 'task' }
@@ -142,8 +143,11 @@ async function openItem(item) {
   actionError.value = ''
   try {
     let destination
-    if (kindInfo(item.kind).target === 'task') {
+    const target = kindInfo(item.kind).target
+    if (target === 'task') {
       destination = `/projects/${encodeURIComponent(item.project_id)}/work/tasks/${encodeURIComponent(item.source_id)}`
+    } else if (target === 'project_tasks') {
+      destination = `/projects/${encodeURIComponent(item.project_id)}/work/tasks`
     } else {
       const response = await agentApi.getAgentRun(item.source_id)
       destination = `/agent/${encodeURIComponent(response.run.conversation_thread_id)}`

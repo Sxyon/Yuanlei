@@ -14,7 +14,7 @@ Owner：web/src/views/ProjectWorkTasksView.vue
 - 任务详情“问题单”列表直接展示英文状态 `open`/`resolved`/`closed`，与同页其他中文状态不一致。
 - 工作台错误态缺少重试入口，与任务列表、任务详情、收件箱的错误态不一致。
 
-收件箱的未读/已读/归档、标已读、归档与来源跳转在回归中行为正确，本次不需要改动。`user_inbox_items.kind` 的词表由后端 CHECK 约束拥有，当前只允许 `task_completed`、`run_question`、`task_failed`、`task_interrupted`，前端映射与之一致，无缺失种类。
+收件箱的未读/已读/归档、标已读、归档与来源跳转在回归中行为正确，本次不需要改动。`user_inbox_items.kind` 的词表由后端 CHECK 约束拥有，覆盖 `task_completed`、`run_question`、`task_failed`、`task_interrupted` 与周期巡检新增的 `task_inspection`；Web 收件箱 `InboxView.vue` 的 `KIND_META` 为每个种类提供中文标签与来源跳转。YL-26 新增 `task_inspection` 时未同步 `KIND_META`，集成 head 的真实页面把该通知渲染为原始英文种类；本记录原先「前端映射与之一致，无缺失种类」的表述错误，该集成回归已在 [收件箱补齐 task_inspection 种类映射](2026-10-02-inbox-task-inspection-kind-mapping.md) 中补齐。
 
 ## 决策
 
