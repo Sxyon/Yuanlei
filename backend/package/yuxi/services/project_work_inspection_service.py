@@ -59,7 +59,7 @@ async def process_inspection_run(run_id: str) -> None:
                 author_uid=f"agent:{owner}"[:64],
                 author_name=f"{display_name} · 自动巡检",
             )
-            await UserInboxRepository(db).add_once(
+            await UserInboxRepository(db).record_occurrence(
                 uid=task.created_by,
                 kind=INSPECTION_KIND,
                 source_id=run.id,

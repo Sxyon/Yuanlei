@@ -32,6 +32,7 @@ from yuxi.storage.postgres.manager import (
     PROJECT_GIT_SCHEMA_STATEMENTS,
     PROJECT_WORK_SCHEMA_STATEMENTS,
     PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS,
+    USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS,
     USER_INBOX_SCHEMA_STATEMENTS,
     V071_WORKDIR_CUTOVER_STATEMENTS,
     YUANLEI_SCHEMA_VERSION,
@@ -144,6 +145,7 @@ async def _ensure_yuanlei_schema() -> None:
             *PROJECT_WORK_INSPECTION_SCHEMA_STATEMENTS,
             *USER_INBOX_SCHEMA_STATEMENTS,
             *PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS,
+            *USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS,
         ):
             await connection.execute(text(statement))
 
@@ -186,7 +188,7 @@ async def main() -> None:
                 "yuanlei",
                 yuanlei_version,
                 YUANLEI_SCHEMA_VERSION,
-                upgrade_from=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19),
+                upgrade_from=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20),
             )
 
             if business_version is None:
@@ -235,6 +237,7 @@ async def main() -> None:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             elif yuanlei_version == 11:
                 await pg_manager.upgrade_yuanlei_schema_v11_to_v12()
@@ -246,6 +249,7 @@ async def main() -> None:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             elif yuanlei_version == 12:
                 await pg_manager.upgrade_yuanlei_schema_v12_to_v13()
@@ -256,6 +260,7 @@ async def main() -> None:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             elif yuanlei_version == 13:
                 await pg_manager.upgrade_yuanlei_schema_v13_to_v14()
@@ -265,6 +270,7 @@ async def main() -> None:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             elif yuanlei_version == 14:
                 await pg_manager.upgrade_yuanlei_schema_v14_to_v15()
@@ -273,6 +279,7 @@ async def main() -> None:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             elif yuanlei_version == 15:
                 await pg_manager.upgrade_yuanlei_schema_v15_to_v16()
@@ -280,27 +287,36 @@ async def main() -> None:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             elif yuanlei_version == 16:
                 await pg_manager.upgrade_yuanlei_schema_v16_to_v17()
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             elif yuanlei_version == 17:
                 await pg_manager.upgrade_yuanlei_schema_v17_to_v18()
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             elif yuanlei_version == 18:
                 await pg_manager.upgrade_yuanlei_schema_v18_to_v19()
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             elif yuanlei_version == 19:
                 await pg_manager.upgrade_yuanlei_schema_v19_to_v20()
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
+                await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
+
+            elif yuanlei_version == 20:
+                await pg_manager.upgrade_yuanlei_schema_v20_to_v21()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
 
             if knowledge_version is None:

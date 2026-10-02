@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 20
+YUANLEI_SCHEMA_VERSION = 21
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -723,6 +723,7 @@ USER_INBOX_SCHEMA_STATEMENTS = (
         project_id VARCHAR(64),
         title VARCHAR(512) NOT NULL,
         summary TEXT,
+        occurrences JSONB NOT NULL DEFAULT '[]'::jsonb,
         read_at TIMESTAMP WITHOUT TIME ZONE,
         archived_at TIMESTAMP WITHOUT TIME ZONE,
         created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
@@ -738,6 +739,10 @@ USER_INBOX_KIND_SCHEMA_STATEMENTS = (
     "ALTER TABLE user_inbox_items DROP CONSTRAINT IF EXISTS ck_user_inbox_items_kind",
     "ALTER TABLE user_inbox_items ADD CONSTRAINT ck_user_inbox_items_kind CHECK "
     "(kind IN ('task_completed', 'run_question', 'task_failed', 'task_interrupted'))",
+)
+# 元垒收件箱通知追加：同一来源共用一行，列保存发生过程快照；存量行以空数组补齐。
+USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS = (
+    "ALTER TABLE user_inbox_items ADD COLUMN IF NOT EXISTS occurrences JSONB NOT NULL DEFAULT '[]'::jsonb",
 )
 PROJECT_WORK_EXECUTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_work_executions (
@@ -1545,6 +1550,13 @@ class PostgresManager(metaclass=SingletonMeta):
                 *PROJECT_WORK_ATTACHMENT_SCHEMA_STATEMENTS,
                 *PROJECT_WORK_INSPECTION_SCHEMA_STATEMENTS,
             ):
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v20_to_v21(self) -> None:
+        """为收件箱通知增加发生过程快照列，支持同一来源追加提醒。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

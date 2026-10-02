@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import UserInboxItem
-from yuxi.utils.datetime_utils import utc_now_naive
+from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
 
 class UserInboxRepository:
@@ -18,7 +18,7 @@ class UserInboxRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def add_once(
+    async def record_occurrence(
         self,
         *,
         uid: str,
@@ -28,8 +28,10 @@ class UserInboxRepository:
         project_id: str | None = None,
         summary: str | None = None,
     ) -> UserInboxItem:
-        """按 (uid, kind, source_id) 唯一键幂等写入通知，冲突时返回既有行。"""
-        statement = (
+        """记录一次来源发生：同一 (uid, kind, source_id) 共用一行并追加发生过程。"""
+        now = utc_now_naive()
+        occurrence = {"at": format_utc_datetime(now), "summary": summary}
+        inserted = await self.db.scalar(
             pg_insert(UserInboxItem)
             .values(
                 id=str(uuid.uuid4()),
@@ -39,21 +41,34 @@ class UserInboxRepository:
                 project_id=project_id,
                 title=title,
                 summary=summary,
-                created_at=utc_now_naive(),
+                occurrences=[occurrence],
+                created_at=now,
             )
             .on_conflict_do_nothing(index_elements=["uid", "kind", "source_id"])
             .returning(UserInboxItem)
         )
-        inserted = await self.db.scalar(statement)
         if inserted is not None:
             return inserted
-        return await self.db.scalar(
-            select(UserInboxItem).where(
+        item = await self.db.scalar(
+            select(UserInboxItem)
+            .where(
                 UserInboxItem.uid == uid,
                 UserInboxItem.kind == kind,
                 UserInboxItem.source_id == source_id,
             )
+            .with_for_update()
         )
+        item.occurrences = [*(item.occurrences or []), occurrence]
+        if project_id is not None:
+            item.project_id = project_id
+        item.title = title
+        item.summary = summary
+        # 再次发生要让接收者感知到：回到未读并取消归档，重新排到列表顶部。
+        item.read_at = None
+        item.archived_at = None
+        item.created_at = now
+        await self.db.flush()
+        return item
 
     async def list_for_user(
         self, *, uid: str, folder: str, before: str | None = None, limit: int = 50

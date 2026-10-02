@@ -822,7 +822,7 @@ class AgentRunRepository:
             and error_type in {"ask_user_question_required", "human_approval_required"}
             and run.run_type in TOP_LEVEL_RUN_TYPES
         ):
-            await UserInboxRepository(self.db).add_once(
+            await UserInboxRepository(self.db).record_occurrence(
                 uid=run.uid,
                 kind="run_question",
                 source_id=run.id,

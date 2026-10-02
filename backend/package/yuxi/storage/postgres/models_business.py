@@ -1111,6 +1111,13 @@ class UserInboxItem(Base):
     project_id = Column(String(64), nullable=True)
     title = Column(String(512), nullable=False)
     summary = Column(Text, nullable=True)
+    occurrences = Column(
+        JSON_VALUE,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'"),
+        comment="同一来源的通知发生过程快照，按发生时间排列",
+    )
     read_at = Column(DateTime, nullable=True)
     archived_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=utc_now_naive)

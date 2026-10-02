@@ -60,52 +60,60 @@ async def inbox_schema() -> AsyncGenerator[tuple[async_sessionmaker, object, obj
         await admin_engine.dispose()
 
 
-async def test_add_once_conflict_returns_existing_notification(inbox_schema):
-    """同一 (uid, kind, source_id) 重复写入命中唯一键时返回既有行，不同维度各自成行。"""
+async def test_record_occurrence_appends_same_source_history(inbox_schema):
+    """同一 (uid, kind, source_id) 共用一行并追加发生过程，不同维度各自成行。"""
     sessions, scoped_engine, _admin_engine = inbox_schema
 
     async with sessions() as db:
-        first = await UserInboxRepository(db).add_once(
-            uid="inbox-user", kind="task_failed", source_id="inbox-task", title="首次失败"
+        first = await UserInboxRepository(db).record_occurrence(
+            uid="inbox-user", kind="task_failed", source_id="inbox-task", title="首次失败", summary="boom-1"
         )
         await db.commit()
         first_id = first.id
     async with sessions() as db:
-        duplicate = await UserInboxRepository(db).add_once(
-            uid="inbox-user", kind="task_failed", source_id="inbox-task", title="重复失败"
+        await UserInboxRepository(db).update_for_user(uid="inbox-user", item_id=first_id, read=True, archived=True)
+        await db.commit()
+    async with sessions() as db:
+        duplicate = await UserInboxRepository(db).record_occurrence(
+            uid="inbox-user", kind="task_failed", source_id="inbox-task", title="再次失败", summary="boom-2"
         )
-        other_kind = await UserInboxRepository(db).add_once(
+        other_kind = await UserInboxRepository(db).record_occurrence(
             uid="inbox-user", kind="task_interrupted", source_id="inbox-task", title="中断"
         )
-        other_source = await UserInboxRepository(db).add_once(
+        other_source = await UserInboxRepository(db).record_occurrence(
             uid="inbox-user", kind="task_failed", source_id="inbox-task-2", title="另一任务失败"
         )
         await db.commit()
 
     assert duplicate.id == first_id
-    assert duplicate.title == "首次失败"
+    assert duplicate.title == "再次失败"
+    assert duplicate.summary == "boom-2"
+    assert [entry["summary"] for entry in duplicate.occurrences] == ["boom-1", "boom-2"]
+    # 再次发生要回到未读、取消归档，让接收者感知到变化。
+    assert duplicate.read_at is None
+    assert duplicate.archived_at is None
     assert other_kind.id != first_id
     assert other_source.id != first_id
     async with scoped_engine.connect() as connection:
         assert await connection.scalar(text("SELECT count(*) FROM user_inbox_items")) == 3
 
 
-async def test_add_once_concurrent_duplicate_does_not_raise(inbox_schema):
-    """首个事务未提交时并发写入同一键，第二个写入等待后返回既有行且不抛 IntegrityError。"""
+async def test_record_occurrence_concurrent_duplicate_appends_without_raising(inbox_schema):
+    """首个事务未提交时并发写入同一键，第二个等待后追加发生过程且不抛 IntegrityError。"""
     sessions, scoped_engine, admin_engine = inbox_schema
 
     holder: dict[str, int] = {}
     first_session: AsyncSession = sessions()
     try:
-        first = await UserInboxRepository(first_session).add_once(
-            uid="inbox-user", kind="task_failed", source_id="inbox-task", title="并发首次"
+        first = await UserInboxRepository(first_session).record_occurrence(
+            uid="inbox-user", kind="task_failed", source_id="inbox-task", title="并发首次", summary="first"
         )
 
         async def insert_duplicate() -> object:
             async with sessions() as second:
                 holder["pid"] = await second.scalar(text("SELECT pg_backend_pid()"))
-                row = await UserInboxRepository(second).add_once(
-                    uid="inbox-user", kind="task_failed", source_id="inbox-task", title="并发重复"
+                row = await UserInboxRepository(second).record_occurrence(
+                    uid="inbox-user", kind="task_failed", source_id="inbox-task", title="并发重复", summary="second"
                 )
                 await second.commit()
                 return row
@@ -127,6 +135,7 @@ async def test_add_once_concurrent_duplicate_does_not_raise(inbox_schema):
         await first_session.commit()
         duplicate = await task
         assert duplicate.id == first.id
+        assert [entry["summary"] for entry in duplicate.occurrences] == ["first", "second"]
     finally:
         await first_session.close()
 

@@ -502,7 +502,7 @@ async def update_task(
         if status in {"done", "cancelled"} and await ProjectWorkExecutionRepository(db).has_active_task_work(task.id):
             raise HTTPException(status_code=409, detail="任务仍有待接受或执行中的智能体工作")
         if status == "done" and task.status != "done":
-            await UserInboxRepository(db).add_once(
+            await UserInboxRepository(db).record_occurrence(
                 uid=task.created_by,
                 kind="task_completed",
                 source_id=task.id,
