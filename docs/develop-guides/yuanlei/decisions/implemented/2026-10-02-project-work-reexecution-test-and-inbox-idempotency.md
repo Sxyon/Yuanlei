@@ -30,7 +30,7 @@ YL-25 的 P0 整改合入后，独立审查（YL-29）提出三条非阻塞收�
 ## 验证
 
 - 实执行命令：容器内 `pytest test/integration/api/test_project_work_api.py -k reexecution -q`，对新分支 API（真实 HTTP）与真实 PostgreSQL，`1 passed`。同文件既有 `test_project_work_http_lifecycle_and_cross_project_guards` 因基线夹具缺 `created_at` 默认值失败，属 YL-33 跟踪的既有缺陷，与本用例无关。
-- 实执行命令：容器内 `pytest test/integration/services/test_user_inbox_repository.py test/integration/services/test_project_work_service.py test/integration/services/test_project_work_execution_service.py -q`，`3 passed`。其中执行队列用例覆盖失败、中断通知多次收敛后计数为 1。
+- 实执行命令：容器内 `pytest test/integration/services/test_user_inbox_repository.py test/integration/services/test_project_work_service.py test/integration/services/test_project_work_execution_service.py -q`，`4 passed`。收件箱用例覆盖顺序重复与并发重复（第二个事务等待首个未提交唯一键后返回既有行，不抛 `IntegrityError`），执行队列用例覆盖失败、中断通知多次收敛后计数为 1。
 - 实执行命令：容器内 `pytest test/unit -m "not slow" -q`，`2725 passed, 61 skipped`，另有 1 项 `test_context_backend_construction_does_not_sync_skill_projection` 因临时运行目录只读失败，设可写 skill 目录后单独通过，与本变更无关。
 - `python3 scripts/verify_engineering_contracts.py` 通过；`ruff check` 对修改后的 `user_inbox_repository.py` 通过。
 - 未验证范围：文档站 `pnpm run build` 未运行（工作树无 docs `node_modules`）；worker 级 E2E（失败或中断各产生一次通知、重新执行绑定新 Run 的真实 worker 消费）需要确定性 replay 服务与 worker，本环境未运行，由既有 E2E 归属跟踪。

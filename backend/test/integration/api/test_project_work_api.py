@@ -351,7 +351,11 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
 
 
 async def test_project_work_reexecution_creates_new_intent_and_keeps_attempts(test_client):
-    """失败/已取消尝试重新执行创建新执行意图（新 Request/Thread），旧尝试与旧 Run 保留。"""
+    """失败/已取消尝试重新执行创建新执行意图（新 Request/Thread），旧尝试与旧 Run 保留。
+
+    新 Run 由接受后的 FIFO 派发链路产生，属 worker E2E 覆盖范围；本用例固定
+    Request 意图与旧尝试、旧 Run 的保留事实。
+    """
     marker = uuid.uuid4().hex[:12]
     uid = f"pytest-retry-{marker}"
     project_id = f"pytest-retry-project-{marker}"
