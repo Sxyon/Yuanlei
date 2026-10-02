@@ -13,7 +13,7 @@ Owner：backend/package/yuxi/storage/postgres/models_business.py
 
 ## 决策
 
-`UserInboxItem.created_at` 与迁移对齐：加 `server_default=func.now()`，与 `models_business.py` 其他时间戳列一致。迁移 SQL 已拥有该默认值，不新增迁移。
+`UserInboxItem.created_at` 与迁移对齐：加 `server_default=func.now()`，与 `manager.py` 中 `USER_INBOX_SCHEMA_STATEMENTS` 的 `DEFAULT NOW()` 语义一致；ORM 仍保留 Python 侧 `default=utc_now_naive`。迁移 SQL 已拥有该默认值，不新增迁移。本决定的语义分工：ORM 列定义由 `models_business.py` 拥有，迁移 DDL 事实由 `manager.py` 拥有，回归夹具由对应 integration 测试拥有。
 
 删除三处恒假 `==12` 断言。v9→v10 的 `DROP TABLE governance_*` 加 CASCADE；治理四表的精确集断言放宽为包含（v10 之后新增的 `governance_topic_comments` 等表在隔离 schema 中共存）。
 
@@ -30,7 +30,7 @@ Owner：backend/package/yuxi/storage/postgres/models_business.py
 
 ## 后果
 
-`create_all` 与迁移对 `user_inbox_items.created_at` 的默认值一致，原始 SQL 夹具在不显式写时间戳时按库时钟补齐。三处恒假断言移除，v9→v10、v10→v11 与 dashboard 用例恢复真实断言路径。未改动三功能业务不变量、API 契约、权限或持久化结构，未新增抽象或依赖。
+`create_all` 与迁移对 `user_inbox_items.created_at` 的默认值一致，原始 SQL 夹具在不显式写时间戳时按库时钟补齐。该对齐只作用于此后由 `create_all` 新建的表；已存在的运行库列默认值由迁移 DDL 拥有，不会因 ORM 改动回填，复用的旧测试卷仍可能在原始插入时失败。三处恒假断言移除，v9→v10、v10→v11 与 dashboard 用例恢复真实断言路径。未改动三功能业务不变量、API 契约、权限或持久化结构，未新增抽象或依赖。
 
 ## 验证
 
@@ -39,4 +39,5 @@ Owner：backend/package/yuxi/storage/postgres/models_business.py
   - `test_yuanlei_v9_to_v10_converges_governance_tables_idempotently`、`test_yuanlei_v10_to_v11_converges_channel_delegation_tables_idempotently`、`test_project_dashboard_service.py::test_yuanlei_v8_to_v9_converges_dashboard_tables_idempotently` 通过。
   - `test/integration/api/test_project_work_api.py` 通过（夹具原始插入 51 条不带 `created_at` 的通知）。
 - `python3 scripts/verify_engineering_contracts.py`、`python3 -m unittest scripts.test_verify_engineering_contracts` 通过。
-- 未覆盖：`test/integration/services` 中 lease/durable/scheduled/git/provisioner 与 `allowed_base_branches` 原始插入的基线失败与三功能无关，实际清单与命令见交付 issue。
+- 未覆盖：`test/integration/services` 中 lease/durable/scheduled/git/provisioner 与 `allowed_base_branches` 原始插入的基线失败与三功能无关，实际清单与命令见交付 issue。`docs/develop-guides/yuanlei/features/project-governance.md` 中 `YUANLEI_SCHEMA_VERSION = 12` 的过时描述同属跟踪项，不在本变更修正。
+- `ruff check package` / `ruff format package --check` 在基线即存在失败（如 `models_business.py:952` E501），非本变更引入，本次未扩大处理。

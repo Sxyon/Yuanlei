@@ -395,12 +395,13 @@ async def test_yuanlei_v19_to_v20_adds_attachments_and_inspection_idempotently()
                     "VALUES ('v20-notice', 'v20-user', 'run_question', 'v20-run', 'Question', NOW())"
                 )
             )
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="ck_user_inbox_items_kind"):
             async with scoped_engine.begin() as connection:
                 await connection.execute(
                     text(
                         "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
-                        "VALUES ('v20-too-early', 'v20-user', 'task_inspection', 'v20-task', 'Inspection', NOW())"
+                        "VALUES ('v20-too-early', 'v20-user', 'task_inspection', "
+                        "'v20-task', 'Inspection', NOW())"
                     )
                 )
 
