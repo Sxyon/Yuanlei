@@ -17,6 +17,7 @@ def _item_data(item: UserInboxItem) -> dict:
         "project_id": item.project_id,
         "title": item.title,
         "summary": item.summary,
+        "occurrences": list(item.occurrences or []),
         "read_at": format_utc_datetime(item.read_at),
         "archived_at": format_utc_datetime(item.archived_at),
         "created_at": format_utc_datetime(item.created_at),

@@ -31,6 +31,12 @@
             <span class="inbox-kind">{{ kindInfo(item.kind).label }}</span>
             <h2>{{ item.title }}</h2>
             <p v-if="item.summary">{{ item.summary }}</p>
+            <ol v-if="occurrencesFor(item).length > 1" class="inbox-occurrences">
+              <li v-for="(occurrence, index) in occurrencesFor(item)" :key="index">
+                <time :datetime="occurrence.at">{{ formatTime(occurrence.at) }}</time>
+                <span>{{ occurrence.summary || '（无说明）' }}</span>
+              </li>
+            </ol>
             <time :datetime="item.created_at">{{ formatTime(item.created_at) }}</time>
           </div>
           <div class="inbox-actions">
@@ -79,6 +85,7 @@ const nextCursor = ref(null)
 let loadVersion = 0
 
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
+const occurrencesFor = (item) => (Array.isArray(item.occurrences) ? item.occurrences : [])
 const KIND_META = {
   task_completed: { label: '任务完成', action: '查看任务', target: 'task' },
   task_failed: { label: '任务失败', action: '查看任务', target: 'task' },
@@ -176,6 +183,9 @@ watch(folder, load, { immediate: true })
 .inbox-kind { color: var(--main-color); font-size: 12px; }
 .inbox-item h2 { margin: 5px 0; color: var(--gray-900); font-size: 16px; font-weight: 600; }
 .inbox-item p { margin: 0 0 7px; color: var(--gray-700); overflow-wrap: anywhere; }
+.inbox-occurrences { margin: 0 0 7px; padding-left: 18px; color: var(--gray-700); font-size: 13px; }
+.inbox-occurrences li { margin-bottom: 2px; }
+.inbox-occurrences time { margin-right: 8px; color: var(--gray-500); font-size: 12px; }
 .inbox-item time { color: var(--gray-500); font-size: 12px; }
 .inbox-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 .inbox-error { margin-top: 16px; color: var(--color-error-700); }

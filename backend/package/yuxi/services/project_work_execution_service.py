@@ -65,7 +65,7 @@ async def _notify_execution_outcome(db: AsyncSession, row: ProjectWorkExecution,
     summary = row.error_message
     if kind == "task_interrupted" and not summary:
         summary = "执行中断，等待原 Run 恢复"
-    await UserInboxRepository(db).add_once(
+    await UserInboxRepository(db).record_occurrence(
         uid=row.uid,
         kind=kind,
         source_id=row.task_id,

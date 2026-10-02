@@ -105,6 +105,37 @@ test('任务巡检通知显示中文并可跳转到项目任务列表', async (t
   assert.deepEqual(updates, [['notice-3', { read: true }]])
 })
 
+test('同一来源的多次发生保留完整发生过程', async (t) => {
+  t.mock.method(inboxApi, 'list', async () => ([
+    {
+      id: 'notice-3', kind: 'task_failed', source_id: 'task-3', project_id: 'p1',
+      title: '任务执行失败', summary: '第三次失败', read_at: null, archived_at: null,
+      created_at: '2026-09-29T02:00:00Z',
+      occurrences: [
+        { at: '2026-09-29T00:00:00Z', summary: '第一次失败' },
+        { at: '2026-09-29T02:00:00Z', summary: '第三次失败' }
+      ]
+    }
+  ]))
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/inbox', component: View }] })
+  await router.push('/inbox')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  const item = instance.setupState.items[0]
+  assert.deepEqual(
+    instance.setupState.occurrencesFor(item).map((entry) => entry.summary),
+    ['第一次失败', '第三次失败']
+  )
+  assert.deepEqual(instance.setupState.occurrencesFor({}), [])
+})
+
 test('快速切换分类时迟到的旧响应不能覆盖当前收件箱', async (t) => {
   let finishUnread, finishArchived
   t.mock.method(inboxApi, 'list', (folder) => new Promise((resolve) => {

@@ -452,6 +452,37 @@ async def test_yuanlei_v19_to_v20_adds_attachments_and_inspection_idempotently()
         await _drop_isolated_schema(schema, admin_engine, scoped_engine)
 
 
+async def test_yuanlei_v20_to_v21_adds_inbox_occurrences_idempotently() -> None:
+    """存量 v20 升级后保留通知，并补齐同一来源的发生过程列。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_inbox_occurrences")
+    try:
+        await manager.create_business_tables()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text("ALTER TABLE user_inbox_items DROP COLUMN occurrences"))
+            await connection.execute(text(
+                "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, created_at) "
+                "VALUES ('legacy-notice', 'occurrence-user', 'task_failed', 'legacy-task', 'Failed', NOW())"
+            ))
+        await manager.upgrade_yuanlei_schema_v20_to_v21()
+        async with scoped_engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO user_inbox_items (id, uid, kind, source_id, title, occurrences, created_at) "
+                "VALUES ('new-notice', 'occurrence-user', 'task_failed', 'new-task', 'Failed', "
+                "'[{\"at\": \"2026-10-02T00:00:00Z\", \"summary\": \"boom\"}]'::jsonb, NOW())"
+            ))
+        await manager.upgrade_yuanlei_schema_v20_to_v21()
+        async with scoped_engine.connect() as connection:
+            assert await connection.scalar(text("SELECT count(*) FROM user_inbox_items")) == 2
+            assert await connection.scalar(text(
+                "SELECT occurrences FROM user_inbox_items WHERE id = 'legacy-notice'"
+            )) == []
+            assert await connection.scalar(text(
+                "SELECT occurrences->0->>'summary' FROM user_inbox_items WHERE id = 'new-notice'"
+            )) == "boom"
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)
+
+
 async def test_yuanlei_v12_to_v13_creates_project_work_tables_idempotently() -> None:
     """存量 v12 通过迁移创建工作任务表，重复升级保留已写入编号。"""
     schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_schema")
