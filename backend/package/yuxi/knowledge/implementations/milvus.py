@@ -15,6 +15,7 @@ from pymilvus import (
     FieldSchema,
     Function,
     FunctionType,
+    MilvusException,
     WeightedRanker,
     connections,
     db,
@@ -329,7 +330,18 @@ class MilvusKB(KnowledgeBase):
         """初始化 Milvus 连接"""
         try:
             # 连接到 Milvus
-            connections.connect(alias=self.connection_alias, uri=self.milvus_uri, token=self.milvus_token)
+            # Docker daemon 恢复已有容器时不会重新执行 Compose 的健康依赖等待。
+            for attempt in range(6):
+                try:
+                    connections.connect(
+                        alias=self.connection_alias, uri=self.milvus_uri, token=self.milvus_token, timeout=10
+                    )
+                    break
+                except MilvusException:
+                    if attempt == 5:
+                        raise
+                    logger.warning(f"Milvus connection unavailable; retrying startup ({attempt + 1}/6)")
+                    time.sleep(5)
 
             # 创建数据库（如果不存在）
             try:

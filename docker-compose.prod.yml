@@ -90,6 +90,8 @@ services:
       retries: 8
       start_period: 180s
     depends_on:
+      milvus:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:

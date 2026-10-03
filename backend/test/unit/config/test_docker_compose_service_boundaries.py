@@ -473,3 +473,10 @@ def test_runtime_directory_guard_detects_shared_save_directory(service_name: str
 def test_cleanup_guard_detects_reintroduced_direct_docker_access(marker: str):
     """恢复 Docker socket 清理路径时，边界 guard 必须报告对应标记。"""
     assert _forbidden_direct_docker_access(f"cleanup command: {marker}") == {marker}
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_api_waits_for_required_milvus_backend(filename: str) -> None:
+    """必需知识库初始化必须在 Milvus 健康后启动。"""
+    compose = _load_compose(filename)
+    assert compose["services"]["api"]["depends_on"]["milvus"]["condition"] == "service_healthy"
