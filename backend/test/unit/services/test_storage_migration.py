@@ -243,6 +243,7 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
         upgrade_yuanlei_schema_v18_to_v19=lambda: _record(calls, "upgrade_yuanlei_v18_v19"),
         upgrade_yuanlei_schema_v19_to_v20=lambda: _record(calls, "upgrade_yuanlei_v19_v20"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
+        upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -286,7 +287,8 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
     assert calls.index("upgrade_yuanlei_v17_v18") < calls.index("upgrade_yuanlei_v18_v19")
     assert calls.index("upgrade_yuanlei_v18_v19") < calls.index("upgrade_yuanlei_v19_v20")
     assert calls.index("upgrade_yuanlei_v19_v20") < calls.index("upgrade_yuanlei_v20_v21")
-    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index("upgrade_yuanlei_v21_v22")
+    assert calls.index("upgrade_yuanlei_v21_v22") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -331,6 +333,7 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
         upgrade_yuanlei_schema_v18_to_v19=lambda: _record(calls, "upgrade_yuanlei_v18_v19"),
         upgrade_yuanlei_schema_v19_to_v20=lambda: _record(calls, "upgrade_yuanlei_v19_v20"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
+        upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -382,7 +385,8 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
     assert calls.index("upgrade_yuanlei_v17_v18") < calls.index("upgrade_yuanlei_v18_v19")
     assert calls.index("upgrade_yuanlei_v18_v19") < calls.index("upgrade_yuanlei_v19_v20")
     assert calls.index("upgrade_yuanlei_v19_v20") < calls.index("upgrade_yuanlei_v20_v21")
-    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index("upgrade_yuanlei_v21_v22")
+    assert calls.index("upgrade_yuanlei_v21_v22") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -427,6 +431,7 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
         upgrade_yuanlei_schema_v18_to_v19=lambda: _record(calls, "upgrade_yuanlei_v18_v19"),
         upgrade_yuanlei_schema_v19_to_v20=lambda: _record(calls, "upgrade_yuanlei_v19_v20"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
+        upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -477,7 +482,8 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
     assert calls.index("upgrade_yuanlei_v17_v18") < calls.index("upgrade_yuanlei_v18_v19")
     assert calls.index("upgrade_yuanlei_v18_v19") < calls.index("upgrade_yuanlei_v19_v20")
     assert calls.index("upgrade_yuanlei_v19_v20") < calls.index("upgrade_yuanlei_v20_v21")
-    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index("upgrade_yuanlei_v21_v22")
+    assert calls.index("upgrade_yuanlei_v21_v22") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -522,6 +528,7 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
         upgrade_yuanlei_schema_v18_to_v19=lambda: _record(calls, "upgrade_yuanlei_v18_v19"),
         upgrade_yuanlei_schema_v19_to_v20=lambda: _record(calls, "upgrade_yuanlei_v19_v20"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
+        upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -571,7 +578,8 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
     assert calls.index("upgrade_yuanlei_v17_v18") < calls.index("upgrade_yuanlei_v18_v19")
     assert calls.index("upgrade_yuanlei_v18_v19") < calls.index("upgrade_yuanlei_v19_v20")
     assert calls.index("upgrade_yuanlei_v19_v20") < calls.index("upgrade_yuanlei_v20_v21")
-    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index("upgrade_yuanlei_v21_v22")
+    assert calls.index("upgrade_yuanlei_v21_v22") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -616,6 +624,7 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
         upgrade_yuanlei_schema_v18_to_v19=lambda: _record(calls, "upgrade_yuanlei_v18_v19"),
         upgrade_yuanlei_schema_v19_to_v20=lambda: _record(calls, "upgrade_yuanlei_v19_v20"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
+        upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -664,7 +673,8 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
     assert calls.index("upgrade_yuanlei_v17_v18") < calls.index("upgrade_yuanlei_v18_v19")
     assert calls.index("upgrade_yuanlei_v18_v19") < calls.index("upgrade_yuanlei_v19_v20")
     assert calls.index("upgrade_yuanlei_v19_v20") < calls.index("upgrade_yuanlei_v20_v21")
-    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index("upgrade_yuanlei_v21_v22")
+    assert calls.index("upgrade_yuanlei_v21_v22") < calls.index(version_call)
 
 
 @pytest.mark.asyncio
@@ -691,6 +701,7 @@ async def test_yuanlei_v20_is_upgraded_to_inbox_occurrences(monkeypatch):
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
+        upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -717,7 +728,8 @@ async def test_yuanlei_v20_is_upgraded_to_inbox_occurrences(monkeypatch):
     version_call = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
     assert "upgrade_yuanlei_v19_v20" not in calls
     assert "upgrade_yuanlei_v20_v21" in calls
-    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index(version_call)
+    assert calls.index("upgrade_yuanlei_v20_v21") < calls.index("upgrade_yuanlei_v21_v22")
+    assert calls.index("upgrade_yuanlei_v21_v22") < calls.index(version_call)
 
 
 @pytest.mark.asyncio

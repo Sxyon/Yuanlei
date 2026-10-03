@@ -100,13 +100,7 @@
                             key="git"
                             :icon="h(GitFork, { size: 14 })"
                             @click="emit('manage-project-git', group.project)"
-                            >Git 仓库</a-menu-item
-                          >
-                          <a-menu-item
-                            key="rename"
-                            :icon="h(SquarePen, { size: 14 })"
-                            @click="renameProject(group.project)"
-                            >重命名项目</a-menu-item
+                            >项目设置</a-menu-item
                           >
                           <a-menu-item
                             key="delete"
@@ -204,7 +198,7 @@
 
 <script setup>
 import { computed, h, ref } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { Modal } from 'ant-design-vue'
 import {
   ClipboardList,
   ChevronDown,
@@ -215,7 +209,6 @@ import {
   Loader2,
   MoreVertical,
   Plus,
-  SquarePen,
   Trash2
 } from '@lucide/vue'
 import ConversationNavItem from '@/components/ConversationNavItem.vue'
@@ -283,33 +276,6 @@ const toggleProject = (projectId) => {
   if (next.has(projectId)) next.delete(projectId)
   else next.add(projectId)
   expandedProjects.value = next
-}
-
-const renameProject = (project) => {
-  let name = project.name || ''
-  Modal.confirm({
-    title: '重命名项目',
-    icon: null,
-    centered: true,
-    width: 400,
-    content: h('input', {
-      value: name,
-      class: 'rename-conversation-input',
-      'aria-label': '项目名称',
-      onInput: (event) => {
-        name = event.target.value
-      }
-    }),
-    okText: '保存',
-    cancelText: '取消',
-    onOk: () => {
-      if (!name.trim()) {
-        message.warning('项目名称不能为空')
-        return Promise.reject()
-      }
-      emit('rename-project', { projectId: project.id, name })
-    }
-  })
 }
 
 const confirmDeleteProject = (project) => {

@@ -390,6 +390,7 @@ watch(
             </div>
             <a-spin :spinning="schemaLoading">
               <ProjectAgentConfigForm
+                :project-id="projectId"
                 :values="configValues"
                 :configurable-items="configurableItems"
                 @update:values="(values) => (configValues = values)"

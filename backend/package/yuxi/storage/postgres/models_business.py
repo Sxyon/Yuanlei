@@ -142,6 +142,55 @@ class Project(Base):
         }
 
 
+class ProjectSettings(Base):
+    """元垒项目管理属性，不改变项目权限与软删除状态。"""
+
+    __tablename__ = "project_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "work_status IN ('planned', 'in_progress', 'paused', 'completed', 'cancelled')",
+            name="ck_project_settings_status",
+        ),
+        CheckConstraint("priority IN ('urgent', 'high', 'medium', 'low', 'none')", name="ck_project_settings_priority"),
+        CheckConstraint("owner_type IN ('none', 'member', 'agent')", name="ck_project_settings_owner_type"),
+        CheckConstraint(
+            "(owner_type = 'none' AND owner_id IS NULL) OR (owner_type <> 'none' AND owner_id IS NOT NULL)",
+            name="ck_project_settings_owner_identity",
+        ),
+        CheckConstraint(
+            "start_date IS NULL OR due_date IS NULL OR start_date <= due_date", name="ck_project_settings_dates"
+        ),
+    )
+
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    work_status = Column(String(20), nullable=False, default="planned", server_default="planned")
+    priority = Column(String(16), nullable=False, default="none", server_default="none")
+    owner_type = Column(String(16), nullable=False, default="member")
+    owner_id = Column(String(80), nullable=True)
+    description = Column(String(255), nullable=False, default="", server_default="")
+    start_date = Column(Date, nullable=True)
+    due_date = Column(Date, nullable=True)
+
+    def to_dict(self) -> dict:
+        """序列化管理属性，日期保持无时区日历语义。"""
+        return {
+            "work_status": self.work_status,
+            "priority": self.priority,
+            "owner_type": self.owner_type,
+            "owner_id": self.owner_id,
+            "description": self.description,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+        }
+
+
+class ProjectKnowledgeLink(Base):
+    """项目指向知识库的弱关联，不授予读取权限。"""
+
+    __tablename__ = "project_knowledge_links"
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    kb_id = Column(String(80), primary_key=True)
+
 class GitCredential(Base):
     """保存由可信 Git 服务加密的凭据。"""
 

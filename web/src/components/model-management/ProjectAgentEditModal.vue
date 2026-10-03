@@ -490,6 +490,7 @@ watch(
           class="agent-modal-section runtime-section"
         >
           <ProjectAgentConfigForm
+            :project-id="agentDetail?.project_id || ''"
             :segment="activeSection"
             :values="values"
             :configurable-items="configurableItems"

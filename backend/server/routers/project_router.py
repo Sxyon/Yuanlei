@@ -1,5 +1,8 @@
 """Project HTTP 适配层。"""
 
+from datetime import date
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +14,11 @@ from yuxi.services.project_service import (
     list_history_candidates_view,
     list_projects_view,
     rename_project_view,
+)
+from yuxi.services.project_settings_service import (
+    get_project_settings,
+    update_project_settings,
+    update_project_knowledge_links,
 )
 from yuxi.services.project_git_service import (
     cleanup_project_worktree_view,
@@ -55,6 +63,27 @@ class ProjectUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
+
+
+class ProjectSettingsUpdate(BaseModel):
+    """项目名称与管理属性的完整保存请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=255)
+    work_status: Literal["planned", "in_progress", "paused", "completed", "cancelled"]
+    priority: Literal["urgent", "high", "medium", "low", "none"]
+    owner_type: Literal["none", "member", "agent"]
+    owner_id: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str = Field(default="", max_length=255)
+    start_date: date | None = None
+    due_date: date | None = None
+
+
+class ProjectKnowledgeUpdate(BaseModel):
+    """项目知识库关联完整选择。"""
+
+    model_config = ConfigDict(extra="forbid")
+    kb_ids: list[str] = Field(max_length=100)
 
 
 class ProjectRepositoryCreate(BaseModel):
@@ -238,3 +267,36 @@ async def cleanup_project_worktree(
     if cleanup_worktree_id:
         await enqueue_project_git_worktree_cleanup(cleanup_worktree_id)
     return result
+
+
+@projects.get("/{project_id}/settings")
+async def read_project_settings(
+    project_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)
+):
+    """读取当前用户项目设置。"""
+    return await get_project_settings(user=current_user, project_id=project_id, db=db)
+
+
+@projects.put("/{project_id}/settings")
+async def save_project_settings(
+    project_id: str,
+    payload: ProjectSettingsUpdate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保存名称、描述与管理属性。"""
+    values = payload.model_dump(exclude={"name"})
+    return await update_project_settings(
+        user=current_user, project_id=project_id, name=payload.name, values=values, db=db
+    )
+
+
+@projects.put("/{project_id}/knowledge-links")
+async def save_project_knowledge_links(
+    project_id: str,
+    payload: ProjectKnowledgeUpdate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保存单向弱关联，不修改读取权限。"""
+    return await update_project_knowledge_links(user=current_user, project_id=project_id, kb_ids=payload.kb_ids, db=db)

@@ -8,6 +8,7 @@
       class="config-alert"
     />
     <a-form v-else layout="vertical" class="config-form">
+      <a-alert v-if="knowledgeError" type="warning" :message="knowledgeError" show-icon />
       <a-form-item v-for="[key, item] in fieldEntries" :key="key" :label="item.name || key">
         <p v-if="item.description" class="config-description">{{ item.description }}</p>
 
@@ -80,7 +81,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { projectApi } from '@/apis/project_api'
 
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import {
@@ -90,6 +92,7 @@ import {
 } from '@/utils/agentConfigUtils'
 
 const props = defineProps({
+  projectId: { type: String, default: '' },
   /** 当前项目覆盖层配置值（仅覆盖字段）。 */
   values: { type: Object, default: () => ({}) },
   /** 后端返回的 configurable_items（存储扁平化后的 UI 配置）。 */
@@ -130,11 +133,28 @@ const isListKind = (item) => LIST_KINDS.includes(item?.kind)
 const isNumber = (item) => ['number', 'int', 'integer', 'float'].includes(item?.type)
 const isSingleSelect = (item) => isSingleSelectAgentConfig(item) && !isListKind(item)
 
+const projectKnowledge = ref(new Set())
+const knowledgeError = ref('')
+let knowledgeVersion = 0
+watch(() => props.projectId, async (projectId) => {
+  const version = ++knowledgeVersion
+  projectKnowledge.value = new Set()
+  knowledgeError.value = ''
+  if (!projectId) return
+  try {
+    const result = await projectApi.getSettings(projectId)
+    if (version === knowledgeVersion) projectKnowledge.value = new Set(result.knowledge_links.filter((item) => item.accessible).map((item) => item.kb_id))
+  } catch {
+    if (version === knowledgeVersion) knowledgeError.value = '项目知识库关联加载失败，仍可从有权访问的知识库中选择'
+  }
+}, { immediate: true })
+
 const optionsOf = (item) =>
-  (item?.options || []).map((option) => ({
-    value: getAgentConfigOptionValue(option),
-    label: getAgentConfigOptionLabel(option)
-  }))
+  (item?.options || []).map((option) => {
+    const value = getAgentConfigOptionValue(option)
+    const label = getAgentConfigOptionLabel(option)
+    return { value, label: item?.kind === 'knowledges' && projectKnowledge.value.has(value) ? `${label}（项目关联）` : label }
+  })
 
 const placeholderOf = (key) =>
   key in (props.baseValues || {}) ? '未覆盖：继承基础配置' : '未设置'

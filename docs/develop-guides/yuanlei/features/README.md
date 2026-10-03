@@ -30,3 +30,5 @@
 - [项目督查板](project-inspection-board.md)：已实现；只读聚合治理事实与 Run 执行事实，跨项目只读展示，单项目工作台提供蓝图编辑、议题讨论与治理审核、本地委派与汇报查看。
 - [外部执行器委派与 Multica 桥接](external-executor-delegation.md)：统一 codex/opencode 与 Multica 的可委派执行者接口；Multica 拉取式入向只产生 proposed，出向按 `operation_id` 标记核对，不成为事实源。
 - [Milvus 启动等待](milvus-startup.md)：上游启动缺陷修复；有限等待 Proxy 就绪并保留必需组件失败语义。
+
+- [项目设置与资源管理](project-settings-resources.md)：部分实现；项目设置与弱关联已接入，任务 Git 生命周期待实现。

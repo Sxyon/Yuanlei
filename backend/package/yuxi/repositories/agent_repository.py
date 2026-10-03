@@ -17,6 +17,7 @@ from yuxi.storage.postgres.models_business import (
     Agent,
     Project,
     ProjectAgent,
+    ProjectSettings,
     ProjectWorkExecution,
     ProjectWorkTask,
     PROJECT_WORK_ACTIVE_STATUSES,
@@ -385,6 +386,18 @@ class AgentRepository:
     async def delete(self, *, agent: Agent) -> None:
         # 与任务设置负责人共同锁定绑定行，防止检查后新任务抢先提交。
         await self.db.scalars(select(ProjectAgent.id).where(ProjectAgent.agent_slug == agent.slug).with_for_update())
+        owned_project = await self.db.scalar(
+            select(ProjectSettings.project_id)
+            .join(Project, Project.id == ProjectSettings.project_id)
+            .where(
+                ProjectSettings.owner_type == "agent",
+                ProjectSettings.owner_id == agent.slug,
+                Project.status == "active",
+            )
+            .limit(1)
+        )
+        if owned_project is not None:
+            raise AgentHasWorkTasks("该智能体仍是项目负责人，请先转移责任")
         owned_task = await self.db.scalar(
             select(ProjectWorkTask.id)
             .join(Project, Project.id == ProjectWorkTask.project_id)

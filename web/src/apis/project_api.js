@@ -1,6 +1,13 @@
 import { apiDelete, apiGet, apiPost, apiPut, buildQuery } from './base'
 
 export const projectApi = {
+  getSettings: (projectId) => apiGet(`/api/projects/${projectId}/settings`),
+
+  saveSettings: (projectId, payload) => apiPut(`/api/projects/${projectId}/settings`, payload),
+
+  saveKnowledgeLinks: (projectId, kbIds) =>
+    apiPut(`/api/projects/${projectId}/knowledge-links`, { kb_ids: kbIds }),
+
   getProjects: () => apiGet('/api/projects'),
 
   createProject: ({ requestId, name, mode, path = null }) =>

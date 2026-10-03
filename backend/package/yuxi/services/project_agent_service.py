@@ -19,6 +19,7 @@ from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
 from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
 from yuxi.services.agent_config_service import prepare_agent_config_write
 from yuxi.storage.postgres.models_business import Agent, User
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -293,6 +294,10 @@ async def unbind_project_agent_view(
     binding = await repo.get_for_update(project.id, agent_slug)
     if binding is None:
         raise HTTPException(status_code=404, detail="该智能体未绑定到此项目")
+
+    settings = await ProjectSettingsRepository(db).get(project.id)
+    if settings is not None and settings.owner_type == "agent" and settings.owner_id == agent_slug:
+        raise HTTPException(status_code=409, detail="该智能体仍是项目负责人，请先转移责任")
 
     work_repo = ProjectWorkRepository(db, project_id=project.id, uid=str(user.uid))
     if await work_repo.has_owner_tasks(agent_slug):

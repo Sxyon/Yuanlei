@@ -1,5 +1,6 @@
 <template>
-  <a-modal
+  <component
+    :is="embedded ? 'div' : 'a-modal'"
     :open="open"
     :title="`${project?.name || '项目'} · Git 仓库`"
     width="840px"
@@ -279,7 +280,7 @@
         </a-spin>
       </a-tab-pane>
     </a-tabs>
-  </a-modal>
+  </component>
 </template>
 
 <script setup>
@@ -289,7 +290,7 @@ import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { gitApi } from '@/apis/git_api'
 import { projectApi } from '@/apis/project_api'
 
-const props = defineProps({ open: Boolean, project: { type: Object, default: null } })
+const props = defineProps({ embedded: Boolean, open: Boolean, project: { type: Object, default: null } })
 const emit = defineEmits(['update:open'])
 const activeTab = ref('repositories')
 const loading = ref(false)

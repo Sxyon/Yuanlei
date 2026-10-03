@@ -32,7 +32,7 @@ import TaskCenterDrawer from '@/components/TaskCenterDrawer.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
 import ConversationNavSection from '@/components/ConversationNavSection.vue'
 import GlobalSearchModal from '@/components/GlobalSearchModal.vue'
-import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
+import ProjectSettingsModal from '@/components/ProjectSettingsModal.vue'
 import { searchWorkspaceFiles } from '@/apis/workspace_api'
 import { projectApi } from '@/apis/project_api'
 
@@ -577,9 +577,10 @@ provide('settingsModal', {
     />
 
     <TaskCenterDrawer v-if="userStore.isAdmin" />
-    <ProjectGitSettingsModal
+    <ProjectSettingsModal
       :open="Boolean(gitProject)"
       :project="gitProject"
+      @saved="projectsStore.replaceProject"
       @update:open="(open) => !open && (gitProject = null)"
     />
     <SettingsModal

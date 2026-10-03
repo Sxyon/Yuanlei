@@ -25,7 +25,33 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 21
+YUANLEI_SCHEMA_VERSION = 22
+PROJECT_SETTINGS_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_settings (
+        project_id VARCHAR(64) PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        work_status VARCHAR(20) NOT NULL DEFAULT 'planned',
+        priority VARCHAR(16) NOT NULL DEFAULT 'none',
+        owner_type VARCHAR(16) NOT NULL,
+        owner_id VARCHAR(80),
+        description VARCHAR(255) NOT NULL DEFAULT '',
+        start_date DATE,
+        due_date DATE,
+        CONSTRAINT ck_project_settings_status
+            CHECK (work_status IN ('planned','in_progress','paused','completed','cancelled')),
+        CONSTRAINT ck_project_settings_priority CHECK (priority IN ('urgent','high','medium','low','none')),
+        CONSTRAINT ck_project_settings_owner_type CHECK (owner_type IN ('none','member','agent')),
+        CONSTRAINT ck_project_settings_owner_identity
+            CHECK ((owner_type = 'none' AND owner_id IS NULL) OR (owner_type <> 'none' AND owner_id IS NOT NULL)),
+        CONSTRAINT ck_project_settings_dates CHECK (start_date IS NULL OR due_date IS NULL OR start_date <= due_date)
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_knowledge_links (
+        project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        kb_id VARCHAR(80) NOT NULL,
+        PRIMARY KEY (project_id, kb_id)
+    )""",
+    """INSERT INTO project_settings (project_id, owner_type, owner_id)
+        SELECT id, 'member', uid FROM projects ON CONFLICT (project_id) DO NOTHING""",
+)
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
     "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS worker_id VARCHAR(128)",
@@ -1557,6 +1583,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v21_to_v22(self) -> None:
+        """新增项目管理属性与知识库弱关联，保留历史项目所有权。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_SETTINGS_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def drop_tables(self):

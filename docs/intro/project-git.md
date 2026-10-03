@@ -50,7 +50,7 @@ ssh-keyscan -p 2223 127.0.0.1 2>/dev/null | ssh-keygen -lf -
 
 ## 2. 创建 Git connection
 
-在 Yuxi 左侧 Project 列表中找到目标 Project，打开更多菜单，选择“Git 仓库”，再进入 **Connections** 页签。
+在 Yuxi 左侧 Project 列表中找到目标 Project，打开更多菜单，选择“项目设置”，进入 **资源 → Git 资源 → Connections** 页签。
 
 填写：
 
