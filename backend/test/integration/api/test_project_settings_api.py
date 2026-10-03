@@ -321,3 +321,37 @@ async def test_real_migration_entry_initializes_or_upgrades_yuanlei(
         settings = await db.get(ProjectSettings, project_id)
         assert settings.owner_id == user.uid and settings.work_status == "planned"
         assert await db.scalar(text("SELECT COUNT(*) FROM project_knowledge_links")) == 0
+
+
+async def test_owner_candidates_expose_profile_images_without_account_secrets(settings_api):
+    client, factory, _, _, user, project_id = settings_api
+    async with factory() as db:
+        member = await db.scalar(select(User).where(User.uid == user.uid))
+        member.avatar = "https://example.com/member.png"
+        db.add(
+            Agent(
+                slug="pictured-agent",
+                name="有头像的智能体",
+                backend_id="chatbot",
+                created_by=user.uid,
+                icon="https://example.com/agent.png",
+                share_config={"version": 2, "read_scope": None, "manage_scope": None},
+            )
+        )
+        await db.flush()
+        db.add(
+            ProjectAgent(
+                id=str(uuid.uuid4()),
+                project_id=project_id,
+                agent_slug="pictured-agent",
+                config_overrides={},
+            )
+        )
+        await db.commit()
+    response = await client.get(f"/api/projects/{project_id}/settings")
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["members"] == [{"id": user.uid, "name": user.username, "avatar": "https://example.com/member.png"}]
+    assert result["agents"] == [
+        {"id": "pictured-agent", "name": "有头像的智能体", "icon": "https://example.com/agent.png"}
+    ]

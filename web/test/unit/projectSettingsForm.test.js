@@ -89,3 +89,27 @@ test('负责人缺失阻止保存，无负责人允许保存并采用服务端�
   assert.equal(saved[0].name, '服务端名称')
   assert.equal(state().data.project.name, '服务端名称')
 })
+
+test('负责人单一选择框区分同名成员与智能体，并允许解除责任', async (t) => {
+  t.mock.method(api, 'getSettings', async () => ({
+    ...result('first'), members: [{ id: 'shared', name: '同名负责人', avatar: 'https://example.com/member.png' }],
+    agents: [{ id: 'shared', name: '同名负责人', icon: 'https://example.com/agent.png' }]
+  }))
+  const state = mount(t, reactive({ open: true, project: { id: 'first' } }))
+  await settle()
+  const groups = state().ownerOptions
+  assert.deepEqual(groups.slice(1).map((group) => group.label), ['成员', '智能体'])
+  state().ownerSelection = groups[1].options[0].value
+  assert.equal(state().draft.owner_type, 'member')
+  assert.equal(state().draft.owner_id, 'shared')
+  assert.equal(state().selectedOwner.avatar, 'https://example.com/member.png')
+  assert.equal(groups[1].options[0].avatar, 'https://example.com/member.png')
+  state().ownerSelection = groups[2].options[0].value
+  assert.equal(state().draft.owner_type, 'agent')
+  assert.equal(state().draft.owner_id, 'shared')
+  assert.equal(state().selectedOwner.icon, 'https://example.com/agent.png')
+  assert.equal(groups[2].options[0].avatar, 'https://example.com/agent.png')
+  state().ownerSelection = groups[0].value
+  assert.equal(state().draft.owner_type, 'none')
+  assert.equal(state().draft.owner_id, null)
+})

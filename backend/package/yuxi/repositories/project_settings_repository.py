@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from yuxi.permissions import ResourcePermission, resolve_knowledge_base_permission
 from yuxi.storage.postgres.models_business import Agent, ProjectAgent, ProjectKnowledgeLink, ProjectSettings, User
 from yuxi.storage.postgres.models_knowledge import KnowledgeBase
+from yuxi.storage.minio.client import normalize_public_minio_url
 
 
 class ProjectSettingsRepository:
@@ -20,19 +21,19 @@ class ProjectSettingsRepository:
     async def members(self) -> list[dict]:
         """仅公开负责人选择所需的成员身份，不返回账号敏感字段。"""
         rows = await self.db.execute(
-            select(User.uid, User.username).where(User.is_deleted == 0).order_by(User.username, User.uid)
+            select(User.uid, User.username, User.avatar).where(User.is_deleted == 0).order_by(User.username, User.uid)
         )
-        return [{"id": uid, "name": name} for uid, name in rows]
+        return [{"id": uid, "name": name, "avatar": normalize_public_minio_url(avatar)} for uid, name, avatar in rows]
 
     async def agents(self, project_id: str) -> list[dict]:
         """列出当前项目已绑定智能体。"""
         rows = await self.db.execute(
-            select(Agent.slug, Agent.name)
+            select(Agent.slug, Agent.name, Agent.icon)
             .join(ProjectAgent, ProjectAgent.agent_slug == Agent.slug)
             .where(ProjectAgent.project_id == project_id)
             .order_by(Agent.name, Agent.slug)
         )
-        return [{"id": slug, "name": name} for slug, name in rows]
+        return [{"id": slug, "name": name, "icon": normalize_public_minio_url(icon)} for slug, name, icon in rows]
 
     async def knowledge(self, user) -> tuple[list[dict], set[str]]:
         """按知识库当前权限产生候选，关联不参与授权判断。"""
