@@ -9,7 +9,7 @@ Git 能力由 API 和 worker 读取以下环境变量：
 | 变量 | 默认值 | 读取者 | 约束与生效时机 |
 | --- | --- | --- | --- |
 | `YUXI_GIT_CREDENTIAL_KEY` | 空 | API、worker | 32 字节 base64url AES key；为空或无效时 Git API fail-closed，其他 Yuxi 能力仍可启动 |
-| `YUXI_GIT_BRANCH_PREFIX` | `codex/` | worker | 必须是安全的 Git ref 前缀并以 `/` 结尾；只影响新派生和校验的任务分支 |
+| `YUXI_GIT_BRANCH_PREFIX` | `agent/` | worker | 必须是安全的 Git ref 前缀并以 `/` 结尾；只影响新派生和校验的任务分支 |
 | `YUXI_GIT_ALLOWED_GITEA_ORIGINS` | 开发 Compose 中为 `http://gitea:3000` | API、worker | 逗号分隔的精确 origin；包含 scheme、host 和可选 port，不接受 path、userinfo 或 redirect |
 
 可用下面的命令生成 master key，并把输出写入部署环境文件：
@@ -54,6 +54,8 @@ Yuxi API 和 worker 与 Gitea 位于同一 Compose network，因此 connection �
 | API Origin | `http://gitea:3000` |
 | SSH Host | `gitea` |
 | SSH Port | `2222` |
+
+完整表单样例、SSH known-host 三段格式与 Token 的 `read:user`、`write:repository` 权限选择见[首次配置教程](../intro/project-git.md#本地-docker-compose-填写样例)。
 
 host 浏览器端口只用于打开 Gitea 页面，不能替代 API/worker 看到的容器 endpoint。`YUXI_GIT_ALLOWED_GITEA_ORIGINS` 必须包含表中的 API Origin。
 

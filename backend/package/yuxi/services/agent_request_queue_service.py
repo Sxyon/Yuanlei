@@ -257,7 +257,7 @@ async def cancel_queued_request(
     if existing is None or existing.uid != str(current_uid):
         raise HTTPException(status_code=404, detail="请求不存在")
 
-    await get_thread_conversation(
+    conversation = await get_thread_conversation(
         db=db,
         uid=existing.uid,
         agent_slug=existing.agent_slug,
@@ -290,6 +290,13 @@ async def cancel_queued_request(
     request.status = REQUEST_STATUS_CANCELLED
     request.updated_at = utc_now_naive()
     await db.flush()
+    if conversation.project_id:
+        from yuxi.services.project_git_execution_service import cancel_git_waiter_if_unused
+
+        await cancel_git_waiter_if_unused(
+            db=db, uid=request.uid, project_id=conversation.project_id,
+            thread_id=request.conversation_thread_id,
+        )
     return REQUEST_STATUS_CANCELLED
 
 
@@ -597,6 +604,17 @@ async def _dispatch_locked_head(
     repo = AgentRunRequestRepository(db)
     run_repo = AgentRunRepository(db)
     run_id = str(uuid.uuid4())
+    from yuxi.services.project_git_execution_service import reserve_git_resources_for_dispatch
+
+    if not await reserve_git_resources_for_dispatch(
+        db=db,
+        uid=str(head.uid),
+        project_id=workdir_binding.project_id,
+        thread_id=head.conversation_thread_id,
+        run_id=run_id,
+        requested_at=head.created_at,
+    ):
+        return None
     runtime_scope_id = await resolve_dispatch_runtime_scope(
         db=db,
         uid=str(head.uid),

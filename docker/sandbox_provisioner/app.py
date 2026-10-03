@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import hashlib
+import json
 import logging
 import os
 import random
@@ -373,12 +375,27 @@ def sandbox_proxy_url(sandbox_id: str) -> str:
     return f"{public_url}/api/sandboxes/{sandbox_id}/proxy"
 
 
+class GitMount(BaseModel):
+    """可信调用方指定的用户工作空间相对目录与权限。"""
+
+    path: str
+    read_only: bool = True
+
+
+def git_mount_fingerprint(mounts: list[dict]) -> str | None:
+    """固定排序后的目录与读写权限清单。"""
+    if not mounts:
+        return None
+    return hashlib.sha256(json.dumps(mounts, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 class CreateSandboxRequest(BaseModel):
     sandbox_id: str
     thread_id: str
     workdir_path: str | None = None
     uid: str
     env: dict[str, str] = Field(default_factory=dict)
+    git_mounts: list[GitMount] = Field(default_factory=list, max_length=1000)
     inherit_env: bool = True
     # 按沙盒生命周期策略：None 表示沿用全局 idle TTL（兼容旧客户端）。
     lifecycle: Literal["ephemeral", "persistent", "resident"] | None = None
@@ -394,6 +411,8 @@ class SandboxResponse(BaseModel):
     workdir_path: str | None = None
     lifecycle: str | None = None
     idle_timeout_seconds: int | None = None
+    git_mount_fingerprint: str | None = None
+    uid: str | None = None
 
 
 class DeleteSandboxResponse(BaseModel):
@@ -426,6 +445,8 @@ class SandboxRecord:
     workdir_path: str | None = None
     lifecycle: str | None = None
     idle_timeout_seconds: int | None = None
+    git_mount_fingerprint: str | None = None
+    uid: str | None = None
 
 
 class SandboxGenerationMismatchError(RuntimeError):
@@ -529,7 +550,10 @@ class MemoryProvisionerBackend:
         inherit_env: bool = True,
         lifecycle: str | None = None,
         idle_timeout_seconds: int | None = None,
+        git_mounts: list[dict] | None = None,
     ) -> SandboxRecord:
+        if git_mounts:
+            raise ValueError("static sandbox backend cannot enforce Git mounts")
         _ = thread_id
         _ = uid
         _ = env
@@ -770,28 +794,27 @@ class LocalContainerProvisionerBackend:
             return source == expected_source and mount.get("RW") is False
         return False
 
-    def _has_expected_user_data_mounts(
-        self,
-        container,
-        uid: str,
-    ) -> bool:
-        expected_mounts = {
-            "/home/gem/user-data": str(self._shared_workspace_host_path(uid)),
-        }
+    def _has_expected_user_data_mounts(self, container, uid: str) -> bool:
+        """逐项回读 Git bind 的路径与 RW，禁止多余持久卷别名。"""
+        labels = getattr(container, "labels", None) or {}
+        mounts = json.loads(labels.get("git-mounts") or "[]")
+        if git_mount_fingerprint(mounts) != (labels.get("git-mount-fingerprint") or None):
+            return False
+        expected_mounts = {"/home/gem/user-data": (str(self._shared_workspace_host_path(uid)), True)}
+        for mount in mounts:
+            path = normalize_workdir_path(mount["path"])
+            expected_mounts[f"/home/gem/user-data/{path}"] = (
+                str(self._shared_workspace_host_path(uid) / path), not mount["read_only"]
+            )
         actual_mounts = {
-            str((mount.get("Destination") or "").rstrip("/")): str(
-                (mount.get("Source") or "").rstrip("/")
+            str((mount.get("Destination") or "").rstrip("/")): (
+                str((mount.get("Source") or "").rstrip("/")), mount.get("RW") is True
             )
             for mount in container.attrs.get("Mounts") or []
         }
-        expected = all(
-            actual_mounts.get(destination) == source
-            for destination, source in expected_mounts.items()
-        )
-        allowed_persistent_mounts = {"/home/gem/user-data", "/home/gem/skills"}
-        return expected and all(
-            not _is_persistent_sandbox_mount_path(destination)
-            or destination in allowed_persistent_mounts
+        allowed = {*expected_mounts, "/home/gem/skills"}
+        return all(actual_mounts.get(destination) == expected for destination, expected in expected_mounts.items()) and all(
+            not _is_persistent_sandbox_mount_path(destination) or destination in allowed
             for destination in actual_mounts
         )
 
@@ -991,6 +1014,8 @@ class LocalContainerProvisionerBackend:
             generation=str(getattr(container, "id", "") or "") or None,
             workdir_path=str(labels.get("workdir-path") or "").strip() or None,
             lifecycle=str(labels.get("lifecycle") or "").strip() or None,
+            git_mount_fingerprint=labels.get("git-mount-fingerprint") or None,
+            uid=labels.get("uid") or None,
             idle_timeout_seconds=int(raw_idle_timeout)
             if raw_idle_timeout.isdigit()
             else None,
@@ -1016,6 +1041,7 @@ class LocalContainerProvisionerBackend:
         inherit_env: bool = True,
         lifecycle: str | None = None,
         idle_timeout_seconds: int | None = None,
+        git_mounts: list[dict] | None = None,
     ) -> SandboxRecord:
         with self._sandbox_lock(sandbox_id):
             safe_thread_id = self._validate_thread_id(thread_id)
@@ -1024,10 +1050,21 @@ class LocalContainerProvisionerBackend:
                 normalize_workdir_path(workdir_path) if workdir_path else None
             )
             ephemeral_storage = not inherit_env and safe_workdir_path is None
+            mounts = sorted(
+                ({"path": normalize_workdir_path(item["path"]), "read_only": item["read_only"]} for item in git_mounts or []),
+                key=lambda item: item["path"],
+            )
+            if len({item["path"] for item in mounts}) != len(mounts):
+                raise ValueError("duplicate Git mount path")
+            if ephemeral_storage and mounts:
+                raise ValueError("ephemeral sandbox cannot mount Git resources")
+            fingerprint = git_mount_fingerprint(mounts)
             existing = self._get_container(sandbox_id)
             if existing is not None:
                 existing.reload()
                 labels = getattr(existing, "labels", None) or {}
+                if (labels.get("git-mount-fingerprint") or None) != fingerprint:
+                    raise ValueError("Git mount policy changed; runtime Owner must revoke the old generation first")
                 if str(labels.get("thread-id") or "").strip() != safe_thread_id:
                     raise ValueError(
                         "sandbox runtime identity does not match existing generation"
@@ -1145,6 +1182,9 @@ class LocalContainerProvisionerBackend:
                 "storage-mode": "ephemeral" if ephemeral_storage else "persistent",
                 "managed-by": "yuxi-sandbox-provisioner",
             }
+            if mounts:
+                container_labels["git-mounts"] = json.dumps(mounts, sort_keys=True, separators=(",", ":"))
+                container_labels["git-mount-fingerprint"] = fingerprint
             if lifecycle is not None:
                 container_labels["lifecycle"] = lifecycle
             if idle_timeout_seconds is not None:
@@ -1156,6 +1196,7 @@ class LocalContainerProvisionerBackend:
                 "volumes": {},
                 "network": network_name,
                 "security_opt": ["seccomp=unconfined"],
+                "cap_drop": ["SYS_ADMIN"],
                 # The sandbox image expects /home/gem to be writable during boot.
                 # Keep it ephemeral and mount persistent user-data underneath it.
                 "tmpfs": {"/home/gem": "rw,exec,mode=777"},
@@ -1172,6 +1213,16 @@ class LocalContainerProvisionerBackend:
                     "bind": "/home/gem/user-data",
                     "mode": "rw",
                 }
+                for mount in mounts:
+                    path = mount["path"]
+                    self._validate_directory_without_symlinks(
+                        self._user_data_container_path / "shared" / safe_uid / "workspace",
+                        PurePosixPath(path).parts, label="Git resource mount",
+                    )
+                    run_kwargs["volumes"][str(shared_workspace / path)] = {
+                        "bind": f"/home/gem/user-data/{path}",
+                        "mode": "ro" if mount["read_only"] else "rw",
+                    }
                 if safe_workdir_path:
                     run_kwargs["working_dir"] = (
                         f"/home/gem/user-data/{safe_workdir_path}"
@@ -1646,9 +1697,12 @@ class KubernetesProvisionerBackend:
         inherit_env: bool = True,
         lifecycle: str | None = None,
         idle_timeout_seconds: int | None = None,
+        git_mounts: list[dict] | None = None,
     ) -> SandboxRecord:
         from kubernetes.client.rest import ApiException
 
+        if git_mounts:
+            raise ValueError("Kubernetes Git mount enforcement is not available")
         with self._lock:
             safe_thread_id = LocalContainerProvisionerBackend._validate_thread_id(
                 thread_id
@@ -2067,7 +2121,8 @@ def sandbox_response(record: SandboxRecord) -> SandboxResponse:
         workdir_path=record.workdir_path,
         lifecycle=record.lifecycle,
         idle_timeout_seconds=record.idle_timeout_seconds,
-    )
+        git_mount_fingerprint=record.git_mount_fingerprint,
+        uid=record.uid,    )
 
 
 @app.get("/health")
@@ -2107,6 +2162,7 @@ def create_sandbox(payload: CreateSandboxRequest):
                     inherit_env=payload.inherit_env,
                     lifecycle=payload.lifecycle,
                     idle_timeout_seconds=payload.idle_timeout_seconds,
+                    **({"git_mounts": [item.model_dump() for item in payload.git_mounts]} if payload.git_mounts else {}),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2329,6 +2385,13 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
     if record is None:
         sandbox_operation_pins.release(sandbox_id)
         raise HTTPException(status_code=404, detail="sandbox not found")
+
+    expected_generation = request.headers.get("x-yuanlei-sandbox-generation")
+    if (expected_generation and expected_generation != record.generation) or (
+        record.git_mount_fingerprint and not expected_generation
+    ):
+        sandbox_operation_pins.release(sandbox_id)
+        raise HTTPException(status_code=409, detail="sandbox generation changed or missing")
 
     target_url = f"{record.sandbox_url.rstrip('/')}/{path.lstrip('/')}"
     request_headers = {

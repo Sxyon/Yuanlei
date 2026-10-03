@@ -15,6 +15,7 @@ from yuxi.utils.logging_config import logger
 from yuxi.workspace.paths import normalize_workdir_path, workspace_uid_dirname
 
 from .provisioner_client import ProvisionerClient, SandboxRecord
+from .git_mounts import git_mount_boundary, git_mount_fingerprint, load_git_mounts, verify_git_mount_aliases
 
 
 def sandbox_provisioner_token() -> str:
@@ -172,10 +173,15 @@ class SandboxConnection:
     project_id: str | None = None
     lifecycle: str | None = None
     idle_timeout_seconds: int | None = None
+    git_mount_fingerprint: str | None = None
 
 
 class SandboxIdentityMismatchError(RuntimeError):
     """Sandbox runtime 的持久挂载身份与请求不一致。"""
+
+
+class GitMountPolicyMismatchError(SandboxIdentityMismatchError):
+    """实际 Git 挂载权限需要由沙盒生命周期 Owner 更新。"""
 
 
 class SandboxReleaseLockTimeoutError(RuntimeError):
@@ -229,6 +235,7 @@ class ProvisionerSandboxProvider:
             project_id=scope.project_id,
             lifecycle=getattr(record, "lifecycle", None),
             idle_timeout_seconds=getattr(record, "idle_timeout_seconds", None),
+            git_mount_fingerprint=getattr(record, "git_mount_fingerprint", None),
         )
         self._connections[scope.cache_key] = connection
         self._last_touch_at[scope.cache_key] = time.time()
@@ -253,6 +260,8 @@ class ProvisionerSandboxProvider:
             return False
         if record.workdir_path != connection.workdir_path:
             raise SandboxIdentityMismatchError("sandbox Workdir changed within one runtime scope")
+        if getattr(record, "git_mount_fingerprint", None) != connection.git_mount_fingerprint:
+            raise GitMountPolicyMismatchError("实际沙盒 Git 挂载权限发生变化")
         connection.sandbox_url = record.sandbox_url
         connection.generation = record.generation
         return True
@@ -289,24 +298,15 @@ class ProvisionerSandboxProvider:
         normalized_workdir_path: str | None,
     ) -> None:
         if connection.uid != scope.uid:
-            raise RuntimeError(
-                f"sandbox scope {connection.cache_key} belongs to uid {connection.uid}, not {scope.uid}"
-            )
+            raise RuntimeError(f"sandbox scope {connection.cache_key} belongs to uid {connection.uid}, not {scope.uid}")
         if connection.scope_kind != scope.kind:
-            raise SandboxIdentityMismatchError(
-                "sandbox scope kind does not match the existing runtime scope"
-            )
+            raise SandboxIdentityMismatchError("sandbox scope kind does not match the existing runtime scope")
         if scope.kind == "agent_project" and (
-            connection.agent_slug != scope.agent_slug
-            or connection.project_id != scope.project_id
+            connection.agent_slug != scope.agent_slug or connection.project_id != scope.project_id
         ):
-            raise SandboxIdentityMismatchError(
-                "sandbox Agent/Project does not match the existing runtime scope"
-            )
+            raise SandboxIdentityMismatchError("sandbox Agent/Project does not match the existing runtime scope")
         if connection.workdir_path != normalized_workdir_path:
-            raise SandboxIdentityMismatchError(
-                "sandbox Workdir does not match the existing runtime scope"
-            )
+            raise SandboxIdentityMismatchError("sandbox Workdir does not match the existing runtime scope")
 
     def get_scope(
         self,
@@ -322,61 +322,113 @@ class ProvisionerSandboxProvider:
         """按作用域获取 Sandbox；命中缓存失败时按需创建或发现。"""
         scope.validate()
         normalized_workdir_path = normalize_workdir_path(workdir_path) if workdir_path else None
-        cache_key = scope.cache_key
-        lock = self._thread_lock(cache_key)
-        with lock:
-            current = self._connections.get(cache_key)
-            if current:
-                self._validate_connection_identity(current, scope, normalized_workdir_path)
-                try:
-                    if self._touch_if_needed(current):
+        with git_mount_boundary(conninfo=postgres_conninfo(), uid=scope.uid) as git_connection:
+            mounts = load_git_mounts(
+                connection=git_connection,
+                uid=scope.uid,
+                runtime_scope=scope.cache_key if scope.kind == "agent_project" else scope.thread_id,
+            )
+            fingerprint = git_mount_fingerprint(mounts)
+            cache_key = scope.cache_key
+            if fingerprint and cache_key not in self._connections:
+                self.revoke_legacy_git_runtimes(uid=scope.uid, connection=git_connection)
+            lock = self._thread_lock(cache_key)
+            with lock:
+                current = self._connections.get(cache_key)
+                if current:
+                    self._validate_connection_identity(current, scope, normalized_workdir_path)
+                    if current.git_mount_fingerprint != fingerprint:
+                        raise GitMountPolicyMismatchError("Git 写权限已变化，需要由运行时 Owner 重建沙盒")
+                    try:
+                        if self._touch_if_needed(current):
+                            return current
+                        self._connections.pop(cache_key, None)
+                        self._last_touch_at.pop(cache_key, None)
+                    except SandboxIdentityMismatchError:
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(f"Failed to touch sandbox {current.sandbox_id} for {cache_key}: {exc}")
                         return current
-                    self._connections.pop(cache_key, None)
-                    self._last_touch_at.pop(cache_key, None)
-                except SandboxIdentityMismatchError:
-                    raise
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(f"Failed to touch sandbox {current.sandbox_id} for {cache_key}: {exc}")
-                    return current
 
-            if (
-                create_if_missing
-                and scope.kind == "agent_project"
-                and env_overrides is None
-            ):
-                # 专属沙盒只能由 SandboxLifecycleService.ensure_ready 创建：
-                # 旁路懒创建会丢失编码凭据 env，并让指纹记录与实际运行时不符。
-                raise RuntimeError(
-                    "dedicated sandbox must be created by SandboxLifecycleService.ensure_ready"
-                )
-            if create_if_missing:
-                env: dict[str, str] = load_user_agent_env(scope.uid) if inherit_env else {}
-                if env_overrides and inherit_env:
-                    env.update(env_overrides)
-                record = self._client.create(
-                    scope.sandbox_id,
-                    scope.provisioner_identity,
-                    workspace_uid_dirname(scope.uid),
-                    env,
-                    workdir_path=normalized_workdir_path,
-                    inherit_env=inherit_env,
-                    lifecycle=lifecycle,
-                    idle_timeout_seconds=idle_timeout_seconds,
-                )
-                if record.workdir_path != normalized_workdir_path:
-                    raise RuntimeError("created sandbox Workdir does not match requested scope")
-            else:
-                record = self._client.discover(scope.sandbox_id)
-                if record is None:
-                    return None
-                if record.workdir_path != normalized_workdir_path:
-                    raise RuntimeError("discovered sandbox Workdir does not match requested scope")
+                verify_git_mount_aliases(uid=scope.uid, mounts=mounts)
+                if create_if_missing and scope.kind == "agent_project" and env_overrides is None:
+                    # 专属沙盒只能由 SandboxLifecycleService.ensure_ready 创建：
+                    # 旁路懒创建会丢失编码凭据 env，并让指纹记录与实际运行时不符。
+                    raise RuntimeError("dedicated sandbox must be created by SandboxLifecycleService.ensure_ready")
+                if create_if_missing:
+                    env: dict[str, str] = load_user_agent_env(scope.uid) if inherit_env else {}
+                    if env_overrides and inherit_env:
+                        env.update(env_overrides)
+                    record = self._client.create(
+                        scope.sandbox_id,
+                        scope.provisioner_identity,
+                        workspace_uid_dirname(scope.uid),
+                        env,
+                        workdir_path=normalized_workdir_path,
+                        inherit_env=inherit_env,
+                        lifecycle=lifecycle,
+                        idle_timeout_seconds=idle_timeout_seconds,
+                        **({"git_mounts": mounts} if mounts else {}),
+                    )
+                    if record.workdir_path != normalized_workdir_path:
+                        raise RuntimeError("created sandbox Workdir does not match requested scope")
+                else:
+                    record = self._client.discover(scope.sandbox_id)
+                    if record is None:
+                        return None
+                    if record.workdir_path != normalized_workdir_path:
+                        raise RuntimeError("discovered sandbox Workdir does not match requested scope")
 
-            return self._record_to_connection(scope=scope, record=record)
+                if getattr(record, "git_mount_fingerprint", None) != fingerprint:
+                    raise GitMountPolicyMismatchError("实际沙盒 Git 写权限与当前占用不一致")
+                return self._record_to_connection(scope=scope, record=record)
 
     def list_sandboxes(self) -> list[SandboxRecord]:
         """读取 provisioner 权威 inventory（不刷新 idle 活动）。"""
         return self._client.list()
+
+    def revoke_legacy_git_runtimes(self, *, uid: str, connection) -> None:
+        """首次保护前撤销旧全目录 RW generation，再检查文件别名。"""
+        legacy = [
+            record
+            for record in self._client.list()
+            if record.uid == workspace_uid_dirname(uid) and not record.git_mount_fingerprint
+        ]
+        if not legacy:
+            return
+        if connection is None:
+            raise RuntimeError("缺少持久运行状态，不能撤销旧 Git 沙盒")
+        row = connection.execute(
+            "SELECT EXISTS (SELECT 1 FROM agent_runs WHERE uid = %s "
+            "AND status NOT IN ('completed', 'failed', 'cancelled'))",
+            (uid,),
+        ).fetchone()
+        if row[0]:
+            raise RuntimeError("旧沙盒仍可能被运行使用，请结束运行并初始化 Git 资源后再继续")
+        for record in legacy:
+            self._client.delete(record.sandbox_id, expected_generation=record.generation)
+            if self._client.discover(record.sandbox_id) is not None:
+                raise RuntimeError("旧 RW 沙盒撤销未完成，不能启用 Git 保护")
+            for key, cached in list(self._connections.items()):
+                if cached.sandbox_id == record.sandbox_id:
+                    with self._thread_lock(key):
+                        self._connections.pop(key, None)
+                        self._last_touch_at.pop(key, None)
+
+    def revoke_user_git_runtimes(self, uid: str) -> None:
+        """初始化新目录保护前删除旧用户 generation，保留所有持久文件。"""
+        expected_uid = workspace_uid_dirname(uid)
+        for record in self._client.list():
+            if record.uid != expected_uid:
+                continue
+            self._client.delete(record.sandbox_id, expected_generation=record.generation)
+            if self._client.discover(record.sandbox_id) is not None:
+                raise RuntimeError("旧沙盒仍存在，不能改变 Git 目录保护清单")
+        for key, connection in list(self._connections.items()):
+            if connection.uid == uid:
+                with self._thread_lock(key):
+                    self._connections.pop(key, None)
+                    self._last_touch_at.pop(key, None)
 
     def release(
         self,
@@ -407,9 +459,7 @@ class ProvisionerSandboxProvider:
         lock = self._thread_lock(cache_key)
         acquired = lock.acquire(timeout=getattr(self, "_release_lock_timeout_seconds", 30))
         if not acquired:
-            raise SandboxReleaseLockTimeoutError(
-                f"sandbox release lock timed out for runtime scope {cache_key}"
-            )
+            raise SandboxReleaseLockTimeoutError(f"sandbox release lock timed out for runtime scope {cache_key}")
         try:
             connection = self._connections.get(cache_key)
             if connection and connection.workdir_path != normalized_workdir_path:

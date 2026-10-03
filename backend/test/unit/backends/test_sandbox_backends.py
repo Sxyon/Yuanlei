@@ -46,12 +46,13 @@ class _OwnedAsyncHttpClient:
 
 def _install_async_file_client(monkeypatch, backend, file_client):
     backend._provider = SimpleNamespace(
-        get_scope=lambda *_args, **_kwargs: SimpleNamespace(sandbox_url="http://sandbox")
+        get_scope=lambda *_args, **_kwargs: SimpleNamespace(sandbox_url="http://sandbox", generation="generation-1")
     )
     http_client = _OwnedAsyncHttpClient()
     monkeypatch.setattr(sandbox_backend_module.httpx, "AsyncClient", lambda **_kwargs: http_client)
 
-    def build_async_client(_url, owning_http_client):
+    def build_async_client(_url, owning_http_client, generation):
+        assert generation == "generation-1"
         assert owning_http_client is http_client
         return SimpleNamespace(file=file_client)
 
@@ -854,7 +855,7 @@ def test_provisioner_uses_runtime_scope_directly(monkeypatch) -> None:
     class FakeProvider:
         def get_scope(self, scope, **kwargs):
             provider_calls.append((scope, kwargs))
-            return SimpleNamespace(sandbox_url="http://sandbox")
+            return SimpleNamespace(sandbox_url="http://sandbox", generation="generation-1")
 
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: FakeProvider())
 

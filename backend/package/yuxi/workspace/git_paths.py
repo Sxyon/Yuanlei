@@ -36,7 +36,7 @@ def derive_task_key(uid: str, runtime_scope_id: str) -> str:
 
 def configured_branch_prefix() -> str:
     """读取并校验全局任务分支前缀。"""
-    prefix = os.getenv("YUXI_GIT_BRANCH_PREFIX", "codex/").strip()
+    prefix = os.getenv("YUXI_GIT_BRANCH_PREFIX", "agent/").strip()
     parts = prefix[:-1].split("/") if prefix.endswith("/") else []
     if not parts or any(not _SAFE_REF_PART.fullmatch(part) for part in parts):
         raise ValueError("YUXI_GIT_BRANCH_PREFIX must be a safe prefix ending with '/'")

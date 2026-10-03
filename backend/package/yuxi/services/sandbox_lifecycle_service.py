@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import asyncio
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -236,7 +237,19 @@ class SandboxLifecycleService:
                 env_overrides=env_overrides,
             )
 
-        connection = self.provider.get_scope(scope, create_if_missing=False, workdir_path=workdir_path)
+        from yuxi.agents.backends.sandbox.provider import GitMountPolicyMismatchError
+
+        try:
+            connection = await asyncio.to_thread(self.provider.get_scope, scope, create_if_missing=False, workdir_path=workdir_path)
+        except GitMountPolicyMismatchError:
+            await self.suspend(
+                uid=uid, agent_slug=agent_slug, project_id=project_id, workdir_path=workdir_path,
+                reason="git_mount_policy_changed", actor_kind="system",
+            )
+            return await self._resume_or_raise(
+                row=row, scope=scope, policy=policy, workdir_path=workdir_path,
+                credential_fingerprint=credential_fingerprint, env_overrides=env_overrides,
+            )
         if connection is None:
             await self._mark_suspended(row, reason="container_missing")
             return await self._resume_or_raise(
@@ -284,7 +297,7 @@ class SandboxLifecycleService:
         if row is None:
             raise ValueError("sandbox binding not found")
         if row.status != "suspended":
-            self.provider.release_scope(scope, workdir_path=workdir_path)
+            await asyncio.to_thread(self.provider.release_scope, scope, workdir_path=workdir_path)
             await self._mark_suspended(row, reason=reason, actor_kind=actor_kind, actor_id=actor_id)
 
     async def _resume_or_raise(
@@ -324,8 +337,8 @@ class SandboxLifecycleService:
         env_overrides: dict[str, str] | None = None,
         event_kind: str,
     ) -> SandboxConnection:
-        connection = self.provider.get_scope(
-            scope,
+        connection = await asyncio.to_thread(
+            self.provider.get_scope, scope,
             create_if_missing=True,
             workdir_path=workdir_path,
             lifecycle=policy.lifecycle,

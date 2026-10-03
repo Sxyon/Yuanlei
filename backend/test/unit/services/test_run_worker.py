@@ -215,6 +215,7 @@ def _build_run() -> SimpleNamespace:
         runtime_scope_id="thread-1",
         runtime_cleanup_pending=False,
         created_by_run_id=None,
+        created_at=run_worker.utc_now_naive(),
         subagent_thread_relation_id=None,
     )
 
@@ -400,6 +401,15 @@ async def test_cancelling_subagent_preserves_shared_runtime(monkeypatch: pytest.
 
 
 def _patch_common(monkeypatch: pytest.MonkeyPatch, run_obj: SimpleNamespace):
+    monkeypatch.setattr(
+        "yuxi.services.project_git_execution_service.git_scope_for_run",
+        AsyncMock(return_value=run_obj.runtime_scope_id),
+    )
+    monkeypatch.setattr(
+        "yuxi.services.project_git_execution_service.reserve_git_resources_for_dispatch",
+        AsyncMock(return_value=True),
+    )
+
     @asynccontextmanager
     async def fake_session_ctx():
         yield SimpleNamespace(commit=AsyncMock())
@@ -587,6 +597,49 @@ async def test_process_agent_run_restores_invocation_meta(monkeypatch: pytest.Mo
     assert "evaluation" not in metadata_event["payload"]
     assert "custom_variables" not in metadata_event["payload"]
     assert terminal_statuses == ["completed"]
+
+
+@pytest.mark.asyncio
+async def test_git_occupancy_wait_does_not_consume_last_worker_retry(monkeypatch):
+    """即便最后一次 worker attempt，资源排队也不会失败或提前访问目录。"""
+    run = _build_run()
+    _patch_common(monkeypatch, run)
+    order = []
+    terminal = []
+    real_wait_for = asyncio.wait_for
+
+    async def reserve(**_kwargs):
+        order.append("reserve")
+        return order.count("reserve") > 1
+
+    async def wait_for(awaitable, timeout):
+        if timeout == 5:
+            awaitable.close()
+            order.append("wait")
+            raise TimeoutError
+        return await real_wait_for(awaitable, timeout)
+
+    async def prepare(**_kwargs):
+        order.append("prepare")
+        return []
+
+    async def finish(_run_id, status, **_kwargs):
+        terminal.append(status)
+        return run_worker.TerminalTransition(status=status, changed=True)
+
+    monkeypatch.setattr("yuxi.services.project_git_execution_service.reserve_git_resources_for_dispatch", reserve)
+    monkeypatch.setattr(asyncio, "wait_for", wait_for)
+    monkeypatch.setattr(run_worker, "prepare_selected_project_git_worktrees", prepare)
+    monkeypatch.setattr(run_worker, "mark_run_terminal", finish)
+    monkeypatch.setattr(run_worker, "append_run_event", AsyncMock())
+    monkeypatch.setattr(
+        run_worker,
+        "stream_agent_chat",
+        lambda **_kwargs: _BytesAsyncIter([b'{"status":"finished","request_id":"req-1","thread_id":"thread-1"}\n']),
+    )
+    await run_worker.process_agent_run({"job_try": run_worker.WorkerSettings.max_tries}, run.id)
+    assert order == ["reserve", "wait", "reserve", "prepare"]
+    assert terminal == ["completed"]
 
 
 @pytest.mark.asyncio
@@ -1743,7 +1796,6 @@ async def test_reconciliation_failure_does_not_refresh_success_lease(monkeypatch
 
 @pytest.mark.asyncio
 async def test_worker_startup_fails_when_system_options_cannot_initialize(monkeypatch: pytest.MonkeyPatch):
-
     monkeypatch.setattr(run_worker.pg_manager, "initialize", lambda: None)
     monkeypatch.setattr(run_worker.pg_manager, "require_current_schema", AsyncMock())
 

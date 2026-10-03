@@ -19,7 +19,7 @@ from yuxi.git.credentials import GitCredentialOwner, GitNotConfiguredError
 from yuxi.git.executor import GitExecutionError, GitExecutor
 from yuxi.git.hosting import create_git_hosting_provider
 from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
-from yuxi.services.run_scope_service import resolve_run_scope_key
+from yuxi.services.project_git_execution_service import git_scope_for_thread, git_scope_for_run
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import (
@@ -201,6 +201,9 @@ async def create_project_repository_view(
     purpose: str = "项目仓库",
     configured_base_branch: str | None = None,
     allowed_base_branches: list[str] | None = None,
+    checkout_path: str | None = None,
+    usage_mode: str = "worktree",
+    approval_mode: str = "protected",
 ) -> tuple[dict, tuple[str, int] | None]:
     """持久化 provisioning 意图；调用方提交后发布返回的 job。"""
     store = ProjectGitRepositoryStore(db)
@@ -217,6 +220,9 @@ async def create_project_repository_view(
             purpose=purpose,
             configured_base_branch=configured_base_branch,
             allowed_base_branches=allowed_base_branches,
+            checkout_path=checkout_path,
+            usage_mode=usage_mode,
+            approval_mode=approval_mode,
         ):
             raise HTTPException(status_code=409, detail="request_id 已用于其他仓库绑定")
         return existing.to_dict(), None
@@ -229,6 +235,22 @@ async def create_project_repository_view(
     normalized_configured, normalized_allowed = _normalize_repository_policy(
         configured_base_branch, allowed_base_branches
     )
+    from yuxi.services.project_git_resource_service import normalize_resource_path
+
+    try:
+        normalized_path = normalize_resource_path(checkout_path or repository_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if usage_mode not in {"in_place", "worktree"} or approval_mode not in {"automatic", "protected"}:
+        raise HTTPException(status_code=422, detail="资源使用或授权模式非法")
+    for other in await store.list_project_bindings(project_id, uid):
+        if other.status != "disabled" and other.checkout_path:
+            if (
+                normalized_path == other.checkout_path
+                or normalized_path.startswith(other.checkout_path + "/")
+                or other.checkout_path.startswith(normalized_path + "/")
+            ):
+                raise HTTPException(status_code=409, detail="资源目录与其他资源重叠")
     private_key, public_key, fingerprint = _generate_deploy_key()
     encrypted = _credential_owner_http().encrypt(uid=uid, purpose="deploy_private_key", plaintext=private_key)
     credential = _credential_model(encrypted)
@@ -243,6 +265,9 @@ async def create_project_repository_view(
         repository_owner=_validate_repository_part(repository_owner),
         repository_name=_validate_repository_part(repository_name),
         purpose=normalized_purpose,
+        checkout_path=normalized_path,
+        usage_mode=usage_mode,
+        approval_mode=approval_mode,
         configured_base_branch=normalized_configured,
         allowed_base_branches=normalized_allowed,
         deploy_public_key=public_key,
@@ -269,6 +294,9 @@ async def create_project_repository_view(
             purpose=purpose,
             configured_base_branch=configured_base_branch,
             allowed_base_branches=allowed_base_branches,
+            checkout_path=checkout_path,
+            usage_mode=usage_mode,
+            approval_mode=approval_mode,
         ):
             raise HTTPException(status_code=409, detail="repository alias 或 request_id 已存在") from exc
         binding = replay
@@ -323,6 +351,8 @@ async def update_project_repository_policy_view(
             await provider.get_branch(binding.repository_owner, binding.repository_name, branch)
     except Exception as exc:
         raise HTTPException(status_code=422, detail="仓库策略包含不存在的 Gitea 分支") from exc
+    if binding.checkout_head_sha and effective_configured != binding.configured_base_branch:
+        raise HTTPException(status_code=409, detail="已检出分支资源不能改为另一分支，请添加另一条资源")
     binding.purpose = normalized_purpose
     binding.configured_base_branch = effective_configured
     binding.allowed_base_branches = effective_allowed
@@ -337,7 +367,8 @@ async def list_conversation_git_repositories_view(*, uid: str, thread_id: str, d
     del conversation
     store = ProjectGitRepositoryStore(db)
     bindings = await store.list_project_bindings(project.id, uid)
-    allocations = {item.repository_id: item for item in await store.list_scope_worktrees(thread_id, uid)}
+    scope = await git_scope_for_thread(db=db, uid=uid, project_id=project.id, thread_id=thread_id)
+    allocations = {item.repository_id: item for item in await store.list_scope_worktrees(scope, uid)}
     return [
         _conversation_repository_view(binding, allocations.get(binding.id), project.workdir_path)
         for binding in bindings
@@ -359,6 +390,7 @@ async def select_conversation_git_repository_view(
     """持久化用户对根任务仓库的选择，不在 HTTP 请求中执行 Git 副作用。"""
     _conversation, project = await _require_root_conversation(uid, thread_id, db, lock=True)
     store = ProjectGitRepositoryStore(db)
+    await store.acquire_user_runtime_lock(uid)
     binding = await store.get_active_binding_by_alias(
         project_id=project.id,
         uid=uid,
@@ -372,7 +404,7 @@ async def select_conversation_git_repository_view(
             store=store,
             binding=binding,
             uid=uid,
-            runtime_scope_id=thread_id,
+            runtime_scope_id=await git_scope_for_thread(db=db, uid=uid, project_id=project.id, thread_id=thread_id),
             request_id=_required(request_id, "request_id"),
             selection_source="user",
             requested_by_run_id=None,
@@ -394,7 +426,8 @@ async def retry_conversation_git_repository_view(*, uid: str, thread_id: str, re
     _conversation, project = await _require_root_conversation(uid, thread_id, db, lock=True)
     store = ProjectGitRepositoryStore(db)
     binding = await store.get_binding(repository_id, uid, lock=True)
-    worktree = await store.get_worktree(repository_id, thread_id, uid, lock=True)
+    scope = await git_scope_for_thread(db=db, uid=uid, project_id=project.id, thread_id=thread_id)
+    worktree = await store.get_worktree(repository_id, scope, uid, lock=True)
     if binding is None or binding.project_id != project.id or worktree is None or worktree.status != "prepare_failed":
         raise HTTPException(status_code=409, detail="任务仓库当前不可重试")
     if binding.status != "active":
@@ -433,6 +466,8 @@ async def deactivate_project_repository_view(*, uid: str, project_id: str, repos
         raise HTTPException(status_code=404, detail="仓库绑定不存在")
     if binding.status == "disabled":
         return binding.to_dict(), None
+    if await store.occupancies(binding.id, uid):
+        raise HTTPException(status_code=409, detail="资源仍有占用或等待任务，请先处理成果并释放")
     binding.status = "deleting"
     binding.operation_generation += 1
     binding.last_error_code = binding.last_error_message = None
@@ -454,6 +489,8 @@ async def cleanup_project_worktree_view(*, uid: str, project_id: str, worktree_i
         raise HTTPException(status_code=404, detail="worktree 不存在")
     if worktree.status == "removed":
         return worktree.to_dict(), None
+    if worktree.usage_mode == "in_place":
+        raise HTTPException(status_code=409, detail="直接修改模式没有隔离目录，请在资源使用情况中释放占用")
     if await store.has_nonterminal_run(project_id, worktree.runtime_scope_id, uid):
         raise HTTPException(status_code=409, detail="任务仍有运行中的 AgentRun")
     binding = await store.get_binding(worktree.repository_id, uid)
@@ -565,7 +602,8 @@ async def list_project_git_repositories_for_run(*, run_id: str, uid: str) -> dic
         run, _conversation, project = await _require_authorized_root_run(run_id, uid, db)
         store = ProjectGitRepositoryStore(db)
         bindings = await store.list_project_bindings(project.id, uid)
-        allocations = {item.repository_id: item for item in await store.list_scope_worktrees(run.runtime_scope_id, uid)}
+        scope = await git_scope_for_run(db=db, uid=uid, project_id=project.id, run=run)
+        allocations = {item.repository_id: item for item in await store.list_scope_worktrees(scope, uid)}
         repositories = [
             _tool_repository_view(binding, allocations.get(binding.id), project.workdir_path)
             for binding in bindings
@@ -591,6 +629,7 @@ async def prepare_project_git_worktree_for_run(
     async with pg_manager.get_async_session_context() as db:
         run, _conversation, project = await _require_authorized_root_run(run_id, uid, db)
         store = ProjectGitRepositoryStore(db)
+        await store.acquire_user_runtime_lock(uid)
         binding = await store.get_active_binding_by_alias(
             project_id=project.id,
             uid=uid,
@@ -603,7 +642,7 @@ async def prepare_project_git_worktree_for_run(
             store=store,
             binding=binding,
             uid=uid,
-            runtime_scope_id=run.runtime_scope_id,
+            runtime_scope_id=await git_scope_for_run(db=db, uid=uid, project_id=project.id, run=run),
             request_id=None,
             selection_source="agent",
             requested_by_run_id=run.id,
@@ -613,6 +652,19 @@ async def prepare_project_git_worktree_for_run(
             task_purpose=task_purpose,
             explicit_retry=True,
         )
+        from yuxi.services.project_git_execution_service import reserve_git_resources_for_dispatch
+
+        resources_ready = await reserve_git_resources_for_dispatch(
+            db=db,
+            uid=uid,
+            project_id=project.id,
+            thread_id=run.conversation_thread_id,
+            run_id=run.id,
+            requested_at=run.created_at,
+        )
+        if not resources_ready:
+            await db.commit()
+            raise ProjectGitBusyError("资源已排队，当前根运行不能写入；等待占用释放后继续任务")
         user_id = await db.scalar(select(User.id).where(User.uid == str(uid)))
         if user_id is None:
             raise PermissionError("Git prepare audit owner is unavailable")
@@ -638,15 +690,24 @@ async def prepare_project_git_worktree_for_run(
         )
         await db.commit()
         workdir_path = project.workdir_path
-        scope = run.runtime_scope_id
+        scope = await git_scope_for_run(db=db, uid=uid, project_id=project.id, run=run)
         binding_id = binding.id
-    return await _prepare_repository_worktree(
+    result = await _prepare_repository_worktree(
         uid=uid,
         binding_id=binding_id,
         workdir_path=workdir_path,
         runtime_scope_id=scope,
         worker_id=f"tool:{run_id}",
     )
+
+    async with pg_manager.get_async_session_context() as db:
+        from yuxi.services.project_git_execution_service import refresh_git_owner_runtime
+
+        run, _, _ = await _require_authorized_root_run(run_id, uid, db)
+        await db.commit()
+        await refresh_git_owner_runtime(db=db, uid=uid, run=run, workdir_path=workdir_path)
+        await db.commit()
+    return result
 
 
 async def push_project_git_branch(*, run_id: str, uid: str, repository_alias: str, expected_head_sha: str) -> dict:
@@ -680,7 +741,7 @@ async def push_project_git_branch(*, run_id: str, uid: str, repository_alias: st
         )
         if binding is None:
             raise PermissionError("Repository alias is not active for this Project")
-        run_scope_key = await resolve_run_scope_key(db, run)
+        run_scope_key = await git_scope_for_run(db=db, uid=uid, project_id=project.id, run=run)
         worktree = await store.get_worktree(binding.id, run_scope_key, uid, lock=True)
         if worktree is None or worktree.status != "ready":
             raise PermissionError("Task worktree is not ready")
@@ -701,7 +762,7 @@ async def push_project_git_branch(*, run_id: str, uid: str, repository_alias: st
         state = await GitExecutor().inspect_worktree(worktree_path)
         if not state.clean or state.head_sha != expected_sha or state.branch != branch:
             raise GitExecutionError("worktree HEAD, branch or clean state changed after approval")
-        if branch == default_branch or not branch.startswith(_branch_prefix()):
+        if branch == default_branch or not _is_allocated_task_branch(worktree, uid):
             raise PermissionError("Target branch is not an allocated task branch")
         api_credential = await store.get_credential(connection.api_token_credential_id, uid)
         if api_credential is None:
@@ -794,6 +855,8 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
             allowed_base_branches = list(getattr(binding, "allowed_base_branches", None) or [])
             public_key = binding.deploy_public_key
             public_key_fingerprint = binding.deploy_public_key_fingerprint
+            binding_uid = binding.uid
+            has_resource_checkout = bool(getattr(binding, "checkout_path", None))
             title = f"yuxi:{binding.id}"
             bare_path, _ = resolve_project_git_host_paths(
                 binding.uid, project.workdir_path, binding.directory_name, create_parents=True
@@ -835,6 +898,10 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
         async with pg_manager.get_async_session_context() as db:
             from sqlalchemy import select
 
+            if has_resource_checkout:
+                from yuxi.services.project_git_resource_service import guard_git_directory_initialization
+
+                await guard_git_directory_initialization(db=db, uid=binding_uid)
             binding = await db.scalar(
                 select(ProjectGitRepository).where(ProjectGitRepository.id == repository_id).with_for_update()
             )
@@ -844,6 +911,22 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
                 store = ProjectGitRepositoryStore(db)
                 await store.acquire_maintenance_lock(repository_id)
                 await GitExecutor().import_bundle(bundle_path=bundle_path, bare_path=bare_path)
+                if binding.checkout_path:
+                    from yuxi.services.project_git_resource_service import (
+                        open_resource_checkout,
+                        resource_metadata_path,
+                    )
+
+                    with open_resource_checkout(
+                        binding.uid, project.workdir_path, binding.checkout_path, create=True
+                    ) as (checkout, executor):
+                        resource_state = await executor.prepare(
+                            metadata=resource_metadata_path(binding.id),
+                            checkout=checkout,
+                            branch=effective_configured,
+                            bundle=bundle_path,
+                        )
+                    binding.checkout_head_sha = resource_state["head_sha"]
                 binding.remote_repository_id = metadata.id
                 binding.canonical_ssh_url = metadata.ssh_url
                 binding.default_branch = metadata.default_branch
@@ -936,6 +1019,8 @@ async def _cleanup_project_worktree(worktree_id: str) -> None:
             )
             if worktree is None or worktree.status not in {"cleanup_pending", "cleanup_failed"}:
                 return
+            if worktree.usage_mode == "in_place":
+                raise RuntimeError("直接修改模式不能通过 worktree 清理删除项目工作目录")
             store = ProjectGitRepositoryStore(db)
             binding = await store.get_binding(worktree.repository_id, worktree.uid)
             project = await ProjectRepository(db).get_for_user(worktree.project_id, worktree.uid)
@@ -973,23 +1058,42 @@ async def _prepare_repository_worktree(
     task_key = derive_task_key(uid, runtime_scope_id)
     now = utc_now_naive()
     async with pg_manager.get_async_session_context() as db:
-        from sqlalchemy import select
-
-        binding = await db.scalar(
-            select(ProjectGitRepository).where(ProjectGitRepository.id == binding_id, ProjectGitRepository.uid == uid)
-        )
+        store = ProjectGitRepositoryStore(db)
+        await store.acquire_user_runtime_lock(uid)
+        binding = await store.get_binding(binding_id, uid, lock=True)
         if binding is None or binding.status != "active":
             raise ProjectGitBusyError("Project Git repository is not active")
-        store = ProjectGitRepositoryStore(db)
+        slot = await store.occupancy(binding.id, runtime_scope_id, uid)
         worktree = await store.get_worktree(binding.id, runtime_scope_id, uid, lock=True)
         if worktree is None:
             raise ProjectGitSelectionError("Task repository was not selected")
+        if worktree.usage_mode == "in_place":
+            from yuxi.services.project_git_resource_service import open_resource_checkout, resource_metadata_path
+
+            if slot is None or slot.status != "owned":
+                raise ProjectGitBusyError("项目资源正在等待持续占用")
+            if (
+                worktree.relative_path != binding.checkout_path
+                or worktree.branch_name != binding.configured_base_branch
+            ):
+                raise ProjectGitSelectionError("资源目录或分支与任务分配不一致")
+            with open_resource_checkout(uid, workdir_path, binding.checkout_path) as (checkout, executor):
+                state = await executor.review(
+                    metadata=resource_metadata_path(binding.id),
+                    checkout=checkout,
+                    branch=binding.configured_base_branch,
+                )
+            worktree.last_observed_head_sha = state["head_sha"]
+            worktree.base_sha = worktree.base_sha or state["head_sha"]
+            worktree.status = "ready"
+            await db.commit()
+            return _worktree_snapshot(binding, worktree, workdir_path)
         _, expected_relative_path = repository_relative_paths(binding.directory_name, task_key)
         if worktree.task_key != task_key or worktree.relative_path != expected_relative_path:
             raise ProjectGitBusyError("Task worktree identity does not match its root scope")
         branch = worktree.branch_name
         base_branch = worktree.base_branch
-        if branch in {base_branch, binding.default_branch} or not branch.startswith(_branch_prefix()):
+        if branch in {base_branch, binding.default_branch} or not _is_allocated_task_branch(worktree, uid):
             raise ProjectGitSelectionError("Task worktree branch is not a valid allocation branch")
         bare_path, path = resolve_project_git_host_paths(
             uid, workdir_path, binding.directory_name, task_key, create_parents=True
@@ -1039,10 +1143,12 @@ async def _prepare_repository_worktree(
         )
         async with pg_manager.get_async_session_context() as db:
             store = ProjectGitRepositoryStore(db)
+            await store.acquire_user_runtime_lock(uid)
+            await store.get_binding(binding_id, uid, lock=True)
+            await store.acquire_maintenance_lock(binding_id)
             worktree = await store.get_worktree(binding_id, runtime_scope_id, uid, lock=True)
             if worktree is None or worktree.lease_owner != worker_id:
                 raise ProjectGitBusyError("Task worktree lease was lost")
-            await store.acquire_maintenance_lock(binding_id)
             await GitExecutor().import_bundle(bundle_path=bundle, bare_path=bare_path)
             fetched_base_sha = await _rev_parse(bare_path, f"refs/remotes/origin/{base_branch}")
             if worktree.base_sha is None:
@@ -1050,6 +1156,18 @@ async def _prepare_repository_worktree(
             remote_branch_sha = await _try_rev_parse(bare_path, f"refs/remotes/origin/{branch}")
             if remote_branch_sha is not None and worktree.last_pushed_sha != remote_branch_sha:
                 raise GitExecutionError("remote task branch belongs to another allocation history")
+            if worktree.source_parent_worktree_id:
+                parent = await store.get_project_worktree(worktree.source_parent_worktree_id, worktree.project_id, uid)
+                if parent is None or parent.repository_id != binding_id:
+                    raise ProjectGitSelectionError("隔离工作区的父资源不存在或归属不一致")
+                if parent.usage_mode == "in_place":
+                    from yuxi.services.project_git_resource_service import resource_metadata_path
+
+                    await GitExecutor().import_local_commit(
+                        source=resource_metadata_path(binding_id),
+                        destination=bare_path,
+                        sha=worktree.base_sha,
+                    )
             state = await GitExecutor().ensure_worktree(
                 bare_path=bare_path,
                 worktree_path=path,
@@ -1084,6 +1202,8 @@ def _worktree_snapshot(binding: ProjectGitRepository, worktree: ProjectGitWorktr
         "base_branch": worktree.base_branch,
         "base_sha": worktree.base_sha,
         "selection_source": worktree.selection_source,
+        "usage_mode": worktree.usage_mode,
+        "approval_mode": binding.approval_mode,
         "status": "ready",
     }
 
@@ -1104,18 +1224,65 @@ async def _request_worktree_allocation(
     explicit_retry: bool,
 ) -> ProjectGitWorktree:
     """幂等创建或重新激活一个根任务仓库 allocation。"""
+    current = await store.get_worktree(binding.id, runtime_scope_id, uid, lock=True)
+    usage_mode = current.usage_mode if current is not None and current.status != "removed" else binding.usage_mode
+    source_parent = None
+    parent_sha = None
+    if (current is None or current.status == "removed") and runtime_scope_id.startswith("task:"):
+        from yuxi.services.project_git_execution_service import git_scope_for_task
+
+        task = await store.task_for_project(runtime_scope_id[5:], binding.project_id)
+        if task is None:
+            raise HTTPException(status_code=409, detail="Git 工作区任务不存在")
+        if task.parent_id and task.git_workspace_mode == "isolated":
+            parent = await store.task_for_project(task.parent_id, binding.project_id)
+            if parent is None:
+                raise HTTPException(status_code=409, detail="父任务不存在，不能创建隔离工作区")
+            parent_scope = await git_scope_for_task(db=store.db, task=parent, project_id=binding.project_id)
+            source_parent = await store.get_worktree(binding.id, parent_scope, uid, lock=True)
+            if source_parent is None or source_parent.status != "ready":
+                raise HTTPException(status_code=409, detail="父任务尚未准备此资源，不能从父级创建隔离工作区")
+            usage_mode = "worktree"
+            if source_parent.usage_mode == "in_place":
+                from yuxi.services.project_git_resource_service import resource_metadata_path
+
+                parent_sha = await _rev_parse(
+                    resource_metadata_path(binding.id), f"refs/heads/{source_parent.branch_name}"
+                )
+            else:
+                project = await ProjectRepository(store.db).get_for_user(binding.project_id, uid)
+                _, parent_path = resolve_project_git_host_paths(
+                    uid, project.workdir_path, binding.directory_name, source_parent.task_key
+                )
+                parent_state = await GitExecutor().inspect_worktree(parent_path)
+                if parent_state.branch != source_parent.branch_name:
+                    raise HTTPException(status_code=409, detail="父任务分支与持久分配不一致")
+                parent_sha = parent_state.head_sha
     try:
         normalized_base = normalize_base_branch(base_branch)
         normalized_slug = normalize_branch_slug(branch_slug)
-        branch = derive_allocation_branch(branch_kind, normalized_slug, uid, runtime_scope_id)
+        branch = (
+            current.branch_name
+            if current is not None and current.status != "removed"
+            else (
+                normalized_base
+                if usage_mode == "in_place"
+                else derive_allocation_branch(branch_kind, normalized_slug, uid, runtime_scope_id)
+            )
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     normalized_kind = str(branch_kind).strip()
     normalized_purpose = _validate_purpose(task_purpose, "task_purpose")
     if normalized_base not in (binding.allowed_base_branches or []):
         raise HTTPException(status_code=422, detail="base_branch 不在仓库允许列表")
-    if branch in {normalized_base, binding.default_branch}:
+    if usage_mode != "in_place" and branch in {normalized_base, binding.default_branch}:
         raise HTTPException(status_code=422, detail="任务分支不能等于 base/default branch")
+
+    if usage_mode == "in_place" and (
+        not binding.checkout_head_sha or not binding.checkout_path or normalized_base != binding.configured_base_branch
+    ):
+        raise HTTPException(status_code=409, detail="直接修改模式必须使用已经检出的资源分支")
 
     if request_id:
         replay = await store.get_worktree_by_selection_request(request_id, uid, lock=True)
@@ -1128,9 +1295,11 @@ async def _request_worktree_allocation(
                 raise HTTPException(status_code=409, detail="request_id 已用于其他仓库意图")
             return replay
 
-    worktree = await store.get_worktree(binding.id, runtime_scope_id, uid, lock=True)
+    worktree = current
     task_key = derive_task_key(uid, runtime_scope_id)
     _, relative_path = repository_relative_paths(binding.directory_name, task_key)
+    if usage_mode == "in_place":
+        relative_path = binding.checkout_path
     if worktree is None:
         worktree = ProjectGitWorktree(
             id=str(uuid.uuid4()),
@@ -1148,7 +1317,9 @@ async def _request_worktree_allocation(
             selection_request_id=request_id,
             branch_name=branch,
             base_branch=normalized_base,
-            base_sha=None,
+            base_sha=parent_sha,
+            usage_mode=usage_mode,
+            source_parent_worktree_id=source_parent.id if source_parent else None,
             relative_path=relative_path,
             status="requested",
         )
@@ -1171,6 +1342,9 @@ async def _request_worktree_allocation(
     worktree.selection_source = selection_source
     worktree.requested_by_run_id = requested_by_run_id
     worktree.selection_request_id = request_id
+    worktree.usage_mode = usage_mode
+    worktree.source_parent_worktree_id = source_parent.id if source_parent else None
+    worktree.relative_path = relative_path
     worktree.status = "requested"
     worktree.lease_owner = None
     worktree.lease_expires_at = None
@@ -1181,7 +1355,7 @@ async def _request_worktree_allocation(
         worktree.branch_slug = normalized_slug
         worktree.branch_name = branch
         worktree.base_branch = normalized_base
-        worktree.base_sha = None
+        worktree.base_sha = parent_sha
         worktree.last_observed_head_sha = None
         worktree.last_pushed_sha = None
     worktree.updated_at = utc_now_naive()
@@ -1259,7 +1433,7 @@ async def _require_root_conversation(uid: str, thread_id: str, db, *, lock: bool
         )
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update(of=Conversation)
     result = (await db.execute(query)).one_or_none()
     if result is None:
         raise HTTPException(status_code=404, detail="Conversation 不存在")
@@ -1285,7 +1459,7 @@ async def _require_authorized_root_run(run_id: str, uid: str, db):
                 Conversation.uid == str(uid),
                 Project.uid == str(uid),
             )
-            .with_for_update()
+            .with_for_update(of=(AgentRun, Conversation))
         )
     ).one_or_none()
     if result is None:
@@ -1461,6 +1635,9 @@ def _binding_intent_matches(
     purpose: str,
     configured_base_branch: str | None,
     allowed_base_branches: list[str] | None,
+    checkout_path: str | None = None,
+    usage_mode: str = "worktree",
+    approval_mode: str = "protected",
 ) -> bool:
     """比较 repository binding 幂等请求的完整业务 identity。"""
     try:
@@ -1479,6 +1656,9 @@ def _binding_intent_matches(
         and getattr(existing, "purpose", "项目仓库") == normalized_purpose
         and getattr(existing, "configured_base_branch", None) == normalized_configured
         and list(getattr(existing, "allowed_base_branches", None) or []) == normalized_allowed
+        and (getattr(existing, "checkout_path", None) or repository_name) == (checkout_path or repository_name)
+        and (getattr(existing, "usage_mode", None) or "worktree") == usage_mode
+        and (getattr(existing, "approval_mode", None) or "protected") == approval_mode
     )
 
 
@@ -1587,6 +1767,15 @@ def _required(value: str, field: str) -> str:
     if not normalized:
         raise HTTPException(status_code=422, detail=f"{field} 不能为空")
     return normalized
+
+
+def _is_allocated_task_branch(worktree, uid: str) -> bool:
+    """验证持久化分配身份，保留已存在的旧 codex 分支消费者。"""
+    if worktree.branch_kind == "legacy":
+        return worktree.branch_name.endswith(f"/task-{derive_task_key(uid, worktree.runtime_scope_id)}")
+    expected = derive_allocation_branch(worktree.branch_kind, worktree.branch_slug, uid, worktree.runtime_scope_id)
+    legacy = "codex/" + expected[len(_branch_prefix()) :]
+    return worktree.branch_name in {expected, legacy}
 
 
 def _branch_prefix() -> str:

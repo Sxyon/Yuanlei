@@ -1,6 +1,6 @@
 """用户级 Git connection HTTP 适配层。"""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from yuxi.services.project_git_service import (
     list_git_connections_view,
     rotate_git_connection_credential_view,
 )
+from yuxi.services.git_discovery_service import list_connection_branches, list_connection_repositories
 from yuxi.storage.postgres.models_business import User
 
 git = APIRouter(prefix="/git", tags=["git"])
@@ -41,6 +42,34 @@ class GitCredentialUpdate(BaseModel):
 async def list_git_connections(current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)):
     """列出当前用户 Git connections。"""
     return await list_git_connections_view(uid=str(current_user.uid), db=db)
+
+
+@git.get("/connections/{connection_id}/repositories")
+async def discover_connection_repositories(
+    connection_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取当前用户连接可访问的仓库供下拉选择。"""
+    return await list_connection_repositories(uid=str(current_user.uid), connection_id=connection_id, db=db)
+
+
+@git.get("/connections/{connection_id}/branches")
+async def discover_connection_branches(
+    connection_id: str,
+    owner: str = Query(min_length=1, max_length=255),
+    name: str = Query(min_length=1, max_length=255),
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """绑定前读取所选仓库的分支。"""
+    return await list_connection_branches(
+        uid=str(current_user.uid),
+        connection_id=connection_id,
+        owner=owner,
+        name=name,
+        db=db,
+    )
 
 
 @git.post("/connections")

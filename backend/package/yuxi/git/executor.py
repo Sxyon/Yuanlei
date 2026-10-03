@@ -94,6 +94,16 @@ class GitExecutor:
             pass_fds=pass_fds,
         )
 
+    async def import_local_commit(self, *, source: Path, destination: Path, sha: str):
+        """将父资源已提交对象导入任务镜像，不改变受保护分支的 HEAD。"""
+        await asyncio.to_thread(self._run, self._git_args(destination, "fetch", str(source), sha))
+
+    async def record_remote_head(self, *, bare_path: Path, branch: str, verified_sha: str):
+        """调用方确认远端 HEAD 后记录本地跟踪引用，不改变资源分支。"""
+        await asyncio.to_thread(
+            self._run, self._git_args(bare_path, "update-ref", f"refs/remotes/origin/{branch}", verified_sha)
+        )
+
     async def inspect_worktree(
         self,
         worktree_path: Path,
@@ -238,6 +248,12 @@ class GitExecutor:
         else:
             args = self._git_args(bare_path, "worktree", "add", "-b", branch, str(add_path), resolved_base_sha)
         self._run(args, pass_fds=pass_fds)
+        # API/worker 与沙盒的 workspace 根路径不同；相对 gitdir 指向同一个持久仓库。
+        git_file = worktree_path / ".git"
+        relative_metadata = os.path.relpath(bare_path / "worktrees" / metadata_name, worktree_path)
+        descriptor = os.open(git_file, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "w") as target:
+            target.write(f"gitdir: {relative_metadata}\n")
         self._run(
             self._git_args(bare_path, "config", "user.name", "Yuxi Agent"),
             pass_fds=pass_fds,
@@ -349,6 +365,7 @@ class GitExecutor:
         env: dict[str, str] | None = None,
         check: bool = True,
         pass_fds: tuple[int, ...] = (),
+        input_text: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """以 argv、超时和输出上限运行 Git，不记录命令参数。"""
         result = subprocess.run(
@@ -358,6 +375,7 @@ class GitExecutor:
             check=False,
             text=True,
             capture_output=True,
+            input=input_text,
             timeout=self.timeout_seconds,
             pass_fds=pass_fds,
         )

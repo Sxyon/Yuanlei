@@ -204,6 +204,7 @@ class ProvisionerSandboxBackend(BaseSandbox):
         self._provider = get_sandbox_provider()
         self._client: Any | None = None
         self._client_url: str | None = None
+        self._client_generation: str | None = None
         self._command_timeout_seconds = int(os.getenv("SANDBOX_EXEC_TIMEOUT_SECONDS") or 180)
         self._max_output_bytes = int(os.getenv("SANDBOX_MAX_OUTPUT_BYTES") or 262_144)
 
@@ -263,11 +264,14 @@ class ProvisionerSandboxBackend(BaseSandbox):
 
         return AgentSandboxClient(
             base_url=sandbox_url,
-            headers={"Authorization": f"Bearer {sandbox_provisioner_token()}"},
+            headers={
+                "Authorization": f"Bearer {sandbox_provisioner_token()}",
+                **({"X-Yuanlei-Sandbox-Generation": self._client_generation} if self._client_generation else {}),
+            },
             timeout=self._command_timeout_seconds,
         )
 
-    def _build_async_client(self, sandbox_url: str, http_client: httpx.AsyncClient):
+    def _build_async_client(self, sandbox_url: str, http_client: httpx.AsyncClient, generation: str | None = None):
         """使用显式生命周期的 HTTP client 构造异步 sandbox client。"""
         try:
             from agent_sandbox import AsyncSandbox as AsyncAgentSandboxClient
@@ -278,7 +282,10 @@ class ProvisionerSandboxBackend(BaseSandbox):
 
         return AsyncAgentSandboxClient(
             base_url=sandbox_url,
-            headers={"Authorization": f"Bearer {sandbox_provisioner_token()}"},
+            headers={
+                "Authorization": f"Bearer {sandbox_provisioner_token()}",
+                **({"X-Yuanlei-Sandbox-Generation": generation} if generation else {}),
+            },
             timeout=self._command_timeout_seconds,
             httpx_client=http_client,
         )
@@ -298,7 +305,8 @@ class ProvisionerSandboxBackend(BaseSandbox):
     def _get_client(self) -> Any:
         connection = self._get_connection()
 
-        if self._client is None or self._client_url != connection.sandbox_url:
+        if self._client is None or self._client_url != connection.sandbox_url or self._client_generation != connection.generation:
+            self._client_generation = connection.generation
             self._client = self._build_client(connection.sandbox_url)
             self._client_url = connection.sandbox_url
 
@@ -497,7 +505,7 @@ class ProvisionerSandboxBackend(BaseSandbox):
                 timeout=self._command_timeout_seconds,
                 follow_redirects=True,
             ) as http_client:
-                client = self._build_async_client(connection.sandbox_url, http_client)
+                client = self._build_async_client(connection.sandbox_url, http_client, connection.generation)
                 file_kind = _read_file_kind(normalized_path)
                 if file_kind == "image":
                     return await self._aread_base64_file(client, normalized_path)

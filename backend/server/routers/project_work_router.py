@@ -2,6 +2,7 @@
 
 from datetime import date
 from urllib.parse import quote
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import Response
@@ -39,6 +40,7 @@ class WorkTaskUpdate(BaseModel):
     """任务状态、第一负责人、计划与周期巡检变更。"""
 
     model_config = ConfigDict(extra="forbid")
+    git_workspace_mode: Literal["inherit", "isolated"] | None = None
     status: str | None = None
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
     start_date: date | None = None

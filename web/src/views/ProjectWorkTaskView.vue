@@ -99,6 +99,17 @@
           </ul>
         </section>
 
+        <section v-if="task.parent_id" class="work-task-section">
+          <h2>子任务 Git 工作区</h2>
+          <div class="work-task-controls">
+            <a-select v-model:value="selectedGitWorkspaceMode" :disabled="saving || executions.length > 0" style="min-width: 280px">
+              <a-select-option value="inherit">共用父任务工作区</a-select-option>
+              <a-select-option value="isolated">从父任务已提交 HEAD 创建独立工作区</a-select-option>
+            </a-select>
+            <a-button :loading="saving" :disabled="executions.length > 0 || selectedGitWorkspaceMode === (task.git_workspace_mode || 'inherit')" @click="updateGitWorkspaceMode">保存工作区方式</a-button>
+          </div>
+          <p class="work-task-muted">执行前选择；已有执行记录后保持工作区身份，避免历史成果被重新归属。</p>
+        </section>
         <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
@@ -201,6 +212,7 @@ const saving = ref(false)
 const error = ref('')
 const actionError = ref('')
 const draft = ref('')
+const selectedGitWorkspaceMode = ref('inherit')
 const agents = ref([])
 const executions = ref([])
 const selectedExecutor = ref(undefined)
@@ -257,6 +269,7 @@ async function load() {
     const sameTask = task.value?.id === result.id
     const statusWasSaved = selectedStatus.value === task.value?.status
     const ownerWasSaved = (selectedOwner.value || null) === task.value?.primary_owner_agent_slug
+    const gitWorkspaceWasSaved = selectedGitWorkspaceMode.value === (task.value?.git_workspace_mode || 'inherit')
     const scheduleWasSaved = selectedStart.value === (task.value?.start_date || '') && selectedDue.value === (task.value?.due_date || '')
     const inspectionWasSaved =
       inspectionEnabled.value === (task.value?.inspection_enabled ?? false) &&
@@ -265,6 +278,7 @@ async function load() {
     agents.value = bindings.agents || []
     executions.value = history
     if (!sameTask || statusWasSaved) selectedStatus.value = result.status
+    if (!sameTask || gitWorkspaceWasSaved) selectedGitWorkspaceMode.value = result.git_workspace_mode || 'inherit'
     if (!sameTask || ownerWasSaved) selectedOwner.value = result.primary_owner_agent_slug || undefined
     if (!sameTask || scheduleWasSaved) {
       selectedStart.value = result.start_date || ''
@@ -303,6 +317,13 @@ function updateStatus() {
   const taskId = route.params.task_id
   const status = selectedStatus.value
   return runAction(() => projectWorkApi.updateTask(projectId, taskId, { status }), '状态保存失败')
+}
+
+function updateGitWorkspaceMode() {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  const mode = selectedGitWorkspaceMode.value
+  return runAction(() => projectWorkApi.updateTask(projectId, taskId, { git_workspace_mode: mode }), '工作区方式保存失败')
 }
 
 function updateOwner() {

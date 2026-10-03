@@ -9,44 +9,76 @@
 - Yuxi 管理员已为 API 和 worker 配置 Git 加密密钥与 Gitea origin allowlist，并重新创建这两个服务。
 - Gitea 仓库已有默认分支和至少一个 commit；空仓库不能创建任务 worktree。
 - 当前用户拥有一个 active、selectable Project。
-- Gitea API Token 可以读取仓库元数据和分支保护规则，并管理仓库 deploy key。
+- Gitea API Token 具有用户读取权限（`read:user`）和仓库读写权限（`write:repository`），用于验证当前用户、读取仓库元数据和分支保护规则，以及管理仓库 deploy key。
 - Gitea SSH endpoint 可从 Yuxi API 和 worker 容器访问。
 
 管理员配置项和容器网络示例见[Project Git 配置与分支参考](../advanced/project-git-reference.md)。
 
 ## 1. 准备 Gitea 信任信息
 
-记录 Gitea 的三个地址字段：
+### 本地 Docker Compose 填写样例
 
-| 字段 | 示例 | 用途 |
+此样例适用于 API、worker 与 `gitea` 服务位于同一 Compose 网络的开发环境。即使宿主机将 SSH 映射为 `2223:2222`，表单仍使用容器内端口 `2222`。浏览器通过 `http://localhost:3300` 打开 Gitea，connection 则通过 `http://gitea:3000` 调用 API。
+
+| 表单字段 | 填写样例 | 说明 |
 | --- | --- | --- |
-| API Origin | `https://gitea.example.com` | API 和 worker 调用 Gitea REST API |
-| SSH Host | `gitea.example.com` | worker 执行 fetch 和 push |
-| SSH Port | `22` | 与 Gitea 返回的 canonical SSH URL 一致 |
+| 名称 | `local_gitea` | 自定义连接名称 |
+| API Origin | `http://gitea:3000` | 必须在管理员配置的 allowlist 中 |
+| SSH Host | `gitea` | API 和 worker 可访问的容器服务名 |
+| SSH Port | `2222` | Gitea 容器内 SSH 监听端口 |
+| SSH known-host key | 下方命令取得的完整一行 | 包含主机、密钥类型和完整公钥 |
+| Gitea API Token | `<新生成的 Gitea Token>` | 填写实际 Token，具有下方列出的权限 |
 
-这里填写的是 **Gitea SSH 服务器的主机公钥记录**，不是用户或仓库的 SSH 密钥对，也不是 `.env` 中的 `YUXI_GIT_CREDENTIAL_KEY`。它用于让 worker 确认自己连接的确实是目标 Gitea SSH 服务。
+独立部署的 Gitea 使用 API 和 worker 可访问的实际地址，例如 API Origin 为 `https://gitea.example.com`、SSH Host 为 `gitea.example.com`、SSH Port 为 `22`。SSH endpoint 必须与 Gitea 返回的仓库 SSH URL 一致；管理员配置见[Project Git 配置与分支参考](../advanced/project-git-reference.md#开发-compose-的-gitea)。
 
-从可信管理通道取得 SSH host public key，并核对管理员公布的 fingerprint。连接表单需要完整的 OpenSSH `known_hosts` 行，例如：
+### 取得完整 SSH known-host key
+
+SSH known-host key 保存 **Gitea SSH 服务器的主机公钥记录**，用于确认远端服务器身份。记录由三部分组成，之间以空格分隔：
 
 ```text
-gitea.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
+主机标识 密钥类型 完整的 Base64 公钥
 ```
 
-非 22 端口的第一列使用 `[host]:port`。开发 Compose 中应填写 worker 实际访问的内部地址，例如：
+下面是一条完整格式的演示记录，使用虚构公钥，仅用于辨认各部分；实际填写时使用自己 Gitea 的输出：
 
 ```text
-[gitea]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
+[gitea]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f
 ```
 
-可以用 `ssh-keyscan` 读取候选记录，再通过 Gitea 主机控制台或管理员公布的信息核对 fingerprint：
+| 部分 | 演示值 | 含义 |
+| --- | --- | --- |
+| 第一部分 | `[gitea]:2222` | 与表单 SSH Host、SSH Port 一致；非 22 端口使用 `[host]:port`，22 端口直接写 host |
+| 第二部分 | `ssh-ed25519` | 公钥类型，也可能是 `ssh-rsa`；保留实际输出的类型 |
+| 第三部分 | `AAAAC3NzaC1lZDI1NTE5AAAAIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f` | 完整公钥内容，保留实际输出的全部字符 |
+
+**表单要粘贴整行，三个部分都要保留。** 只粘贴第三部分，或粘贴 `SHA256:…` 指纹，会导致 `ssh_known_host_key 与 SSH endpoint 不匹配`。公钥内容不能截断或用 `...` 代替。
+
+从仓库根目录运行下面的命令，直接在 API 容器中读取候选记录，输出第一列就是 `[gitea]:2222`：
 
 ```bash
-ssh-keyscan -p 2223 127.0.0.1 2>/dev/null | ssh-keygen -lf -
+docker compose exec -T api ssh-keyscan -T 5 -p 2222 -t rsa gitea 2>/dev/null
 ```
 
-本机映射端口得到的第一列是 `[127.0.0.1]:2223`；核对 fingerprint 后，connection 中第一列要按 worker 使用的 endpoint 写成 `[gitea]:2222`，公钥类型和公钥内容保持不变。`ssh-keyscan` 的输出本身不构成可信验证。Yuxi 不自动接受首次出现的 host key；host、port 或 key 不匹配时 connection 创建或 Git 操作会失败。
+命令选择开发 Gitea 支持的 RSA 主机密钥。复制以 `[gitea]:2222 ssh-rsa` 开头的完整一行。通过 Gitea 主机控制台或管理员公布的信息核对 fingerprint；`ssh-keyscan` 输出本身只代表远端返回的候选公钥。可用下面的命令计算候选公钥的 fingerprint，核对时使用它，表单仍填写完整记录：
 
-在 Gitea 的用户设置中创建 API Token。Token 只在 connection 创建或更新时提交一次，页面和 API 响应不会返回原值。
+```bash
+docker compose exec -T api ssh-keyscan -T 5 -p 2222 -t rsa gitea 2>/dev/null | ssh-keygen -lf -
+```
+
+如果从宿主机扫描 `127.0.0.1:2223`，输出第一列为 `[127.0.0.1]:2223`。核对公钥后，只把第一列改成 `[gitea]:2222`，保留密钥类型和公钥内容，再填入 connection。
+
+### 创建具有用户读取权限的 Token
+
+在 Gitea **用户设置 → 应用 → 管理访问令牌** 中创建 Token。本地样例可打开 `http://localhost:3300/user/settings/applications`。选择以下权限，再生成并复制 Token：
+
+| 权限类别 | 选择 | Scope | 用途 |
+| --- | --- | --- | --- |
+| user | 读取 | `read:user` | 创建 connection 时调用 `/api/v1/user` 验证当前用户 |
+| repository | 读写 | `write:repository` | 查询仓库、分支保护规则，管理 deploy key 和合并请求 |
+
+**user 读取权限必须勾选。** 只有 repository 权限时，Gitea 的 `/api/v1/user` 会返回 `403 Forbidden`，页面显示 `无法验证 Gitea connection`。此步骤通过 HTTP 验证 Token，修改 SSH 端口无法解决该权限错误。账号本身还需拥有目标仓库的相应权限。
+
+Token 只在 connection 创建或更新时提交一次，页面和 API 响应不会返回原值。
 
 ## 2. 创建 Git connection
 
@@ -130,8 +162,9 @@ Worktrees 页签中的“安全清理”只接受同时满足以下条件的记�
 | 表现 | 检查项 |
 | --- | --- |
 | `git_not_configured` | API 和 worker 是否都有稳定的 `YUXI_GIT_CREDENTIAL_KEY` |
-| connection 无法验证 | API origin allowlist、Token 权限、容器网络和 Gitea 状态 |
-| SSH endpoint 不匹配 | Gitea 返回的 SSH URL、connection host/port 与 known-host 第一列 |
+| `无法验证 Gitea connection` | 查看 Gitea 日志；`GET /api/v1/user` 返回 `403` 且命中 `tokenRequiresScopes` 时，为 Token 增加 `read:user`；其他情况检查 API origin allowlist、容器网络和 Gitea 状态 |
+| `ssh_known_host_key 与 SSH endpoint 不匹配` | 粘贴包含主机、类型、公钥三个部分的完整行；本地 Compose 第一列为 `[gitea]:2222` |
+| 仓库 SSH URL endpoint 不匹配 | Gitea 返回的 SSH URL 与 connection host/port 是否一致 |
 | 仓库长期 `provisioning` | worker 和 Redis 是否可用；等待 reconciler 重投或点击重试 |
 | Run 在 Agent 开始前重试 | Project 中是否存在非 `active` 的未停用仓库，或 worktree 正由其他 worker 准备 |
 | push 被拒绝 | 审批状态、完整 HEAD SHA、工作区 clean、分支保护和远端 fast-forward 条件 |

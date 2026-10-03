@@ -31,6 +31,7 @@ def _patch_cleanup_dependencies(monkeypatch, tmp_path, *, clean: bool, pushed: b
         project_id="project-1",
         uid="user-1",
         runtime_scope_id="scope-1",
+        usage_mode="worktree",
         task_key="task-1",
         status="ready",
         last_pushed_sha=head if pushed else None,
@@ -123,6 +124,8 @@ async def test_ready_worktree_is_reused_without_lease_or_fetch(monkeypatch, tmp_
         directory_name="api-safe",
         default_branch="main",
         configured_base_branch="main",
+        usage_mode="worktree",
+        approval_mode="protected",
         allowed_base_branches=["main"],
         purpose="后端 API",
         status="active",
@@ -132,6 +135,7 @@ async def test_ready_worktree_is_reused_without_lease_or_fetch(monkeypatch, tmp_
     worktree = SimpleNamespace(
         repository_id=binding.id,
         runtime_scope_id="scope-1",
+        usage_mode="worktree",
         task_key=task_key,
         selection_source="user",
         task_purpose="实现退款",
@@ -158,6 +162,15 @@ async def test_ready_worktree_is_reused_without_lease_or_fetch(monkeypatch, tmp_
     class Store:
         def __init__(self, _db):
             pass
+
+        async def acquire_user_runtime_lock(self, _uid):
+            pass
+
+        async def get_binding(self, *args, **kwargs):
+            return binding
+
+        async def occupancy(self, *args, **kwargs):
+            return None
 
         async def get_worktree(self, *args, **kwargs):
             return worktree
@@ -336,6 +349,8 @@ def _binding():
         directory_name="api-safe",
         default_branch="main",
         configured_base_branch="main",
+        usage_mode="worktree",
+        approval_mode="protected",
         allowed_base_branches=["main", "release"],
     )
 
@@ -406,6 +421,94 @@ async def test_old_request_cannot_revive_removed_current_generation():
 
     assert replay.status == "removed"
     assert replay.allocation_generation == 1
+
+
+@pytest.mark.asyncio
+async def test_removed_isolated_child_keeps_worktree_mode_for_in_place_resource(monkeypatch):
+    monkeypatch.setenv("YUXI_GIT_BRANCH_PREFIX", "agent/")
+    parent = SimpleNamespace(id="parent", parent_id=None, git_workspace_mode="inherit")
+    child = SimpleNamespace(id="child", parent_id="parent", git_workspace_mode="isolated")
+    parent_workspace = SimpleNamespace(id="parent-workspace", status="ready", usage_mode="in_place", branch_name="main")
+
+    class Store(_AllocationStore):
+        db = None
+
+        async def task_for_project(self, task_id, _project_id):
+            return {"parent": parent, "child": child}.get(task_id)
+
+        async def get_worktree(self, _repository_id, scope, *_args, **_kwargs):
+            return parent_workspace if scope == "task:parent" else self.worktree
+
+    async def parent_scope(**_kwargs):
+        return "task:parent"
+
+    async def parent_head(*_args):
+        return "a" * 40
+
+    import yuxi.services.project_git_execution_service as execution
+    import yuxi.services.project_git_resource_service as resource
+
+    monkeypatch.setattr(execution, "git_scope_for_task", parent_scope)
+    monkeypatch.setattr(resource, "resource_metadata_path", lambda _id: "/private/repository.git")
+    monkeypatch.setattr(service, "_rev_parse", parent_head)
+    binding = _binding()
+    binding.usage_mode = "in_place"
+    store = Store()
+
+    async def allocate(request_id):
+        return await service._request_worktree_allocation(
+            store=store,
+            binding=binding,
+            uid="user-1",
+            runtime_scope_id="task:child",
+            request_id=request_id,
+            selection_source="user",
+            requested_by_run_id=None,
+            base_branch="main",
+            branch_kind="feature",
+            branch_slug="child-check",
+            task_purpose="独立验证",
+            explicit_retry=False,
+        )
+
+    original = await allocate("first")
+    assert original.usage_mode == "worktree"
+    assert original.source_parent_worktree_id == "parent-workspace"
+    original.status = "removed"
+    restored = await allocate("second")
+    assert restored.usage_mode == "worktree"
+    assert restored.source_parent_worktree_id == "parent-workspace"
+    assert restored.base_sha == "a" * 40
+    assert restored.branch_name.startswith("agent/")
+
+
+@pytest.mark.asyncio
+async def test_isolated_child_rejects_missing_parent_instead_of_creating_unrelated_workspace():
+    class Store(_AllocationStore):
+        db = None
+
+        async def task_for_project(self, task_id, _project_id):
+            return (
+                SimpleNamespace(id="child", parent_id="missing", git_workspace_mode="isolated")
+                if task_id == "child"
+                else None
+            )
+
+    with pytest.raises(HTTPException, match="父任务不存在"):
+        await service._request_worktree_allocation(
+            store=Store(),
+            binding=_binding(),
+            uid="user-1",
+            runtime_scope_id="task:child",
+            request_id="request",
+            selection_source="user",
+            requested_by_run_id=None,
+            base_branch="main",
+            branch_kind="test",
+            branch_slug="verify-parent",
+            task_purpose="验证父任务",
+            explicit_retry=False,
+        )
 
 
 @pytest.mark.asyncio

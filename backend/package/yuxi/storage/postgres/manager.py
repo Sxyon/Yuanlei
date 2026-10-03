@@ -25,7 +25,70 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 22
+YUANLEI_SCHEMA_VERSION = 25
+PROJECT_GIT_TASK_WORKSPACE_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS usage_mode VARCHAR(16) NOT NULL DEFAULT 'worktree'",
+    "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS source_parent_worktree_id VARCHAR(64)",
+    """UPDATE project_git_worktrees w SET usage_mode = 'in_place'
+        FROM project_git_repositories r WHERE r.id = w.repository_id AND r.usage_mode = 'in_place'
+        AND w.relative_path = r.checkout_path AND w.branch_name = r.configured_base_branch""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_project_git_worktrees_usage_mode'
+            AND conrelid = 'project_git_worktrees'::regclass) THEN
+            ALTER TABLE project_git_worktrees ADD CONSTRAINT ck_project_git_worktrees_usage_mode
+                CHECK (usage_mode IN ('in_place', 'worktree'));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_project_git_worktrees_source_parent'
+            AND conrelid = 'project_git_worktrees'::regclass) THEN
+            ALTER TABLE project_git_worktrees ADD CONSTRAINT fk_project_git_worktrees_source_parent
+                FOREIGN KEY (source_parent_worktree_id) REFERENCES project_git_worktrees(id);
+        END IF;
+    END $$""",
+)
+
+PROJECT_GIT_OCCUPANCY_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_git_occupancies (
+        id VARCHAR(64) PRIMARY KEY, repository_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL, uid VARCHAR(64) NOT NULL, scope_key VARCHAR(191) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'queued', active_run_id VARCHAR(64),
+        requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, released_at TIMESTAMP,
+        CONSTRAINT uq_project_git_occupancies_resource_scope UNIQUE (repository_id, scope_key),
+        CONSTRAINT fk_project_git_occupancies_resource FOREIGN KEY (repository_id, project_id, uid)
+            REFERENCES project_git_repositories(id, project_id, uid),
+        CONSTRAINT ck_project_git_occupancies_status CHECK (status IN ('queued', 'owned', 'released'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_occupancies_fifo ON project_git_occupancies (repository_id, status, requested_at, id)",
+    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS git_workspace_mode VARCHAR(16) NOT NULL DEFAULT 'inherit'",
+    """DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_project_work_tasks_git_workspace_mode'
+            AND conrelid = 'project_work_tasks'::regclass) THEN
+            ALTER TABLE project_work_tasks ADD CONSTRAINT ck_project_work_tasks_git_workspace_mode
+                CHECK (git_workspace_mode IN ('inherit', 'isolated'));
+        END IF;
+    END $$""",
+)
+
+
+PROJECT_GIT_RESOURCE_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS usage_mode VARCHAR(16) NOT NULL DEFAULT 'worktree'",
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS approval_mode VARCHAR(16) NOT NULL DEFAULT 'protected'",
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS checkout_path VARCHAR(512)",
+    "ALTER TABLE project_git_repositories ADD COLUMN IF NOT EXISTS checkout_head_sha VARCHAR(64)",
+    """DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_project_git_repositories_usage_mode'
+            AND conrelid = 'project_git_repositories'::regclass) THEN
+            ALTER TABLE project_git_repositories ADD CONSTRAINT ck_project_git_repositories_usage_mode
+                CHECK (usage_mode IN ('in_place', 'worktree'));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_project_git_repositories_approval_mode'
+            AND conrelid = 'project_git_repositories'::regclass) THEN
+            ALTER TABLE project_git_repositories ADD CONSTRAINT ck_project_git_repositories_approval_mode
+                CHECK (approval_mode IN ('automatic', 'protected'));
+        END IF;
+    END $$""",
+)
+
+
 PROJECT_SETTINGS_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_settings (
         project_id VARCHAR(64) PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
@@ -1584,6 +1647,27 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v24_to_v25(self):
+        """冻结任务工作区模式及子任务隔离来源。"""
+        async with self.get_async_session_context() as session:
+            for statement in PROJECT_GIT_TASK_WORKSPACE_SCHEMA_STATEMENTS:
+                await session.execute(text(statement))
+            await session.commit()
+
+    async def upgrade_yuanlei_schema_v23_to_v24(self):
+        """幂等增加 Git 持久占用与子任务工作区选择。"""
+        async with self.get_async_session_context() as session:
+            for statement in PROJECT_GIT_OCCUPANCY_SCHEMA_STATEMENTS:
+                await session.execute(text(statement))
+            await session.commit()
+
+    async def upgrade_yuanlei_schema_v22_to_v23(self):
+        """幂等增加 Git 分支资源配置，保留历史工作树。"""
+        async with self.get_async_session_context() as session:
+            for statement in PROJECT_GIT_RESOURCE_SCHEMA_STATEMENTS:
+                await session.execute(text(statement))
+            await session.commit()
 
     async def upgrade_yuanlei_schema_v21_to_v22(self) -> None:
         """新增项目管理属性与知识库弱关联，保留历史项目所有权。"""

@@ -43,10 +43,31 @@ HTTP_URL = TypeAdapter(AnyHttpUrl)
 MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
 ATTACHMENT_ALLOWED_EXTENSIONS = frozenset(
     {
-        ".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log",
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp",
-        ".zip", ".tar", ".gz", ".tgz",
+        ".txt",
+        ".md",
+        ".csv",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".log",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".svg",
+        ".bmp",
+        ".zip",
+        ".tar",
+        ".gz",
+        ".tgz",
     }
 )
 
@@ -115,6 +136,7 @@ def _task_data(row: ProjectWorkTask) -> dict:
         "start_date": row.start_date.isoformat() if row.start_date else None,
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "primary_owner_agent_slug": row.primary_owner_agent_slug,
+        "git_workspace_mode": row.git_workspace_mode or "inherit",
         "inspection_enabled": row.inspection_enabled,
         "inspection_interval_minutes": row.inspection_interval_minutes,
         "inspection_next_run_at": format_utc_datetime(row.inspection_next_run_at),
@@ -201,14 +223,18 @@ async def configure_project_code(*, db: AsyncSession, user: User, project_id: st
     existing = await repo.get_project_code(project_id)
     if existing is not None:
         if existing.code != normalized:
-            raise HTTPException(status_code=409, detail={"code": "project_code_locked", "message": "项目缩写已固定，不能修改"})
+            raise HTTPException(
+                status_code=409, detail={"code": "project_code_locked", "message": "项目缩写已固定，不能修改"}
+            )
         return {"project_id": project_id, "code": existing.code}
     try:
         await repo.set_project_code(project_id, normalized)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail={"code": "project_code_taken", "message": "项目缩写已被其他项目使用，请换一个"}) from exc
+        raise HTTPException(
+            status_code=409, detail={"code": "project_code_taken", "message": "项目缩写已被其他项目使用，请换一个"}
+        ) from exc
     return {"project_id": project_id, "code": normalized}
 
 
@@ -252,10 +278,7 @@ async def list_topics(*, db: AsyncSession, user: User, project_id: str) -> list[
     await _project(db, user, project_id)
     topics = await GovernanceRepository(db).list_topics(project_id=project_id)
     codes = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).list_topic_codes()
-    return [
-        {"id": row.id, "title": row.title, "status": row.status, "code": codes.get(row.id)}
-        for row in topics
-    ]
+    return [{"id": row.id, "title": row.title, "status": row.status, "code": codes.get(row.id)} for row in topics]
 
 
 async def create_task(
@@ -296,7 +319,9 @@ async def create_task(
             raise HTTPException(status_code=404, detail="第一负责人未绑定该项目")
     project_code = await repo.get_project_code(project_id, lock=True)
     if project_code is None:
-        raise HTTPException(status_code=409, detail={"code": "project_code_required", "message": "请先设置项目编号缩写，再创建任务"})
+        raise HTTPException(
+            status_code=409, detail={"code": "project_code_required", "message": "请先设置项目编号缩写，再创建任务"}
+        )
     number = f"{project_code.code}-{topic_code}-{project_code.next_number:06d}"
     project_code.next_number += 1
     row = await repo.add_task(
@@ -342,9 +367,7 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     }
 
 
-async def add_reference(
-    *, db: AsyncSession, user: User, project_id: str, task_id: str, title: str, url: str
-) -> dict:
+async def add_reference(*, db: AsyncSession, user: User, project_id: str, task_id: str, title: str, url: str) -> dict:
     """在项目归属边界内追加 HTTP(S) 网页引用。"""
     normalized_title = _text(title, limit=512, label="引用标题")
     normalized_url = url.strip()
@@ -372,9 +395,7 @@ async def add_reference(
     return _reference_data(row)
 
 
-async def remove_reference(
-    *, db: AsyncSession, user: User, project_id: str, task_id: str, reference_id: str
-) -> dict:
+async def remove_reference(*, db: AsyncSession, user: User, project_id: str, task_id: str, reference_id: str) -> dict:
     """从当前项目任务移除网页引用。"""
     await _writable_project(db, user, project_id)
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_reference(reference_id)
@@ -391,9 +412,7 @@ def _safe_file_name(file_name: str | None) -> str:
     return safe or "attachment.bin"
 
 
-async def add_attachment(
-    *, db: AsyncSession, user: User, project_id: str, task_id: str, file: UploadFile
-) -> dict:
+async def add_attachment(*, db: AsyncSession, user: User, project_id: str, task_id: str, file: UploadFile) -> dict:
     """在项目归属边界内校验并存储任务文件附件。"""
     await _writable_project(db, user, project_id)
     await _task(db, user, project_id, task_id)
@@ -435,9 +454,7 @@ async def add_attachment(
     return _attachment_data(row)
 
 
-async def remove_attachment(
-    *, db: AsyncSession, user: User, project_id: str, task_id: str, attachment_id: str
-) -> dict:
+async def remove_attachment(*, db: AsyncSession, user: User, project_id: str, task_id: str, attachment_id: str) -> dict:
     """移除当前项目任务的文件附件及其对象。"""
     await _writable_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
@@ -483,6 +500,7 @@ async def update_task(
     project_id: str,
     task_id: str,
     status: str | None = None,
+    git_workspace_mode: str | None = None,
     primary_owner_agent_slug: str | None = None,
     update_owner: bool = False,
     start_date: date | None = None,
@@ -496,6 +514,19 @@ async def update_task(
     """修改任务状态、转移第一负责人或调整周期巡检配置。"""
     await _writable_project(db, user, project_id)
     task = await _task(db, user, project_id, task_id, lock=True)
+    if git_workspace_mode is not None:
+        from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
+
+        if git_workspace_mode not in {"inherit", "isolated"}:
+            raise HTTPException(status_code=422, detail="任务 Git 工作区模式非法")
+        if task.git_workspace_mode != git_workspace_mode:
+            if await ProjectGitRepositoryStore(db).task_tree_has_git_history(
+                task_id=task.id, project_id=project_id, uid=str(user.uid)
+            ):
+                raise HTTPException(
+                    status_code=409, detail="任务或共享子任务已有工作区或执行记录，不能改变历史 Git 作用域"
+                )
+            task.git_workspace_mode = git_workspace_mode
     if status is not None:
         if status not in TASK_STATUSES:
             raise HTTPException(status_code=422, detail="任务状态无效")
@@ -528,17 +559,13 @@ async def update_task(
         task.start_date = next_start
         task.due_date = next_due
     if update_inspection:
-        _apply_inspection_config(
-            task, enabled=inspection_enabled, interval_minutes=inspection_interval_minutes
-        )
+        _apply_inspection_config(task, enabled=inspection_enabled, interval_minutes=inspection_interval_minutes)
     task.updated_at = utc_now_naive()
     await db.commit()
     return _task_data(task)
 
 
-def _apply_inspection_config(
-    task: ProjectWorkTask, *, enabled: bool | None, interval_minutes: int | None
-) -> None:
+def _apply_inspection_config(task: ProjectWorkTask, *, enabled: bool | None, interval_minutes: int | None) -> None:
     """按当前负责人收敛任务周期巡检计划，启用时立即安排首次核查。"""
     if interval_minutes is not None:
         if not MIN_INSPECTION_INTERVAL_MINUTES <= interval_minutes <= MAX_INSPECTION_INTERVAL_MINUTES:

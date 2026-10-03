@@ -34,6 +34,7 @@ x-api-worker-env: &api-worker-env
   READINESS_CACHE_TTL_SECONDS: ${READINESS_CACHE_TTL_SECONDS:-1}
   YUXI_CORS_ORIGINS: ${YUXI_CORS_ORIGINS:-}
   YUXI_DATASET_PERSIST_BATCH_SIZE: ${YUXI_DATASET_PERSIST_BATCH_SIZE:-1}
+  YUXI_GIT_STATE_DIR: /app/git-state
   YUXI_SKILL_DATA_DIR: /app/skill-sources
   YUXI_SKILL_PROJECTION_DIR: /app/skill-projections
   # 其他环境变量
@@ -58,6 +59,9 @@ services:
     volumes:
       - ./backend/server:/app/server
       - ./backend/package:/app/package
+      - type: bind
+        source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/git-state
+        target: /app/git-state
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/threads
         target: /app/user-data
@@ -85,7 +89,7 @@ services:
       YUXI_USER_DATA_DIR: /app/user-data
       YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
       YUXI_CODING_CREDENTIAL_KEY: ${YUXI_CODING_CREDENTIAL_KEY:?Set YUXI_CODING_CREDENTIAL_KEY in .env, or rerun `bash scripts/init.sh`}
-      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-agent/}
       YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-http://gitea:3000}
       POSTGRES_POOL_SIZE: ${API_POSTGRES_POOL_SIZE:-120}
       POSTGRES_MAX_OVERFLOW: ${API_POSTGRES_MAX_OVERFLOW:-40}
@@ -127,6 +131,9 @@ services:
       - ./backend/server:/app/server
       - ./backend/package:/app/package
       - type: bind
+        source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/git-state
+        target: /app/git-state
+      - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/threads
         target: /app/user-data
       - type: bind
@@ -152,7 +159,7 @@ services:
       YUXI_USER_DATA_DIR: /app/user-data
       YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
       YUXI_CODING_CREDENTIAL_KEY: ${YUXI_CODING_CREDENTIAL_KEY:?Set YUXI_CODING_CREDENTIAL_KEY in .env, or rerun `bash scripts/init.sh`}
-      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-agent/}
       YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-http://gitea:3000}
       ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-140}
       REDIS_MAX_CONNECTIONS: ${WORKER_REDIS_MAX_CONNECTIONS:-256}

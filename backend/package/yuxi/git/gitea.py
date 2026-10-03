@@ -26,6 +26,27 @@ class GiteaProvider:
         """验证 Token 可访问当前 Gitea 用户 API。"""
         await self._request("GET", "/api/v1/user")
 
+    async def list_repositories(self) -> list[dict]:
+        """分页列出 Token 可访问的仓库，返回绑定表单所需的公开元数据。"""
+        result = []
+        for page in range(1, 10001):
+            values = await self._request("GET", "/api/v1/user/repos", params={"page": page, "limit": 50})
+            if not isinstance(values, list):
+                raise ValueError("invalid Gitea repository list")
+            result.extend(
+                {
+                    "id": str(item["id"]),
+                    "owner": str(item["owner"]["login"]),
+                    "name": str(item["name"]),
+                    "default_branch": str(item.get("default_branch") or ""),
+                    "description": str(item.get("description") or ""),
+                }
+                for item in values
+            )
+            if len(values) < 50:
+                return result
+        raise ValueError("Gitea repository pagination did not terminate")
+
     async def get_repository(self, owner: str, name: str) -> HostedRepository:
         """读取仓库并校验 canonical SSH endpoint。"""
         data = await self._request("GET", f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}")
@@ -51,6 +72,96 @@ class GiteaProvider:
         if returned_name != normalized or not commit_sha:
             raise ValueError("Gitea branch metadata does not match the requested branch")
         return HostedBranch(returned_name, commit_sha)
+
+    async def list_branches(self, owner: str, name: str) -> list[dict]:
+        """分页列出真实远端分支与 HEAD，供资源配置选择。"""
+        result = []
+        page = 1
+        while True:
+            data = await self._request(
+                "GET",
+                f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/branches",
+                params={"page": page, "limit": 50},
+            )
+            if not isinstance(data, list):
+                raise ValueError("invalid Gitea branch response")
+            for item in data:
+                result.append({"name": str(item["name"]), "head_sha": str(item["commit"]["id"])})
+            if len(data) < 50:
+                return result
+            page += 1
+            if page > 10000:
+                raise ValueError("Gitea branch pagination did not terminate")
+
+    async def list_pull_requests(self, owner: str, name: str) -> list[dict]:
+        """分页读取远端合并请求，状态由 Gitea 拥有。"""
+        result = []
+        for page in range(1, 10001):
+            values = await self._request(
+                "GET",
+                f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/pulls",
+                params={"state": "all", "limit": 50, "page": page},
+            )
+            if not isinstance(values, list):
+                raise ValueError("invalid Gitea pull request response")
+            result.extend(self._pull_request_view(value) for value in values)
+            if len(values) < 50:
+                return result
+        raise ValueError("Gitea pull request pagination did not terminate")
+
+    async def get_pull_request(self, owner: str, name: str, number: int) -> dict:
+        """回读源分支、目标分支、SHA 与实际合并状态。"""
+        value = await self._request(
+            "GET", f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/pulls/{number}"
+        )
+        return self._pull_request_view(value)
+
+    async def create_pull_request(self, owner: str, name: str, *, head: str, base: str, title: str, body: str) -> dict:
+        """在同一仓库创建真实 Gitea 合并请求。"""
+        value = await self._request(
+            "POST",
+            f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/pulls",
+            json={"head": head, "base": base, "title": title, "body": body},
+        )
+        return self._pull_request_view(value)
+
+    async def merge_pull_request(self, owner: str, name: str, number: int, *, head_sha: str) -> dict:
+        """由 Gitea 校验确认过的源 HEAD，执行合并并回读结果。"""
+        await self._request(
+            "POST",
+            f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/pulls/{number}/merge",
+            json={
+                "Do": "merge",
+                "head_commit_id": head_sha,
+                "force_merge": False,
+                "merge_when_checks_succeed": False,
+                "delete_branch_after_merge": False,
+            },
+        )
+        value = await self.get_pull_request(owner, name, number)
+        if not value["merged"]:
+            raise RuntimeError("Gitea has not confirmed the pull request was merged")
+        return value
+
+    @staticmethod
+    def _pull_request_view(value: dict) -> dict:
+        """只投影界面及审批所需的真实协议字段。"""
+        head, base = value["head"], value["base"]
+        return {
+            "number": int(value["number"]),
+            "title": value["title"],
+            "url": value["html_url"],
+            "state": value["state"],
+            "merged": bool(value["merged"]),
+            "mergeable": value.get("mergeable"),
+            "head_branch": head["ref"],
+            "head_sha": head["sha"],
+            "base_branch": base["ref"],
+            "base_sha": base["sha"],
+            "head_repository_id": str(head["repo"]["id"]),
+            "base_repository_id": str(base["repo"]["id"]),
+            "merge_commit_sha": value.get("merge_commit_sha"),
+        }
 
     async def list_deploy_keys(self, owner: str, name: str) -> list[DeployKey]:
         """分页列出仓库的全部 deploy key。"""

@@ -33,6 +33,7 @@ x-api-worker-env: &api-worker-env
   SANDBOX_MAX_OUTPUT_BYTES: ${SANDBOX_MAX_OUTPUT_BYTES:-262144}
   TASKER_DEFAULT_TIMEOUT_SECONDS: ${TASKER_DEFAULT_TIMEOUT_SECONDS:-21600}
   YUXI_DATASET_PERSIST_BATCH_SIZE: ${YUXI_DATASET_PERSIST_BATCH_SIZE:-1}
+  YUXI_GIT_STATE_DIR: /app/git-state
   YUXI_SKILL_DATA_DIR: /app/skill-sources
   YUXI_SKILL_PROJECTION_DIR: /app/skill-projections
   NO_PROXY: localhost,127.0.0.1,milvus,graph,minio,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
@@ -59,6 +60,7 @@ services:
       - app-network
     volumes:
       - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/threads:/app/user-data
+      - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/git-state:/app/git-state
       - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/skill-sources:/app/skill-sources
       - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/skill-projections:/app/skill-projections
     extra_hosts:
@@ -72,7 +74,7 @@ services:
       YUXI_USER_DATA_DIR: /app/user-data
       YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
       YUXI_CODING_CREDENTIAL_KEY: ${YUXI_CODING_CREDENTIAL_KEY:?Set YUXI_CODING_CREDENTIAL_KEY in .env.prod, or rerun `bash scripts/init.sh`}
-      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-agent/}
       YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-}
       POSTGRES_POOL_SIZE: ${API_POSTGRES_POOL_SIZE:-120}
       POSTGRES_MAX_OVERFLOW: ${API_POSTGRES_MAX_OVERFLOW:-40}
@@ -114,6 +116,7 @@ services:
       - app-network
     volumes:
       - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/threads:/app/user-data
+      - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/git-state:/app/git-state
       - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/skill-sources:/app/skill-sources
       - ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/skill-projections:/app/skill-projections
     extra_hosts:
@@ -126,7 +129,7 @@ services:
       YUXI_USER_DATA_DIR: /app/user-data
       YUXI_GIT_CREDENTIAL_KEY: ${YUXI_GIT_CREDENTIAL_KEY:-}
       YUXI_CODING_CREDENTIAL_KEY: ${YUXI_CODING_CREDENTIAL_KEY:?Set YUXI_CODING_CREDENTIAL_KEY in .env.prod, or rerun `bash scripts/init.sh`}
-      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-codex/}
+      YUXI_GIT_BRANCH_PREFIX: ${YUXI_GIT_BRANCH_PREFIX:-agent/}
       YUXI_GIT_ALLOWED_GITEA_ORIGINS: ${YUXI_GIT_ALLOWED_GITEA_ORIGINS:-}
       ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-140}
       REDIS_MAX_CONNECTIONS: ${WORKER_REDIS_MAX_CONNECTIONS:-256}

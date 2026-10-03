@@ -35,6 +35,40 @@ export const projectApi = {
   updateRepositoryPolicy: (projectId, repositoryId, payload) =>
     apiPut(`/api/projects/${projectId}/repositories/${repositoryId}/policy`, payload),
 
+  getRepositoryBranches: (projectId, repositoryId) =>
+    apiGet(`/api/projects/${projectId}/repositories/${repositoryId}/branches`),
+
+  configureGitResource: (projectId, repositoryId, payload) =>
+    apiPut(`/api/projects/${projectId}/repositories/${repositoryId}/resource`, payload),
+
+  checkoutGitResource: (projectId, repositoryId) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/checkout`, {}),
+
+  reviewGitResource: (projectId, repositoryId) =>
+    apiGet(`/api/projects/${projectId}/repositories/${repositoryId}/review`),
+
+  commitGitResource: (projectId, repositoryId, payload) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/commit`, payload),
+
+  discardGitResource: (projectId, repositoryId, payload) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/discard`, payload),
+  pushGitResource: (projectId, repositoryId, payload) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/push`, payload),
+
+  getGitOccupancies: (projectId) => apiGet(`/api/projects/${projectId}/git-occupancies`),
+
+  releaseGitResource: (projectId, repositoryId, scopeKey) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/release`, { scope_key: scopeKey }),
+
+  getGitPullRequests: (projectId, repositoryId) =>
+    apiGet(`/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`),
+
+  createGitPullRequest: (projectId, repositoryId, payload) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`, payload),
+
+  mergeGitPullRequest: (projectId, repositoryId, number, payload) =>
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/${number}/merge`, payload),
+
   deactivateRepository: (projectId, repositoryId) =>
     apiDelete(`/api/projects/${projectId}/repositories/${repositoryId}`),
 

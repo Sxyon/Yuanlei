@@ -802,7 +802,7 @@ def test_docker_mount_checks_reject_uploads_and_outputs_mounts(monkeypatch, tmp_
     container = SimpleNamespace(
         attrs={
             "Mounts": [
-                {"Destination": "/home/gem/user-data", "Source": str(workspace)},
+                {"Destination": "/home/gem/user-data", "Source": str(workspace), "RW": True},
                 {"Destination": "/home/gem/skills", "Source": str(skills), "RW": False, "Mode": "ro"},
             ]
         }

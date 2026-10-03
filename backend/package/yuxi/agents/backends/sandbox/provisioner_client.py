@@ -14,6 +14,8 @@ class SandboxRecord:
     workdir_path: str | None = None
     lifecycle: str | None = None
     idle_timeout_seconds: int | None = None
+    git_mount_fingerprint: str | None = None
+    uid: str | None = None
 
 
 class ProvisionerClient:
@@ -57,6 +59,7 @@ class ProvisionerClient:
         inherit_env: bool = True,
         lifecycle: str | None = None,
         idle_timeout_seconds: int | None = None,
+        git_mounts: list[dict] | None = None,
     ) -> SandboxRecord:
         payload = {
             "sandbox_id": sandbox_id,
@@ -66,6 +69,8 @@ class ProvisionerClient:
             "env": env or {},
             "inherit_env": inherit_env,
         }
+        if git_mounts:
+            payload["git_mounts"] = git_mounts
         if lifecycle is not None:
             payload["lifecycle"] = lifecycle
         if idle_timeout_seconds is not None:
@@ -107,6 +112,8 @@ class ProvisionerClient:
             workdir_path=payload.get("workdir_path"),
             lifecycle=payload.get("lifecycle"),
             idle_timeout_seconds=payload.get("idle_timeout_seconds"),
+            git_mount_fingerprint=payload.get("git_mount_fingerprint"),
+            uid=payload.get("uid"),
         )
 
     def touch(self, sandbox_id: str) -> bool:

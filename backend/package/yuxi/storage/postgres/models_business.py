@@ -284,6 +284,8 @@ class ProjectGitRepository(Base):
             ["git_credentials.id", "git_credentials.uid"],
             name="fk_project_git_repositories_credential_uid",
         ),
+        CheckConstraint("usage_mode IN ('in_place', 'worktree')", name="ck_project_git_repositories_usage_mode"),
+        CheckConstraint("approval_mode IN ('automatic', 'protected')", name="ck_project_git_repositories_approval_mode"),
         CheckConstraint(
             "status IN ('provisioning', 'active', 'provision_failed', 'deleting', 'delete_failed', 'disabled')",
             name="ck_project_git_repositories_status",
@@ -300,6 +302,10 @@ class ProjectGitRepository(Base):
     repository_owner = Column(String(255), nullable=False)
     repository_name = Column(String(255), nullable=False)
     purpose = Column(Text, nullable=False, default="项目仓库", server_default="项目仓库")
+    usage_mode = Column(String(16), nullable=False, default="worktree", server_default="worktree")
+    approval_mode = Column(String(16), nullable=False, default="protected", server_default="protected")
+    checkout_path = Column(String(512), nullable=True)
+    checkout_head_sha = Column(String(64), nullable=True)
     canonical_ssh_url = Column(String(1024), nullable=True)
     default_branch = Column(String(255), nullable=True)
     configured_base_branch = Column(String(255), nullable=True)
@@ -326,6 +332,10 @@ class ProjectGitRepository(Base):
             "connection_id": self.connection_id,
             "alias": self.alias,
             "directory_name": self.directory_name,
+            "usage_mode": self.usage_mode,
+            "approval_mode": self.approval_mode,
+            "checkout_path": self.checkout_path,
+            "checkout_head_sha": self.checkout_head_sha,
             "repository_owner": self.repository_owner,
             "repository_name": self.repository_name,
             "purpose": self.purpose,
@@ -340,6 +350,32 @@ class ProjectGitRepository(Base):
         }
 
 
+class ProjectGitOccupancy(Base):
+    """任务资源的持续占用、FIFO 顺序和当前根运行。"""
+
+    __tablename__ = "project_git_occupancies"
+    __table_args__ = (
+        UniqueConstraint("repository_id", "scope_key", name="uq_project_git_occupancies_resource_scope"),
+        ForeignKeyConstraint(
+            ["repository_id", "project_id", "uid"],
+            ["project_git_repositories.id", "project_git_repositories.project_id", "project_git_repositories.uid"],
+            name="fk_project_git_occupancies_resource",
+        ),
+        CheckConstraint("status IN ('queued', 'owned', 'released')", name="ck_project_git_occupancies_status"),
+        Index("ix_project_git_occupancies_fifo", "repository_id", "status", "requested_at", "id"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    repository_id = Column(String(64), nullable=False)
+    project_id = Column(String(64), nullable=False)
+    uid = Column(String(64), nullable=False)
+    scope_key = Column(String(191), nullable=False)
+    status = Column(String(16), nullable=False, default="queued", server_default="queued")
+    active_run_id = Column(String(64), nullable=True)
+    requested_at = Column(DateTime, nullable=False, default=utc_now_naive, server_default=func.now())
+    released_at = Column(DateTime, nullable=True)
+
+
 class ProjectGitWorktree(Base):
     """根任务在一个仓库中的分支和 worktree 状态。"""
 
@@ -352,6 +388,7 @@ class ProjectGitWorktree(Base):
             ["project_git_repositories.id", "project_git_repositories.project_id", "project_git_repositories.uid"],
             name="fk_project_git_worktrees_repository_identity",
         ),
+        CheckConstraint("usage_mode IN ('in_place', 'worktree')", name="ck_project_git_worktrees_usage_mode"),
         CheckConstraint(
             "status IN ('requested', 'preparing', 'ready', 'prepare_failed', "
             "'cleanup_pending', 'cleanup_failed', 'removed')",
@@ -387,6 +424,8 @@ class ProjectGitWorktree(Base):
     branch_name = Column(String(255), nullable=False)
     base_branch = Column(String(255), nullable=False)
     base_sha = Column(String(64), nullable=True)
+    usage_mode = Column(String(16), nullable=False, default="worktree", server_default="worktree")
+    source_parent_worktree_id = Column(String(64), ForeignKey("project_git_worktrees.id", name="fk_project_git_worktrees_source_parent"), nullable=True)
     last_observed_head_sha = Column(String(64), nullable=True)
     last_pushed_sha = Column(String(64), nullable=True)
     relative_path = Column(String(512), nullable=False)
@@ -417,6 +456,8 @@ class ProjectGitWorktree(Base):
             "branch": self.branch_name,
             "base_branch": self.base_branch,
             "base_sha": self.base_sha,
+            "usage_mode": self.usage_mode,
+            "source_parent_worktree_id": self.source_parent_worktree_id,
             "head_sha": self.last_observed_head_sha,
             "last_pushed_sha": self.last_pushed_sha,
             "relative_path": self.relative_path,
@@ -952,6 +993,7 @@ class ProjectWorkTask(Base):
             "status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled')",
             name="ck_project_work_tasks_status",
         ),
+        CheckConstraint("git_workspace_mode IN ('inherit', 'isolated')", name="ck_project_work_tasks_git_workspace_mode"),
         Index("ix_project_work_tasks_project_created", "project_id", "created_at"),
     )
 
@@ -966,6 +1008,7 @@ class ProjectWorkTask(Base):
     start_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
     primary_owner_agent_slug = Column(String(80), ForeignKey("agents.slug", ondelete="SET NULL"), nullable=True)
+    git_workspace_mode = Column(String(16), nullable=False, default="inherit", server_default="inherit")
     inspection_enabled = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
     inspection_interval_minutes = Column(Integer, nullable=True)
     inspection_next_run_at = Column(DateTime, nullable=True)

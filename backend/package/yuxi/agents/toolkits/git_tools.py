@@ -1,9 +1,12 @@
 """由运行时授权注入的 Project Git 工具。"""
 
+import asyncio
+
 from langchain_core.tools import tool
 from langgraph.prebuilt.tool_node import ToolRuntime
 
 from yuxi.services.project_git_service import (
+    ProjectGitBusyError,
     list_project_git_repositories_for_run,
     prepare_project_git_worktree_for_run,
     push_project_git_branch,
@@ -43,15 +46,21 @@ async def git_prepare_worktree(
     最长 48 字符。
     """
     run_id, uid = _authorized_identity(runtime)
-    return await prepare_project_git_worktree_for_run(
-        run_id=run_id,
-        uid=uid,
-        repository_alias=repository_alias,
-        base_branch=base_branch,
-        branch_kind=branch_kind,
-        branch_slug=branch_slug,
-        task_purpose=task_purpose,
-    )
+    while True:
+        try:
+            return await prepare_project_git_worktree_for_run(
+                run_id=run_id,
+                uid=uid,
+                repository_alias=repository_alias,
+                base_branch=base_branch,
+                branch_kind=branch_kind,
+                branch_slug=branch_slug,
+                task_purpose=task_purpose,
+            )
+        except ProjectGitBusyError:
+            # 意图与 FIFO 占用已持久化；保留本次工具调用，避免模型误报任务完成。
+            # 下一次尝试重新检查运行授权，取消或 lease 丢失不能继续申请写权限。
+            await asyncio.sleep(5)
 
 
 @tool

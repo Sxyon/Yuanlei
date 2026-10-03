@@ -1106,11 +1106,44 @@ async def process_agent_run(ctx, run_id: str):
 
         await run_ctx.start()
         try:
+            from yuxi.services.project_git_execution_service import (
+                git_scope_for_run,
+                reserve_git_resources_for_dispatch,
+            )
+
+            # Resume 等入口不经过普通 Request FIFO，仍须在任何 Git 写入前排队。
+            while True:
+                if await run_ctx.is_cancelled():
+                    raise asyncio.CancelledError(f"run {run_id} cancelled while waiting for Git")
+                async with pg_manager.get_async_session_context() as db:
+                    git_scope = await git_scope_for_run(
+                        db=db, uid=str(uid), project_id=workdir_binding.project_id, run=run
+                    )
+                    resources_ready = (
+                        True
+                        if run_type == "subagent"
+                        else await reserve_git_resources_for_dispatch(
+                            db=db,
+                            uid=str(uid),
+                            project_id=workdir_binding.project_id,
+                            thread_id=thread_id,
+                            run_id=run_id,
+                            requested_at=run.created_at,
+                        )
+                    )
+                    await db.commit()
+                if resources_ready:
+                    break
+                try:
+                    await asyncio.wait_for(run_ctx.wait_cancelled(), timeout=5)
+                except TimeoutError:
+                    continue
+                raise asyncio.CancelledError(f"run {run_id} cancelled while waiting for Git")
             git_repositories = await prepare_selected_project_git_worktrees(
                 uid=str(uid),
                 project_id=workdir_binding.project_id,
                 workdir_path=workdir_binding.workdir_path,
-                runtime_scope_id=await _run_scope_key(run),
+                runtime_scope_id=git_scope,
                 worker_id=worker_id,
             )
         except ProjectGitBusyError as exc:
@@ -1219,9 +1252,7 @@ async def process_agent_run(ctx, run_id: str):
             logger.error(f"Failed to prepare dedicated sandbox: run={run_id}", exc_info=True)
             if sandbox_scope is not None:
                 try:
-                    await release_sandbox_lease_for_run(
-                        scope=sandbox_scope, owner_id=str(run.id)
-                    )
+                    await release_sandbox_lease_for_run(scope=sandbox_scope, owner_id=str(run.id))
                 except Exception:
                     logger.error(
                         f"Failed to release sandbox lease after prepare error: run={run_id}",

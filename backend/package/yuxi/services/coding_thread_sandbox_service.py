@@ -88,7 +88,7 @@ class CodingThreadSandboxService:
             }
         return base
 
-    async def _ensure_runtime(self, *, uid: str, thread_id: str):
+    async def ensure_runtime(self, *, uid: str, thread_id: str):
         """解析会话的专属 scope 并确保 runtime 就绪，返回复用所需上下文。"""
         conversation, agent, policy = await self._conversation_context(
             uid=uid, thread_id=thread_id
@@ -131,7 +131,7 @@ class CodingThreadSandboxService:
 
     async def open_terminal(self, *, uid: str, thread_id: str) -> dict:
         """按会话解析专属 scope，确保 runtime 就绪后签发终端门票。"""
-        ready = await self._ensure_runtime(uid=uid, thread_id=thread_id)
+        ready = await self.ensure_runtime(uid=uid, thread_id=thread_id)
         scope_key = str(ready["scope_key"])
         project_id = str(ready["project_id"])
         executor = str(ready["executor"])

@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +28,22 @@ from yuxi.services.project_git_service import (
     list_project_worktrees_view,
     retry_project_repository_view,
     update_project_repository_policy_view,
+)
+from yuxi.git.executor import GitExecutionError
+from yuxi.services.project_git_resource_service import (
+    list_resource_branches,
+    configure_project_git_resource,
+    prepare_project_git_resource,
+    review_project_git_resource,
+    commit_project_git_resource,
+    push_project_git_resource,
+    discard_project_git_resource,
+)
+from yuxi.services.project_git_execution_service import list_git_occupancies, release_git_occupancy
+from yuxi.services.project_git_pull_request_service import (
+    list_resource_pull_requests,
+    create_resource_pull_request,
+    merge_resource_pull_request,
 )
 from yuxi.services.run_queue_service import (
     enqueue_project_git_operation,
@@ -98,6 +114,9 @@ class ProjectRepositoryCreate(BaseModel):
     purpose: str = Field(default="项目仓库", min_length=1, max_length=500)
     configured_base_branch: str | None = Field(default=None, max_length=255)
     allowed_base_branches: list[str] = Field(default_factory=list, max_length=100)
+    checkout_path: str | None = Field(default=None, min_length=1, max_length=512)
+    usage_mode: Literal["in_place", "worktree"] = "worktree"
+    approval_mode: Literal["automatic", "protected"] = "protected"
 
 
 class ProjectRepositoryPolicyUpdate(BaseModel):
@@ -107,6 +126,58 @@ class ProjectRepositoryPolicyUpdate(BaseModel):
     purpose: str = Field(min_length=1, max_length=500)
     configured_base_branch: str | None = Field(default=None, max_length=255)
     allowed_base_branches: list[str] = Field(default_factory=list, max_length=100)
+
+
+class GitResourceConfigure(BaseModel):
+    """分支资源的项目目录与运行、授权模式。"""
+
+    model_config = ConfigDict(extra="forbid")
+    checkout_path: str = Field(min_length=1, max_length=512)
+    branch: str = Field(min_length=1, max_length=255)
+    usage_mode: Literal["in_place", "worktree"]
+    approval_mode: Literal["automatic", "protected"]
+
+
+class GitResourceSnapshot(BaseModel):
+    """用户明确确认的 HEAD 与内容树。"""
+
+    model_config = ConfigDict(extra="forbid")
+    expected_head: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+    expected_tree: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+
+
+class GitResourceRelease(BaseModel):
+    """待释放的持久任务或对话占用。"""
+
+    model_config = ConfigDict(extra="forbid")
+    scope_key: str = Field(min_length=1, max_length=191)
+
+
+class GitResourceCommit(BaseModel):
+    """用户确认的内容树与提交说明。"""
+
+    model_config = ConfigDict(extra="forbid")
+    expected_head: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+    expected_tree: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class GitPullRequestCreate(BaseModel):
+    """人工选择任务源分支与目标分支。"""
+
+    model_config = ConfigDict(extra="forbid")
+    head_branch: str = Field(min_length=1, max_length=255)
+    base_branch: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=255)
+    body: str = Field(default="", max_length=10000)
+
+
+class GitPullRequestMerge(BaseModel):
+    """人工确认当前源与目标提交。"""
+
+    model_config = ConfigDict(extra="forbid")
+    expected_head: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+    expected_base: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
 
 @projects.get("")
@@ -300,3 +371,206 @@ async def save_project_knowledge_links(
 ):
     """保存单向弱关联，不修改读取权限。"""
     return await update_project_knowledge_links(user=current_user, project_id=project_id, kb_ids=payload.kb_ids, db=db)
+
+
+@projects.get("/{project_id}/repositories/{repository_id}/branches")
+async def get_git_resource_branches(
+    project_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取资源远端的真实分支候选。"""
+    return await list_resource_branches(
+        uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db
+    )
+
+
+@projects.put("/{project_id}/repositories/{repository_id}/resource")
+async def configure_git_resource(
+    project_id: str,
+    repository_id: str,
+    payload: GitResourceConfigure,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """配置分支资源与空目标目录。"""
+    return await configure_project_git_resource(
+        uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db, **payload.model_dump()
+    )
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/checkout")
+async def checkout_git_resource(
+    project_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """完整检出配置分支，已有内容不被覆盖。"""
+    try:
+        return await prepare_project_git_resource(
+            uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db
+        )
+    except GitExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@projects.get("/{project_id}/repositories/{repository_id}/review")
+async def review_git_resource(
+    project_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """查看当前内容与可信 HEAD 的差异。"""
+    try:
+        return await review_project_git_resource(
+            uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db
+        )
+    except GitExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/commit")
+async def commit_git_resource(
+    project_id: str,
+    repository_id: str,
+    payload: GitResourceCommit,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工确认精确差异后提交受保护资源。"""
+    try:
+        return await commit_project_git_resource(
+            uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db, **payload.model_dump()
+        )
+    except GitExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/push")
+async def push_git_resource(
+    project_id: str,
+    repository_id: str,
+    payload: GitResourceSnapshot,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工确认无未提交内容的资源 HEAD 并推送。"""
+    try:
+        return await push_project_git_resource(
+            uid=str(current_user.uid),
+            project_id=project_id,
+            repository_id=repository_id,
+            db=db,
+            **payload.model_dump(),
+        )
+    except GitExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/discard")
+async def discard_git_resource(
+    project_id: str,
+    repository_id: str,
+    payload: GitResourceSnapshot,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工确认精确差异，在运行停止后清理未提交内容。"""
+    try:
+        return await discard_project_git_resource(
+            uid=str(current_user.uid),
+            project_id=project_id,
+            repository_id=repository_id,
+            db=db,
+            **payload.model_dump(),
+        )
+    except GitExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@projects.get("/{project_id}/git-occupancies")
+async def get_git_occupancies(
+    project_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """展示项目资源排队、持续占用和执行状态。"""
+    return await list_git_occupancies(db=db, uid=str(current_user.uid), project_id=project_id)
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/release")
+async def release_git_resource(
+    project_id: str,
+    repository_id: str,
+    payload: GitResourceRelease,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工释放已停止执行且未提交内容已处理的占用。"""
+    try:
+        return await release_git_occupancy(
+            db=db,
+            uid=str(current_user.uid),
+            project_id=project_id,
+            repository_id=repository_id,
+            scope_key=payload.scope_key,
+        )
+    except GitExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@projects.get("/{project_id}/repositories/{repository_id}/pull-requests")
+async def get_resource_pull_requests(
+    project_id: str,
+    repository_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """查看项目任务分支的真实 Gitea 合并请求。"""
+    return await list_resource_pull_requests(
+        uid=str(current_user.uid),
+        project_id=project_id,
+        repository_id=repository_id,
+        db=db,
+    )
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/pull-requests")
+async def create_git_pull_request(
+    project_id: str,
+    repository_id: str,
+    payload: GitPullRequestCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """在 Gitea 创建合并请求。"""
+    return await create_resource_pull_request(
+        uid=str(current_user.uid),
+        project_id=project_id,
+        repository_id=repository_id,
+        db=db,
+        **payload.model_dump(),
+    )
+
+
+@projects.post("/{project_id}/repositories/{repository_id}/pull-requests/{number}/merge")
+async def merge_git_pull_request(
+    project_id: str,
+    repository_id: str,
+    number: int,
+    payload: GitPullRequestMerge,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工确认后由 Gitea 执行实际合并并回读结果。"""
+    return await merge_resource_pull_request(
+        uid=str(current_user.uid),
+        project_id=project_id,
+        repository_id=repository_id,
+        number=number,
+        db=db,
+        **payload.model_dump(),
+    )

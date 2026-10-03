@@ -29,42 +29,61 @@
           </a-button>
         </div>
         <a-form v-if="!repositories.length || showRepositoryForm" layout="vertical" class="create-form">
+          <a-alert v-if="discoveryError" type="error" show-icon :message="discoveryError" />
           <div class="form-grid">
-            <a-form-item label="Connection" required>
+            <a-form-item label="Gitea 连接" required>
               <a-select
                 v-model:value="repositoryForm.connection_id"
-                placeholder="选择 Gitea connection"
+                placeholder="选择已配置的连接"
               >
                 <a-select-option v-for="item in activeConnections" :key="item.id" :value="item.id">
                   {{ item.name }}
                 </a-select-option>
               </a-select>
             </a-form-item>
-            <a-form-item label="Alias" required>
-              <a-input v-model:value="repositoryForm.alias" maxlength="80" placeholder="例如 api" />
+            <a-form-item label="仓库" required>
+              <a-select v-model:value="selectedRepositoryId" show-search option-filter-prop="label"
+                :loading="loadingRemoteRepositories" :disabled="!repositoryForm.connection_id"
+                :options="remoteRepositories.map((item) => ({ value: item.id, label: `${item.owner}/${item.name}` }))"
+                placeholder="选择此连接可访问的仓库" @change="selectRemoteRepository" />
+              <a-button type="link" size="small" :disabled="!repositoryForm.connection_id || loadingRemoteRepositories" @click="loadRemoteRepositories">刷新仓库列表</a-button>
             </a-form-item>
-            <a-form-item label="Owner" required>
-              <a-input v-model:value="repositoryForm.repository_owner" placeholder="Gitea owner" />
-            </a-form-item>
-            <a-form-item label="Repository" required>
-              <a-input v-model:value="repositoryForm.repository_name" placeholder="仓库名" />
+            <a-form-item label="资源名称" required>
+              <a-input v-model:value="repositoryForm.alias" maxlength="80" placeholder="选择仓库后自动填写，可修改" />
             </a-form-item>
             <a-form-item label="仓库用途" required>
               <a-input v-model:value="repositoryForm.purpose" maxlength="500" placeholder="例如 后端 API" />
             </a-form-item>
-            <a-form-item label="默认任务基线">
-              <a-input
-                v-model:value="repositoryForm.configured_base_branch"
-                maxlength="255"
-                placeholder="留空时使用远端默认分支"
-              />
+            <a-form-item label="项目目录">
+              <a-input v-model:value="repositoryForm.checkout_path" placeholder="默认与仓库同名；同仓库多分支请使用不同目录" />
+            </a-form-item>
+            <a-form-item label="使用模式">
+              <a-select v-model:value="repositoryForm.usage_mode">
+                <a-select-option value="in_place">直接修改这个文件夹</a-select-option>
+                <a-select-option value="worktree">并行隔离运行</a-select-option>
+              </a-select>
+            </a-form-item>
+            <a-form-item label="授权模式">
+              <a-select v-model:value="repositoryForm.approval_mode">
+                <a-select-option value="protected">受保护</a-select-option>
+                <a-select-option value="automatic" disabled>自动授权（开发中）</a-select-option>
+              </a-select>
+            </a-form-item>
+            <a-form-item label="检出分支（同时作为任务基线）">
+              <a-select v-model:value="repositoryForm.configured_base_branch" show-search
+                :loading="loadingRemoteBranches" :disabled="!selectedRepositoryId"
+                :options="remoteBranches.map((item) => ({ value: item.name, label: item.name }))"
+                placeholder="选择仓库后自动选择远端默认分支" />
             </a-form-item>
             <a-form-item class="full-row" label="允许的任务基线">
               <a-select
                 v-model:value="repositoryForm.allowed_base_branches"
-                mode="tags"
+                mode="multiple"
+                :options="remoteBranches.map((item) => ({ value: item.name, label: item.name }))"
+                :loading="loadingRemoteBranches"
+                :disabled="!selectedRepositoryId"
                 :max-tag-count="4"
-                placeholder="留空时使用默认任务基线"
+                placeholder="留空时仅使用所选检出分支"
               />
             </a-form-item>
           </div>
@@ -72,6 +91,7 @@
             type="primary"
             html-type="button"
             :loading="savingRepository"
+            :disabled="!canBindRepository"
             @click="createRepository"
             >绑定仓库</a-button
           >
@@ -105,6 +125,7 @@
                   <a-button size="small" danger>停用</a-button>
                 </a-popconfirm>
               </div>
+              <GitResourcePanel v-if="['active', 'provision_failed'].includes(item.status)" :project-id="project.id" :resource="item" @updated="load({ quiet: true })" />
               <p v-if="item.last_error_message" class="item-error">{{ item.last_error_message }}</p>
               <div v-if="item.status === 'active' && policyDrafts[item.id]" class="policy-editor">
                 <label class="policy-field">
@@ -289,6 +310,7 @@ import { message } from 'ant-design-vue'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { gitApi } from '@/apis/git_api'
 import { projectApi } from '@/apis/project_api'
+import GitResourcePanel from '@/components/GitResourcePanel.vue'
 
 const props = defineProps({ embedded: Boolean, open: Boolean, project: { type: Object, default: null } })
 const emit = defineEmits(['update:open'])
@@ -348,8 +370,75 @@ const repositoryForm = reactive({
   repository_name: '',
   purpose: '项目仓库',
   configured_base_branch: '',
-  allowed_base_branches: []
+  allowed_base_branches: [],
+  checkout_path: '',
+  usage_mode: 'worktree',
+  approval_mode: 'protected'
 })
+const discoveryError = ref('')
+const remoteRepositories = ref([])
+const remoteBranches = ref([])
+const selectedRepositoryId = ref('')
+const loadingRemoteRepositories = ref(false)
+const loadingRemoteBranches = ref(false)
+let discoveryGeneration = 0
+
+const resetRepositorySelection = () => {
+  selectedRepositoryId.value = ''
+  remoteBranches.value = []
+  Object.assign(repositoryForm, { alias: '', repository_owner: '', repository_name: '', configured_base_branch: '', allowed_base_branches: [], checkout_path: '' })
+}
+const loadRemoteRepositories = async () => {
+  const version = ++discoveryGeneration
+  discoveryError.value = ''
+  const connectionId = repositoryForm.connection_id
+  resetRepositorySelection()
+  remoteRepositories.value = []
+  loadingRemoteBranches.value = false
+  if (!connectionId) return
+  loadingRemoteRepositories.value = true
+  try {
+    const result = await gitApi.getConnectionRepositories(connectionId)
+    if (version === discoveryGeneration) remoteRepositories.value = result
+  } catch (failure) {
+    if (version === discoveryGeneration) discoveryError.value = failure?.message || '仓库列表读取失败'
+  } finally {
+    if (version === discoveryGeneration) loadingRemoteRepositories.value = false
+  }
+}
+const selectRemoteRepository = async (id) => {
+  const version = ++discoveryGeneration
+  discoveryError.value = ''
+  const repository = remoteRepositories.value.find((item) => item.id === id)
+  if (!repository) return
+  remoteBranches.value = []
+  Object.assign(repositoryForm, {
+    repository_owner: repository.owner, repository_name: repository.name, alias: repository.name,
+    checkout_path: repository.name, configured_base_branch: repository.default_branch,
+    allowed_base_branches: []
+  })
+  loadingRemoteBranches.value = true
+  try {
+    const result = await gitApi.getConnectionBranches(repositoryForm.connection_id, repository.owner, repository.name)
+    if (version === discoveryGeneration) remoteBranches.value = result
+  } catch (failure) {
+    if (version === discoveryGeneration) discoveryError.value = failure?.message || '分支列表读取失败'
+  } finally {
+    if (version === discoveryGeneration) loadingRemoteBranches.value = false
+  }
+}
+watch(() => repositoryForm.connection_id, loadRemoteRepositories)
+watch([() => props.open, () => props.project?.id], () => {
+  discoveryGeneration++
+  discoveryError.value = ''
+  resetRepositorySelection()
+  remoteRepositories.value = []
+  loadingRemoteRepositories.value = false
+  loadingRemoteBranches.value = false
+  repositoryForm.connection_id = ''
+})
+
+const canBindRepository = computed(() => !!selectedRepositoryId.value && !loadingRemoteRepositories.value && !loadingRemoteBranches.value && remoteBranches.value.some((branch) => branch.name === repositoryForm.configured_base_branch))
 const activeConnections = computed(() =>
   connections.value.filter((item) => item.status === 'active')
 )
@@ -364,6 +453,7 @@ const load = async ({ quiet = false } = {}) => {
       projectApi.getGitWorktrees(props.project.id)
     ])
     connections.value = connectionRows
+    if (!repositoryForm.connection_id && activeConnections.value.length === 1) repositoryForm.connection_id = activeConnections.value[0].id
     repositories.value = repositoryRows
     repositoryRows.forEach((item) => {
       policySnapshots[item.id] = snapshotPolicy(item)
@@ -404,15 +494,15 @@ const createConnection = async () => {
 }
 
 const createRepository = async () => {
+  if (!canBindRepository.value) return
   savingRepository.value = true
   try {
     await projectApi.createRepository(props.project.id, {
       request_id: crypto.randomUUID(),
-      ...repositoryForm
+      ...repositoryForm,
+      checkout_path: repositoryForm.checkout_path || null
     })
-    repositoryForm.alias = ''
-    repositoryForm.repository_owner = ''
-    repositoryForm.repository_name = ''
+    resetRepositorySelection()
     repositoryForm.purpose = '项目仓库'
     repositoryForm.configured_base_branch = ''
     repositoryForm.allowed_base_branches = []
