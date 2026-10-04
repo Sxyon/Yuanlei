@@ -384,3 +384,36 @@ test('无法确认成果状态时保留错误并等待明确完成选择', async
   await state().confirmTaskCompletion()
   assert.equal(update.mock.callCount(), 1)
 })
+
+
+test('任务知识库保存显式选择，刷新保留未保存草稿', async (t) => {
+  let saved = []
+  t.mock.method(projectWorkApi, 'getTask', async () => ({
+    id: 'task', status: 'todo', knowledge_ids: saved, knowledge_candidates: [{ kb_id: 'linked', name: '项目知识' }]
+  }))
+  t.mock.method(projectWorkApi, 'updateTask', async (projectId, taskId, payload) => {
+    assert.equal(projectId, 'project')
+    assert.equal(taskId, 'task')
+    saved = payload.knowledge_ids
+  })
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }] })
+  await router.push('/projects/project/work/tasks/task')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  assert.deepEqual(instance.setupState.selectedKnowledges, [])
+  instance.setupState.selectedKnowledges = ['linked']
+  await instance.setupState.load()
+  assert.deepEqual(instance.setupState.selectedKnowledges, ['linked'])
+  await instance.setupState.saveKnowledges()
+  assert.deepEqual(saved, ['linked'])
+  assert.deepEqual(instance.setupState.task.knowledge_ids, ['linked'])
+})

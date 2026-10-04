@@ -209,3 +209,31 @@ test('看板状态更新失败时回读服务端事实，不保留乐观选择',
   assert.equal(instance.setupState.tasks[0].status, 'blocked')
   assert.equal(instance.setupState.actionError, '状态更新失败')
 })
+
+test('看板完成任务先检查成果，检查失败也需明确选择保留', async (t) => {
+  t.mock.method(projectWorkApi, 'listTasks', async () => [{ id: 'task', status: 'todo' }])
+  t.mock.method(projectWorkApi, 'getCode', async () => ({ code: 'TEST' }))
+  t.mock.method(projectWorkApi, 'listTopics', async () => [])
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  const writes = []
+  t.mock.method(projectWorkApi, 'updateTask', async (...args) => { writes.push(args) })
+  t.mock.method(projectWorkApi, 'getGitOutcomes', async () => { throw new Error('Gitea 暂不可用') })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/work/tasks', component: View }] })
+  await router.push('/projects/a/work/tasks')
+  await router.isReady()
+  let instance
+  const app = renderer.createApp({ ...View, render() { instance = getCurrentInstance(); return h('div') } })
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  const state = instance.setupState
+  await state.changeStatus({ id: 'task' }, 'done')
+  assert.equal(writes.length, 0)
+  assert.equal(state.gitCompletionOpen, true)
+  assert.deepEqual(state.gitCompletion.errors, ['Gitea 暂不可用'])
+  await state.changeStatus(state.gitCompletionTask, 'done', true)
+  assert.deepEqual(writes, [['a', 'task', { status: 'done' }]])
+  assert.equal(state.gitCompletionOpen, false)
+})

@@ -1075,6 +1075,7 @@ class ProjectWorkTask(Base):
     start_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
     primary_owner_agent_slug = Column(String(80), ForeignKey("agents.slug", ondelete="SET NULL"), nullable=True)
+    knowledge_ids = Column(JSON_VALUE, nullable=False, default=list, server_default=text("'[]'"))
     git_workspace_mode = Column(String(16), nullable=False, default="inherit", server_default="inherit")
     inspection_enabled = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
     inspection_interval_minutes = Column(Integer, nullable=True)

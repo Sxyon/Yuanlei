@@ -100,20 +100,11 @@ repos/<repository-directory>/worktrees/<task-key>
 
 ## 分支分配
 
-默认分支格式是：
+资源先完整检出选定分支到配置的项目相对目录；新增时默认远端默认分支。直接修改模式使用该目录和分支，按实际目录持续占用；其他任务进入 FIFO 等待。任务或对话运行结束保留占用，需明确处理成果并释放。
 
-```text
-codex/task-<task-key>
-```
+隔离模式在根智能体申请资源后分配任务分支与 worktree。分支默认以 `agent/` 开头，完整名称由类型、slug 和稳定任务摘要组成；管理员设置的前缀优先。同一项目任务跨智能体、多轮和重试复用作用域，普通项目对话使用对话作用域。子智能体共享根运行的工作区；子任务默认共用父任务，也可在首次执行前选择从父任务已提交 HEAD 创建独立工作区。
 
-`runtime_scope_id` 来自根 Conversation：
-
-- Root Agent、Resume 和全部 SubAgent 复用同一个分支/worktree。
-- 不同根 Conversation 获得不同分支/worktree。
-- Project 新增 active 仓库后，下一次 Run 为当前根任务补建该仓库的 worktree。
-- Run、Sandbox 或 Conversation 进入终态不会自动删除 worktree。
-
-每次 Run 在 Agent 构图前从数据库重建仓库快照。已有 ready worktree 会校验确定性 identity、实际路径和当前分支后直接复用；缺失或失败的 worktree 才重新取得 lease 并准备。
+运行终态不自动回收工作树或提交、推送、合并。项目内可以审查差异、人工提交与推送、创建 Gitea 合并请求及执行实际合并，之后安全清理工作树；远端任务分支与本地保留分支继续存在。当前占用、队列和失败现场由 PostgreSQL 分配事实及实际文件状态拥有。
 
 ## 仓库状态
 
@@ -143,36 +134,21 @@ repository maintenance advisory lock 只串行化同一 bare repo 的 import、w
 
 ## Agent 与可信 Git 操作
 
-Agent 只通过 Sandbox `execute` 操作本地 worktree：`status`、`diff`、`add`、`commit` 等命令使用模型已有的 Git 能力，不需要额外 Skill。
+沙盒文件工具用于修改普通仓库内容。平台 Git 执行器使用私有元数据与临时索引审查、提交、推送，避免使用智能体可写配置、hooks、过滤器或凭据路径。Gitea Token、deploy private key 和可信元数据保留在 API/worker 的边界内。
 
-远端 clone/fetch/push 在 API/worker 私有临时 staging repo 中执行。可信进程从数据库读取 canonical remote 和加密凭据，禁用 hooks、credential helper、SSH agent、交互输入、代理继承和 Agent 可写 Git config。
+根智能体通过 `git_list_project_repositories` 选择资源，`git_prepare_worktree` 经对话审批申请工作区，`git_review_workspace` 读取可信 HEAD/tree 和差异。`git_request_action` 固定快照申请 commit/push/merge，`git_action_status` 回读批准和执行终态。旧 `git_push_branch` 也进入同一可追溯审批链。
 
-Root Agent 可以调用：
+授权模式与运行模式独立。资源目标或 Gitea 规则受保护时等待人工批准；符合自动授权规则的任务分支及合法目标先记录批准依据再执行。动作执行前重新检查根运行 lease、任务持续占用、分配归属、内容快照和保护策略。已批准不等于已执行；申请与真实 Task attempt、Git 结果绑定。
 
-```text
-git_push_branch(repository_alias, expected_head_sha)
-```
+`git_list_pull_requests` 查看自身任务的请求及合法目标，`git_create_pull_request` 从已推送任务分支向资源目标或持久父任务分支创建请求。实际合并继续申请审批，检查源/目标 SHA；Gitea 能原子校验源提交，目标检查之后的并发推送仍可能进入合并。子智能体不装配 Git 管理工具，后端独立拒绝其管理调用。
 
-工具无条件进入 HITL，即使 Agent 配置为 `always_trust`。SubAgent 不装配该工具。批准后 service 只允许数据库分配的任务分支、clean worktree、精确 HEAD、非保护分支和 fast-forward 更新；不接受 default branch、tag、delete、任意 refspec或 force push。
+首次操作的点击顺序、指令和结果核对见[Git 操作快速入门](../intro/project-git.md)。
 
 ## API 参考
 
-用户级 connection：
+连接、仓库发现、项目资源、工作树、成果审查、占用队列、Git 动作和合并请求接口由 [Git 路由](https://github.com/Sxyon/Yuanlei/blob/main/backend/server/routers/git_router.py)及运行服务拥有；正在部署的接口定义可以在平台 `/docs` 的 Git 分类查看。
 
-- `GET /api/git/connections`
-- `POST /api/git/connections`
-- `PUT /api/git/connections/{connection_id}/credential`
-- `DELETE /api/git/connections/{connection_id}`
-
-Project 资源：
-
-- `GET|POST /api/projects/{project_id}/repositories`
-- `POST /api/projects/{project_id}/repositories/{repository_id}/retry`
-- `DELETE /api/projects/{project_id}/repositories/{repository_id}`
-- `GET /api/projects/{project_id}/git-worktrees`
-- `DELETE /api/projects/{project_id}/git-worktrees/{worktree_id}`
-
-Token 是 write-only 字段。创建 binding、停用和清理返回 `202`；PostgreSQL 状态是持久事实，Redis/ARQ 只负责投递。发布失败时 reconciler 会扫描未完成状态并重新投递。
+Token 是 write-only 字段。资源创建、停用和工作树清理通过异步任务收敛；PostgreSQL 状态是持久事实，Redis/ARQ 负责投递。发布失败时 reconciler 扫描未完成状态并重新投递。审批记录与实际动作结果分别显示，批准后仍需检查最终执行状态。
 
 ## 撤权与恢复
 

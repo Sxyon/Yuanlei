@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from typing import Any
+from copy import deepcopy
 
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.buildin import AgentBackendNotFoundError, get_agent_backend
 from yuxi.agents.context import filter_declared_config, normalize_agent_context_config
+from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.agent_repository import (
     AgentRepository,
     is_builtin_agent,
@@ -50,6 +52,22 @@ async def load_project_agent_override(*, db: AsyncSession, agent_slug: str, proj
     binding = await ProjectAgentRepository(db).get(str(project_id), agent_slug)
     override = (binding.config_overrides or {}).get("context") if binding is not None else None
     return dict(override) if isinstance(override, dict) and override else None
+
+
+async def load_task_knowledge_selection(*, db, uid, project_id, run) -> list[str]:
+    """任务续聊和子运行沿持久父运行关系读取显式知识库选择。"""
+    seen = set()
+    while run.run_type == "subagent":
+        if run.id in seen or not run.created_by_run_id:
+            raise ValueError("任务运行父级关系非法")
+        seen.add(run.id)
+        run = await AgentRunRepository(db).get_run_for_user(run.created_by_run_id, uid)
+        if run is None:
+            raise PermissionError("任务运行父级不属于当前用户")
+    task = await ProjectWorkExecutionRepository(db).task_for_thread(
+        thread_id=run.conversation_thread_id, project_id=project_id, uid=uid
+    )
+    return list(task.knowledge_ids or []) if task else []
 
 
 async def resolve_effective_agent_context(
@@ -103,6 +121,15 @@ async def _serialize_binding(*, agent: Agent, binding, db: AsyncSession, user: U
         include_configurable_items=True,
         backend_info_cache=cache,
     )
+    items = deepcopy(serialized.get("configurable_items", {}))
+    linked = set(await ProjectSettingsRepository(db).linked_ids(binding.project_id))
+    for item in items.values():
+        if item.get("kind") == "knowledges":
+            item["options"] = [
+                {**option, "name": f"{option['name']}（项目关联）"} if option.get("key") in linked else option
+                for option in item.get("options", [])
+            ]
+    serialized["configurable_items"] = items
     serialized["config_overrides"] = binding.config_overrides or {}
     if backend is not None:
         serialized["effective_context"] = await resolve_effective_agent_context(

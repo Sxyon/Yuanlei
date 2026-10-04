@@ -355,3 +355,76 @@ async def test_owner_candidates_expose_profile_images_without_account_secrets(se
     assert result["agents"] == [
         {"id": "pictured-agent", "name": "有头像的智能体", "icon": "https://example.com/agent.png"}
     ]
+
+
+async def test_task_knowledge_selection_requires_link_and_access(settings_api):
+    """实际 HTTP/PG 验证任务选择不授权、活动执行拒绝变更、迁移幂等。"""
+    from server.routers.project_work_router import project_work
+    from yuxi.storage.postgres.models_business import ProjectWorkTask, ProjectWorkExecution
+
+    client, factory, manager, app, user, project_id = settings_api
+    app.include_router(project_work, prefix="/api")
+    async with factory() as db:
+        for identity, owner in [("task-readable", user.uid), ("task-unlinked", user.uid), ("task-private", "other")]:
+            db.add(
+                KnowledgeBase(
+                    kb_id=identity,
+                    name=identity,
+                    kb_type="milvus",
+                    created_by=owner,
+                    share_config={"version": 2, "read_scope": None, "manage_scope": None},
+                )
+            )
+        await db.commit()
+    assert (
+        await client.put(f"/api/projects/{project_id}/knowledge-links", json={"kb_ids": ["task-readable"]})
+    ).status_code == 200
+    root = f"/api/projects/{project_id}/work"
+    assert (await client.put(f"{root}/code", json={"code": "TEST"})).status_code == 200
+    response = await client.post(f"{root}/tasks", json={"title": "显式知识库选择"})
+    assert response.status_code == 200, response.text
+    task_id = response.json()["id"]
+    assert response.json()["knowledge_ids"] == []
+    path = f"{root}/tasks/{task_id}"
+    for denied in ["task-private", "task-unlinked"]:
+        assert (await client.patch(path, json={"knowledge_ids": [denied]})).status_code == 403
+    response = await client.patch(path, json={"knowledge_ids": ["task-readable"]})
+    assert response.status_code == 200, response.text
+    read = (await client.get(path)).json()
+    assert read["knowledge_ids"] == ["task-readable"]
+    assert read["knowledge_candidates"] == [{"kb_id": "task-readable", "name": "task-readable"}]
+    async with factory() as db:
+        assert (await db.get(ProjectWorkTask, task_id)).knowledge_ids == ["task-readable"]
+        db.add(
+            ProjectWorkExecution(
+                id="knowledge-execution",
+                task_id=task_id,
+                project_id=project_id,
+                uid=user.uid,
+                agent_slug="employee",
+                status="queued",
+                prompt="test",
+                request_id="knowledge-request",
+                thread_id="knowledge-thread",
+            )
+        )
+        await db.commit()
+    from types import SimpleNamespace
+    from yuxi.services.project_agent_service import load_task_knowledge_selection
+
+    async with factory() as db:
+        continuation = SimpleNamespace(run_type="chat", source="chat", conversation_thread_id="knowledge-thread")
+        assert await load_task_knowledge_selection(db=db, uid=user.uid, project_id=project_id, run=continuation) == [
+            "task-readable"
+        ]
+        assert (
+            await load_task_knowledge_selection(db=db, uid="other-user", project_id=project_id, run=continuation) == []
+        )
+        assert (
+            await load_task_knowledge_selection(db=db, uid=user.uid, project_id="other-project", run=continuation) == []
+        )
+    assert (await client.patch(path, json={"knowledge_ids": []})).status_code == 409
+    await manager.upgrade_yuanlei_schema_v26_to_v27()
+    await manager.upgrade_yuanlei_schema_v26_to_v27()
+    async with factory() as db:
+        assert (await db.get(ProjectWorkTask, task_id)).knowledge_ids == ["task-readable"]

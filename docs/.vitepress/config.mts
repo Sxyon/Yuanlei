@@ -65,7 +65,7 @@ export default defineConfig({
         text: '项目管理',
         items: [
           { text: '项目工作台与治理', link: '/intro/project-workbench' },
-          { text: 'Project Git 仓库', link: '/intro/project-git' },
+          { text: '项目 Git 操作快速入门', link: '/intro/project-git' },
         ]
       },
       {

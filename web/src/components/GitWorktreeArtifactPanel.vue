@@ -37,7 +37,7 @@ const props = defineProps({ projectId: { type: String, required: true }, worktre
 const emit = defineEmits(['updated'])
 const open = ref(false), review = ref(null), error = ref(''), busy = ref(''), commitMessage = ref('')
 let generation = 0
-watch(() => [props.projectId, props.worktree.id], () => {
+watch([() => props.projectId, () => props.worktree.id], () => {
   generation++
   open.value = false
   review.value = null

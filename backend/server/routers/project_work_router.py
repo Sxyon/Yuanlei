@@ -42,6 +42,7 @@ class WorkTaskUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     git_workspace_mode: Literal["inherit", "isolated"] | None = None
+    knowledge_ids: list[str] | None = Field(default=None, max_length=100)
     status: str | None = None
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
     start_date: date | None = None

@@ -49,6 +49,8 @@ _SUBAGENT_DISABLED_TOOLS = frozenset(
         "git_review_workspace",
         "git_request_action",
         "git_action_status",
+        "git_list_pull_requests",
+        "git_create_pull_request",
         "coding_session_start",
         "coding_session_send",
         "coding_session_status",

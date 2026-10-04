@@ -99,10 +99,21 @@
           </ul>
         </section>
 
+        <section class="work-task-section">
+          <h2>任务知识库</h2>
+          <div class="work-task-controls">
+          <a-select v-model:value="selectedKnowledges" mode="multiple" placeholder="默认不选择知识库" :disabled="saving" style="min-width: 220px">
+            <a-select-option v-for="item in task.knowledge_candidates || []" :key="item.kb_id" :value="item.kb_id">{{ item.name }}</a-select-option>
+          </a-select>
+          <a-button :loading="saving" @click="saveKnowledges">保存知识库</a-button>
+          <p class="work-task-muted">候选来自项目已关联且当前可访问的知识库；只在执行此任务时加入选择，运行时重新检查权限。</p>
+          </div>
+        </section>
+
         <section v-if="task.parent_id" class="work-task-section">
           <h2>子任务 Git 工作区</h2>
           <div class="work-task-controls">
-            <a-select v-model:value="selectedGitWorkspaceMode" :disabled="saving || executions.length > 0" style="min-width: 280px">
+          <a-select v-model:value="selectedGitWorkspaceMode" :disabled="saving || executions.length > 0" style="min-width: 280px">
               <a-select-option value="inherit">共用父任务工作区</a-select-option>
               <a-select-option value="isolated">从父任务已提交 HEAD 创建独立工作区</a-select-option>
             </a-select>
@@ -231,6 +242,7 @@ const agents = ref([])
 const executions = ref([])
 const selectedExecutor = ref(undefined)
 const selectedStatus = ref('todo')
+const selectedKnowledges = ref([])
 const gitCompletionOpen = ref(false)
 const gitResourceSettingsOpen = ref(false)
 const gitCompletion = ref(null)
@@ -292,6 +304,7 @@ async function load() {
     const inspectionWasSaved =
       inspectionEnabled.value === (task.value?.inspection_enabled ?? false) &&
       inspectionInterval.value === (task.value?.inspection_interval_minutes ?? null)
+    if (!sameTask || JSON.stringify(selectedKnowledges.value) === JSON.stringify(task.value?.knowledge_ids || [])) selectedKnowledges.value = result.knowledge_ids || []
     task.value = result
     agents.value = bindings.agents || []
     executions.value = history
@@ -360,6 +373,13 @@ function confirmTaskCompletion() {
     await projectWorkApi.updateTask(projectId, taskId, { status: 'done' })
     if (projectId === route.params.project_id && taskId === route.params.task_id) gitCompletionOpen.value = false
   }, '状态保存失败')
+}
+
+function saveKnowledges() {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  const knowledgeIds = [...selectedKnowledges.value]
+  return runAction(() => projectWorkApi.updateTask(projectId, taskId, { knowledge_ids: knowledgeIds }), '知识库保存失败')
 }
 
 function updateGitWorkspaceMode() {

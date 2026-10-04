@@ -1,6 +1,6 @@
 # 项目设置与资源管理
 
-状态：部分实现；设置与弱关联已接入，Git 生命周期待实现与验收
+状态：功能已实现；独立测试仓库已完成实际提交、推送与 Gitea 合并验证，完整恢复场景仍需持续验收
 类型：新增业务能力
 主要 Owner：`backend/package/yuxi/services/project_service.py`
 
@@ -38,3 +38,6 @@ Project service/repository 拥有设置与所有权；知识库权限 Owner 决�
 - [现有 Project Git 语义](project-git-worktrees.md)
 
 - [项目 Git 审批记录与占用队列](../decisions/proposed/2026-10-04-project-git-approval-history.md)
+
+- [项目资源的用户操作闭环](../decisions/proposed/2026-10-04-project-git-user-workflows.md)
+- [项目 Git 操作快速入门](../../../intro/project-git.md)：新测试仓库的实际操作与可重复使用步骤。

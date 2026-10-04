@@ -24,6 +24,9 @@ def _stub_run_scope(monkeypatch):
         return str(getattr(run, "runtime_scope_id", None) or getattr(run, "conversation_thread_id", "") or "")
 
     monkeypatch.setattr(manifest_service, "resolve_run_scope_key", _scope)
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(manifest_service, "load_task_knowledge_selection", AsyncMock(return_value=[]))
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +56,8 @@ def _default_shared_sandbox_policy(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_prepare_run_execution_uses_project_scope_and_override(monkeypatch):
+@pytest.mark.parametrize("task_knowledges", [[], ["task-visible", "task-private"]])
+async def test_prepare_run_execution_uses_project_scope_and_override(monkeypatch, task_knowledges):
     """执行边界校验项目范围，并使用项目覆盖后的有效配置与 git 快照。"""
     from unittest.mock import AsyncMock
 
@@ -82,7 +86,12 @@ async def test_prepare_run_execution_uses_project_scope_and_override(monkeypatch
     async def _project_override(**_kwargs):
         return {"model": "project-model"}
 
+    monkeypatch.setattr(manifest_service, "load_task_knowledge_selection", AsyncMock(return_value=task_knowledges))
+
     async def _prepare(context):
+        assert (context.knowledges or []) == task_knowledges
+        # 运行准备的实际权限解析拥有最终可读集合，任务选择不能绕过它。
+        context.knowledges = [item for item in (context.knowledges or []) if item != "task-private"]
         context._runtime_prepared = True
         context._skill_runtime_snapshot = {
             "preloaded_skills": [],
@@ -130,6 +139,7 @@ async def test_prepare_run_execution_uses_project_scope_and_override(monkeypatch
     assert len(scope_calls) == 1
     assert scope_calls[0]["agent_slug"] == "employee"
     assert scope_calls[0]["project_id"] == "project-1"
+    assert result.context.knowledges == [item for item in task_knowledges if item != "task-private"]
     assert result.context.model == "project-model"
     assert result.manifest["model"]["spec"] == "project-model"
     assert result.context.git_repositories == git_repositories
@@ -422,7 +432,6 @@ def test_git_identity_field_change_does_shift_manifest_fingerprint():
     assert compute_manifest_fingerprint(baseline) != compute_manifest_fingerprint(
         _manifest_with_git(base_branch="develop")
     )
-
 
 
 def test_non_string_model_spec_normalizes_to_none():

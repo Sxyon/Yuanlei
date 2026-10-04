@@ -44,7 +44,9 @@ def test_chatbot_prompt_injects_only_local_git_worktree_contract():
         )
     )
 
-    assert "git -C <path>" in prompt
+    assert "不用 shell 执行 git add/commit" in prompt
+    assert "完成 status、diff、add、commit" not in prompt
+    assert "直接修改资源按实际目录排队" in prompt
     assert "git_request_action" in prompt
     assert "git_action_status" in prompt
     assert "codex/task-abc" in prompt

@@ -137,6 +137,7 @@ def _task_data(row: ProjectWorkTask) -> dict:
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "primary_owner_agent_slug": row.primary_owner_agent_slug,
         "git_workspace_mode": row.git_workspace_mode or "inherit",
+        "knowledge_ids": row.knowledge_ids or [],
         "inspection_enabled": row.inspection_enabled,
         "inspection_interval_minutes": row.inspection_interval_minutes,
         "inspection_next_run_at": format_utc_datetime(row.inspection_next_run_at),
@@ -357,8 +358,14 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     references = await repo.list_references(task.id)
     attachments = await repo.list_attachments(task.id)
     inspection_runs = await ProjectWorkInspectionRepository(db).list_runs_for_task(task.id)
+    from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
+
+    settings = ProjectSettingsRepository(db)
+    linked = set(await settings.linked_ids(project_id))
+    candidates, _ = await settings.knowledge(user) if linked else ([], set())
     return {
         **_task_data(task),
+        "knowledge_candidates": [item for item in candidates if item["kb_id"] in linked],
         "issues": [_issue_data(row, task.number) for row in issues],
         "comments": [_comment_data(row) for row in comments],
         "references": [_reference_data(row) for row in references],
@@ -501,6 +508,7 @@ async def update_task(
     task_id: str,
     status: str | None = None,
     git_workspace_mode: str | None = None,
+    knowledge_ids: list[str] | None = None,
     primary_owner_agent_slug: str | None = None,
     update_owner: bool = False,
     start_date: date | None = None,
@@ -514,6 +522,18 @@ async def update_task(
     """修改任务状态、转移第一负责人或调整周期巡检配置。"""
     await _writable_project(db, user, project_id)
     task = await _task(db, user, project_id, task_id, lock=True)
+    if knowledge_ids is not None:
+        from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
+
+        if await ProjectWorkExecutionRepository(db).has_active_task_work(task.id):
+            raise HTTPException(status_code=409, detail="任务有待接受或执行中的工作，不能改变执行知识库")
+        settings = ProjectSettingsRepository(db)
+        _, visible = await settings.knowledge(user)
+        linked = set(await settings.linked_ids(project_id))
+        selected = list(dict.fromkeys(knowledge_ids))
+        if set(selected) - (visible & linked):
+            raise HTTPException(status_code=403, detail="任务知识库必须已关联项目且当前可访问")
+        task.knowledge_ids = selected
     if git_workspace_mode is not None:
         from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
 

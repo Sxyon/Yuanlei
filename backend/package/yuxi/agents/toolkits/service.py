@@ -205,6 +205,8 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
             git_review_workspace,
             git_request_action,
             git_action_status,
+            git_list_pull_requests,
+            git_create_pull_request,
         )
 
         for git_tool in (
@@ -214,6 +216,8 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
             git_review_workspace,
             git_request_action,
             git_action_status,
+            git_list_pull_requests,
+            git_create_pull_request,
         ):
             existing = _find_selected_tool(selected_tools, git_tool.name)
             if existing is not None:

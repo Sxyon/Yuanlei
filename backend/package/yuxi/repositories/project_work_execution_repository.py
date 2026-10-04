@@ -25,6 +25,18 @@ class ProjectWorkExecutionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def task_for_thread(self, *, thread_id: str, project_id: str, uid: str):
+        """按持久执行会话定位用户项目内任务，不依赖新请求来源标签。"""
+        return await self.db.scalar(
+            select(ProjectWorkTask)
+            .join(ProjectWorkExecution, ProjectWorkExecution.task_id == ProjectWorkTask.id)
+            .where(
+                ProjectWorkExecution.thread_id == thread_id,
+                ProjectWorkExecution.uid == uid,
+                ProjectWorkTask.project_id == project_id,
+            )
+        )
+
     async def create(
         self, *, task_id: str, project_id: str, uid: str, agent_slug: str, prompt: str
     ) -> ProjectWorkExecution:

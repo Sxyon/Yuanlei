@@ -23,7 +23,11 @@ from yuxi.agents.skills.service import PERSONAL_SKILL_SOURCE_TYPE
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.services.coding_credential_service import CodingCredentialService
 from yuxi.services.run_scope_service import resolve_run_scope_key
-from yuxi.services.project_agent_service import ensure_agent_project_scope, load_project_agent_override
+from yuxi.services.project_agent_service import (
+    ensure_agent_project_scope,
+    load_project_agent_override,
+    load_task_knowledge_selection,
+)
 from yuxi.services.sandbox_lifecycle_service import (
     SandboxLifecycleService,
     resolve_agent_sandbox_policy,
@@ -251,6 +255,12 @@ async def prepare_run_execution(
     project_override = await load_project_agent_override(db=db, agent_slug=run.agent_slug, project_id=project_id)
     if project_override:
         configured = {**configured, **project_override}
+    task_knowledges = await load_task_knowledge_selection(db=db, uid=str(user.uid), project_id=project_id, run=run)
+    if task_knowledges:
+        configured = {
+            **configured,
+            "knowledges": list(dict.fromkeys([*(configured.get("knowledges") or []), *task_knowledges])),
+        }
     configurable_fields = {item.name for item in fields(context) if item.metadata.get("configurable", True)}
     context.update_config(configured)
     payload = run.input_payload

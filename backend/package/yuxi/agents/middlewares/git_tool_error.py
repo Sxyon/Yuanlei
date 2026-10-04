@@ -13,6 +13,8 @@ GIT_RUNTIME_TOOL_NAMES = frozenset(
         "git_review_workspace",
         "git_request_action",
         "git_action_status",
+        "git_list_pull_requests",
+        "git_create_pull_request",
     }
 )
 

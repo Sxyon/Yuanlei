@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 26
+YUANLEI_SCHEMA_VERSION = 27
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1670,6 +1670,17 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v26_to_v27(self):
+        """幂等增加任务显式知识库选择，旧任务保持不选择。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS "
+                    "knowledge_ids JSONB NOT NULL DEFAULT '[]'::jsonb"
+                )
+            )
 
     async def upgrade_yuanlei_schema_v25_to_v26(self):
         """幂等创建 Git 审批历史，保留现有资源与任务分配。"""

@@ -132,3 +132,33 @@ async def git_action_status(action_id: str, runtime: ToolRuntime) -> dict:
     run_id, uid = _authorized_identity(runtime)
     async with pg_manager.get_async_session_context() as db:
         return await get_git_action_for_run(db=db, uid=uid, run_id=run_id, action_id=action_id)
+
+
+@tool
+async def git_list_pull_requests(repository_alias: str, runtime: ToolRuntime) -> dict:
+    """查看自身任务分支的 Gitea 合并请求及合法目标，返回 merge 申请所需编号和源/目标 SHA。"""
+    from yuxi.services.project_git_pull_request_service import pull_requests_for_run
+
+    run_id, uid = _authorized_identity(runtime)
+    async with pg_manager.get_async_session_context() as db:
+        return await pull_requests_for_run(db=db, uid=uid, run_id=run_id, repository_alias=repository_alias)
+
+
+@tool
+async def git_create_pull_request(
+    repository_alias: str, base_branch: str, title: str, runtime: ToolRuntime, body: str = ""
+) -> dict:
+    """将已推送任务分支向资源目标或父任务分支发起 Gitea 合并请求；实际合并继续申请 Git 审批。"""
+    from yuxi.services.project_git_pull_request_service import pull_requests_for_run
+
+    run_id, uid = _authorized_identity(runtime)
+    async with pg_manager.get_async_session_context() as db:
+        return await pull_requests_for_run(
+            db=db,
+            uid=uid,
+            run_id=run_id,
+            repository_alias=repository_alias,
+            base_branch=base_branch,
+            title=title,
+            body=body,
+        )

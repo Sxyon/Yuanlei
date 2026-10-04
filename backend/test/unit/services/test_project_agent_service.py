@@ -244,3 +244,43 @@ async def test_update_project_agent_view_reset_keeps_other_sections(monkeypatch)
         "context": {"title": "keep"},
         "sandbox": {"mode": "dedicated"},
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("child", [False, True])
+async def test_task_knowledge_selection_uses_persisted_root_thread(monkeypatch, child):
+    """普通续聊和子智能体使用同一持久任务选择，不依赖请求来源。"""
+    from unittest.mock import AsyncMock
+
+    root = SimpleNamespace(id="root", run_type="chat", source="chat", conversation_thread_id="task-thread")
+    run = SimpleNamespace(id="child", run_type="subagent", created_by_run_id="root") if child else root
+    lookup = AsyncMock(return_value=SimpleNamespace(knowledge_ids=["selected"]))
+    parents = AsyncMock(return_value=root)
+    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(task_for_thread=lookup))
+    monkeypatch.setattr(service, "AgentRunRepository", lambda db: SimpleNamespace(get_run_for_user=parents))
+    assert await service.load_task_knowledge_selection(db=object(), uid="user", project_id="project", run=run) == [
+        "selected"
+    ]
+    lookup.assert_awaited_once_with(thread_id="task-thread", project_id="project", uid="user")
+    if child:
+        parents.assert_awaited_once_with("root", "user")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["missing_parent", "foreign_parent", "cycle"])
+async def test_task_knowledge_selection_rejects_invalid_parent(monkeypatch, failure):
+    """父级缺失、越权和循环不能恢复其他运行的任务选择。"""
+    from unittest.mock import AsyncMock
+
+    run = SimpleNamespace(
+        id="child", run_type="subagent", created_by_run_id=None if failure == "missing_parent" else "parent"
+    )
+    parent = None if failure == "foreign_parent" else run
+    lookup = AsyncMock()
+    monkeypatch.setattr(
+        service, "AgentRunRepository", lambda db: SimpleNamespace(get_run_for_user=AsyncMock(return_value=parent))
+    )
+    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(task_for_thread=lookup))
+    with pytest.raises(PermissionError if failure == "foreign_parent" else ValueError):
+        await service.load_task_knowledge_selection(db=object(), uid="user", project_id="project", run=run)
+    lookup.assert_not_awaited()

@@ -67,12 +67,14 @@ def build_prompt_with_context(context):
         )
         git_prompt = f"""
 <| Project Git 工作区 |>
-以下 worktree 已按根任务分配，Root Agent 与 SubAgent 共享，同一 Project 的其他根任务使用不同目录：
+以下工作区已按任务和资源分配，SubAgent 共享根运行工作区；隔离任务使用独立目录，直接修改资源按实际目录排队：
 {rows}
-- 使用 execute 与 `git -C <path>` 完成 status、diff、add、commit
+- 使用沙盒文件工具或 execute 修改已分配工作区中的业务文件；通过 git_review_workspace 审查改动
 - 不要执行 clone、fetch、push、remote add/set-url、worktree add/remove/prune 或 branch -D
-- 只在已分配分支提交，不切换、创建或删除其他分支，不操作 bare repository.git
-- 使用 git_review_workspace 读取可信 HEAD/tree 与差异，Root Agent 调用 git_request_action 申请 commit/push/merge；git_action_status 回读批准与实际结果。受保护目标需要人工批准，自动授权记录依据；申请已批准不代表 Git 动作已完成。
+- 提交仅通过平台 Git 动作申请，不用 shell 执行 git add/commit；不切换、创建或删除分支，不操作 bare repository.git
+- 使用 git_review_workspace 读取可信 HEAD/tree 与差异，Root Agent 调用 git_request_action 申请 commit/push/merge。
+- git_list_pull_requests 查看自身请求和合法目标，git_create_pull_request 发起已推送任务分支的请求。
+- git_action_status 回读批准与实际结果。受保护目标需要人工批准，自动授权记录依据；申请已批准不代表 Git 动作已完成。
 """
     elif project_git_enabled:
         git_prompt = """

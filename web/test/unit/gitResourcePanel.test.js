@@ -251,3 +251,21 @@ test('旧轮询响应和旧项目响应不能覆盖新历史，失败保留可�
   assert.equal(state().error, '连接失败')
   assert.equal(state().loading, false)
 })
+
+test('工作树轮询替换同一记录时保留审查弹窗及提交草稿', async (t) => {
+  t.mock.method(api, 'reviewGitWorktree', async () => ({ head_sha: 'head', tree_sha: 'tree', dirty: true }))
+  const props = reactive({ projectId: 'project', worktree: { id: 'worktree', status: 'ready' } })
+  const state = mount(t, WorktreePanel, props)
+  await state().openReview()
+  state().commitMessage = '审查中的草稿'
+  props.worktree = { id: 'worktree', status: 'ready', head_sha: 'head' }
+  await settle()
+  assert.equal(state().open, true)
+  assert.equal(state().review.head_sha, 'head')
+  assert.equal(state().commitMessage, '审查中的草稿')
+  props.worktree = { id: 'another', status: 'ready' }
+  await settle()
+  assert.equal(state().open, false)
+  assert.equal(state().review, null)
+  assert.equal(state().commitMessage, '')
+})

@@ -169,6 +169,18 @@
         <div class="form-actions"><a-button @click="scheduleOpen = false">取消</a-button><a-button type="primary" :loading="saving" @click="saveSchedule">保存计划</a-button></div>
       </div>
     </a-modal>
+    <a-modal v-model:open="gitCompletionOpen" title="任务仍有 Git 成果需要处理" :footer="null">
+      <p>是否先提交、推送、发起合并或释放占用？标记任务完成会保留当前成果。</p>
+      <a-alert v-for="failure in gitCompletion?.errors || []" :key="failure" type="warning" :message="failure" show-icon />
+      <div v-for="resource in gitCompletion?.resources || []" :key="resource.worktree_id">
+        <p><strong>{{ resource.alias }}</strong> · {{ resource.branch }}</p>
+        <a-tag v-for="issue in resource.issues" :key="issue">{{ gitIssueLabel(issue) }}</a-tag>
+        <a-alert v-for="failure in resource.errors" :key="failure" type="warning" :message="failure" show-icon />
+      </div>
+      <a-button @click="gitCompletionOpen = false; gitResourceSettingsOpen = true">先处理成果</a-button>
+      <a-button :loading="Boolean(updatingId)" @click="changeStatus(gitCompletionTask, 'done', true)">保留成果并标记完成</a-button>
+    </a-modal>
+    <ProjectGitSettingsModal v-model:open="gitResourceSettingsOpen" :project="{ id: projectId, name: '任务资源' }" />
   </div>
 </template>
 
@@ -176,6 +188,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
+import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 
@@ -191,6 +204,11 @@ const topicCodeDrafts = ref({})
 const loading = ref(false)
 const saving = ref(false)
 const updatingId = ref('')
+const gitCompletion = ref(null)
+const gitCompletionTask = ref(null)
+const gitCompletionOpen = ref(false)
+const gitResourceSettingsOpen = ref(false)
+const gitIssueLabel = (issue) => ({ uncommitted: '未提交', unpushed: '远端与本地提交不一致', unmerged: '当前提交尚未确认合并', unreleased: '尚未释放占用', unarchived: '工作树尚未回收', not_ready: '工作区未就绪' })[issue] || issue
 const error = ref('')
 const actionError = ref('')
 const formError = ref('')
@@ -361,11 +379,28 @@ async function createTask() {
   }
 }
 
-async function changeStatus(item, status) {
+async function changeStatus(item, status, retain = false) {
+  const project = projectId.value
   updatingId.value = item.id
   actionError.value = ''
   try {
-    await projectWorkApi.updateTask(projectId.value, item.id, { status })
+    if (status === 'done' && !retain) {
+      let result
+      try {
+        result = await projectWorkApi.getGitOutcomes(project, item.id)
+      } catch (failure) {
+        result = { requires_attention: true, resources: [], errors: [failure?.message || '无法确认 Git 成果状态'] }
+      }
+      if (project !== projectId.value) return
+      if (result.requires_attention) {
+        gitCompletion.value = result
+        gitCompletionTask.value = item
+        gitCompletionOpen.value = true
+        return
+      }
+    }
+    await projectWorkApi.updateTask(project, item.id, { status })
+    if (project === projectId.value) gitCompletionOpen.value = false
   } catch (cause) {
     actionError.value = cause?.message || '状态更新失败'
   } finally {
@@ -405,6 +440,10 @@ async function saveSchedule() {
 }
 
 watch(projectId, () => {
+  gitCompletionOpen.value = false
+  gitCompletionTask.value = null
+  gitCompletion.value = null
+  gitResourceSettingsOpen.value = false
   tasks.value = []
   agents.value = []
   topics.value = []
