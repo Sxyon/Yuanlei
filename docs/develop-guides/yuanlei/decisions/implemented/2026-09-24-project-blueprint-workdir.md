@@ -16,7 +16,7 @@ Owner：backend/package/yuxi/services/project_blueprint_service.py
 
 在 Project Workdir 的固定目录 `.yuanlei/blueprint/` 承载蓝图文档，新增用例与 HTTP 端点，不新增数据库表。
 
-- 文档是固定目录内的单层小写 Markdown 文件名，形如 `[a-z0-9][a-z0-9._-]*.md`，长度不超过 120；名称在进入文件系统前归一，`..`、路径分隔符、非小写与非常规名一律 422。
+- 文档是固定目录内的单层 `.md` 文件，名称在进入文件系统前校验。名称范围、长度限制与管理操作由[项目蓝图重命名与永久删除](./2026-10-04-blueprint-rename-delete.md)细化。
 - 蓝图正文的事实 Owner 是文件。读取每次回读文件；写入以原子替换落盘。数据库没有蓝图行，直接改库不影响蓝图内容。
 - 写入按需幂等创建 `.yuanlei` 与 `blueprint`；任一层被普通文件或符号链接占用时以结构化 409 fail-closed。
 - 用例在 `backend/package/yuxi/services/project_blueprint_service.py`；路由在 `backend/server/routers/project_blueprint_router.py`，暴露 `GET /api/projects/{id}/blueprint`、`GET/PUT /api/projects/{id}/blueprint/{name}`。
@@ -44,7 +44,7 @@ Owner：backend/package/yuxi/services/project_blueprint_service.py
 | 验收主张 | 失败面 | 语义 Owner | 直接证据 / 命令 | 负向案例 | 当前结果 |
 |---|---|---|---|---|---|
 | 蓝图正文事实 Owner 是 Workdir 文件 | 数据库与文件两份内容 | `project_blueprint_service.py` + `Workspace` | `test/integration/services/test_project_blueprint_service.py::test_blueprint_round_trip_is_filesystem_owned` | 直接改写磁盘文件后读取回读新内容 | Passed |
-| 文档名越界被拒 | 写到 Workdir 之外 | `validate_blueprint_name` | `test/unit/services/test_project_blueprint_service.py` | `../escape.md`、`sub/escape.md`、大写与非 `.md` 名 422 且不落盘 | Passed |
+| 文档名越界被拒 | 写到 Workdir 之外 | `validate_blueprint_name` | `test/unit/services/test_project_blueprint_service.py` | `../escape.md`、`sub/escape.md`、内部空白与非 `.md` 名 422 且不落盘 | Passed |
 | 目录被非目录占用 fail-closed | 静默覆盖或未报告失败 | `_ensure_blueprint_directory` | `test/integration/services/test_project_blueprint_service.py::test_blueprint_conflicts_when_directory_is_file` | `.yuanlei` 为普通文件时 409 | Passed |
 | 仅所属用户可见项目可读写 | 越权读改他人蓝图 | `_require_project` | `test/integration/services/test_project_blueprint_service.py::test_blueprint_requires_owned_selectable_project` | 其他用户、隐式与已删除 Project 404 | Passed |
 | HTTP 契约与非法输入处理 | 非法 payload 或名称进入用例 | `project_blueprint_router.py` | `test/unit/routers/test_project_blueprint_router.py` | 未知字段 422，ValueError 映射 422，缺失 404 | Passed |

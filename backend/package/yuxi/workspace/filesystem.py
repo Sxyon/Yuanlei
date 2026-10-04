@@ -384,6 +384,20 @@ class Workspace:
             os.close(parent_fd)
         return self._metadata_from_stat(item_stat)
 
+    def delete_authorized_file(self, path: str, *, root: str) -> None:
+        """在受限目录内删除普通文件，拒绝目录、链接与特殊文件。"""
+        self._require_within(path, root, allow_root=False)
+        base, parts = self._resolve_path(path)
+        parent_fd = self._open_directory(base, parts[:-1])
+        try:
+            item_stat = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(item_stat.st_mode):
+                raise PermissionError("only regular files can be deleted")
+            os.unlink(parts[-1], dir_fd=parent_fd)
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+
     def delete_authorized_path(self, path: str, *, root: str, unlink_symlinks: bool = False) -> None:
         """递归删除 Workdir 内的真实文件或目录，不允许删除根。"""
         self._require_within(path, root, allow_root=False)

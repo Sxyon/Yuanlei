@@ -106,3 +106,7 @@ class Workdir:
 
     def delete(self, path: str) -> None:
         self.workspace.delete_authorized_path(self.resolve_path(path), root=self.root_path)
+
+    def delete_file(self, path: str) -> None:
+        """删除 Workdir 内的普通文件。"""
+        self.workspace.delete_authorized_file(self.resolve_path(path), root=self.root_path)

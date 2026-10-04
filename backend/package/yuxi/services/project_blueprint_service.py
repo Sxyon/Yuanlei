@@ -30,10 +30,8 @@ ARCHIVE_DIRECTORY = f"{BLUEPRINT_DIRECTORY}/{ARCHIVE_DIR_NAME}"
 MAX_BLUEPRINT_NAME_LENGTH = 120
 MAX_BLUEPRINT_STEM_BYTES = 194
 MAX_BLUEPRINT_BYTES = 256 * 1024
-_BLUEPRINT_NAME_PATTERN = re.compile(r"^[^\W_][\w.-]*\.md$")
-_ARCHIVE_NAME_PATTERN = re.compile(
-    r"^(?P<stem>[^\W_][\w.-]*)--(?P<archived_at>\d{8}T\d{12}Z)--[0-9a-f]{32}\.md$"
-)
+_BLUEPRINT_NAME_PATTERN = re.compile(r"^[^\W_][\w.，。！？、；：（）【】《》“”‘’！!#$%&'+,;=@^`~(){}\[\]+-]*\.md$")
+_ARCHIVE_NAME_PATTERN = re.compile(r"^(?P<stem>.+)--(?P<archived_at>\d{8}T\d{12}Z)--[0-9a-f]{32}\.md$")
 
 
 def validate_blueprint_name(name: str) -> str:
@@ -42,10 +40,9 @@ def validate_blueprint_name(name: str) -> str:
     if (
         len(normalized) > MAX_BLUEPRINT_NAME_LENGTH
         or len(normalized[:-3].encode("utf-8")) > MAX_BLUEPRINT_STEM_BYTES
-        or normalized.lower() != normalized
         or not _BLUEPRINT_NAME_PATTERN.fullmatch(normalized)
     ):
-        raise ValueError("蓝图文档名须为不超过 120 字的中文或小写 .md 文件名")
+        raise ValueError("蓝图文档名须为不超过 120 字的中文、英文、数字或常用标点组成的 .md 文件名（无空格）")
     return normalized
 
 
@@ -304,8 +301,11 @@ async def list_project_blueprint_archives_view(
             or match is None
             or len(match.group("stem")) + 3 > MAX_BLUEPRINT_NAME_LENGTH
             or len(match.group("stem").encode("utf-8")) > MAX_BLUEPRINT_STEM_BYTES
-            or match.group("stem").lower() != match.group("stem")
         ):
+            continue
+        try:
+            validate_blueprint_name(f"{match.group('stem')}.md")
+        except ValueError:
             continue
         documents.append(
             {
@@ -332,9 +332,9 @@ async def get_project_blueprint_archive_view(
         match is None
         or len(match.group("stem")) + 3 > MAX_BLUEPRINT_NAME_LENGTH
         or len(match.group("stem").encode("utf-8")) > MAX_BLUEPRINT_STEM_BYTES
-        or match.group("stem").lower() != match.group("stem")
     ):
         raise ValueError("无效的蓝图归档名称")
+    validate_blueprint_name(f"{match.group('stem')}.md")
     project = await _require_project(project_id=project_id, db=db, user=user)
     workdir = _open_project_workdir(uid=str(user.uid), project=project)
     document = _read_blueprint_file(
@@ -386,3 +386,69 @@ async def archive_project_blueprint_view(
         "archived_at": archived_at,
         "size": int(metadata["size"]),
     }
+
+
+async def rename_project_blueprint_view(
+    *,
+    project_id: str,
+    name: str,
+    new_name: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """修改当前蓝图文件名，保留正文并拒绝覆盖同名文件。"""
+    name = validate_blueprint_name(name)
+    new_name = validate_blueprint_name(new_name)
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    workdir = _open_project_workdir(uid=str(user.uid), project=project)
+    source = f"/{BLUEPRINT_DIRECTORY}/{name}"
+    target = f"/{BLUEPRINT_DIRECTORY}/{new_name}"
+    try:
+        if name == new_name:
+            metadata = workdir.stat(source)
+            if metadata["is_dir"]:
+                raise PermissionError("only regular files can be renamed")
+        else:
+            metadata = workdir.move_file(source, target)
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        raise HTTPException(status_code=404, detail="蓝图文档不存在") from exc
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409, detail={"code": "blueprint_exists", "message": "同名蓝图已存在，请换一个名称"}
+        ) from exc
+    except PermissionError as exc:
+        raise _blueprint_directory_conflict(source) from exc
+    except OSError as exc:
+        if exc.errno not in {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}:
+            raise
+        raise HTTPException(
+            status_code=409, detail={"code": "blueprint_rename_unavailable", "message": "当前文件系统不支持安全重命名"}
+        ) from exc
+    return {"name": new_name, "size": int(metadata["size"]), "modified_at": float(metadata["modified_at"])}
+
+
+async def delete_project_blueprint_view(
+    *,
+    project_id: str,
+    name: str,
+    archived: bool = False,
+    db: AsyncSession,
+    user: User,
+) -> None:
+    """永久删除当前或归档蓝图，仅允许删除受控名称的普通文件。"""
+    if archived:
+        match = _ARCHIVE_NAME_PATTERN.fullmatch(name)
+        if match is None:
+            raise ValueError("无效的蓝图归档名称")
+        validate_blueprint_name(f"{match.group('stem')}.md")
+    else:
+        name = validate_blueprint_name(name)
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    workdir = _open_project_workdir(uid=str(user.uid), project=project)
+    directory = ARCHIVE_DIRECTORY if archived else BLUEPRINT_DIRECTORY
+    try:
+        workdir.delete_file(f"/{directory}/{name}")
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        raise HTTPException(status_code=404, detail="蓝图文档不存在") from exc
+    except PermissionError as exc:
+        raise _blueprint_directory_conflict(f"/{directory}/{name}") from exc
