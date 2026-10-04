@@ -5,6 +5,7 @@ import { createRenderer, getCurrentInstance, h, nextTick, ssrContextKey } from '
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createServer } from 'vite'
 import { message } from 'ant-design-vue'
+import { createPinia, setActivePinia } from 'pinia'
 
 let vite, View, api, agentApi
 before(async () => {
@@ -80,7 +81,9 @@ test('重命名保留未保存正文与保存基线，同名失败保留原选�
   state.blueprintContent = '尚未保存的编辑'
   state.renameBlueprintDraft = 'API设计（第二版）'
   state.renameBlueprintOpen = true
-  t.mock.method(api, 'renameBlueprint', async () => ({ name: 'API设计（第二版）.md' }))
+  const rename = t.mock.method(api, 'renameBlueprint', async () => ({
+    name: 'API设计（第二版）.md'
+  }))
   await state.renameBlueprint()
   assert.equal(state.loadedBlueprintName, 'API设计（第二版）.md')
   assert.equal(state.blueprintName, 'API设计（第二版）.md')
@@ -92,7 +95,7 @@ test('重命名保留未保存正文与保存基线，同名失败保留原选�
   )
   assert.equal(state.renameBlueprintOpen, false)
   state.renameBlueprintOpen = true
-  t.mock.method(api, 'renameBlueprint', async () => {
+  rename.mock.mockImplementation(async () => {
     throw new Error('同名蓝图已存在')
   })
   await state.renameBlueprint()
@@ -106,13 +109,13 @@ test('删除失败保留未保存正文，成功丢弃草稿并回读空列表',
   const state = await mountWorkbench(t)
   state.blueprintContent = '待丢弃编辑'
   state.openBlueprintDelete(false)
-  t.mock.method(api, 'deleteBlueprint', async () => {
+  const remove = t.mock.method(api, 'deleteBlueprint', async () => {
     throw new Error('删除失败')
   })
   await state.deleteBlueprint()
   assert.equal(state.blueprintContent, '待丢弃编辑')
   assert.equal(state.deleteBlueprintOpen, true)
-  t.mock.method(api, 'deleteBlueprint', async () => {})
+  remove.mock.mockImplementation(async () => {})
   t.mock.method(api, 'listBlueprints', async () => ({ documents: [] }))
   await state.deleteBlueprint()
   assert.equal(state.blueprintContent, '')
@@ -120,4 +123,24 @@ test('删除失败保留未保存正文，成功丢弃草稿并回读空列表',
   assert.equal(state.blueprintName, '')
   assert.deepEqual(state.blueprints, [])
   assert.equal(state.deleteBlueprintOpen, false)
+})
+
+
+test('删除收到真实 204 空 Response 后关闭弹窗并回读列表', async (t) => {
+  setActivePinia(createPinia())
+  const { useUserStore } = await vite.ssrLoadModule('/src/stores/user.js')
+  useUserStore().token = 'test-token'
+  const state = await mountWorkbench(t)
+  state.openBlueprintDelete(false)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(null, { status: 204, headers: { 'content-type': 'application/json' } })
+  )
+  t.mock.method(api, 'listBlueprints', async () => ({ documents: [] }))
+
+  await state.deleteBlueprint()
+
+  assert.equal(state.deleteBlueprintError, '')
+  assert.equal(state.deleteBlueprintOpen, false)
+  assert.equal(state.blueprintName, '')
+  assert.deepEqual(state.blueprints, [])
 })

@@ -17,6 +17,8 @@ Owner：backend/package/yuxi/services/project_blueprint_service.py
 
 正文继续由 Workdir 文件拥有；重命名复用不可覆盖原子移动，删除通过 Workspace 的普通文件删除能力拒绝目录、链接与特殊文件。授权复用 active selectable Project 所属用户查询。元垒不新增数据库结构。
 
+删除接口返回 204 空响应。前端公共请求层以状态码识别无正文的成功，JSON 模式返回 `null`，然后页面关闭确认并回读列表；普通 JSON 响应仍严格解析，损坏响应继续显式失败。
+
 当前蓝图管理操作收纳在更多菜单，归档删除位于所选历史预览。表单、提示与危险操作使用现有组件和颜色 token，适配浅色、深色与窄屏。
 
 ## 替代方案
@@ -38,3 +40,5 @@ Owner：backend/package/yuxi/services/project_blueprint_service.py
 - 最终 `python -m pytest test/integration/services/test_project_blueprint_service.py -q`：10 passed，补充文件系统不支持安全重命名时显式拒绝且原文件保留的负向案例。
 - 前端 lint 与 build、Python Ruff、工程契约验证与 70 项 verifier unit、VitePress 文档构建通过。全量前端 unit 有两项 Dashboard 测试因 Pinia 初始化失败，未修改 HEAD 的同一测试同样失败；该范围未计为通过。全量后端 unit 为 2721 passed、61 skipped、1 failed；失败为既有 Skill 多进程测试的 20 秒子进程超时，单独复测仍超时，未验证根因。上述全量 gate 未计为通过。
 - 浏览器页面使用示例 API，未执行登录、数字员工和 worker 的跨进程 E2E；本功能沿用既有保存、权限与 Workdir 绑定契约。
+
+- 空响应回归由 `web/test/unit/api_boundary.test.js` 调用真实蓝图 API 封装和公共请求层，覆盖当前与归档删除的 204 + JSON 响应头，及普通 JSON 成功和损坏 JSON 拒绝；恢复无条件 JSON 解析时复现 `Unexpected end of JSON input`。

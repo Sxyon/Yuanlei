@@ -522,3 +522,51 @@ test('非白名单端点的 503 保持通用文案且不泄漏服务端明细', 
     })
   })
 })
+
+
+test('当前与归档蓝图删除接受带 JSON 响应头的 204 空响应', async () => {
+  await withServer(async (server) => {
+    storageValues.set('user_token', 'test-token')
+    setActivePinia(createPinia())
+    const { governanceBoardApi } = await server.ssrLoadModule('/src/apis/governance_board_api.js')
+    const requests = []
+    globalThis.fetch = async (url, options) => {
+      requests.push({ url, method: options.method })
+      return new Response(null, {
+        status: 204,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+
+    assert.equal(await governanceBoardApi.deleteBlueprint('project-test', '测试蓝图.md'), null)
+    assert.equal(
+      await governanceBoardApi.deleteBlueprintArchive('project-test', 'plan--archive.md'),
+      null
+    )
+    assert.deepEqual(requests, [
+      {
+        url: `/api/projects/project-test/blueprint/${encodeURIComponent('测试蓝图.md')}`,
+        method: 'DELETE'
+      },
+      {
+        url: '/api/projects/project-test/blueprint/history/plan--archive.md',
+        method: 'DELETE'
+      }
+    ])
+  })
+})
+
+test('普通 JSON 响应保持解析，损坏的 JSON 不作为空响应成功', async () => {
+  await withServer(async (server) => {
+    const { apiRequest } = await server.ssrLoadModule('/src/apis/base.js')
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ name: 'plan.md' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    assert.deepEqual(await apiRequest('/api/test', {}, false), { name: 'plan.md' })
+    globalThis.fetch = async () =>
+      new Response('', { status: 200, headers: { 'content-type': 'application/json' } })
+    await assert.rejects(apiRequest('/api/test', {}, false), SyntaxError)
+  })
+})

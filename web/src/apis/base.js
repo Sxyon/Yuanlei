@@ -223,6 +223,8 @@ export async function apiRequest(url, options = {}, requiresAuth = true, respons
     if (responseType === 'blob') {
       return response
     } else if (responseType === 'json') {
+      // 204 没有响应体，即使响应头声明 JSON 也不能调用 json()。
+      if (response.status === 204) return null
       // 检查Content-Type以确定如何处理响应
       const contentType = response.headers.get('Content-Type')
       if (contentType && contentType.includes('application/json')) {
