@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './base'
+import { apiGet, apiPost, apiPut, apiDelete } from './base'
 
 const projectPath = (projectId) => `/api/projects/${encodeURIComponent(projectId)}`
 
@@ -23,6 +23,23 @@ export const governanceBoardApi = {
 
   createBlueprint(projectId, name, content) {
     return apiPost(`${projectPath(projectId)}/blueprint`, { name, content })
+  },
+
+  /** 修改当前蓝图名称，保留正文。 */
+  renameBlueprint(projectId, name, newName) {
+    return apiPost(`${projectPath(projectId)}/blueprint/${encodeURIComponent(name)}/rename`, {
+      name: newName
+    })
+  },
+
+  /** 永久删除当前蓝图。 */
+  deleteBlueprint(projectId, name) {
+    return apiDelete(`${projectPath(projectId)}/blueprint/${encodeURIComponent(name)}`)
+  },
+
+  /** 永久删除归档蓝图。 */
+  deleteBlueprintArchive(projectId, name) {
+    return apiDelete(`${projectPath(projectId)}/blueprint/history/${encodeURIComponent(name)}`)
   },
 
   listBlueprintArchives(projectId) {

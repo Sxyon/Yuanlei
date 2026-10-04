@@ -409,7 +409,7 @@ async def test_blueprint_rejects_path_escape_and_bad_names(monkeypatch, tmp_path
         )
         async with sessions() as session:
             user = await _load_user(session, "uid-owner")
-            for bad_name in ("../escape.md", "sub/escape.md", "Escape.md", "escape.txt"):
+            for bad_name in ("../escape.md", "sub/escape.md", "escape name.md", "escape.txt"):
                 with pytest.raises(ValueError):
                     await put_project_blueprint_view(
                         project_id="project-owner",
@@ -513,3 +513,91 @@ async def test_blueprint_missing_document_returns_404(monkeypatch, tmp_path) -> 
             with pytest.raises(HTTPException) as missing:
                 await get_project_blueprint_view(project_id="project-owner", name="missing.md", db=session, user=user)
             assert missing.value.status_code == 404
+
+
+async def test_blueprint_http_rename_delete_and_file_boundaries(monkeypatch, tmp_path) -> None:
+    """真实 HTTP 与文件回读证明改名不覆盖、删除不可越权且拒绝目录和链接。"""
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    host = _create_linked_workdir("uid-owner", "projects/owner")
+    async with _scoped_database("pytest_blueprint_manage") as (manager, sessions):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_user(manager.async_engine, uid="uid-other")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner")
+        async with sessions() as session:
+            current = {"user": await _load_user(session, "uid-owner")}
+            app = FastAPI()
+            app.include_router(project_blueprints, prefix="/api")
+
+            async def provide_db():
+                yield session
+
+            async def provide_user():
+                return current["user"]
+
+            app.dependency_overrides[get_db] = provide_db
+            app.dependency_overrides[get_required_user] = provide_user
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                base = "/api/projects/project-owner/blueprint"
+                directory = host / ".yuanlei/blueprint"
+                assert (
+                    await client.post(base, json={"name": "API设计（第二版）.md", "content": "# 保留正文\n"})
+                ).status_code == 201
+                assert (await client.post(base, json={"name": "target.md", "content": "目标正文"})).status_code == 201
+                original = directory / "API设计（第二版）.md"
+                source_url = f"{base}/API设计（第二版）.md"
+                current["user"] = await _load_user(session, "uid-other")
+                assert (await client.post(f"{source_url}/rename", json={"name": "new.md"})).status_code == 404
+                assert (await client.delete(source_url)).status_code == 404
+                assert original.read_text() == "# 保留正文\n"
+                current["user"] = await _load_user(session, "uid-owner")
+                for bad in ["a b.md", "../bad.md", "a:b.md", "中" * 65 + ".md"]:
+                    assert (await client.post(f"{source_url}/rename", json={"name": bad})).status_code == 422
+                assert (await client.post(f"{source_url}/rename", json={"name": "target.md"})).status_code == 409
+                assert original.read_text() == "# 保留正文\n"
+                assert (directory / "target.md").read_text() == "目标正文"
+
+                def unsupported_rename(*_args):
+                    raise OSError(errno.ENOTSUP, "unsupported")
+
+                with monkeypatch.context() as patch:
+                    patch.setattr(workspace_filesystem, "_rename_noreplace", unsupported_rename)
+                    unavailable = await client.post(f"{source_url}/rename", json={"name": "方案A+B.md"})
+                    assert unavailable.status_code == 409
+                    assert unavailable.json()["detail"]["code"] == "blueprint_rename_unavailable"
+                assert original.read_text() == "# 保留正文\n"
+                renamed = await client.post(f"{source_url}/rename", json={"name": "方案A+B.md"})
+                assert renamed.status_code == 200, renamed.text
+                assert not original.exists()
+                assert (directory / "方案A+B.md").read_text() == "# 保留正文\n"
+                assert (await client.post(f"{base}/方案A+B.md/rename", json={"name": "方案A+B.md"})).status_code == 200
+                archive = await client.post(f"{base}/方案A+B.md/archive")
+                assert archive.status_code == 200, archive.text
+                key = archive.json()["archive_name"]
+                assert (await client.get(f"{base}/history")).json()["documents"][0]["name"] == "方案A+B.md"
+                assert (await client.get(f"{base}/history/{key}")).json()["content"] == "# 保留正文\n"
+                current["user"] = await _load_user(session, "uid-other")
+                assert (await client.delete(f"{base}/history/{key}")).status_code == 404
+                assert (directory / "archive" / key).exists()
+                current["user"] = await _load_user(session, "uid-owner")
+                assert (await client.delete(f"{base}/history/{key}")).status_code == 204
+                assert not (directory / "archive" / key).exists()
+                assert (await client.get(f"{base}/history")).json()["documents"] == []
+                assert (await client.delete(f"{base}/target.md")).status_code == 204
+                assert not (directory / "target.md").exists()
+                assert (await client.get(base)).json()["documents"] == []
+                assert (await client.delete(f"{base}/missing.md")).status_code == 404
+                assert (await client.post(f"{base}/missing.md/rename", json={"name": "new.md"})).status_code == 404
+                # 保留旧页面保存可重新创建的公开契约。
+                assert (await client.put(f"{base}/target.md", json={"content": "旧页面保存"})).status_code == 200
+                assert (directory / "target.md").read_text() == "旧页面保存"
+                (directory / "nested.md").mkdir()
+                (directory / "nested.md" / "keep.txt").write_text("保留")
+                outside = host / "keep.md"
+                outside.write_text("边界外正文")
+                (directory / "link.md").symlink_to(outside)
+                for name in ["nested.md", "link.md"]:
+                    assert (await client.delete(f"{base}/{name}")).status_code == 409
+                    assert (await client.post(f"{base}/{name}/rename", json={"name": "new.md"})).status_code == 409
+                assert (directory / "nested.md" / "keep.txt").read_text() == "保留"
+                assert outside.read_text() == "边界外正文"
+                assert (directory / "link.md").is_symlink()

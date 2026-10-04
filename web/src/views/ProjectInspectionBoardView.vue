@@ -91,13 +91,13 @@
             <a-input
               v-model:value="newBlueprintName"
               aria-label="新蓝图名称"
-              placeholder="新蓝图名称，例如 product-plan"
+              placeholder="新蓝图名称，例如 API设计方案"
               style="max-width: 240px"
               @pressEnter="createBlueprint"
             />
             <a-button :disabled="busy || loading" @click="createBlueprint">新建蓝图</a-button>
           </div>
-          <p class="hint">支持中文、英文小写和数字，可含点、下划线或短横线；系统自动补全 .md。</p>
+          <p class="hint">支持中文、大小写英文、数字和常用标点，名称中不含空格。</p>
           <a-textarea
             v-model:value="blueprintContent"
             :rows="9"
@@ -113,14 +113,28 @@
             ><span v-if="blueprintContent !== savedBlueprintContent" class="hint"
               >有未保存的蓝图草稿</span
             ><span v-else class="hint">保存后从项目 Workdir 回读。</span>
-            <a-popconfirm
-              v-if="blueprintName"
-              title="归档后可在下方历史蓝图翻阅，确认归档？"
-              ok-text="归档"
-              cancel-text="取消"
-              @confirm="archiveBlueprint"
-              ><a-button :disabled="busy || loading">归档当前蓝图</a-button></a-popconfirm
-            >
+            <a-dropdown v-if="blueprintName" :trigger="['click']" placement="bottomRight">
+              <a-button
+                class="blueprint-more"
+                :disabled="blueprintName !== loadedBlueprintName || busy || loading"
+                aria-label="蓝图更多操作"
+                ><Ellipsis :size="16" />更多</a-button
+              >
+              <template #overlay>
+                <a-menu @click="handleBlueprintMenu">
+                  <a-menu-item key="rename"
+                    ><template #icon><Pencil :size="15" /></template>重命名</a-menu-item
+                  >
+                  <a-menu-item key="archive"
+                    ><template #icon><Archive :size="15" /></template>归档</a-menu-item
+                  >
+                  <a-menu-divider />
+                  <a-menu-item key="delete" danger
+                    ><template #icon><Trash2 :size="15" /></template>永久删除</a-menu-item
+                  >
+                </a-menu>
+              </template>
+            </a-dropdown>
           </div>
           <div class="blueprint-history">
             <h3>
@@ -143,6 +157,17 @@
                 </button>
               </div>
               <div class="archive-preview">
+                <div v-if="selectedArchive" class="archive-preview-heading">
+                  <span>归档内容 · 只读</span>
+                  <a-button
+                    type="text"
+                    size="small"
+                    :disabled="busy || loading || archiveLoading"
+                    @click="openBlueprintDelete(true)"
+                  >
+                    <Trash2 :size="14" />删除
+                  </a-button>
+                </div>
                 <a-spin v-if="archiveLoading" />
                 <a-alert v-else-if="archiveError" type="error" show-icon :message="archiveError" />
                 <MarkdownPreview v-else-if="archiveContent" :content="archiveContent" />
@@ -151,6 +176,79 @@
             </div>
           </div>
         </section>
+
+        <a-modal
+          v-model:open="renameBlueprintOpen"
+          title="重命名蓝图"
+          ok-text="保存名称"
+          cancel-text="取消"
+          :confirm-loading="busy"
+          :ok-button-props="{ disabled: busy || !renameBlueprintDraft.trim() }"
+          :cancel-button-props="{ disabled: busy }"
+          :mask-closable="!busy"
+          :closable="!busy"
+          :keyboard="!busy"
+          @ok="renameBlueprint"
+        >
+          <div class="blueprint-dialog">
+            <label for="blueprint-rename-input">蓝图名称</label>
+            <a-input
+              id="blueprint-rename-input"
+              v-model:value="renameBlueprintDraft"
+              :disabled="busy"
+              @pressEnter="renameBlueprint"
+            />
+            <p class="hint">
+              支持中文、大小写英文、数字和常用标点，不含空格。改名会保留正文及未保存的编辑。
+            </p>
+            <a-alert
+              v-if="renameBlueprintError"
+              type="error"
+              show-icon
+              :message="renameBlueprintError"
+            />
+          </div>
+        </a-modal>
+        <a-modal
+          v-model:open="deleteBlueprintOpen"
+          title="永久删除蓝图"
+          ok-text="永久删除"
+          cancel-text="保留蓝图"
+          :confirm-loading="busy"
+          :ok-button-props="{ danger: true, disabled: busy }"
+          :cancel-button-props="{ disabled: busy }"
+          :mask-closable="!busy"
+          :closable="!busy"
+          :keyboard="!busy"
+          @ok="deleteBlueprint"
+        >
+          <div class="blueprint-dialog">
+            <div class="blueprint-delete-target">
+              <Trash2 :size="20" />
+              <div>
+                <strong>{{ displayBlueprintName(deleteBlueprintTarget?.name) }}</strong
+                ><span>{{ deleteBlueprintTarget?.archived ? '已归档蓝图' : '当前蓝图' }}</span>
+              </div>
+            </div>
+            <p>删除后无法恢复，内容不会进入归档。</p>
+            <a-alert
+              v-if="
+                deleteBlueprintTarget &&
+                !deleteBlueprintTarget.archived &&
+                blueprintContent !== savedBlueprintContent
+              "
+              type="warning"
+              show-icon
+              message="这份蓝图还有未保存的修改，删除后这些修改也会丢失。"
+            />
+            <a-alert
+              v-if="deleteBlueprintError"
+              type="error"
+              show-icon
+              :message="deleteBlueprintError"
+            />
+          </div>
+        </a-modal>
 
         <section id="topics" class="workbench-section">
           <div class="section-heading">
@@ -241,7 +339,10 @@
                   placeholder="使用 Markdown 编辑议题正文"
                 />
                 <div class="form-row">
-                  <a-button type="primary" :disabled="!editingTopicTitle.trim() || busy" @click="saveTopicEdit"
+                  <a-button
+                    type="primary"
+                    :disabled="!editingTopicTitle.trim() || busy"
+                    @click="saveTopicEdit"
                     >保存议题修改</a-button
                   >
                   <a-button :disabled="busy" @click="editingTopic = false">取消</a-button>
@@ -249,7 +350,11 @@
               </div>
               <section v-else class="topic-proposal-body">
                 <MarkdownPreview v-if="selectedTopic.summary" :content="selectedTopic.summary" />
-                <p v-else class="hint">暂无议题说明。{{ selectedTopic.status === 'proposed' ? '可以先修改提议，补充背景和方案。' : '' }}</p>
+                <p v-else class="hint">
+                  暂无议题说明。{{
+                    selectedTopic.status === 'proposed' ? '可以先修改提议，补充背景和方案。' : ''
+                  }}
+                </p>
               </section>
 
               <section class="discussion-thread">
@@ -261,7 +366,9 @@
                   <span>{{ topicComments.length }} 条回复</span>
                 </div>
                 <a-spin v-if="topicCommentsLoading" />
-                <p v-else-if="!topicComments.length" class="discussion-empty">还没有回复，开始这场讨论。</p>
+                <p v-else-if="!topicComments.length" class="discussion-empty">
+                  还没有回复，开始这场讨论。
+                </p>
                 <article v-for="comment in topicComments" :key="comment.id" class="discussion-post">
                   <header>
                     <strong>{{ comment.author_name || '项目成员' }}</strong>
@@ -288,14 +395,23 @@
                 </div>
               </section>
 
-              <footer v-if="selectedTopic.status === 'proposed' && !editingTopic" class="topic-review-actions">
+              <footer
+                v-if="selectedTopic.status === 'proposed' && !editingTopic"
+                class="topic-review-actions"
+              >
                 <div>
                   <strong>结束讨论并审核</strong>
                   <p>审核后议题正文和讨论串将保留为历史记录。</p>
                 </div>
                 <div class="form-row">
-                  <a-button danger :disabled="busy" @click="reviewTopic(selectedTopic, false)">拒绝提议</a-button>
-                  <a-button type="primary" :disabled="busy" @click="reviewTopic(selectedTopic, true)">
+                  <a-button danger :disabled="busy" @click="reviewTopic(selectedTopic, false)"
+                    >拒绝提议</a-button
+                  >
+                  <a-button
+                    type="primary"
+                    :disabled="busy"
+                    @click="reviewTopic(selectedTopic, true)"
+                  >
                     通过并结束讨论
                   </a-button>
                 </div>
@@ -310,7 +426,9 @@
               <MessagesSquare :size="28" />
               <strong>选择一个议题查看详情</strong>
               <p>议题正文、讨论和审核操作会显示在这里。</p>
-              <a-button type="primary" @click="topicComposerVisible = true">提出第一个议题</a-button>
+              <a-button type="primary" @click="topicComposerVisible = true"
+                >提出第一个议题</a-button
+              >
             </div>
           </div>
 
@@ -519,9 +637,10 @@
 
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { Modal, message } from 'ant-design-vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
-import { MessagesSquare } from '@lucide/vue'
+import { MessagesSquare, Ellipsis, Pencil, Archive, Trash2 } from '@lucide/vue'
 import GovernanceBoardPanel from '@/components/inspection/GovernanceBoardPanel.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { displayBlueprintName, normalizeBlueprintName } from '@/utils/blueprintName'
@@ -548,6 +667,12 @@ const blueprintActionError = ref('')
 const blueprintContent = ref('')
 const loadedBlueprintName = ref('')
 const savedBlueprintContent = ref('')
+const renameBlueprintOpen = ref(false)
+const renameBlueprintDraft = ref('')
+const renameBlueprintError = ref('')
+const deleteBlueprintOpen = ref(false)
+const deleteBlueprintTarget = ref(null)
+const deleteBlueprintError = ref('')
 const archivedBlueprints = ref([])
 const selectedArchive = ref('')
 const archiveContent = ref('')
@@ -592,7 +717,9 @@ const pageTitle = computed(() =>
   board.value?.project?.name ? `${board.value.project.name} · 项目工作台` : '项目工作台'
 )
 const allTopics = computed(() => board.value.governance?.topics || [])
-const selectedTopic = computed(() => allTopics.value.find((item) => item.id === selectedTopicId.value))
+const selectedTopic = computed(() =>
+  allTopics.value.find((item) => item.id === selectedTopicId.value)
+)
 const topicTitleFor = (topicId) => allTopics.value.find((item) => item.id === topicId)?.title || ''
 const decisionDetail = (decision) =>
   [decision.conclusion, decision.rationale && `---\n\n**决策理由**\n\n${decision.rationale}`]
@@ -818,7 +945,8 @@ function createBlueprint() {
   const raw = newBlueprintName.value.trim()
   const name = normalizeBlueprintName(raw)
   if (!name) {
-    blueprintActionError.value = '名称需以中文、英文小写或数字开头，可含点、下划线或短横线，且不超过 120 字'
+    blueprintActionError.value =
+      '名称需以中文、英文或数字开头，可含常用标点，不含空格且不超过 120 字；中文较多时请适当缩短'
     return
   }
   if (blueprints.value.some((doc) => doc.name === name)) {
@@ -861,6 +989,106 @@ const archiveBlueprint = () => {
     await readArchive(archived.archive_name)
   }, blueprintActionError)
 }
+/** 将低频管理操作收纳在当前蓝图菜单。 */
+function handleBlueprintMenu({ key }) {
+  if (key === 'rename') {
+    renameBlueprintDraft.value = displayBlueprintName(loadedBlueprintName.value)
+    renameBlueprintError.value = ''
+    renameBlueprintOpen.value = true
+    nextTick(() => document.getElementById('blueprint-rename-input')?.focus())
+  } else if (key === 'delete') {
+    openBlueprintDelete(false)
+  } else if (key === 'archive') {
+    Modal.confirm({
+      title: '归档蓝图',
+      content: `「${displayBlueprintName(loadedBlueprintName.value)}」归档后将从当前列表移出，可在历史蓝图中翻阅。`,
+      okText: '归档',
+      cancelText: '取消',
+      onOk: archiveBlueprint
+    })
+  }
+}
+
+/** 重命名文件，保留页面中的未保存正文。 */
+async function renameBlueprint() {
+  if (busy.value) return
+  const name = normalizeBlueprintName(renameBlueprintDraft.value)
+  if (!name) {
+    renameBlueprintError.value =
+      '名称需以中文、英文或数字开头，可含常用标点，不含空格且不超过 120 字；中文较多时请适当缩短'
+    return
+  }
+  busy.value = true
+  renameBlueprintError.value = ''
+  const project = projectId.value
+  try {
+    const renamed = await api.renameBlueprint(project, loadedBlueprintName.value, name)
+    if (projectId.value !== project) return
+    blueprintReadSeq += 1
+    blueprints.value = blueprints.value
+      .map((doc) => (doc.name === loadedBlueprintName.value ? { ...doc, ...renamed } : doc))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    blueprintName.value = renamed.name
+    loadedBlueprintName.value = renamed.name
+    renameBlueprintOpen.value = false
+    message.success('蓝图已重命名')
+  } catch (error) {
+    if (projectId.value === project) renameBlueprintError.value = describeBoardError(error)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 固定待删除蓝图，确认框明确显示名称与所属位置。 */
+function openBlueprintDelete(archived) {
+  const archive = archivedBlueprints.value.find(
+    (item) => item.archive_name === selectedArchive.value
+  )
+  if (archived && !archive) return
+  deleteBlueprintTarget.value = archived
+    ? { name: archive.name, key: archive.archive_name, archived: true }
+    : { name: loadedBlueprintName.value, key: loadedBlueprintName.value, archived: false }
+  deleteBlueprintError.value = ''
+  deleteBlueprintOpen.value = true
+}
+
+/** 永久删除成功后清理选择并刷新真实列表。 */
+async function deleteBlueprint() {
+  if (busy.value || !deleteBlueprintTarget.value) return
+  const target = deleteBlueprintTarget.value
+  const project = projectId.value
+  busy.value = true
+  deleteBlueprintError.value = ''
+  try {
+    if (target.archived) {
+      await api.deleteBlueprintArchive(project, target.key)
+      if (projectId.value !== project) return
+      archiveReadSeq += 1
+      selectedArchive.value = ''
+      archiveContent.value = ''
+      archiveError.value = ''
+      archiveLoading.value = false
+    } else {
+      await api.deleteBlueprint(project, target.key)
+      if (projectId.value !== project) return
+      blueprintReadSeq += 1
+      blueprintName.value = ''
+      loadedBlueprintName.value = ''
+      blueprintContent.value = ''
+      savedBlueprintContent.value = ''
+    }
+    deleteBlueprintOpen.value = false
+    message.success('蓝图已永久删除')
+    await load()
+  } catch (error) {
+    if (projectId.value !== project) return
+    if (deleteBlueprintOpen.value) deleteBlueprintError.value = describeBoardError(error)
+    else blueprintActionError.value = describeBoardError(error)
+  } finally {
+    busy.value = false
+  }
+}
+
 const submitTopic = () =>
   act(async () => {
     const created = await api.createTopic(projectId.value, {
@@ -926,6 +1154,8 @@ const collectDelegation = (item) =>
   act(() => api.collectDelegation(projectId.value, item.operation_id))
 
 watch(projectId, () => {
+  renameBlueprintOpen.value = false
+  deleteBlueprintOpen.value = false
   blueprintReadSeq += 1
   archiveReadSeq += 1
   blueprints.value = []
@@ -1510,5 +1740,71 @@ onMounted(load)
   .topic-detail-empty {
     padding: 15px;
   }
+}
+.blueprint-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.blueprint-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+.blueprint-dialog label {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.blueprint-dialog p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
+.blueprint-delete-target {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--gray-25);
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+}
+.blueprint-delete-target > svg {
+  flex-shrink: 0;
+}
+.blueprint-delete-target div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.blueprint-delete-target strong {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.blueprint-delete-target span {
+  font-size: 12px;
+}
+.archive-preview-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--gray-150);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+.archive-preview-heading :deep(button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.archive-list strong {
+  overflow-wrap: anywhere;
 }
 </style>

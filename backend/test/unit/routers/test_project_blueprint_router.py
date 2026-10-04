@@ -74,10 +74,10 @@ def test_blueprint_router_rejects_unknown_fields(monkeypatch):
 
 def test_blueprint_router_maps_value_error_to_422_and_missing_to_404(monkeypatch):
     async def raising_value(*, project_id, name, db, user):
-        raise ValueError("蓝图文档名必须是长度不超过 120 的小写 .md 文件名")
+        raise ValueError("蓝图文档名不允许空格")
 
     monkeypatch.setattr(router_module, "get_project_blueprint_view", raising_value)
-    invalid = _client().get("/api/projects/project-1/blueprint/Bad.md")
+    invalid = _client().get("/api/projects/project-1/blueprint/bad%20name.md")
     assert invalid.status_code == 422, invalid.text
 
     async def raising_missing(*, project_id, name, db, user):

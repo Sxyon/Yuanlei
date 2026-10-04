@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services.project_blueprint_service import (
     archive_project_blueprint_view,
+    rename_project_blueprint_view,
+    delete_project_blueprint_view,
     create_project_blueprint_view,
     get_project_blueprint_archive_view,
     get_project_blueprint_view,
@@ -32,6 +34,13 @@ class ProjectBlueprintWrite(BaseModel):
 class ProjectBlueprintCreate(ProjectBlueprintWrite):
     """新建蓝图请求，名称由前端补全为受控 Markdown 文件名。"""
 
+    name: str
+
+
+class ProjectBlueprintRename(BaseModel):
+    """当前蓝图重命名请求。"""
+
+    model_config = ConfigDict(extra="forbid")
     name: str
 
 
@@ -89,6 +98,53 @@ async def get_project_blueprint_archive(
             archive_name=archive_name,
             db=db,
             user=current_user,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@project_blueprints.delete("/history/{archive_name}", status_code=204)
+async def delete_project_blueprint_archive(
+    project_id: str,
+    archive_name: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """永久删除归档蓝图。"""
+    try:
+        await delete_project_blueprint_view(
+            project_id=project_id, name=archive_name, archived=True, db=db, user=current_user
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@project_blueprints.delete("/{name}", status_code=204)
+async def delete_project_blueprint(
+    project_id: str,
+    name: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """永久删除当前蓝图。"""
+    try:
+        await delete_project_blueprint_view(project_id=project_id, name=name, db=db, user=current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@project_blueprints.post("/{name}/rename")
+async def rename_project_blueprint(
+    project_id: str,
+    name: str,
+    payload: ProjectBlueprintRename,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """修改当前蓝图名称。"""
+    try:
+        return await rename_project_blueprint_view(
+            project_id=project_id, name=name, new_name=payload.name, db=db, user=current_user
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
