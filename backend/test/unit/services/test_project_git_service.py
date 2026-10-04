@@ -42,42 +42,15 @@ def _patch_cleanup_dependencies(monkeypatch, tmp_path, *, clean: bool, pushed: b
     binding = SimpleNamespace(id="repository-1", directory_name="api-safe")
     project = SimpleNamespace(id="project-1", workdir_path="projects/project-1")
 
-    class Store:
-        def __init__(self, _db):
-            pass
+    async def context(**kwargs):
+        return project, binding, worktree
 
-        async def get_project_worktree(self, *args, **kwargs):
-            return worktree
+    async def inspect(**kwargs):
+        if not clean or not pushed:
+            raise HTTPException(status_code=409, detail="worktree 存在未提交或未推送进展")
 
-        async def has_nonterminal_run(self, *args, **kwargs):
-            return False
-
-        async def get_binding(self, *args, **kwargs):
-            return binding
-
-    class Projects:
-        def __init__(self, _db):
-            pass
-
-        async def get_for_user(self, *args, **kwargs):
-            return project
-
-    class Executor:
-        async def inspect_worktree(self, path):
-            assert path == worktree_path
-            return WorktreeState("codex/task-1", head, clean)
-
-        async def remove_worktree(self, **kwargs):
-            raise AssertionError("HTTP 用例不得在提交意图前删除 worktree")
-
-    monkeypatch.setattr(service, "ProjectGitRepositoryStore", Store)
-    monkeypatch.setattr(service, "ProjectRepository", Projects)
-    monkeypatch.setattr(service, "GitExecutor", Executor)
-    monkeypatch.setattr(
-        service,
-        "resolve_project_git_host_paths",
-        lambda *args, **kwargs: (tmp_path / "repository.git", worktree_path),
-    )
+    monkeypatch.setattr(service, "_worktree_cleanup_context", context)
+    monkeypatch.setattr(service, "_inspect_or_cleanup_worktree", inspect)
     return worktree
 
 

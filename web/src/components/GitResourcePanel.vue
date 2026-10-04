@@ -19,11 +19,11 @@
       <a-form-item label="授权模式">
         <a-select v-model:value="draft.approval_mode">
           <a-select-option value="protected">受保护：人工提交与合并</a-select-option>
-          <a-select-option value="automatic" disabled>自动授权（开发中）</a-select-option>
+          <a-select-option value="automatic">自动授权（保留批准记录）</a-select-option>
         </a-select>
       </a-form-item>
     </a-form>
-    <p>当前支持人工提交、推送与合并；智能体审批及自动授权尚未启用。</p>
+    <p>受保护资源目标由人工批准；自动授权和任务分支批准依据可在“审批与历史”查看。授权模式不会自动触发提交或合并。</p>
     <p class="resource-help">{{ draft.usage_mode === 'in_place' ? '任务直接修改项目资源目录，持续占用并排队使用。' : '任务在独立工作树中修改，项目资源目录用于展示选定分支。' }}</p>
     <div class="resource-actions">
       <a-button :disabled="resource.status !== 'active'" :loading="busy === 'configure'" @click="configure">保存资源配置</a-button>

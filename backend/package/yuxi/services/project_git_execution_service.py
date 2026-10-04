@@ -165,17 +165,48 @@ async def list_git_occupancies(*, db, uid: str, project_id: str):
         raise HTTPException(status_code=404, detail="项目不存在")
     store = ProjectGitRepositoryStore(db)
     values = []
+    queue_positions = {}
     for slot in await store.project_occupancies(project_id, uid):
+        binding = await store.get_binding(slot.repository_id, uid)
+        allocation = await store.get_worktree(slot.repository_id, slot.scope_key, uid)
+        if binding is None:
+            continue
+        if slot.repository_id not in queue_positions:
+            queue = await store.checkout_occupancies(slot.repository_id, uid)
+            queue_positions[slot.repository_id] = {
+                item.id: index + 1 for index, item in enumerate(item for item in queue if item.status == "queued")
+            }
         run = await store.run_for_user(slot.active_run_id, uid) if slot.active_run_id else None
+        active = await store.active_root_run(slot.active_run_id, uid)
+        task = (
+            await store.task_for_project(slot.scope_key[5:], project_id) if slot.scope_key.startswith("task:") else None
+        )
         values.append(
             {
                 "id": slot.id,
                 "repository_id": slot.repository_id,
+                "repository_alias": binding.alias,
                 "scope_key": slot.scope_key,
+                "scope_label": f"{task.number} · {task.title}" if task else "项目对话",
+                "task_id": task.id if task else None,
                 "status": slot.status,
                 "run_id": slot.active_run_id,
                 "run_status": run.status if run else None,
-                "requested_at": slot.requested_at.isoformat(),
+                "active_execution": active is not None,
+                "active_agent": active.agent_slug if active else None,
+                "heartbeat_at": active.heartbeat_at.isoformat() + "Z" if active and active.heartbeat_at else None,
+                "lease_expires_at": active.lease_expires_at.isoformat() + "Z"
+                if active and active.lease_expires_at
+                else None,
+                "lease_expired": bool(
+                    active and active.lease_expires_at and active.lease_expires_at <= utc_now_naive()
+                ),
+                "usage_mode": allocation.usage_mode if allocation else binding.usage_mode,
+                "workspace_path": allocation.relative_path if allocation else binding.checkout_path,
+                "branch": allocation.branch_name if allocation else binding.configured_base_branch,
+                "worktree_status": allocation.status if allocation else None,
+                "queue_position": queue_positions[slot.repository_id].get(slot.id),
+                "requested_at": slot.requested_at.isoformat() + "Z",
             }
         )
     return values
@@ -189,7 +220,7 @@ async def release_git_occupancy(*, db, uid: str, project_id: str, repository_id:
         open_resource_checkout,
         resource_metadata_path,
     )
-    from yuxi.git.executor import GitExecutor
+    from yuxi.git.worktree_executor import GitWorktreeExecutor
     from yuxi.workspace.git_paths import resolve_project_git_host_paths
 
     project, binding, store = await get_resource_context(
@@ -210,11 +241,17 @@ async def release_git_occupancy(*, db, uid: str, project_id: str, repository_id:
             if state["dirty"]:
                 raise HTTPException(status_code=409, detail="资源存在未提交内容，请先提交或明确清理")
         else:
-            _, path = resolve_project_git_host_paths(
+            bare, path = resolve_project_git_host_paths(
                 uid, project.workdir_path, binding.directory_name, allocation.task_key
             )
-            state = await GitExecutor().inspect_worktree(path)
-            if not state.clean:
+            state = await GitWorktreeExecutor().operate(
+                bare=bare,
+                checkout=path,
+                branch=allocation.branch_name,
+                task_key=allocation.task_key,
+                private_root=resource_metadata_path(binding.id).parent,
+            )
+            if state["dirty"]:
                 raise HTTPException(status_code=409, detail="工作树存在未提交内容，请先提交或明确清理")
     if slot.status == "owned":
         await revoke_git_owner_runtime(db=db, uid=uid, project_id=project_id, run_id=slot.active_run_id)

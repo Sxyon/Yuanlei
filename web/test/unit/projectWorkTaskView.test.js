@@ -322,3 +322,65 @@ test('保存周期巡检发送启用状态与周期，失败时展示错误', as
   await instance.setupState.saveInspection()
   assert.equal(instance.setupState.inspectionError, '请先设置第一负责人，再启用周期巡检')
 })
+
+async function mountGitCompletionTask(t) {
+  t.mock.method(projectWorkApi, 'getTask', async (_project, id) => ({ id, status: 'todo', issues: [], comments: [], references: [] }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }] })
+  await router.push('/projects/project/work/tasks/a')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component)
+  app.use(router)
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  t.after(() => app.unmount())
+  await settle()
+  return { router, state: () => instance.setupState }
+}
+
+test('完成任务先提示未处理 Git 成果，人工选择保留后才保存完成状态', async (t) => {
+  const update = t.mock.method(projectWorkApi, 'updateTask', async () => ({}))
+  t.mock.method(projectWorkApi, 'getGitOutcomes', async () => ({ requires_attention: true, scope_key: 'task:a', resources: [{ worktree_id: 'work', issues: ['uncommitted'], errors: [] }] }))
+  const { state } = await mountGitCompletionTask(t)
+  state().selectedStatus = 'done'
+  await state().updateStatus()
+  assert.equal(update.mock.callCount(), 0)
+  assert.equal(state().gitCompletionOpen, true)
+  assert.deepEqual(state().gitCompletion.resources[0].issues, ['uncommitted'])
+  await state().confirmTaskCompletion()
+  assert.deepEqual(update.mock.calls[0].arguments, ['project', 'a', { status: 'done' }])
+  assert.equal(state().gitCompletionOpen, false)
+})
+
+test('迟到的成果检查不能在另一个任务打开完成提示或保存状态', async (t) => {
+  let finish
+  t.mock.method(projectWorkApi, 'getGitOutcomes', () => new Promise((resolve) => { finish = resolve }))
+  const update = t.mock.method(projectWorkApi, 'updateTask', async () => ({}))
+  const { router, state } = await mountGitCompletionTask(t)
+  state().selectedStatus = 'done'
+  const pending = state().updateStatus()
+  await router.push('/projects/project/work/tasks/b')
+  await settle()
+  finish({ requires_attention: true, resources: [] })
+  await pending
+  assert.equal(state().gitCompletionOpen, false)
+  assert.equal(state().gitCompletion, null)
+  assert.equal(state().task.id, 'b')
+  assert.equal(update.mock.callCount(), 0)
+})
+
+test('无法确认成果状态时保留错误并等待明确完成选择', async (t) => {
+  t.mock.method(projectWorkApi, 'getGitOutcomes', async () => { throw new Error('成果服务暂不可用') })
+  const update = t.mock.method(projectWorkApi, 'updateTask', async () => ({}))
+  const { state } = await mountGitCompletionTask(t)
+  state().selectedStatus = 'done'
+  await state().updateStatus()
+  assert.equal(state().gitCompletionOpen, true)
+  assert.deepEqual(state().gitCompletion.errors, ['成果服务暂不可用'])
+  assert.equal(update.mock.callCount(), 0)
+  await state().confirmTaskCompletion()
+  assert.equal(update.mock.callCount(), 1)
+})

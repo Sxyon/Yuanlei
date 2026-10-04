@@ -13,6 +13,8 @@ export const projectWorkApi = {
     apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks`, payload),
   getTask: (projectId, taskId) =>
     apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}`),
+  getGitOutcomes: (projectId, taskId) =>
+    apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/git-outcomes`),
   updateTask: (projectId, taskId, payload) =>
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}`, {
       method: 'PATCH', body: JSON.stringify(payload)

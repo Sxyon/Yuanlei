@@ -191,6 +191,7 @@ class ProjectKnowledgeLink(Base):
     project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
     kb_id = Column(String(80), primary_key=True)
 
+
 class GitCredential(Base):
     """保存由可信 Git 服务加密的凭据。"""
 
@@ -285,7 +286,9 @@ class ProjectGitRepository(Base):
             name="fk_project_git_repositories_credential_uid",
         ),
         CheckConstraint("usage_mode IN ('in_place', 'worktree')", name="ck_project_git_repositories_usage_mode"),
-        CheckConstraint("approval_mode IN ('automatic', 'protected')", name="ck_project_git_repositories_approval_mode"),
+        CheckConstraint(
+            "approval_mode IN ('automatic', 'protected')", name="ck_project_git_repositories_approval_mode"
+        ),
         CheckConstraint(
             "status IN ('provisioning', 'active', 'provision_failed', 'deleting', 'delete_failed', 'disabled')",
             name="ck_project_git_repositories_status",
@@ -348,6 +351,66 @@ class ProjectGitRepository(Base):
             "created_at": format_utc_datetime(self.created_at),
             "updated_at": format_utc_datetime(self.updated_at),
         }
+
+
+class ProjectGitAction(Base):
+    """项目 Git 申请、批准依据和执行结果的不可变身份快照。"""
+
+    __tablename__ = "project_git_actions"
+    __table_args__ = (
+        UniqueConstraint("uid", "request_id", name="uq_project_git_actions_request"),
+        ForeignKeyConstraint(
+            ["repository_id", "project_id", "uid"],
+            ["project_git_repositories.id", "project_git_repositories.project_id", "project_git_repositories.uid"],
+            name="fk_project_git_actions_resource",
+        ),
+        CheckConstraint("action IN ('commit', 'push', 'merge')", name="ck_project_git_actions_action"),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'running', 'succeeded', 'failed', 'rejected')",
+            name="ck_project_git_actions_status",
+        ),
+        CheckConstraint("approval_kind IN ('human', 'automatic', 'required')", name="ck_project_git_actions_approval"),
+        Index("ix_project_git_actions_history", "project_id", "uid", "created_at", "id"),
+    )
+    id = Column(String(64), primary_key=True)
+    uid = Column(String(64), nullable=False)
+    project_id = Column(String(64), nullable=False)
+    repository_id = Column(String(64), nullable=False)
+    request_id = Column(String(128), nullable=False)
+    fingerprint = Column(String(64), nullable=False)
+    run_id = Column(String(64), nullable=True)
+    agent_slug = Column(String(64), nullable=True)
+    scope_key = Column(String(191), nullable=True)
+    worktree_id = Column(String(64), nullable=True)
+    action = Column(String(16), nullable=False)
+    branch = Column(String(255), nullable=False)
+    target_branch = Column(String(255), nullable=True)
+    expected_head = Column(String(64), nullable=False)
+    expected_tree = Column(String(64), nullable=True)
+    expected_base = Column(String(64), nullable=True)
+    pull_number = Column(Integer, nullable=True)
+    message = Column(Text, nullable=False, default="")
+    diff = Column(Text, nullable=False, default="")
+    approval_kind = Column(String(16), nullable=False)
+    approval_reason = Column(Text, nullable=False)
+    approved_by = Column(String(64), nullable=True)
+    status = Column(String(16), nullable=False)
+    task_id = Column(String(64), nullable=True)
+    result = Column(JSON_VALUE, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    approved_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    def to_dict(self):
+        """输出批准与执行时间线，不输出内部幂等指纹。"""
+        result = {
+            column.name: getattr(self, column.name) for column in self.__table__.columns if column.name != "fingerprint"
+        }
+        for key in ("created_at", "approved_at", "started_at", "finished_at"):
+            result[key] = format_utc_datetime(result[key]) if result[key] else None
+        return result
 
 
 class ProjectGitOccupancy(Base):
@@ -425,7 +488,9 @@ class ProjectGitWorktree(Base):
     base_branch = Column(String(255), nullable=False)
     base_sha = Column(String(64), nullable=True)
     usage_mode = Column(String(16), nullable=False, default="worktree", server_default="worktree")
-    source_parent_worktree_id = Column(String(64), ForeignKey("project_git_worktrees.id", name="fk_project_git_worktrees_source_parent"), nullable=True)
+    source_parent_worktree_id = Column(
+        String(64), ForeignKey("project_git_worktrees.id", name="fk_project_git_worktrees_source_parent"), nullable=True
+    )
     last_observed_head_sha = Column(String(64), nullable=True)
     last_pushed_sha = Column(String(64), nullable=True)
     relative_path = Column(String(512), nullable=False)
@@ -993,7 +1058,9 @@ class ProjectWorkTask(Base):
             "status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled')",
             name="ck_project_work_tasks_status",
         ),
-        CheckConstraint("git_workspace_mode IN ('inherit', 'isolated')", name="ck_project_work_tasks_git_workspace_mode"),
+        CheckConstraint(
+            "git_workspace_mode IN ('inherit', 'isolated')", name="ck_project_work_tasks_git_workspace_mode"
+        ),
         Index("ix_project_work_tasks_project_created", "project_id", "created_at"),
     )
 
@@ -1041,7 +1108,9 @@ class ProjectWorkExecution(Base):
             "uq_project_work_executions_active_task",
             "task_id",
             unique=True,
-            postgresql_where=text("status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted')"),
+            postgresql_where=text(
+                "status IN ('pending_acceptance', 'queued', 'dispatching', 'submitted', 'interrupted')"
+            ),
         ),
         Index(
             "uq_project_work_executions_active_agent",

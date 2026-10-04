@@ -83,11 +83,11 @@ async def test_chatbot_graph_assembles_approval_with_current_project(monkeypatch
     assert _requires_approval(approval, "execute") is True
 
 
-def test_always_trust_mode_still_requires_git_push_approval():
+def test_git_push_uses_domain_approval_instead_of_generic_tool_interrupt():
     middleware = create_tool_approval_middleware("always_trust")
 
-    assert set(middleware.interrupt_on) == {"git_prepare_worktree", "git_push_branch"}
-    assert _requires_approval(middleware, "git_push_branch") is True
+    assert set(middleware.interrupt_on) == {"git_prepare_worktree"}
+    assert "git_push_branch" not in middleware.interrupt_on
 
 
 def test_unknown_tool_approval_mode_is_rejected():

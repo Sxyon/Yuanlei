@@ -135,6 +135,11 @@ class GitResourceExecutor(GitExecutor):
             "head_sha": head,
             "tree_sha": tree,
             "dirty": tree != base_tree,
+            "committed_diff": self._run(
+                self._git_args(metadata, "diff", "--no-ext-diff", "--no-textconv", remote_sha, head)
+            ).stdout
+            if remote_sha
+            else "",
             "remote_tracking_sha": remote_sha,
             "unpushed": head != remote_sha,
             "summary": self._run(self._git_args(metadata, "diff", "--stat", head, tree, "--")).stdout,

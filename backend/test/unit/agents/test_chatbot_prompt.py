@@ -45,7 +45,8 @@ def test_chatbot_prompt_injects_only_local_git_worktree_contract():
     )
 
     assert "git -C <path>" in prompt
-    assert "git_push_branch" in prompt
+    assert "git_request_action" in prompt
+    assert "git_action_status" in prompt
     assert "codex/task-abc" in prompt
     assert "private_key" not in prompt
     assert "remote_url" not in prompt

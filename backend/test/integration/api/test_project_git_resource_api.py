@@ -1,6 +1,7 @@
 """项目资源真实 HTTP、PostgreSQL 与文件提交的联合证据。"""
 
 import subprocess
+from contextlib import asynccontextmanager
 import uuid
 from types import SimpleNamespace
 
@@ -30,6 +31,19 @@ def git(*args, cwd=None):
 async def resource_api(settings_api, tmp_path, monkeypatch):
     """以真实选定分支初始化资源，仅远端连接身份使用不可解密占位。"""
     client, sessions, _, app, user, project_id = settings_api
+
+    @asynccontextmanager
+    async def committed_sessions():
+        """与生产 Task repository 相同的提交事务边界。"""
+        async with sessions() as db:
+            try:
+                yield db
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+    monkeypatch.setattr("yuxi.storage.postgres.manager.pg_manager.get_async_session_context", committed_sessions)
     monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path / "data"))
     trusted = tmp_path / "trusted"
     trusted.mkdir()
@@ -359,3 +373,693 @@ async def test_prepare_obeys_user_lock_before_workspace_row(resource_api, monkey
                 await asyncio.gather(pending, return_exceptions=True)
     async with sessions() as db:
         assert (await db.get(ProjectGitWorktree, "workspace")).status == "ready"
+
+
+async def test_task_outcomes_reads_actual_files_without_completing_or_committing(resource_api, monkeypatch):
+    """完成提示来自真实工作区与远端回读，不改变任务、分支或占用。"""
+    from unittest.mock import AsyncMock
+    from server.routers.project_work_router import project_work
+    from yuxi.services import project_task_git_outcome_service as service
+    from yuxi.storage.postgres.models_business import ProjectWorkTask, ProjectGitWorktree, ProjectGitOccupancy
+
+    client, sessions, app, user, repository_id, checkout, metadata, _ = resource_api
+    app.include_router(project_work, prefix="/api")
+    head = git("--git-dir", str(metadata), "rev-parse", "develop")
+    async with sessions() as db:
+        binding = await db.get(ProjectGitRepository, repository_id)
+        project_id = binding.project_id
+        db.add(ProjectWorkTask(id="task", project_id=project_id, number="TS-1", title="Check", created_by=user.uid))
+        db.add(
+            ProjectGitWorktree(
+                id="workspace",
+                repository_id=repository_id,
+                project_id=project_id,
+                uid=user.uid,
+                runtime_scope_id="task:task",
+                task_key="task",
+                selection_source="user",
+                task_purpose="test",
+                branch_kind="test",
+                branch_slug="test",
+                branch_name="develop",
+                base_branch="develop",
+                relative_path="repository",
+                usage_mode="in_place",
+                status="ready",
+            )
+        )
+        db.add(
+            ProjectGitOccupancy(
+                id="slot",
+                repository_id=repository_id,
+                project_id=project_id,
+                uid=user.uid,
+                scope_key="task:task",
+                status="owned",
+            )
+        )
+        await db.commit()
+    provider = AsyncMock()
+    provider.get_branch.return_value = SimpleNamespace(commit_sha=head)
+    monkeypatch.setattr(service, "get_resource_provider", AsyncMock(return_value=(provider, None)))
+    (checkout / "README.md").write_text("task result, uncommitted\n")
+    response = await client.get(f"/api/projects/{project_id}/work/tasks/task/git-outcomes")
+    assert response.status_code == 200, response.text
+    row = response.json()["resources"][0]
+    assert row["dirty"] is True and row["unpushed"] is False
+    assert set(row["issues"]) == {"uncommitted", "unreleased"}
+    assert response.json()["requires_attention"] is True
+    assert git("--git-dir", str(metadata), "rev-parse", "develop") == head
+    assert (checkout / "README.md").read_text() == "task result, uncommitted\n"
+    async with sessions() as db:
+        assert (await db.get(ProjectWorkTask, "task")).status == "todo"
+        assert (await db.get(ProjectGitOccupancy, "slot")).status == "owned"
+    app.dependency_overrides[get_required_user] = lambda: User(
+        uid="outsider", username="outsider", password_hash="test"
+    )
+    rejected = await client.get(f"/api/projects/{project_id}/work/tasks/task/git-outcomes")
+    assert rejected.status_code == 404
+    assert provider.get_branch.await_count == 1
+
+
+async def test_task_outcomes_does_not_count_merge_to_unmanaged_branch(resource_api, monkeypatch):
+    """真实工作树成果合并到无关目标分支，仍应提示未确认合并。"""
+    from unittest.mock import AsyncMock
+    from server.routers.project_work_router import project_work
+    from yuxi.git.executor import GitExecutor
+    from yuxi.services import project_task_git_outcome_service as service
+    from yuxi.storage.postgres.models_business import ProjectWorkTask, ProjectGitWorktree
+    from yuxi.workspace.git_paths import resolve_project_git_host_paths
+
+    client, sessions, app, user, repository_id, _, metadata, _ = resource_api
+    app.include_router(project_work, prefix="/api")
+    async with sessions() as db:
+        binding = await db.get(ProjectGitRepository, repository_id)
+        binding.remote_repository_id = "7"
+        project_id = binding.project_id
+        db.add(ProjectWorkTask(id="task", project_id=project_id, number="TS-1", title="Check", created_by=user.uid))
+        db.add(
+            ProjectGitWorktree(
+                id="workspace",
+                repository_id=repository_id,
+                project_id=project_id,
+                uid=user.uid,
+                runtime_scope_id="task:task",
+                task_key="task",
+                selection_source="user",
+                task_purpose="test",
+                branch_kind="test",
+                branch_slug="test",
+                branch_name="agent/test",
+                base_branch="develop",
+                relative_path="repos/repo/worktrees/task",
+                usage_mode="worktree",
+                status="ready",
+            )
+        )
+        await db.commit()
+    bare, path = resolve_project_git_host_paths(user.uid, f"projects/{project_id}", "repo", "task", create_parents=True)
+    executor = GitExecutor()
+    await executor.import_bundle(bundle_path=metadata.parent.parent.parent / "remote.bundle", bare_path=bare)
+    await executor.ensure_worktree(bare_path=bare, worktree_path=path, branch="agent/test", base_branch="develop")
+    head = git("rev-parse", "HEAD", cwd=path)
+    provider = AsyncMock()
+    provider.get_branch.return_value = SimpleNamespace(commit_sha=head)
+    pull = {
+        "merged": True,
+        "head_sha": head,
+        "head_branch": "agent/test",
+        "base_branch": "unrelated",
+        "head_repository_id": "7",
+        "base_repository_id": "7",
+    }
+    provider.list_pull_requests.return_value = [pull]
+    monkeypatch.setattr(service, "get_resource_provider", AsyncMock(return_value=(provider, None)))
+    endpoint = f"/api/projects/{project_id}/work/tasks/task/git-outcomes"
+    response = await client.get(endpoint)
+    assert response.status_code == 200, response.text
+    result = response.json()["resources"][0]
+    assert result["merged"] is False
+    assert "unmerged" in result["issues"]
+    provider.list_pull_requests.return_value = [{**pull, "base_branch": "develop"}]
+    result = (await client.get(endpoint)).json()["resources"][0]
+    assert result["merged"] is True
+    assert "unmerged" not in result["issues"]
+    assert git("rev-parse", "HEAD", cwd=path) == head
+
+
+async def test_task_worktree_human_artifacts_use_real_refs_and_reject_stale_or_foreign_user(resource_api, monkeypatch):
+    """真实 HTTP 和 PostgreSQL 操作任务分支，提交推送回读对象与远端引用。"""
+    from yuxi.git.executor import GitExecutor
+    from yuxi.storage.postgres.models_business import ProjectGitWorktree
+    from yuxi.workspace.git_paths import resolve_project_git_host_paths, derive_allocation_branch
+
+    client, sessions, app, user, repository_id, _, metadata, _ = resource_api
+    branch = derive_allocation_branch("test", "artifacts", user.uid, "task:artifacts")
+    async with sessions() as db:
+        binding = await db.get(ProjectGitRepository, repository_id)
+        project_id = binding.project_id
+        remote = metadata.parents[2] / "task-remote.git"
+        git("init", "--bare", str(remote))
+        binding.canonical_ssh_url = str(remote)
+        db.add(
+            ProjectGitWorktree(
+                id="artifacts",
+                repository_id=repository_id,
+                project_id=project_id,
+                uid=user.uid,
+                runtime_scope_id="task:artifacts",
+                task_key="artifacts",
+                selection_source="user",
+                task_purpose="test",
+                branch_kind="test",
+                branch_slug="artifacts",
+                branch_name=branch,
+                base_branch="develop",
+                relative_path="repos/repo/worktrees/artifacts",
+                usage_mode="worktree",
+                status="ready",
+            )
+        )
+        await db.commit()
+    bare, checkout = resolve_project_git_host_paths(
+        user.uid, f"projects/{project_id}", "repo", "artifacts", create_parents=True
+    )
+    executor = GitExecutor()
+    await executor.import_bundle(bundle_path=metadata.parents[2] / "remote.bundle", bare_path=bare)
+    await executor.ensure_worktree(
+        bare_path=bare, worktree_path=checkout, branch=branch, base_branch="develop", worktree_name="artifacts"
+    )
+    monkeypatch.setattr(
+        "yuxi.services.project_git_worktree_artifact_service.GitCredentialOwner",
+        lambda: SimpleNamespace(decrypt=lambda _: "test-only"),
+    )
+    endpoint = f"/api/projects/{project_id}/git-worktrees/artifacts"
+    (checkout / "README.md").write_text("approved task\n")
+    response = await client.get(endpoint + "/review")
+    assert response.status_code == 200, response.text
+    state = response.json()
+    payload = {"expected_head": state["head_sha"], "expected_tree": state["tree_sha"]}
+    (checkout / "README.md").write_text("later change\n")
+    assert (await client.post(endpoint + "/commit", json={**payload, "message": "reject stale"})).status_code == 409
+    (checkout / "README.md").write_text("approved task\n")
+    committed = await client.post(endpoint + "/commit", json={**payload, "message": "human approval"})
+    assert committed.status_code == 200, committed.text
+    state = committed.json()
+    assert git("--git-dir", str(bare), "show", f"{branch}:README.md") == "approved task"
+    payload = {"expected_head": state["head_sha"], "expected_tree": state["tree_sha"]}
+    pushed = await client.post(endpoint + "/push", json=payload)
+    assert pushed.status_code == 200, pushed.text
+    assert git("--git-dir", str(remote), "rev-parse", branch) == state["head_sha"]
+    async with sessions() as db:
+        row = await db.get(ProjectGitWorktree, "artifacts")
+        assert row.last_pushed_sha == state["head_sha"]
+    (checkout / "README.md").write_text("discard me\n")
+    state = (await client.get(endpoint + "/review")).json()
+    response = await client.post(
+        endpoint + "/discard", json={"expected_head": state["head_sha"], "expected_tree": state["tree_sha"]}
+    )
+    assert response.status_code == 200, response.text
+    assert (checkout / "README.md").read_text() == "approved task\n"
+    payload = {"expected_head": state["head_sha"], "expected_tree": state["tree_sha"]}
+    app.dependency_overrides[get_required_user] = lambda: User(uid="outsider", username="outsider", role="user")
+    assert (await client.get(endpoint + "/review")).status_code == 404
+    for action in ("commit", "push", "discard"):
+        body = {**payload, **({"message": "deny"} if action == "commit" else {})}
+        assert (await client.post(endpoint + "/" + action, json=body)).status_code == 404
+    assert git("--git-dir", str(bare), "rev-parse", branch) == state["head_sha"]
+    app.dependency_overrides[get_required_user] = lambda: user
+    from yuxi.storage.postgres.models_business import AgentRun, ProjectGitOccupancy
+
+    async with sessions() as db:
+        db.add_all(
+            [
+                AgentRun(
+                    id="artifact-root",
+                    uid=user.uid,
+                    conversation_thread_id="root",
+                    runtime_scope_id="task:artifacts",
+                    agent_slug="test",
+                    status="completed",
+                    request_id="artifact-root",
+                ),
+                AgentRun(
+                    id="artifact-child",
+                    uid=user.uid,
+                    conversation_thread_id="child-scope",
+                    runtime_scope_id="child-scope",
+                    run_type="resume",
+                    agent_slug="test",
+                    status="running",
+                    request_id="artifact-child",
+                    created_by_run_id="artifact-root",
+                ),
+                ProjectGitOccupancy(
+                    id="artifact-slot",
+                    uid=user.uid,
+                    project_id=project_id,
+                    repository_id=repository_id,
+                    scope_key="task:artifacts",
+                    status="owned",
+                    active_run_id="artifact-root",
+                ),
+            ]
+        )
+        await db.commit()
+    state = (await client.get(endpoint + "/review")).json()
+    payload = {"expected_head": state["head_sha"], "expected_tree": state["tree_sha"]}
+    for action in ("commit", "push", "discard"):
+        response = await client.post(
+            endpoint + "/" + action, json={**payload, **({"message": "deny"} if action == "commit" else {})}
+        )
+        assert response.status_code == 409
+        assert "运行" in response.json()["detail"]
+    assert (await client.delete(endpoint)).status_code == 409
+    from unittest.mock import AsyncMock
+    from server.routers import project_router
+    from yuxi.services import project_git_service
+
+    async with sessions() as db:
+        (await db.get(AgentRun, "artifact-child")).status = "completed"
+        (await db.get(ProjectGitRepository, repository_id)).status = "disabled"
+        await db.commit()
+    monkeypatch.setattr("yuxi.services.project_git_execution_service.revoke_git_owner_runtime", AsyncMock())
+    enqueue = AsyncMock()
+    monkeypatch.setattr(project_router, "enqueue_project_git_worktree_cleanup", enqueue)
+    response = await client.delete(endpoint)
+    assert response.status_code == 202, response.text
+    async with sessions() as db:
+        row = await db.get(ProjectGitWorktree, "artifacts")
+        assert row.status == "cleanup_pending"
+    enqueue.assert_awaited_once_with("artifacts")
+    monkeypatch.setattr(project_git_service.pg_manager, "get_async_session_context", sessions)
+    await project_git_service._cleanup_project_worktree("artifacts")
+    assert not checkout.exists()
+    assert not (bare / "worktrees" / "artifacts").exists()
+    assert git("--git-dir", str(bare), "rev-parse", branch) == state["head_sha"]
+    async with sessions() as db:
+        assert (await db.get(ProjectGitWorktree, "artifacts")).status == "removed"
+
+
+@pytest.mark.parametrize("protected", [True, False])
+@pytest.mark.parametrize("usage_mode", ["in_place", "worktree"])
+async def test_git_approval_records_and_executes_exact_snapshot(resource_api, monkeypatch, protected, usage_mode):
+    """真实 PG、HTTP、Task attempt 与 Git 引用证明人工保护和自动批准都可追溯。"""
+    from datetime import timedelta
+    from unittest.mock import AsyncMock
+    from sqlalchemy import select
+    from yuxi.services import project_git_action_service as service
+    from yuxi.services import project_git_action_task_service as execution
+    from yuxi.services.task_service import process_task
+    from yuxi.storage.postgres.models_business import (
+        AgentRun,
+        Conversation,
+        ProjectGitAction,
+        ProjectGitOccupancy,
+        ProjectGitWorktree,
+        TaskRecord,
+    )
+    from yuxi.utils.datetime_utils import utc_now_naive
+
+    client, sessions, app, user, repository_id, checkout, metadata, path = resource_api
+    branch = "develop"
+    if usage_mode == "worktree":
+        from yuxi.git.executor import GitExecutor
+        from yuxi.workspace.git_paths import resolve_project_git_host_paths, derive_allocation_branch
+
+        async with sessions() as db:
+            project_id = (await db.get(ProjectGitRepository, repository_id)).project_id
+        branch = derive_allocation_branch("test", "approval", user.uid, "approval-thread")
+        bare, checkout = resolve_project_git_host_paths(
+            user.uid, f"projects/{project_id}", "repo", "approval", create_parents=True
+        )
+        executor = GitExecutor()
+        await executor.import_bundle(bundle_path=metadata.parents[2] / "remote.bundle", bare_path=bare)
+        await executor.ensure_worktree(
+            bare_path=bare, worktree_path=checkout, branch=branch, base_branch="develop", worktree_name="approval"
+        )
+        metadata = bare
+        path = f"/api/projects/{project_id}/git-worktrees/approval-workspace"
+    provider = AsyncMock()
+    provider.is_branch_protected.return_value = protected
+    monkeypatch.setattr(service, "get_resource_provider", AsyncMock(return_value=(provider, None)))
+    monkeypatch.setattr(execution, "get_resource_provider", AsyncMock(return_value=(provider, None)))
+    # 只隔离 ARQ 投递；下面实际取得 Durable Task lease 并执行注册 Handler。
+    monkeypatch.setattr(service.tasker, "publish", AsyncMock())
+    async with sessions() as db:
+        binding = await db.get(ProjectGitRepository, repository_id)
+        binding.approval_mode = "automatic"
+        project_id = binding.project_id
+        conversation = Conversation(thread_id="approval-thread", uid=user.uid, agent_id="test", project_id=project_id)
+        db.add(conversation)
+        await db.flush()
+        db.add(
+            AgentRun(
+                id="approval-run",
+                uid=user.uid,
+                conversation_id=conversation.id,
+                conversation_thread_id="approval-thread",
+                runtime_scope_id="approval-thread",
+                agent_slug="test",
+                status="running",
+                request_id="approval-request",
+                worker_id="test-owner",
+                lease_expires_at=utc_now_naive() + timedelta(minutes=20),
+            )
+        )
+        db.add(
+            ProjectGitWorktree(
+                id="approval-workspace",
+                repository_id=repository_id,
+                project_id=project_id,
+                uid=user.uid,
+                runtime_scope_id="approval-thread",
+                task_key="approval",
+                selection_source="user",
+                task_purpose="test",
+                branch_kind="test",
+                branch_slug="approval",
+                branch_name=branch,
+                base_branch="develop",
+                base_sha=git("--git-dir", str(metadata), "rev-parse", branch),
+                relative_path="repository" if usage_mode == "in_place" else "repos/repo/worktrees/approval",
+                usage_mode=usage_mode,
+                status="ready",
+            )
+        )
+        db.add(
+            ProjectGitOccupancy(
+                id="approval-slot",
+                repository_id=repository_id,
+                project_id=project_id,
+                uid=user.uid,
+                scope_key="approval-thread",
+                status="owned",
+                active_run_id="approval-run",
+            )
+        )
+        await db.commit()
+    (checkout / "README.md").write_text("approved content\n")
+    snapshot = (await client.get(path + "/review")).json()
+    async with sessions() as db:
+        row = await service.request_git_action_for_run(
+            db=db,
+            uid=user.uid,
+            run_id="approval-run",
+            repository_alias="repo",
+            request_id="action-request",
+            action="commit",
+            expected_head=snapshot["head_sha"],
+            expected_tree=snapshot["tree_sha"],
+            message="审查提交",
+        )
+    assert row["status"] == ("pending" if protected else "approved")
+    assert row["approval_kind"] == ("required" if protected else "automatic")
+    assert git("--git-dir", str(metadata), "rev-parse", branch) == snapshot["head_sha"]
+    history_url = f"/api/projects/{project_id}/git-actions"
+    assert (await client.get(history_url)).json()[0]["diff"].find("approved content") >= 0
+    if protected:
+        async with sessions() as db:
+            assert await db.scalar(select(TaskRecord).where(TaskRecord.type == "project_git_action")) is None
+        response = await client.post(history_url + f"/{row['id']}/decision", json={"approve": True})
+        assert response.status_code == 200, response.text
+        row = response.json()
+        assert "Gitea" in row["approval_reason"] and row["approved_by"] == user.uid
+        assert (await client.post(history_url + f"/{row['id']}/decision", json={"approve": True})).status_code == 409
+    await process_task({"worker_id": "approval-test"}, row["task_id"])
+    async with sessions() as db:
+        record = await db.get(ProjectGitAction, row["id"])
+        task = await db.get(TaskRecord, row["task_id"])
+        assert record.status == "succeeded", record.error
+        assert task.status == "success"
+        assert record.started_at and record.finished_at
+        assert record.result["committed_sha"] == git("--git-dir", str(metadata), "rev-parse", branch)
+        assert record.expected_head == snapshot["head_sha"]
+        assert record.diff.find("approved content") >= 0
+    async with sessions() as db:
+        replay = await service.request_git_action_for_run(
+            db=db,
+            uid=user.uid,
+            run_id="approval-run",
+            repository_alias="repo",
+            request_id="action-request",
+            action="commit",
+            expected_head=snapshot["head_sha"],
+            expected_tree=snapshot["tree_sha"],
+            message="审查提交",
+        )
+        assert replay["id"] == row["id"] and replay["status"] == "succeeded"
+    remote = metadata.parent / "approval-remote.git"
+    git("init", "--bare", str(remote))
+    async with sessions() as db:
+        (await db.get(ProjectGitRepository, repository_id)).canonical_ssh_url = str(remote)
+        await db.commit()
+    for module in (
+        execution,
+        __import__("yuxi.services.project_git_resource_service", fromlist=["GitCredentialOwner"]),
+    ):
+        monkeypatch.setattr(module, "GitCredentialOwner", lambda: SimpleNamespace(decrypt=lambda _: "test-only"))
+    clean = (await client.get(path + "/review")).json()
+    async with sessions() as db:
+        push = await service.request_git_action_for_run(
+            db=db,
+            uid=user.uid,
+            run_id="approval-run",
+            repository_alias="repo",
+            request_id="push-action",
+            action="push",
+            expected_head=clean["head_sha"],
+            expected_tree=clean["tree_sha"],
+        )
+    assert "approved content" in push["diff"]
+    if protected:
+        push = (await client.post(history_url + f"/{push['id']}/decision", json={"approve": True})).json()
+    await process_task({"worker_id": "approval-test"}, push["task_id"])
+    async with sessions() as db:
+        pushed = await db.get(ProjectGitAction, push["id"])
+        assert pushed.status == "succeeded", pushed.error
+        assert pushed.result["pushed_sha"] == git("--git-dir", str(remote), "rev-parse", branch)
+    # 批准后内容改变不能被旧批准提交，失败也必须保留原快照与终态。
+    committed_head = git("--git-dir", str(metadata), "rev-parse", branch)
+    (checkout / "README.md").write_text("frozen second version\n")
+    state = (await client.get(path + "/review")).json()
+    assert state["committed_diff"] == ""
+    async with sessions() as db:
+        second = await service.request_git_action_for_run(
+            db=db,
+            uid=user.uid,
+            run_id="approval-run",
+            repository_alias="repo",
+            request_id="second-action",
+            action="commit",
+            expected_head=state["head_sha"],
+            expected_tree=state["tree_sha"],
+            message="冻结第二次",
+        )
+    if protected:
+        second = (await client.post(history_url + f"/{second['id']}/decision", json={"approve": True})).json()
+    (checkout / "README.md").write_text("changed after approval\n")
+    await process_task({"worker_id": "approval-test"}, second["task_id"])
+    async with sessions() as db:
+        failed = await db.get(ProjectGitAction, second["id"])
+        assert failed.status == "failed" and failed.finished_at and failed.error
+        assert "frozen second version" in failed.diff
+        assert (await db.get(TaskRecord, second["task_id"])).status == "failed"
+        # 持久 FIFO 次序由请求时间和 id 决定，显示顺序不能只按 UI 插入顺序。
+        now = utc_now_naive()
+        for index in (2, 1):
+            db.add(
+                ProjectGitWorktree(
+                    id=f"queue-workspace-{index}",
+                    repository_id=repository_id,
+                    project_id=project_id,
+                    uid=user.uid,
+                    runtime_scope_id=f"queued-thread-{index}",
+                    task_key=f"queued-{index}",
+                    selection_source="user",
+                    task_purpose="test",
+                    branch_kind="test",
+                    branch_slug=f"queued-{index}",
+                    branch_name="develop",
+                    base_branch="develop",
+                    relative_path="repository",
+                    usage_mode="in_place",
+                    status="ready",
+                )
+            )
+            db.add(
+                ProjectGitOccupancy(
+                    id=f"queued-{index}",
+                    repository_id=repository_id,
+                    project_id=project_id,
+                    uid=user.uid,
+                    scope_key=f"queued-thread-{index}",
+                    status="queued",
+                    requested_at=now + timedelta(seconds=index),
+                )
+            )
+        await db.commit()
+    assert git("--git-dir", str(metadata), "rev-parse", branch) == committed_head
+    occupancy_response = await client.get(f"/api/projects/{project_id}/git-occupancies")
+    assert occupancy_response.status_code == 200, occupancy_response.text
+    slots = {value["id"]: value for value in occupancy_response.json()}
+    assert slots["approval-slot"]["active_execution"] is True
+    assert slots["approval-slot"]["branch"] == branch
+    assert slots["queued-1"]["queue_position"] == 1 and slots["queued-2"]["queue_position"] == 2
+    if usage_mode == "worktree":
+        from yuxi.services import project_git_pull_request_service as pulls
+
+        monkeypatch.setattr(pulls, "get_resource_provider", AsyncMock(return_value=(provider, None)))
+        provider.get_branch.return_value = SimpleNamespace(commit_sha="a" * 40)
+        provider.get_pull_request.return_value = {
+            "number": 7,
+            "head_branch": branch,
+            "base_branch": "develop",
+            "head_sha": committed_head,
+            "head_repository_id": "7",
+            "base_repository_id": "7",
+            "merged": False,
+            "state": "open",
+            "mergeable": True,
+        }
+        provider.get_pull_request_diff.return_value = "frozen merge content"
+        async with sessions() as db:
+            (await db.get(ProjectGitRepository, repository_id)).remote_repository_id = "7"
+            await db.commit()
+            merge = await service.request_git_action_for_run(
+                db=db,
+                uid=user.uid,
+                run_id="approval-run",
+                repository_alias="repo",
+                request_id="merge-action",
+                action="merge",
+                expected_head=committed_head,
+                expected_base="a" * 40,
+                pull_number=7,
+            )
+        if protected:
+            merge = (await client.post(history_url + f"/{merge['id']}/decision", json={"approve": True})).json()
+        provider.get_pull_request.return_value = {
+            **provider.get_pull_request.return_value,
+            "head_sha": "b" * 40,
+            "merged": True,
+            "state": "closed",
+        }
+        await process_task({"worker_id": "approval-test"}, merge["task_id"])
+        async with sessions() as db:
+            rejected_merge = await db.get(ProjectGitAction, merge["id"])
+            assert rejected_merge.status == "failed" and rejected_merge.expected_head == committed_head
+        provider.merge_pull_request.assert_not_awaited()
+    # 无当前执行身份的根运行和子智能体不得产生批准意图。
+    for field, invalid, restored in (
+        ("worker_id", None, "test-owner"),
+        ("lease_expires_at", utc_now_naive() - timedelta(seconds=1), utc_now_naive() + timedelta(minutes=20)),
+    ):
+        async with sessions() as db:
+            run = await db.get(AgentRun, "approval-run")
+            setattr(run, field, invalid)
+            await db.commit()
+            with pytest.raises(PermissionError, match="根运行"):
+                await service.request_git_action_for_run(
+                    db=db,
+                    uid=user.uid,
+                    run_id="approval-run",
+                    repository_alias="repo",
+                    request_id=f"denied-{field}",
+                    action="commit",
+                    expected_head=state["head_sha"],
+                    expected_tree=state["tree_sha"],
+                    message="不得产生申请",
+                )
+            await db.rollback()
+            assert (
+                await db.scalar(select(ProjectGitAction).where(ProjectGitAction.request_id == f"denied-{field}"))
+                is None
+            )
+            run = await db.get(AgentRun, "approval-run")
+            setattr(run, field, restored)
+            await db.commit()
+    if not protected:
+        current = (await client.get(path + "/review")).json()
+        async with sessions() as db:
+            expired_action = await service.request_git_action_for_run(
+                db=db,
+                uid=user.uid,
+                run_id="approval-run",
+                repository_alias="repo",
+                request_id="expired-during-policy",
+                action="commit",
+                expected_head=current["head_sha"],
+                expected_tree=current["tree_sha"],
+                message="执行前失去 lease",
+            )
+
+        async def expire_during_policy(*args):
+            """远端策略读取期间失去 Root lease，Git 副作用前必须重新回读。"""
+            async with sessions() as db:
+                (await db.get(AgentRun, "approval-run")).lease_expires_at = utc_now_naive() - timedelta(seconds=1)
+                await db.commit()
+            return False
+
+        provider.is_branch_protected.side_effect = expire_during_policy
+        await process_task({"worker_id": "approval-test"}, expired_action["task_id"])
+        async with sessions() as db:
+            assert (await db.get(ProjectGitAction, expired_action["id"])).status == "failed"
+            (await db.get(AgentRun, "approval-run")).lease_expires_at = utc_now_naive() + timedelta(minutes=20)
+            await db.commit()
+        assert git("--git-dir", str(metadata), "rev-parse", branch) == committed_head
+        provider.is_branch_protected.side_effect = None
+    from yuxi.storage.postgres.models_business import SubagentThread
+
+    async with sessions() as db:
+        parent = await db.get(AgentRun, "approval-run")
+        child_conversation = Conversation(
+            thread_id="approval-child-thread", uid=user.uid, agent_id="test", project_id=project_id
+        )
+        db.add(child_conversation)
+        await db.flush()
+        relation = SubagentThread(
+            uid=user.uid,
+            parent_conversation_id=parent.conversation_id,
+            child_conversation_id=child_conversation.id,
+            child_thread_id="approval-child-thread",
+            subagent_slug="test",
+            created_by_run_id=parent.id,
+        )
+        db.add(relation)
+        await db.flush()
+        db.add(
+            AgentRun(
+                id="approval-child",
+                uid=user.uid,
+                conversation_id=child_conversation.id,
+                conversation_thread_id="approval-child-thread",
+                runtime_scope_id="approval-child-thread",
+                agent_slug="test",
+                status="running",
+                request_id="approval-child-request",
+                worker_id="child-owner",
+                run_type="subagent",
+                created_by_run_id=parent.id,
+                subagent_thread_relation_id=relation.id,
+                lease_expires_at=utc_now_naive() + timedelta(minutes=20),
+            )
+        )
+        await db.commit()
+        with pytest.raises(PermissionError, match="根运行"):
+            await service.request_git_action_for_run(
+                db=db,
+                uid=user.uid,
+                run_id="approval-child",
+                repository_alias="repo",
+                request_id="denied-child",
+                action="commit",
+                expected_head=state["head_sha"],
+                expected_tree=state["tree_sha"],
+                message="不得产生申请",
+            )
+        await db.rollback()
+        assert await db.scalar(select(ProjectGitAction).where(ProjectGitAction.request_id == "denied-child")) is None
+    app.dependency_overrides[get_required_user] = lambda: User(uid="outsider", username="outsider")
+    assert (await client.get(history_url)).status_code == 404
+    assert (await client.post(history_url + f"/{row['id']}/decision", json={"approve": True})).status_code == 404

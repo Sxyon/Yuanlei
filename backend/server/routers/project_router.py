@@ -35,21 +35,25 @@ from yuxi.services.project_git_resource_service import (
     configure_project_git_resource,
     prepare_project_git_resource,
     review_project_git_resource,
-    commit_project_git_resource,
-    push_project_git_resource,
     discard_project_git_resource,
 )
 from yuxi.services.project_git_execution_service import list_git_occupancies, release_git_occupancy
 from yuxi.services.project_git_pull_request_service import (
     list_resource_pull_requests,
     create_resource_pull_request,
-    merge_resource_pull_request,
 )
 from yuxi.services.run_queue_service import (
     enqueue_project_git_operation,
     enqueue_project_git_worktree_cleanup,
 )
+from yuxi.services.project_git_worktree_artifact_service import operate_worktree_artifact
 from yuxi.storage.postgres.models_business import User
+
+from yuxi.services.project_git_action_service import (
+    list_project_git_actions,
+    decide_project_git_action,
+    human_git_action,
+)
 
 projects = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -142,6 +146,7 @@ class GitResourceSnapshot(BaseModel):
     """用户明确确认的 HEAD 与内容树。"""
 
     model_config = ConfigDict(extra="forbid")
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
     expected_head: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
     expected_tree: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
@@ -157,6 +162,7 @@ class GitResourceCommit(BaseModel):
     """用户确认的内容树与提交说明。"""
 
     model_config = ConfigDict(extra="forbid")
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
     expected_head: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
     expected_tree: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
     message: str = Field(min_length=1, max_length=2000)
@@ -176,6 +182,7 @@ class GitPullRequestMerge(BaseModel):
     """人工确认当前源与目标提交。"""
 
     model_config = ConfigDict(extra="forbid")
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
     expected_head: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
     expected_base: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
@@ -324,6 +331,88 @@ async def list_project_worktrees(
     return await list_project_worktrees_view(uid=str(current_user.uid), project_id=project_id, db=db)
 
 
+@projects.get("/{project_id}/git-worktrees/{worktree_id}/review")
+async def review_worktree_artifact(
+    project_id: str,
+    worktree_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """从可信临时镜像查看任务工作树差异。"""
+    try:
+        return await operate_worktree_artifact(
+            db=db, uid=str(current_user.uid), project_id=project_id, worktree_id=worktree_id
+        )
+    except (GitExecutionError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="工作树无法安全审查，请检查分配目录与 Git 元数据") from exc
+
+
+@projects.post("/{project_id}/git-worktrees/{worktree_id}/commit")
+async def commit_worktree_artifact(
+    project_id: str,
+    worktree_id: str,
+    payload: GitResourceCommit,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工确认精确快照后提交任务分支。"""
+    try:
+        return await human_git_action(
+            db=db,
+            uid=str(current_user.uid),
+            project_id=project_id,
+            worktree_id=worktree_id,
+            action="commit",
+            **payload.model_dump(),
+        )
+    except (GitExecutionError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="工作树提交失败或审查内容已变化，请重新审查") from exc
+
+
+@projects.post("/{project_id}/git-worktrees/{worktree_id}/push")
+async def push_worktree_artifact(
+    project_id: str,
+    worktree_id: str,
+    payload: GitResourceSnapshot,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工推送已审查的干净工作树，回读实际远端 HEAD。"""
+    try:
+        return await human_git_action(
+            db=db,
+            uid=str(current_user.uid),
+            project_id=project_id,
+            worktree_id=worktree_id,
+            action="push",
+            **payload.model_dump(),
+        )
+    except (GitExecutionError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="工作树推送失败或远端已有进展，请重新审查") from exc
+
+
+@projects.post("/{project_id}/git-worktrees/{worktree_id}/discard")
+async def discard_worktree_artifact(
+    project_id: str,
+    worktree_id: str,
+    payload: GitResourceSnapshot,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工确认后恢复工作树内容，保留忽略文件。"""
+    try:
+        return await operate_worktree_artifact(
+            db=db,
+            uid=str(current_user.uid),
+            project_id=project_id,
+            worktree_id=worktree_id,
+            action="discard",
+            **payload.model_dump(exclude={"request_id"}),
+        )
+    except (GitExecutionError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="工作树清理失败或审查内容已变化，请重新审查") from exc
+
+
 @projects.delete("/{project_id}/git-worktrees/{worktree_id}", status_code=status.HTTP_202_ACCEPTED)
 async def cleanup_project_worktree(
     project_id: str,
@@ -332,9 +421,12 @@ async def cleanup_project_worktree(
     db: AsyncSession = Depends(get_db),
 ):
     """显式安全清理已推送 worktree。"""
-    result, cleanup_worktree_id = await cleanup_project_worktree_view(
-        uid=str(current_user.uid), project_id=project_id, worktree_id=worktree_id, db=db
-    )
+    try:
+        result, cleanup_worktree_id = await cleanup_project_worktree_view(
+            uid=str(current_user.uid), project_id=project_id, worktree_id=worktree_id, db=db
+        )
+    except (GitExecutionError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="工作树无法安全清理，请检查目录与分支状态") from exc
     if cleanup_worktree_id:
         await enqueue_project_git_worktree_cleanup(cleanup_worktree_id)
     return result
@@ -442,8 +534,13 @@ async def commit_git_resource(
 ):
     """人工确认精确差异后提交受保护资源。"""
     try:
-        return await commit_project_git_resource(
-            uid=str(current_user.uid), project_id=project_id, repository_id=repository_id, db=db, **payload.model_dump()
+        return await human_git_action(
+            action="commit",
+            uid=str(current_user.uid),
+            project_id=project_id,
+            repository_id=repository_id,
+            db=db,
+            **payload.model_dump(),
         )
     except GitExecutionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -459,7 +556,8 @@ async def push_git_resource(
 ):
     """人工确认无未提交内容的资源 HEAD 并推送。"""
     try:
-        return await push_project_git_resource(
+        return await human_git_action(
+            action="push",
             uid=str(current_user.uid),
             project_id=project_id,
             repository_id=repository_id,
@@ -485,7 +583,7 @@ async def discard_git_resource(
             project_id=project_id,
             repository_id=repository_id,
             db=db,
-            **payload.model_dump(),
+            **payload.model_dump(exclude={"request_id"}),
         )
     except GitExecutionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -566,11 +664,47 @@ async def merge_git_pull_request(
     db: AsyncSession = Depends(get_db),
 ):
     """人工确认后由 Gitea 执行实际合并并回读结果。"""
-    return await merge_resource_pull_request(
+    return await human_git_action(
+        action="merge",
         uid=str(current_user.uid),
         project_id=project_id,
         repository_id=repository_id,
         number=number,
         db=db,
         **payload.model_dump(),
+    )
+
+
+class GitActionDecision(BaseModel):
+    """人工批准或拒绝已经冻结的申请。"""
+
+    model_config = ConfigDict(extra="forbid")
+    approve: bool
+
+
+@projects.get("/{project_id}/git-actions")
+async def get_project_git_actions(
+    project_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """分页查看 Git 批准与实际执行历史。"""
+    return await list_project_git_actions(
+        db=db, uid=str(current_user.uid), project_id=project_id, limit=limit, offset=offset
+    )
+
+
+@projects.post("/{project_id}/git-actions/{action_id}/decision")
+async def decide_git_action(
+    project_id: str,
+    action_id: str,
+    payload: GitActionDecision,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """项目所有者决定等待人工批准的 Git 快照申请。"""
+    return await decide_project_git_action(
+        db=db, uid=str(current_user.uid), project_id=project_id, action_id=action_id, approve=payload.approve
     )

@@ -4,12 +4,15 @@ from fastapi import HTTPException
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import ToolMessage
 
-# 仅这三个工具的业务失败允许收敛给模型；审批中断与其他异常保持原样传播。
+# 仅项目 Git 工具的业务失败允许收敛给模型；审批中断与其他异常保持原样传播。
 GIT_RUNTIME_TOOL_NAMES = frozenset(
     {
         "git_list_project_repositories",
         "git_prepare_worktree",
         "git_push_branch",
+        "git_review_workspace",
+        "git_request_action",
+        "git_action_status",
     }
 )
 

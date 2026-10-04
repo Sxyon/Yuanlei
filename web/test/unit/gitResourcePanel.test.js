@@ -5,11 +5,13 @@ import { createRenderer, getCurrentInstance, h, nextTick, reactive, ssrContextKe
 import { message } from 'ant-design-vue'
 import { createServer } from 'vite'
 
-let vite, ResourcePanel, PullPanel, SettingsModal, api, gitApi
+let vite, ResourcePanel, PullPanel, SettingsModal, WorktreePanel, ActivityPanel, api, gitApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+  ;({ default: ActivityPanel } = await vite.ssrLoadModule('/src/components/ProjectGitActivityPanel.vue'))
   ;({ default: ResourcePanel } = await vite.ssrLoadModule('/src/components/GitResourcePanel.vue'))
+  ;({ default: WorktreePanel } = await vite.ssrLoadModule('/src/components/GitWorktreeArtifactPanel.vue'))
   ;({ default: PullPanel } = await vite.ssrLoadModule('/src/components/GitPullRequestPanel.vue'))
   ;({ default: SettingsModal } = await vite.ssrLoadModule('/src/components/ProjectGitSettingsModal.vue'))
   ;({ gitApi } = await vite.ssrLoadModule('/src/apis/git_api.js'))
@@ -179,4 +181,73 @@ test('分支读取失败保留错误且禁止绑定，不把默认分支草稿�
   assert.equal(state().canBindRepository, false)
   await state().createRepository()
   assert.equal(bind.mock.callCount(), 0)
+})
+
+
+test('工作树人工操作固定审查快照，切任务后拒绝迟到结果', async (t) => {
+  let finish
+  const commit = t.mock.method(api, 'commitGitWorktree', async () => ({ head_sha: 'new', tree_sha: 'new-tree', dirty: false }))
+  t.mock.method(api, 'reviewGitWorktree', () => new Promise((resolve) => { finish = resolve }))
+  const props = reactive({ projectId: 'project', worktree: { id: 'task-one', status: 'ready' } })
+  const state = mount(t, WorktreePanel, props)
+  state().review = { head_sha: 'head', tree_sha: 'tree', dirty: true }
+  state().commitMessage = '人工提交'
+  await state().operate('commit')
+  assert.deepEqual(commit.mock.calls[0].arguments, ['project', 'task-one', { expected_head: 'head', expected_tree: 'tree', message: '人工提交' }])
+  assert.equal(state().review.dirty, false)
+  const pending = state().openReview()
+  props.worktree = { id: 'task-two', status: 'ready' }
+  await settle()
+  finish({ head_sha: 'stale', dirty: true })
+  await pending
+  assert.equal(state().review, null)
+  assert.equal(state().open, false)
+})
+
+test('审批展示自动规则和执行终态，人工决定只发送当前记录并回读历史', async (t) => {
+  const pending = { id: 'pending', repository_id: 'repo', status: 'pending', approval_kind: 'required', approval_reason: '受保护', diff: 'frozen diff' }
+  const automatic = { id: 'automatic', repository_id: 'repo', status: 'succeeded', approval_kind: 'automatic', approval_reason: '资源自动授权规则', result: { committed_sha: 'actual-sha' } }
+  let history = [pending, automatic]
+  t.mock.method(api, 'getGitActions', async () => history)
+  const decision = t.mock.method(api, 'decideGitAction', async () => { history = [{ ...pending, status: 'approved', approval_kind: 'human' }, automatic]; return history[0] })
+  const state = mount(t, ActivityPanel, reactive({ projectId: 'project', kind: 'history', resources: [{ id: 'repo', alias: '代码' }] }))
+  await settle()
+  assert.equal(state().rows[1].result.committed_sha, 'actual-sha')
+  assert.equal(state().repositoryName('repo'), '代码')
+  state().selected = pending
+  await state().decide(true)
+  assert.deepEqual(decision.mock.calls[0].arguments, ['project', 'pending', true])
+  assert.equal(state().selected.status, 'approved')
+  assert.equal(state().selected.diff, 'frozen diff')
+})
+
+test('占用按当前 owner 和服务端 FIFO 序列展示，运行中的占用保留活动状态', async (t) => {
+  t.mock.method(api, 'getGitOccupancies', async () => [
+    { id: 'q2', repository_id: 'repo', status: 'queued', queue_position: 2, requested_at: '2026-10-04T02:00:00Z' },
+    { id: 'owner', repository_id: 'repo', status: 'owned', active_execution: true, requested_at: '2026-10-04T00:00:00Z' },
+    { id: 'q1', repository_id: 'repo', status: 'queued', queue_position: 1, requested_at: '2026-10-04T01:00:00Z' }
+  ])
+  const state = mount(t, ActivityPanel, reactive({ projectId: 'project', kind: 'occupancies', resources: [] }))
+  await settle()
+  assert.deepEqual(state().groups[0].rows.map((row) => row.id), ['owner', 'q1', 'q2'])
+  assert.equal(state().groups[0].rows[0].active_execution, true)
+})
+
+test('旧轮询响应和旧项目响应不能覆盖新历史，失败保留可见错误', async (t) => {
+  let resolveOld
+  let call = 0
+  t.mock.method(api, 'getGitActions', () => ++call === 1 ? new Promise((resolve) => { resolveOld = resolve }) : Promise.resolve([{ id: 'fresh', status: 'succeeded' }]))
+  const props = reactive({ projectId: 'old-project', kind: 'history', resources: [] })
+  const state = mount(t, ActivityPanel, props)
+  await state().load()
+  resolveOld([{ id: 'outdated' }])
+  await settle()
+  assert.equal(state().rows[0].id, 'fresh')
+  props.projectId = 'new-project'
+  await settle()
+  assert.equal(state().selected, null)
+  t.mock.method(api, 'getGitActions', async () => { throw new Error('连接失败') })
+  await state().load()
+  assert.equal(state().error, '连接失败')
+  assert.equal(state().loading, false)
 })

@@ -66,7 +66,7 @@
             <a-form-item label="授权模式">
               <a-select v-model:value="repositoryForm.approval_mode">
                 <a-select-option value="protected">受保护</a-select-option>
-                <a-select-option value="automatic" disabled>自动授权（开发中）</a-select-option>
+                <a-select-option value="automatic">自动授权（保留批准记录）</a-select-option>
               </a-select>
             </a-form-item>
             <a-form-item label="检出分支（同时作为任务基线）">
@@ -288,17 +288,20 @@
               </div>
               <div class="item-actions">
                 <a-tag :color="statusColor(item.status)">{{ item.status }}</a-tag>
-                <a-button
-                  size="small"
-                  :disabled="!['ready', 'cleanup_failed'].includes(item.status)"
-                  @click="cleanupWorktree(item)"
-                >
-                  安全清理
-                </a-button>
+                <a-popconfirm v-if="item.usage_mode === 'worktree'" title="确认回收工作树目录（含忽略文件）？远端分支保留；未提交或未推送时将拒绝清理。" @confirm="cleanupWorktree(item)">
+                  <a-button size="small" :disabled="!['ready', 'cleanup_failed'].includes(item.status)">安全清理</a-button>
+                </a-popconfirm>
               </div>
+              <GitWorktreeArtifactPanel v-if="item.usage_mode === 'worktree' && item.status === 'ready'" :project-id="project.id" :worktree="item" @updated="load({ quiet: true })" />
             </article>
           </div>
         </a-spin>
+      </a-tab-pane>
+      <a-tab-pane key="occupancies" tab="占用与排队">
+        <ProjectGitActivityPanel v-if="activeTab === 'occupancies'" :project-id="project.id" kind="occupancies" :resources="repositories" />
+      </a-tab-pane>
+      <a-tab-pane key="history" tab="审批与历史">
+        <ProjectGitActivityPanel v-if="activeTab === 'history'" :project-id="project.id" kind="history" :resources="repositories" />
       </a-tab-pane>
     </a-tabs>
   </component>
@@ -310,6 +313,8 @@ import { message } from 'ant-design-vue'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { gitApi } from '@/apis/git_api'
 import { projectApi } from '@/apis/project_api'
+import ProjectGitActivityPanel from '@/components/ProjectGitActivityPanel.vue'
+import GitWorktreeArtifactPanel from '@/components/GitWorktreeArtifactPanel.vue'
 import GitResourcePanel from '@/components/GitResourcePanel.vue'
 
 const props = defineProps({ embedded: Boolean, open: Boolean, project: { type: Object, default: null } })

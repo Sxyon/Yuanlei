@@ -86,6 +86,8 @@ async def merge_resource_pull_request(*, uid, project_id, repository_id, number,
     )
     value = await provider.get_pull_request(binding.repository_owner, binding.repository_name, number)
     verify_resource_pull_request(binding, allocations, value)
+    if value["head_sha"] != expected_head:
+        raise HTTPException(status_code=409, detail="合并请求的源 HEAD 已变化，请刷新并重新确认")
     if value["merged"]:
         return value
     target = await provider.get_branch(binding.repository_owner, binding.repository_name, value["base_branch"])

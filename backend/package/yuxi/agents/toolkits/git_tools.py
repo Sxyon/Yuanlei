@@ -4,6 +4,8 @@ import asyncio
 
 from langchain_core.tools import tool
 from langgraph.prebuilt.tool_node import ToolRuntime
+from typing import Literal
+from yuxi.storage.postgres.manager import pg_manager
 
 from yuxi.services.project_git_service import (
     ProjectGitBusyError,
@@ -65,11 +67,68 @@ async def git_prepare_worktree(
 
 @tool
 async def git_push_branch(repository_alias: str, expected_head_sha: str, runtime: ToolRuntime) -> dict:
-    """经人工批准后，把当前根任务的精确 clean HEAD 推送到其专属远端分支。"""
+    """申请推送精确 clean HEAD；受保护目标等待人工批准，自动批准与结果可追溯。"""
     run_id, uid = _authorized_identity(runtime)
     return await push_project_git_branch(
         run_id=run_id,
         uid=uid,
         repository_alias=repository_alias,
         expected_head_sha=expected_head_sha,
+        request_id=runtime.tool_call_id,
     )
+
+
+@tool
+async def git_review_workspace(repository_alias: str, runtime: ToolRuntime) -> dict:
+    """读取当前任务资源的可信 HEAD/tree、已提交差异与未提交差异，供申请批准。"""
+    from yuxi.services.project_git_action_service import review_git_workspace_for_run
+
+    run_id, uid = _authorized_identity(runtime)
+    async with pg_manager.get_async_session_context() as db:
+        return await review_git_workspace_for_run(db=db, uid=uid, run_id=run_id, repository_alias=repository_alias)
+
+
+@tool
+async def git_request_action(
+    repository_alias: str,
+    action: Literal["commit", "push", "merge"],
+    expected_head: str,
+    runtime: ToolRuntime,
+    expected_tree: str | None = None,
+    message: str = "",
+    pull_number: int | None = None,
+    expected_base: str | None = None,
+) -> dict:
+    """申请固定快照的提交、推送或合并；自动授权先记录规则，受保护目标等待项目所有者决定。
+
+    commit/push 使用 git_review_workspace 的 HEAD/tree，commit 填写 message。
+    merge 填写已有 Gitea 合并请求编号及源/目标 HEAD；只允许自身任务分支合入资源目标或持久父任务分支。
+    返回批准及执行状态，pending/approved/running 都不代表 Git 操作已完成。
+    """
+    from yuxi.services.project_git_action_service import request_git_action_for_run
+
+    run_id, uid = _authorized_identity(runtime)
+    async with pg_manager.get_async_session_context() as db:
+        return await request_git_action_for_run(
+            db=db,
+            uid=uid,
+            run_id=run_id,
+            repository_alias=repository_alias,
+            request_id=runtime.tool_call_id,
+            action=action,
+            expected_head=expected_head,
+            expected_tree=expected_tree,
+            message=message,
+            pull_number=pull_number,
+            expected_base=expected_base,
+        )
+
+
+@tool
+async def git_action_status(action_id: str, runtime: ToolRuntime) -> dict:
+    """回读当前任务的批准与执行结果；失败后先审查实际成果，不自动重试原申请。"""
+    from yuxi.services.project_git_action_service import get_git_action_for_run
+
+    run_id, uid = _authorized_identity(runtime)
+    async with pg_manager.get_async_session_context() as db:
+        return await get_git_action_for_run(db=db, uid=uid, run_id=run_id, action_id=action_id)

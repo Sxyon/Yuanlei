@@ -481,29 +481,68 @@ async def list_project_worktrees_view(*, uid: str, project_id: str, db) -> list[
     return [item.to_dict() for item in await ProjectGitRepositoryStore(db).list_project_worktrees(project_id, uid)]
 
 
-async def cleanup_project_worktree_view(*, uid: str, project_id: str, worktree_id: str, db) -> tuple[dict, str | None]:
-    """验证安全条件并持久化异步 worktree 清理意图。"""
+async def _worktree_cleanup_context(*, uid, project_id, worktree_id, db):
+    """按用户、仓库、工作树顺序锁定，并撤销终态执行树的文件访问。"""
+    from yuxi.services.project_git_execution_service import revoke_git_owner_runtime
+
     store = ProjectGitRepositoryStore(db)
+    worktree = await store.get_project_worktree(worktree_id, project_id, uid)
+    if worktree is None:
+        raise HTTPException(status_code=404, detail="worktree 不存在")
+    await store.acquire_user_runtime_lock(uid)
+    project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, uid)
+    binding = await store.get_binding(worktree.repository_id, uid, lock=True)
+    if project is None or binding is None or binding.project_id != project_id:
+        raise HTTPException(status_code=404, detail="worktree 归属不存在")
+    await store.acquire_maintenance_lock(binding.id)
     worktree = await store.get_project_worktree(worktree_id, project_id, uid, lock=True)
     if worktree is None:
         raise HTTPException(status_code=404, detail="worktree 不存在")
-    if worktree.status == "removed":
-        return worktree.to_dict(), None
-    if worktree.usage_mode == "in_place":
-        raise HTTPException(status_code=409, detail="直接修改模式没有隔离目录，请在资源使用情况中释放占用")
+    if worktree.usage_mode != "worktree" or not is_allocated_task_branch(worktree, uid):
+        raise HTTPException(status_code=409, detail="此分配不是有效的隔离工作树")
+    slots = [slot for slot in await store.project_occupancies(project_id, uid) if slot.repository_id == binding.id]
     if await store.has_nonterminal_run(project_id, worktree.runtime_scope_id, uid):
         raise HTTPException(status_code=409, detail="任务仍有运行中的 AgentRun")
-    binding = await store.get_binding(worktree.repository_id, uid)
-    project = await ProjectRepository(db).get_for_user(project_id, uid)
-    if binding is None or project is None:
-        raise HTTPException(status_code=404, detail="worktree 归属不存在")
-    _bare_path, path = resolve_project_git_host_paths(
-        uid, project.workdir_path, binding.directory_name, worktree.task_key
+    for slot in slots:
+        if await store.active_root_run(slot.active_run_id, uid):
+            raise HTTPException(status_code=409, detail="同仓库仍有根运行或子智能体执行")
+    for slot in slots:
+        if slot.status == "owned":
+            await revoke_git_owner_runtime(db=db, uid=uid, project_id=project_id, run_id=slot.active_run_id)
+    return project, binding, worktree
+
+
+async def _inspect_or_cleanup_worktree(*, project, binding, worktree, cleanup=False):
+    """只用可信临时索引检查或删除目录，保留任务分支引用。"""
+    from yuxi.git.worktree_executor import GitWorktreeExecutor
+    from yuxi.workspace.git_resource_paths import resource_metadata_path
+
+    bare, path = resolve_project_git_host_paths(
+        worktree.uid, project.workdir_path, binding.directory_name, worktree.task_key
     )
-    if path.exists():
-        state = await GitExecutor().inspect_worktree(path)
-        if not state.clean or not worktree.last_pushed_sha or state.head_sha != worktree.last_pushed_sha:
-            raise HTTPException(status_code=409, detail="worktree 存在未提交或未推送进展")
+    if not path.exists():
+        return
+    state = await GitWorktreeExecutor().operate(
+        bare=bare,
+        checkout=path,
+        branch=worktree.branch_name,
+        task_key=worktree.task_key,
+        private_root=resource_metadata_path(binding.id).parent,
+        action="cleanup" if cleanup else "review",
+        expected_head=worktree.last_pushed_sha,
+    )
+    if state["dirty"] or not worktree.last_pushed_sha or state["head_sha"] != worktree.last_pushed_sha:
+        raise HTTPException(status_code=409, detail="worktree 存在未提交或未推送进展")
+
+
+async def cleanup_project_worktree_view(*, uid: str, project_id: str, worktree_id: str, db) -> tuple[dict, str | None]:
+    """验证安全条件并持久化异步 worktree 清理意图。"""
+    project, binding, worktree = await _worktree_cleanup_context(
+        uid=uid, project_id=project_id, worktree_id=worktree_id, db=db
+    )
+    if worktree.status == "removed":
+        return worktree.to_dict(), None
+    await _inspect_or_cleanup_worktree(project=project, binding=binding, worktree=worktree)
     worktree.status = "cleanup_pending"
     worktree.last_error_code = worktree.last_error_message = None
     await db.commit()
@@ -710,107 +749,24 @@ async def prepare_project_git_worktree_for_run(
     return result
 
 
-async def push_project_git_branch(*, run_id: str, uid: str, repository_alias: str, expected_head_sha: str) -> dict:
-    """从 ToolRuntime 重建授权并推送精确任务分支。"""
-    expected_sha = require_commit_sha(expected_head_sha)
-    from sqlalchemy import select
-    from yuxi.storage.postgres.models_business import AgentRun, Conversation, OperationLog, Project, User
+async def push_project_git_branch(
+    *, run_id: str, uid: str, repository_alias: str, expected_head_sha: str, request_id: str | None = None
+) -> dict:
+    """旧推送工具也通过持久批准入口，不能绕过严格保护与审计。"""
+    from yuxi.services.project_git_action_service import review_git_workspace_for_run, request_git_action_for_run
 
     async with pg_manager.get_async_session_context() as db:
-        row = await db.execute(
-            select(AgentRun, Conversation, Project)
-            .join(Conversation, Conversation.id == AgentRun.conversation_id)
-            .join(Project, Project.id == Conversation.project_id)
-            .where(
-                AgentRun.id == run_id, AgentRun.uid == str(uid), Conversation.uid == str(uid), Project.uid == str(uid)
-            )
-            .with_for_update()
-        )
-        result = row.one_or_none()
-        if result is None or result.Project.status != "active":
-            raise PermissionError("Run is not authorized for an active Project")
-        run, conversation, project = result
-        if run.run_type == "subagent" or run.status != "running":
-            raise PermissionError("Only a running Root AgentRun can push a task branch")
-        store = ProjectGitRepositoryStore(db)
-        binding = await store.get_active_binding_by_alias(
-            project_id=project.id,
+        state = await review_git_workspace_for_run(db=db, uid=uid, run_id=run_id, repository_alias=repository_alias)
+        return await request_git_action_for_run(
+            db=db,
             uid=uid,
-            alias=_validate_alias(repository_alias),
-            lock=True,
+            run_id=run_id,
+            repository_alias=repository_alias,
+            request_id=request_id or str(uuid.uuid4()),
+            action="push",
+            expected_head=expected_head_sha,
+            expected_tree=state["tree_sha"],
         )
-        if binding is None:
-            raise PermissionError("Repository alias is not active for this Project")
-        run_scope_key = await git_scope_for_run(db=db, uid=uid, project_id=project.id, run=run)
-        worktree = await store.get_worktree(binding.id, run_scope_key, uid, lock=True)
-        if worktree is None or worktree.status != "ready":
-            raise PermissionError("Task worktree is not ready")
-        connection = await store.get_connection(binding.connection_id, uid, active_only=True)
-        credential = await store.get_credential(binding.deploy_private_credential_id, uid)
-        if connection is None or credential is None:
-            raise PermissionError("Repository credential is unavailable")
-        private_key = GitCredentialOwner().decrypt(credential)
-        known_hosts = connection.ssh_known_host_key
-        remote_url = binding.canonical_ssh_url
-        branch = worktree.branch_name
-        owner = binding.repository_owner
-        name = binding.repository_name
-        default_branch = binding.default_branch
-        bare_path, worktree_path = resolve_project_git_host_paths(
-            uid, project.workdir_path, binding.directory_name, worktree.task_key
-        )
-        state = await GitExecutor().inspect_worktree(worktree_path)
-        if not state.clean or state.head_sha != expected_sha or state.branch != branch:
-            raise GitExecutionError("worktree HEAD, branch or clean state changed after approval")
-        if branch == default_branch or not _is_allocated_task_branch(worktree, uid):
-            raise PermissionError("Target branch is not an allocated task branch")
-        api_credential = await store.get_credential(connection.api_token_credential_id, uid)
-        if api_credential is None:
-            raise PermissionError("Gitea API credential is unavailable")
-        api_token = GitCredentialOwner().decrypt(api_credential)
-        provider = create_git_hosting_provider(
-            provider=connection.provider,
-            api_origin=connection.api_origin,
-            api_token=api_token,
-            ssh_host=connection.ssh_host,
-            ssh_port=connection.ssh_port,
-        )
-        if await provider.is_branch_protected(owner, name, branch):
-            raise PermissionError("Protected branch cannot be pushed")
-        pushed = await GitExecutor().push_commit(
-            bare_path=bare_path,
-            expected_sha=expected_sha,
-            branch=branch,
-            remote_url=remote_url,
-            private_key=private_key,
-            known_hosts=known_hosts,
-        )
-        worktree.last_observed_head_sha = pushed
-        worktree.last_pushed_sha = pushed
-        user_id = await db.scalar(select(User.id).where(User.uid == str(uid)))
-        if user_id is None:
-            raise PermissionError("Git push audit owner is unavailable")
-        db.add(
-            OperationLog(
-                user_id=user_id,
-                operation="git_push_branch",
-                details=json.dumps(
-                    {
-                        "run_id": run.id,
-                        "project_id": project.id,
-                        "repository_id": binding.id,
-                        "repository_alias": binding.alias,
-                        "runtime_scope_id": run.runtime_scope_id,
-                        "branch": branch,
-                        "pushed_sha": pushed,
-                    },
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-            )
-        )
-        await db.commit()
-    return {"repository_alias": binding.alias, "branch": branch, "pushed_sha": pushed, "remote_verified": True}
 
 
 async def _provision_repository(repository_id: str, generation: int) -> None:
@@ -1014,32 +970,15 @@ async def _cleanup_project_worktree(worktree_id: str) -> None:
         async with pg_manager.get_async_session_context() as db:
             from sqlalchemy import select
 
-            worktree = await db.scalar(
-                select(ProjectGitWorktree).where(ProjectGitWorktree.id == worktree_id).with_for_update()
-            )
+            worktree = await db.scalar(select(ProjectGitWorktree).where(ProjectGitWorktree.id == worktree_id))
             if worktree is None or worktree.status not in {"cleanup_pending", "cleanup_failed"}:
                 return
-            if worktree.usage_mode == "in_place":
-                raise RuntimeError("直接修改模式不能通过 worktree 清理删除项目工作目录")
-            store = ProjectGitRepositoryStore(db)
-            binding = await store.get_binding(worktree.repository_id, worktree.uid)
-            project = await ProjectRepository(db).get_for_user(worktree.project_id, worktree.uid)
-            if binding is None or project is None:
-                raise RuntimeError("Git worktree ownership is unavailable")
-            if await store.has_nonterminal_run(worktree.project_id, worktree.runtime_scope_id, worktree.uid):
-                raise RuntimeError("Git worktree still has active AgentRun")
-            bare_path, path = resolve_project_git_host_paths(
-                worktree.uid,
-                project.workdir_path,
-                binding.directory_name,
-                worktree.task_key,
+            project, binding, worktree = await _worktree_cleanup_context(
+                uid=worktree.uid, project_id=worktree.project_id, worktree_id=worktree_id, db=db
             )
-            if path.exists():
-                state = await GitExecutor().inspect_worktree(path)
-                if not state.clean or not worktree.last_pushed_sha or state.head_sha != worktree.last_pushed_sha:
-                    raise RuntimeError("Git worktree has uncommitted or unpushed progress")
-            await store.acquire_maintenance_lock(binding.id)
-            await GitExecutor().remove_worktree(bare_path=bare_path, worktree_path=path)
+            if worktree.status not in {"cleanup_pending", "cleanup_failed"}:
+                return
+            await _inspect_or_cleanup_worktree(project=project, binding=binding, worktree=worktree, cleanup=True)
             worktree.status = "removed"
             worktree.lease_owner = None
             worktree.lease_expires_at = None
@@ -1093,7 +1032,7 @@ async def _prepare_repository_worktree(
             raise ProjectGitBusyError("Task worktree identity does not match its root scope")
         branch = worktree.branch_name
         base_branch = worktree.base_branch
-        if branch in {base_branch, binding.default_branch} or not _is_allocated_task_branch(worktree, uid):
+        if branch in {base_branch, binding.default_branch} or not is_allocated_task_branch(worktree, uid):
             raise ProjectGitSelectionError("Task worktree branch is not a valid allocation branch")
         bare_path, path = resolve_project_git_host_paths(
             uid, workdir_path, binding.directory_name, task_key, create_parents=True
@@ -1769,7 +1708,7 @@ def _required(value: str, field: str) -> str:
     return normalized
 
 
-def _is_allocated_task_branch(worktree, uid: str) -> bool:
+def is_allocated_task_branch(worktree, uid: str) -> bool:
     """验证持久化分配身份，保留已存在的旧 codex 分支消费者。"""
     if worktree.branch_kind == "legacy":
         return worktree.branch_name.endswith(f"/task-{derive_task_key(uid, worktree.runtime_scope_id)}")

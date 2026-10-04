@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services import project_work_service as work
+from yuxi.services.project_task_git_outcome_service import inspect_task_git_outcomes
 from yuxi.storage.postgres.models_business import User
 
 project_work = APIRouter(tags=["project-work"])
@@ -154,6 +155,17 @@ async def get_task(
 ):
     """读取任务、问题单与讨论。"""
     return await work.get_task(db=db, user=user, project_id=project_id, task_id=task_id)
+
+
+@project_work.get("/projects/{project_id}/work/tasks/{task_id}/git-outcomes")
+async def get_task_git_outcomes(
+    project_id: str,
+    task_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """任务完成前回读 Git 成果，不执行提交、合并或清理。"""
+    return await inspect_task_git_outcomes(db=db, uid=str(user.uid), project_id=project_id, task_id=task_id)
 
 
 @project_work.patch("/projects/{project_id}/work/tasks/{task_id}")

@@ -125,6 +125,14 @@ class GiteaProvider:
         )
         return self._pull_request_view(value)
 
+    async def get_pull_request_diff(self, owner: str, name: str, number: int) -> str:
+        """读取当前合并请求的文本差异供持久审批快照使用。"""
+        response = await self._raw_request(
+            "GET", f"/api/v1/repos/{quote(owner, safe='')}/{quote(name, safe='')}/pulls/{number}.diff"
+        )
+        response.raise_for_status()
+        return response.text
+
     async def merge_pull_request(self, owner: str, name: str, number: int, *, head_sha: str) -> dict:
         """由 Gitea 校验确认过的源 HEAD，执行合并并回读结果。"""
         await self._request(

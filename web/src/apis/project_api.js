@@ -1,5 +1,7 @@
 import { apiDelete, apiGet, apiPost, apiPut, buildQuery } from './base'
 
+const gitRequest = (payload) => ({ ...payload, request_id: payload.request_id || crypto.randomUUID() })
+
 export const projectApi = {
   getSettings: (projectId) => apiGet(`/api/projects/${projectId}/settings`),
 
@@ -48,12 +50,15 @@ export const projectApi = {
     apiGet(`/api/projects/${projectId}/repositories/${repositoryId}/review`),
 
   commitGitResource: (projectId, repositoryId, payload) =>
-    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/commit`, payload),
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/commit`, gitRequest(payload)),
 
   discardGitResource: (projectId, repositoryId, payload) =>
     apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/discard`, payload),
   pushGitResource: (projectId, repositoryId, payload) =>
-    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/push`, payload),
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/push`, gitRequest(payload)),
+
+  getGitActions: (projectId, { limit = 50, offset = 0 } = {}) => apiGet(`/api/projects/${projectId}/git-actions?${buildQuery({ limit, offset })}`),
+  decideGitAction: (projectId, id, approve) => apiPost(`/api/projects/${projectId}/git-actions/${id}/decision`, { approve }),
 
   getGitOccupancies: (projectId) => apiGet(`/api/projects/${projectId}/git-occupancies`),
 
@@ -67,12 +72,17 @@ export const projectApi = {
     apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`, payload),
 
   mergeGitPullRequest: (projectId, repositoryId, number, payload) =>
-    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/${number}/merge`, payload),
+    apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/${number}/merge`, gitRequest(payload)),
 
   deactivateRepository: (projectId, repositoryId) =>
     apiDelete(`/api/projects/${projectId}/repositories/${repositoryId}`),
 
   getGitWorktrees: (projectId) => apiGet(`/api/projects/${projectId}/git-worktrees`),
+
+  reviewGitWorktree: (projectId, id) => apiGet(`/api/projects/${projectId}/git-worktrees/${id}/review`),
+  commitGitWorktree: (projectId, id, payload) => apiPost(`/api/projects/${projectId}/git-worktrees/${id}/commit`, gitRequest(payload)),
+  pushGitWorktree: (projectId, id, payload) => apiPost(`/api/projects/${projectId}/git-worktrees/${id}/push`, gitRequest(payload)),
+  discardGitWorktree: (projectId, id, payload) => apiPost(`/api/projects/${projectId}/git-worktrees/${id}/discard`, payload),
 
   cleanupGitWorktree: (projectId, worktreeId) =>
     apiDelete(`/api/projects/${projectId}/git-worktrees/${worktreeId}`),

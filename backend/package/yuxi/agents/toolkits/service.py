@@ -11,9 +11,7 @@ _metadata_cache: list[dict] = []
 def _is_injected_tool_runtime(name: str, annotation: Any) -> bool:
     """仅识别 ToolNode 注入的 runtime，保留同名业务参数。"""
     return name == "runtime" and (
-        annotation is ToolRuntime
-        or get_origin(annotation) is ToolRuntime
-        or ToolRuntime in get_args(annotation)
+        annotation is ToolRuntime or get_origin(annotation) is ToolRuntime or ToolRuntime in get_args(annotation)
     )
 
 
@@ -204,9 +202,19 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
             git_list_project_repositories,
             git_prepare_worktree,
             git_push_branch,
+            git_review_workspace,
+            git_request_action,
+            git_action_status,
         )
 
-        for git_tool in (git_list_project_repositories, git_prepare_worktree, git_push_branch):
+        for git_tool in (
+            git_list_project_repositories,
+            git_prepare_worktree,
+            git_push_branch,
+            git_review_workspace,
+            git_request_action,
+            git_action_status,
+        ):
             existing = _find_selected_tool(selected_tools, git_tool.name)
             if existing is not None:
                 # 同一实例可能已被 Skill 门控注册（@tool 懒加载后进入全局注册表），保持一致不重复添加。

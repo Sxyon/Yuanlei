@@ -263,6 +263,9 @@ async def test_project_git_capability_registers_root_management_tools_without_sk
         "git_list_project_repositories",
         "git_prepare_worktree",
         "git_push_branch",
+        "git_review_workspace",
+        "git_request_action",
+        "git_action_status",
     }
 
 

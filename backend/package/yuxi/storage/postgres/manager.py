@@ -25,7 +25,30 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 25
+YUANLEI_SCHEMA_VERSION = 26
+PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS project_git_actions (
+        id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
+        repository_id VARCHAR(64) NOT NULL, request_id VARCHAR(128) NOT NULL, fingerprint VARCHAR(64) NOT NULL,
+        run_id VARCHAR(64), agent_slug VARCHAR(64), scope_key VARCHAR(191), worktree_id VARCHAR(64),
+        action VARCHAR(16) NOT NULL, branch VARCHAR(255) NOT NULL, target_branch VARCHAR(255),
+        expected_head VARCHAR(64) NOT NULL, expected_tree VARCHAR(64), expected_base VARCHAR(64), pull_number INTEGER,
+        message TEXT NOT NULL DEFAULT '', diff TEXT NOT NULL DEFAULT '', approval_kind VARCHAR(16) NOT NULL,
+        approval_reason TEXT NOT NULL, approved_by VARCHAR(64), status VARCHAR(16) NOT NULL, task_id VARCHAR(64),
+        result JSONB, error TEXT, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        approved_at TIMESTAMP, started_at TIMESTAMP, finished_at TIMESTAMP,
+        CONSTRAINT uq_project_git_actions_request UNIQUE (uid, request_id),
+        CONSTRAINT fk_project_git_actions_resource FOREIGN KEY (repository_id, project_id, uid)
+            REFERENCES project_git_repositories(id, project_id, uid),
+        CONSTRAINT ck_project_git_actions_action CHECK (action IN ('commit','push','merge')),
+        CONSTRAINT ck_project_git_actions_status
+            CHECK (status IN ('pending','approved','running','succeeded','failed','rejected')),
+        CONSTRAINT ck_project_git_actions_approval CHECK (approval_kind IN ('human','automatic','required'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_project_git_actions_history "
+    "ON project_git_actions (project_id, uid, created_at, id)",
+)
+
 PROJECT_GIT_TASK_WORKSPACE_SCHEMA_STATEMENTS = (
     "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS usage_mode VARCHAR(16) NOT NULL DEFAULT 'worktree'",
     "ALTER TABLE project_git_worktrees ADD COLUMN IF NOT EXISTS source_parent_worktree_id VARCHAR(64)",
@@ -1647,6 +1670,12 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v25_to_v26(self):
+        """幂等创建 Git 审批历史，保留现有资源与任务分配。"""
+        async with self.get_async_session_context() as session:
+            for statement in PROJECT_GIT_ACTION_SCHEMA_STATEMENTS:
+                await session.execute(text(statement))
 
     async def upgrade_yuanlei_schema_v24_to_v25(self):
         """冻结任务工作区模式及子任务隔离来源。"""

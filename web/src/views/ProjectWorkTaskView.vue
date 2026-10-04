@@ -193,6 +193,19 @@
         </section>
       </template>
     </main>
+    <a-modal v-model:open="gitCompletionOpen" title="任务仍有 Git 成果需要处理" :footer="null">
+      <p>是否先提交、推送、发起合并或释放占用？标记任务完成会保留当前成果。</p>
+      <a-alert v-for="failure in gitCompletion?.errors || []" :key="failure" type="warning" :message="failure" show-icon />
+      <p v-if="gitCompletion?.scope_key && gitCompletion.scope_key !== `task:${route.params.task_id}`">共享父任务工作区时，此处包含共享工作区的成果。</p>
+      <div v-for="resource in gitCompletion?.resources || []" :key="resource.worktree_id">
+        <p><strong>{{ resource.alias }}</strong> · {{ resource.branch }}</p>
+        <a-tag v-for="issue in resource.issues" :key="issue">{{ gitIssueLabel(issue) }}</a-tag>
+        <a-alert v-for="failure in resource.errors" :key="failure" type="warning" :message="failure" show-icon />
+      </div>
+      <a-button @click="gitCompletionOpen = false; gitResourceSettingsOpen = true">先处理成果</a-button>
+      <a-button :loading="saving" @click="confirmTaskCompletion">保留成果并标记完成</a-button>
+    </a-modal>
+    <ProjectGitSettingsModal v-model:open="gitResourceSettingsOpen" :project="{ id: String(route.params.project_id), name: '任务资源' }" />
   </div>
 </template>
 
@@ -200,6 +213,7 @@
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
+import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
@@ -217,6 +231,10 @@ const agents = ref([])
 const executions = ref([])
 const selectedExecutor = ref(undefined)
 const selectedStatus = ref('todo')
+const gitCompletionOpen = ref(false)
+const gitResourceSettingsOpen = ref(false)
+const gitCompletion = ref(null)
+const gitIssueLabel = (issue) => ({ uncommitted: '未提交', unpushed: '远端与本地提交不一致', unmerged: '当前提交尚未确认合并', unreleased: '尚未释放占用', unarchived: '工作树尚未回收', not_ready: '工作区未就绪' })[issue] || issue
 const selectedOwner = ref(undefined)
 const selectedStart = ref('')
 const selectedDue = ref('')
@@ -316,7 +334,32 @@ function updateStatus() {
   const projectId = route.params.project_id
   const taskId = route.params.task_id
   const status = selectedStatus.value
-  return runAction(() => projectWorkApi.updateTask(projectId, taskId, { status }), '状态保存失败')
+  return runAction(async () => {
+    if (status === 'done') {
+      let result
+      try {
+        result = await projectWorkApi.getGitOutcomes(projectId, taskId)
+      } catch (failure) {
+        result = { requires_attention: true, resources: [], errors: [failure?.message || '无法确认 Git 成果状态，请处理后重试，或明确选择保留成果并完成任务'] }
+      }
+      if (projectId !== route.params.project_id || taskId !== route.params.task_id) return
+      if (result.requires_attention) {
+        gitCompletion.value = result
+        gitCompletionOpen.value = true
+        return
+      }
+    }
+    await projectWorkApi.updateTask(projectId, taskId, { status })
+  }, '状态保存失败')
+}
+
+function confirmTaskCompletion() {
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(async () => {
+    await projectWorkApi.updateTask(projectId, taskId, { status: 'done' })
+    if (projectId === route.params.project_id && taskId === route.params.task_id) gitCompletionOpen.value = false
+  }, '状态保存失败')
 }
 
 function updateGitWorkspaceMode() {
@@ -553,7 +596,10 @@ async function addComment() {
   }
 }
 
-watch(() => [route.params.project_id, route.params.task_id], () => {
+watch([() => route.params.project_id, () => route.params.task_id], () => {
+  gitCompletionOpen.value = false
+  gitResourceSettingsOpen.value = false
+  gitCompletion.value = null
   if (!route.params.project_id || !route.params.task_id) {
     ++loadVersion
     ++issueVersion

@@ -45,6 +45,13 @@ _TASK_DEFINITIONS = {
     definition.task_type: definition
     for definition in (
         TaskDefinition(
+            "project_git_action",
+            "yuxi.services.project_git_action_task_service",
+            "run_project_git_action",
+            success_function="finish_project_git_action",
+            failure_function="fail_project_git_action",
+        ),
+        TaskDefinition(
             "knowledge_ingest",
             "yuxi.services.knowledge_task_service",
             "run_knowledge_ingest",

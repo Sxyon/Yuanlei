@@ -72,7 +72,7 @@ def build_prompt_with_context(context):
 - 使用 execute 与 `git -C <path>` 完成 status、diff、add、commit
 - 不要执行 clone、fetch、push、remote add/set-url、worktree add/remove/prune 或 branch -D
 - 只在已分配分支提交，不切换、创建或删除其他分支，不操作 bare repository.git
-- 推送时先确认 worktree clean，读取完整 HEAD SHA，再由 Root Agent 调用 git_push_branch
+- 使用 git_review_workspace 读取可信 HEAD/tree 与差异，Root Agent 调用 git_request_action 申请 commit/push/merge；git_action_status 回读批准与实际结果。受保护目标需要人工批准，自动授权记录依据；申请已批准不代表 Git 动作已完成。
 """
     elif project_git_enabled:
         git_prompt = """
@@ -81,10 +81,11 @@ def build_prompt_with_context(context):
 - 需要仓库时先调用 git_list_project_repositories，再调用 git_prepare_worktree
 - git_prepare_worktree 的 branch_slug 必须是 ASCII kebab-case（仅小写字母、数字、连字符，如 project-git-extend），
   最长 48 字符；branch_kind 仅支持 feature/fix/docs/refactor/chore/test
-- git_prepare_worktree 与 git_push_branch 需要用户逐次批准
+- git_prepare_worktree 需要用户逐次批准；提交、推送和合并由项目资源授权规则决定，受保护目标等待人工批准。
+- 使用 git_review_workspace 读取精确 HEAD/tree，然后 git_request_action 申请 commit/push/merge，git_action_status 查看批准与实际执行结果。pending/approved/running 不代表执行成功，不能报告已提交或已合并。
 - 不要自行 clone、fetch、push、修改 remote 或执行 git worktree add/remove/prune
 - 严禁用 execute 直接读取 bare 仓库（repos/*/repository.git）、调用 gitea/远程 API 或执行
-  `git branch`/`git log` 来旁路查询仓库与分支状态；仓库与分支的查看、申请、推送只能通过上述三个 git 工具完成
+  `git branch`/`git log` 来旁路查询仓库与分支状态；仓库与分支的查看、申请、推送只能通过项目 Git 工具完成
 """
     sections = [current_date, PROMPT.strip(), filesystem_prompt.strip()]
     if git_prompt:
