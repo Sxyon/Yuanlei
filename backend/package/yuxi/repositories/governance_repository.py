@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import (
     GovernanceDecision,
+    GovernanceDecisionRevision,
+    GovernanceDecisionEvent,
+    GovernanceDecisionErratum,
+    Project,
     GovernanceReport,
     GovernanceTask,
     GovernanceTopic,
@@ -230,6 +234,11 @@ class GovernanceRepository:
         now: datetime | None = None,
     ) -> GovernanceTask:
         """插入一条 proposed 任务并 flush。"""
+        if decision_id is not None:
+            await self.lock_decision_project(project_id)
+            decision = await self.get_decision_for_update(decision_id)
+            if decision is None or decision.project_id != project_id:
+                raise PermissionError("决策已删除或不属于项目")
         if topic_id is not None:
             topic = await self.get_topic_for_update(topic_id=topic_id)
             if topic is None or topic.project_id != project_id or topic.archived_at is not None:
@@ -288,6 +297,103 @@ class GovernanceRepository:
         )
         return list(result)
 
+    async def lock_decision_project(self, project_id: str) -> None:
+        """项目内决策写与引用创建共享锁，闭合跨议题事务顺序。"""
+        await self.db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+
+    async def get_decision_for_update(self, decision_id: str) -> GovernanceDecision | None:
+        """锁定可见决策并重新读取当前版本。"""
+        return await self.db.scalar(
+            select(GovernanceDecision)
+            .where(GovernanceDecision.id == decision_id, GovernanceDecision.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    async def add_decision_revision(self, row: GovernanceDecision, *, reason: str, user) -> None:
+        """保存完整决策快照，旧版本不可覆盖。"""
+        snapshot = {
+            key: getattr(row, key)
+            for key in (
+                "title",
+                "conclusion",
+                "rationale",
+                "topic_id",
+                "topic_revision_number",
+                "relation_type",
+                "target_decision_id",
+            )
+        }
+        self.db.add(
+            GovernanceDecisionRevision(
+                decision_id=row.id,
+                number=row.revision_number,
+                snapshot=snapshot,
+                reason=reason,
+                created_by=str(user.uid),
+                author_name=user.username,
+                origin="authored",
+            )
+        )
+        await self.db.flush()
+
+    async def add_decision_event(self, row: GovernanceDecision, *, kind: str, reason: str, details: dict, user) -> None:
+        """局部历史序号与状态在同一锁和事务内写入。"""
+        row.history_sequence += 1
+        self.db.add(
+            GovernanceDecisionEvent(
+                decision_id=row.id,
+                sequence=row.history_sequence,
+                revision_number=row.revision_number,
+                kind=kind,
+                reason=reason,
+                details=details,
+                created_by=str(user.uid),
+                author_name=user.username,
+            )
+        )
+        await self.db.flush()
+
+    async def list_decision_events(self, decision_id: str, *, before: int | None, limit: int):
+        """按递增序号倒序分页并读取对应快照。"""
+        query = (
+            select(GovernanceDecisionEvent, GovernanceDecisionRevision)
+            .join(
+                GovernanceDecisionRevision,
+                (GovernanceDecisionRevision.decision_id == GovernanceDecisionEvent.decision_id)
+                & (GovernanceDecisionRevision.number == GovernanceDecisionEvent.revision_number),
+            )
+            .where(GovernanceDecisionEvent.decision_id == decision_id)
+        )
+        if before is not None:
+            query = query.where(GovernanceDecisionEvent.sequence < before)
+        return (await self.db.execute(query.order_by(GovernanceDecisionEvent.sequence.desc()).limit(limit))).all()
+
+    async def decision_references(self, decision_id: str) -> list[str]:
+        """已有任务和其他决策的真实引用保护草案删除。"""
+        refs = []
+        if await self.db.scalar(select(GovernanceTask.id).where(GovernanceTask.decision_id == decision_id).limit(1)):
+            refs.append("治理任务及其执行依据")
+        if await self.db.scalar(
+            select(GovernanceDecision.id)
+            .where(
+                GovernanceDecision.target_decision_id == decision_id,
+            )
+            .limit(1)
+        ):
+            refs.append("补充或替代决策")
+        return refs
+
+    async def list_decision_errata(self, decision_id: str):
+        """读取文字勘误，原批准文本保持独立。"""
+        return list(
+            await self.db.scalars(
+                select(GovernanceDecisionErratum)
+                .where(GovernanceDecisionErratum.decision_id == decision_id)
+                .order_by(GovernanceDecisionErratum.created_at.desc(), GovernanceDecisionErratum.id)
+            )
+        )
+
     async def add_decision(
         self,
         *,
@@ -296,12 +402,13 @@ class GovernanceRepository:
         conclusion: str,
         rationale: str | None,
         topic_id: str | None,
-        decided: bool,
+        relation_type: str = "ordinary",
+        target_decision_id: str | None = None,
         operator: str,
         now: datetime | None = None,
         topic_revision_number: int | None = None,
     ) -> GovernanceDecision:
-        """插入决策；decided 为真时同时记录拍板人与时间。"""
+        """只插入草案，批准由显式生命周期操作完成。"""
         if topic_id is not None:
             topic = await self.get_topic_for_update(topic_id=topic_id)
             if topic is None or topic.project_id != project_id or topic.archived_at is not None:
@@ -315,9 +422,9 @@ class GovernanceRepository:
             title=title,
             conclusion=conclusion,
             rationale=rationale,
-            status="implemented" if decided else "proposed",
-            decided_by=operator if decided else None,
-            decided_at=timestamp if decided else None,
+            status="draft",
+            relation_type=relation_type,
+            target_decision_id=target_decision_id,
             created_by=operator,
             created_at=timestamp,
             updated_at=timestamp,
@@ -328,13 +435,17 @@ class GovernanceRepository:
 
     async def get_decision(self, *, decision_id: str) -> GovernanceDecision | None:
         """按 id 读取决策。"""
-        return await self.db.scalar(select(GovernanceDecision).where(GovernanceDecision.id == str(decision_id)))
+        return await self.db.scalar(
+            select(GovernanceDecision).where(
+                GovernanceDecision.id == str(decision_id), GovernanceDecision.deleted_at.is_(None)
+            )
+        )
 
     async def list_decisions(self, *, project_id: str) -> list[GovernanceDecision]:
         """按创建时间读取项目内决策。"""
         result = await self.db.scalars(
             select(GovernanceDecision)
-            .where(GovernanceDecision.project_id == str(project_id))
+            .where(GovernanceDecision.project_id == str(project_id), GovernanceDecision.deleted_at.is_(None))
             .order_by(GovernanceDecision.created_at, GovernanceDecision.id)
         )
         return list(result)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import date
 from contextlib import asynccontextmanager
 
 import pytest
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from yuxi.services.governance_service import (
     create_governance_decision,
+    operate_governance_decision,
     create_governance_report,
     create_governance_task,
     create_governance_topic,
@@ -344,11 +346,20 @@ async def test_task_source_normalization_and_assignee_boundary() -> None:
                 conclusion="先做数据模型",
                 rationale="最小线性实现",
                 topic_id=topic["id"],
-                decided=True,
                 db=session,
                 user=user,
             )
-            assert decision["status"] == "implemented"
+            assert decision["status"] == "draft"
+            decision = await operate_governance_decision(
+                project_id="project-owner",
+                decision_id=decision["id"],
+                action="approve",
+                expected_revision=decision["revision_number"],
+                reason="批准",
+                db=session,
+                user=user,
+            )
+            assert decision["status"] == "approved"
             assert decision["decided_by"] == "uid-owner"
 
             task = await create_governance_task(
@@ -497,7 +508,15 @@ async def test_topic_revision_lifecycle_and_protected_deletion():
                 title="决策",
                 conclusion="保留原方案",
                 rationale="理由",
-                decided=True,
+                db=db,
+                user=user,
+            )
+            decision = await operate_governance_decision(
+                project_id="project-owner",
+                decision_id=decision["id"],
+                action="approve",
+                expected_revision=decision["revision_number"],
+                reason="批准",
                 db=db,
                 user=user,
             )
@@ -604,6 +623,7 @@ async def test_topic_v27_migration_preserves_unknown_history(migration_entry, mo
             )
         if migration_entry == "unversioned":
             from yuxi import storage_migration
+
             monkeypatch.setattr(storage_migration, "pg_manager", manager)
             await storage_migration._ensure_yuanlei_schema()
         else:
@@ -674,7 +694,6 @@ async def test_topic_concurrent_edit_and_reference_deletion_lock():
                 title="引用",
                 conclusion="正式依据",
                 rationale=None,
-                decided=True,
                 operator="uid-owner",
                 topic_revision_number=2,
             )
@@ -820,3 +839,73 @@ async def test_topic_task_references_block_delete_and_reopen_preserves_run(refer
                     "interrupted",
                     {"task": "原输入"},
                 )
+
+
+async def test_decision_v28_migration_preserves_original_approval_and_is_reentrant():
+    """旧记录只建立一次基线，不虚构批准时间或过往修订。"""
+    async with _scoped_database("pytest_decision_migration") as (manager, _):
+        await _seed_user(manager.async_engine, uid="uid-owner")
+        await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner")
+        async with manager.async_engine.begin() as conn:
+            for table in ("governance_decision_errata", "governance_decision_events", "governance_decision_revisions"):
+                await conn.execute(text(f"DROP TABLE {table}"))
+            for name in (
+                "ck_governance_decisions_status",
+                "ck_governance_decisions_decision_shape",
+                "fk_decision_target_project",
+                "ck_decision_relation_shape",
+                "ck_decision_revision_sequence",
+            ):
+                await conn.execute(text(f"ALTER TABLE governance_decisions DROP CONSTRAINT {name}"))
+            for column in ("relation_type", "target_decision_id", "revision_number", "history_sequence", "deleted_at"):
+                await conn.execute(text(f"ALTER TABLE governance_decisions DROP COLUMN {column}"))
+            await conn.execute(
+                text(
+                    "INSERT INTO "
+                    "governance_decisions(id,project_id,title,conclusion,status,created_by,created_at,updated_at,decided_by,decided_at) "
+                    "VALUES "
+                    "('legacy-draft','project-owner','旧草案','未知前文','proposed','uid-owner','2025-01-01','2025-01-02',NULL,NULL),"
+                    "('legacy-approved','project-owner','旧正式决策','旧批准原文','implemented','uid-owner','2025-01-01','2025-01-02','原拍板者','2025-02-03')"
+                )
+            )
+        await manager.upgrade_yuanlei_schema_v28_to_v29()
+        async with manager.async_engine.connect() as conn:
+            baseline = (
+                await conn.execute(
+                    text(
+                        "SELECT decision_id,created_at,snapshot,origin FROM "
+                        "governance_decision_revisions ORDER BY decision_id"
+                    )
+                )
+            ).all()
+            assert len(baseline) == 2 and all(row.origin == "migration" for row in baseline)
+            assert (
+                await conn.execute(
+                    text(
+                        "SELECT status,decided_by,decided_at::date FROM governance_decisions WHERE id='legacy-approved'"
+                    )
+                )
+            ).one() == ("approved", "原拍板者", date(2025, 2, 3))
+            assert (
+                await conn.execute(
+                    text("SELECT status,decided_by,decided_at FROM governance_decisions WHERE id='legacy-draft'")
+                )
+            ).one() == ("draft", None, None)
+        await manager.upgrade_yuanlei_schema_v28_to_v29()
+        async with manager.async_engine.connect() as conn:
+            assert (
+                await conn.execute(
+                    text(
+                        "SELECT decision_id,created_at,snapshot,origin FROM "
+                        "governance_decision_revisions ORDER BY decision_id"
+                    )
+                )
+            ).all() == baseline
+            assert (
+                await conn.execute(
+                    text("SELECT count(*) FROM governance_decision_events WHERE kind='migration_baseline'")
+                )
+            ).scalar() == 2
+            assert (
+                await conn.execute(text("SELECT min(history_sequence),max(history_sequence) FROM governance_decisions"))
+            ).one() == (1, 1)

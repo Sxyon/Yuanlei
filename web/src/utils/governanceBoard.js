@@ -22,14 +22,20 @@ export const GOVERNANCE_STATUS_LABELS = {
   proposed: '待审核',
   canonical: '已确认',
   rejected: '已拒绝',
-  implemented: '已实施'
+  draft: '草案',
+  approved: '已批准',
+  superseded: '已被替代',
+  revoked: '已撤销'
 }
 
 export const GOVERNANCE_STATUS_COLORS = {
   proposed: 'gold',
   canonical: 'green',
   rejected: 'red',
-  implemented: 'green'
+  draft: 'orange',
+  approved: 'green',
+  superseded: 'default',
+  revoked: 'red'
 }
 
 export const SOURCE_CHANNEL_LABELS = {

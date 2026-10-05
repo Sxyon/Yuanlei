@@ -430,7 +430,7 @@
             <div class="composer-heading">
               <div>
                 <h3>新增决策</h3>
-                <p>记录议题结论，并保留决策理由供后续执行和回顾。</p>
+                <p>新增默认保存为草案；批准需显式操作，不自动确认议题或控制执行。</p>
               </div>
               <a-tag v-if="decisionTopicId">已关联议题</a-tag>
             </div>
@@ -451,6 +451,36 @@
                 </a-select-option>
               </a-select>
             </div>
+            <div class="form-row">
+              <a-select
+                v-model:value="decisionRelationType"
+                aria-label="决策形成方式"
+                @change="decisionTargetId = undefined"
+              >
+                <a-select-option value="ordinary">普通决策</a-select-option>
+                <a-select-option value="supplement">补充决策</a-select-option>
+                <a-select-option value="replacement">整条替代</a-select-option>
+              </a-select>
+              <a-select
+                v-if="decisionRelationType !== 'ordinary'"
+                v-model:value="decisionTargetId"
+                aria-label="目标决策"
+                placeholder="选择当前有效的目标决策"
+                style="min-width: 220px"
+              >
+                <a-select-option
+                  v-for="target in (board.governance?.decisions || []).filter(
+                    (d) => d.status === 'approved'
+                  )"
+                  :key="target.id"
+                  :value="target.id"
+                  >{{ target.title }}</a-select-option
+                >
+              </a-select>
+            </div>
+            <p v-if="decisionRelationType !== 'ordinary' && !decisionTargetId" class="hint">
+              请选择补充或整条替代的目标决策。
+            </p>
             <a-textarea
               v-model:value="decisionConclusion"
               :auto-size="{ minRows: 8, maxRows: 24 }"
@@ -464,9 +494,14 @@
             <div class="form-row">
               <a-button
                 type="primary"
-                :disabled="!decisionTitle.trim() || !decisionConclusion.trim() || busy"
+                :disabled="
+                  !decisionTitle.trim() ||
+                  !decisionConclusion.trim() ||
+                  busy ||
+                  (decisionRelationType !== 'ordinary' && !decisionTargetId)
+                "
                 @click="createDecision"
-                >记录决策</a-button
+                >保存决策草案</a-button
               >
             </div>
           </div>
@@ -479,34 +514,16 @@
               <span class="hint">{{ board.governance?.decisions?.length || 0 }} 条</span>
             </div>
             <p v-if="!board.governance?.decisions?.length" class="hint">还没有决策记录。</p>
-            <article
-              v-for="decision in board.governance?.decisions || []"
-              :id="`decision-${decision.id}`"
-              :key="decision.id"
-              class="decision-card"
-              :class="{ 'selected-governance-item': route.query.decision_id === decision.id }"
-            >
-              <header>
-                <strong>{{ decision.title }}</strong>
-                <a-tag :color="governanceStatusColor(decision.status)">{{
-                  governanceStatusLabel(decision.status)
-                }}</a-tag>
-              </header>
-              <a-alert
-                v-if="
-                  allTopics.find((t) => t.id === decision.topic_id)?.execution_hint ===
-                  'pause_recommended'
-                "
-                type="warning"
-                show-icon
-                message="关联议题建议暂停原方案"
-                description="仅为业务提示，不撤销此决策，不暂停任务或执行记录。"
-              />
-              <p v-if="topicTitleFor(decision.topic_id)" class="hint">
-                关联议题：{{ topicTitleFor(decision.topic_id) }}
-              </p>
-              <MarkdownPreview :content="decisionDetail(decision)" />
-            </article>
+            <DecisionHistoryPanel
+              :project-id="projectId"
+              :decisions="board.governance?.decisions || []"
+              :topics="allTopics"
+              :selected-id="String(route.query.decision_id || '')"
+              @updated="load"
+              @select="selectDecision"
+              @compose="composeRelatedDecision"
+              @topic="openDecisionTopic"
+            />
           </section>
         </section>
 
@@ -677,6 +694,7 @@
 
 <script setup>
 import TopicHistoryPanel from '@/components/project/TopicHistoryPanel.vue'
+import DecisionHistoryPanel from '@/components/project/DecisionHistoryPanel.vue'
 import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Modal, message } from 'ant-design-vue'
@@ -731,7 +749,7 @@ const topicEditError = ref('')
 const topicDiscussionDrafts = ref({})
 // 草稿由工作台按议题保留，切换详情不会丢失未发送内容。
 function topicDiscussionDraft(topicId) {
-  return topicDiscussionDrafts.value[topicId] ||= { content: '', discussionType: 'discussion' }
+  return (topicDiscussionDrafts.value[topicId] ||= { content: '', discussionType: 'discussion' })
 }
 const topicCommentError = ref('')
 const editingTopic = ref(false)
@@ -741,6 +759,8 @@ const decisionTitle = ref('')
 const decisionConclusion = ref('')
 const decisionRationale = ref('')
 const decisionTopicId = ref(undefined)
+const decisionRelationType = ref('ordinary')
+const decisionTargetId = ref(undefined)
 const taskTitle = ref('')
 const taskDescription = ref('')
 const taskTopicId = ref(undefined)
@@ -774,11 +794,6 @@ const editingTopicRevision = ref(null)
 const selectedTopic = computed(() =>
   allTopics.value.find((item) => item.id === selectedTopicId.value)
 )
-const topicTitleFor = (topicId) => allTopics.value.find((item) => item.id === topicId)?.title || ''
-const decisionDetail = (decision) =>
-  [decision.conclusion, decision.rationale && `---\n\n**决策理由**\n\n${decision.rationale}`]
-    .filter(Boolean)
-    .join('\n\n')
 const taskDelegations = (taskId) =>
   delegations.value.filter((item) => item.governance_task_id === taskId)
 const configuredExecutors = (task) => {
@@ -890,10 +905,32 @@ function selectTopic(topic) {
   setTopicRoute(topic.id)
 }
 
+function selectDecision(id) {
+  const query = { ...route.query }
+  if (id) query.decision_id = id
+  else delete query.decision_id
+  router.replace({ query, hash: route.hash })
+}
+function openDecisionTopic(id) {
+  const topic = allTopics.value.find((t) => t.id === id)
+  if (topic) selectTopic(topic)
+}
+function composeRelatedDecision(decision, relationType) {
+  decisionTitle.value = ''
+  decisionConclusion.value = ''
+  decisionRationale.value = ''
+  decisionTopicId.value = decision.topic_id || undefined
+  decisionRelationType.value = relationType
+  decisionTargetId.value = decision.id
+  nextTick(() => jumpTo('decision-entry'))
+}
+
 function createDecisionFromTopic(topic) {
   if (!canLeaveTopicEditor()) return
   selectedTopicId.value = topic.id
   decisionTopicId.value = topic.id
+  decisionRelationType.value = 'ordinary'
+  decisionTargetId.value = undefined
   decisionTitle.value = topic.title
   decisionConclusion.value = ''
   decisionRationale.value = ''
@@ -941,7 +978,10 @@ async function load() {
     if (seq !== loadSeq || projectId.value !== project) return
     if (boardResult.status === 'rejected') throw boardResult.reason
     board.value = boardResult.value
-    topicRows.value = topicsResult.status === 'fulfilled' ? topicsResult.value : boardResult.value.governance?.topics || []
+    topicRows.value =
+      topicsResult.status === 'fulfilled'
+        ? topicsResult.value
+        : boardResult.value.governance?.topics || []
     const topics = topicRows.value
     const requestedTopicId = String(route.query.topic_id || '')
     const nextTopic =
@@ -952,7 +992,12 @@ async function load() {
         .find((item) => item.admission_status === 'proposed' && !item.archived_at) ||
       [...topics].reverse()[0]
     selectedTopicId.value = nextTopic?.id || ''
-    if (topicsResult.status === 'fulfilled' && requestedTopicId && !topics.some((item) => item.id === requestedTopicId)) setTopicRoute('')
+    if (
+      topicsResult.status === 'fulfilled' &&
+      requestedTopicId &&
+      !topics.some((item) => item.id === requestedTopicId)
+    )
+      setTopicRoute('')
     agents.value = agentResult.status === 'fulfilled' ? agentResult.value.agents || [] : []
     delegations.value = delegationResult.status === 'fulfilled' ? delegationResult.value : []
     const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult, topicsResult]
@@ -1186,12 +1231,16 @@ const createDecision = () =>
       title: decisionTitle.value,
       conclusion: decisionConclusion.value,
       rationale: decisionRationale.value,
-      topic_id: decisionTopicId.value || null
+      topic_id: decisionTopicId.value || null,
+      relation_type: decisionRelationType.value,
+      target_decision_id: decisionTargetId.value || null
     })
     decisionTitle.value = ''
     decisionConclusion.value = ''
     decisionRationale.value = ''
     decisionTopicId.value = undefined
+    decisionRelationType.value = 'ordinary'
+    decisionTargetId.value = undefined
   })
 const createTask = () =>
   act(async () => {

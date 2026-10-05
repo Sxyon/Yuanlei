@@ -17,10 +17,12 @@
 - 项目内来源不携带外部标识与链接；外部渠道必须携带非空外部标识。
 - 纳入资格为 `proposed → 审核 → canonical/rejected`，拒绝后修改不自动提交，显式重新提交回到 proposed；审核记录保留在历史节点。接口使用 admission_status 表达纳入，进度独立为 open/decided/closed。
 - 议题正文使用 `summary` 的 Markdown 文本；未归档或删除时持续可修改与讨论。每次修订保存标题正文、原因、作者与时间；保存要求预期修订号，过期版本拒绝覆盖。讨论绑定当时修订，保存意图类型及作者名快照；旧评论版本未知。创建、修订、讨论和生命周期节点在同一议题行锁与事务内保存，按序号稳定倒序分页。
-- 已纳入、开放的议题由用户选择已拍板的关联决策后显式确认 decided；关闭填写原因，重开回到 open 并选择继续执行或建议暂停。重议和纠偏评论不自动重开。正文修订不覆盖正式决策；新决策引用当时议题修订，旧决策版本未知。重开提示不暂停任务或 Run，不撤销决策。
+- 已纳入、开放的议题由用户选择当前已批准的关联决策后显式确认 decided；关闭填写原因，重开回到 open 并选择继续执行或建议暂停。重议和纠偏评论不自动重开。正文修订不覆盖正式决策；新决策引用当时议题修订，旧决策版本未知。重开提示不暂停任务或 Run，不撤销决策。
 - 归档议题退出默认列表、督查汇总、图和新工作选择器，详情仍可读取，恢复后可维护。无关联决策、正式工作或治理任务及其执行依据时软删除；有引用拒绝删除并提供归档。来源唯一标识继续保留，防止外部重新导入。
 - 只有审核动作写入 `canonical`/`rejected`；渠道侧创建入口不提供写 canonical 的能力，未经审核直改 canonical 由数据库检查约束拒绝。
-- 决策由人拍板，记录结论、理由与被否替代；汇报引用产出 Run 与 artifact 路径，不复制 Run 终态。
+- 决策新增为草案，显式批准才形成正式依据；草案保存携带预期版本，有引用拒绝删除。批准原文保留，不改变业务含义的文字勘误追加字段、新旧片段、原因与用户声明。数值、范围、条件变化通过新决策表达。
+- 形成方式与效力独立：补充及整条替代有同项目单一目标，可跨议题。补充批准保留原决策有效；整条替代批准同事务使原决策被替代。撤销保留历史，不复活旧依据，不联动任务或执行记录。原依据变化的补充提示需复核。决策局部快照和倒序事件保存责任人、时间、原因及版本，关联议题节点在同一事务保存。
+- 汇报引用产出 Run 与 artifact 路径，不复制 Run 终态。
 - Dashboard 从议题、决策、任务的现有外键生成关系图；图节点只选择与查看事实，写操作跳转项目工作台，不保存图形副本。
 
 ## 与 Yuxi 的边界
@@ -32,7 +34,7 @@
 - 表结构：治理对象与议题评论、修订和历史节点，由 `backend/package/yuxi/storage/postgres/manager.py` 的迁移语句与 ORM 模型共同拥有。
 - 用例：`backend/package/yuxi/services/governance_service.py` 拥有创建、编辑、讨论、审核与读取流程；来源归一化由 `normalize_governance_source` 与 `normalize_title` 承担。
 - 持久化：`backend/package/yuxi/repositories/governance_repository.py` 按 Project 读写治理事实，提交点由用例决定。
-- 迁移：v27→v28 拆分进度、建立当前内容迁移基线，并导入可证明的创建、审核和评论节点；旧进度保持开放，不推断决策形成或目标达成。
+- 迁移：v28→v29 映射旧 proposed/implemented 为草案/已批准，保留拍板责任人与时间；当前正文建立一次迁移基线，过往修订与旧议题依据版本照实未知。v27→v28 拆分进度、建立当前内容迁移基线，并导入可证明的创建、审核和评论节点；旧进度保持开放，不推断决策形成或目标达成。
 
 ## 上游依赖
 
@@ -57,3 +59,5 @@
 - 用例与来源归一化实现：`backend/package/yuxi/services/governance_service.py`。
 - 真实 PostgreSQL 行为证据：`backend/test/integration/services/test_governance_service.py`、`backend/test/integration/services/test_schema_migration_version.py`。
 - 纯逻辑与 schema 单测：`backend/test/unit/services/test_governance_service.py`、`backend/test/unit/storage/test_postgres_manager_schema.py`。
+
+- P01 Decision：[决策批准、关系与局部历史](../decisions/implemented/2026-10-05-decision-approval-history.md)。真实 HTTP 负向、并发与 PostgreSQL 回读由 `backend/test/integration/api/test_decision_lifecycle_api.py` 覆盖，隔离旧结构迁移与重入由治理服务 integration 覆盖。

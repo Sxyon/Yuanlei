@@ -16,7 +16,7 @@
 - 议题/任务/决策状态只有唯一事实源：治理四表；督查板读视图直接读来源，不建立可独立漂移的镜像。
 - 执行事实归属上游 `agent_runs` 与 `conversations`；督查板只读，不终结、不改写 Run 状态。
 - 汇报写入 `governance_reports`，只引用 `source_run_id` 与 `artifact_path`，不保存 Run 终态。
-- `open` 指仍在 `proposed` 的议题/任务/决策；`blockers` 指 `failed`/`interrupted` 的 Run。
+- 待纳入议题读取 admission_status=proposed，待审核任务读取 status=proposed，待决策读取 status=draft；`blockers` 指 failed/interrupted 的执行记录。议题进度独立读取，不从纳入资格推断。单项目决策详情区分草案、有效批准与折叠历史，保留勘误、同项目目标和倒序局部时间线。
 - Agent 工具只在带 Project 的运行中重建授权并校验当前 worker lease；子智能体拒绝。
 - 跨项目视图只覆盖当前用户 active、selectable 的 Project。
 - 督查面板只消费 board 读视图：跨项目入口消费 `GET /governance/board`，单项目工作台消费 `GET /projects/{id}/governance/board`；治理与执行操作由单项目工作台通过各自 API 完成，后端拥有最终状态。Dashboard 的关系图直接派生议题、决策和任务外键，节点选中后展示详情并跳转到工作台对应记录。
@@ -61,3 +61,5 @@
 - HTTP 适配：`backend/server/routers/governance_router.py`。
 - 展示面单测：`web/test/unit/governanceBoard.test.js`（API 端点、文案回退与「只消费读视图字段」源码 guard）。
 - 展示面渲染证据：`web/test/unit/governanceBoard.test.js` 的督查面板源码 guard、文案/配色查表单测与 `vite build`；2026-09-26 真实浏览器核对单项目工作台蓝图、任务委派和汇报，关联 [单项目本地闭环决策](../decisions/implemented/2026-09-26-single-project-local-loop.md)。
+
+- P01 Decision：[决策批准、关系与局部历史](../decisions/implemented/2026-10-05-decision-approval-history.md)。

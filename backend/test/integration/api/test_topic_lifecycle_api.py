@@ -96,6 +96,14 @@ async def test_topic_http_revision_reopen_archive_and_delete(test_client):
         )
         assert decided.status_code == 200, decided.text
         did = decided.json()["id"]
+        assert decided.json()["status"] == "draft"
+        assert (
+            await test_client.post(
+                f"{root}/decisions/{did}/operations",
+                headers=headers,
+                json={"action": "approve", "expected_revision": 1, "reason": "批准依据"},
+            )
+        ).status_code == 200
         assert (await test_client.get(path, headers=headers)).json()["progress"] == "open"
         assert (
             await test_client.post(f"{path}/operations", headers=headers, json={"action": "decide", "decision_id": did})

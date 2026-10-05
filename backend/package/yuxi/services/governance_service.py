@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from fastapi import HTTPException
@@ -17,6 +18,7 @@ from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.storage.postgres.models_business import (
     GOVERNANCE_SOURCE_CHANNELS,
     GovernanceDecision,
+    GovernanceDecisionErratum,
     GovernanceReport,
     GovernanceTask,
     GovernanceTopic,
@@ -173,6 +175,9 @@ def _serialize_decision(row: GovernanceDecision, *, topic_execution_hint: str | 
         "conclusion": row.conclusion,
         "rationale": row.rationale,
         "status": row.status,
+        "relation_type": row.relation_type,
+        "target_decision_id": row.target_decision_id,
+        "revision_number": row.revision_number,
         "topic_revision_number": row.topic_revision_number,
         "topic_execution_hint": topic_execution_hint,
         "decided_by": row.decided_by,
@@ -426,6 +431,8 @@ async def operate_governance_topic(
     """执行议题局部生命周期操作，不写入决策、任务或运行状态。"""
     project = await _require_project(project_id=project_id, db=db, user=user)
     repo = GovernanceRepository(db)
+    if action == "decide":
+        await repo.lock_decision_project(project.id)
     topic = await repo.get_topic_for_update(topic_id=topic_id)
     if topic is None or topic.project_id != project.id:
         raise HTTPException(status_code=404, detail="议题不存在")
@@ -442,10 +449,10 @@ async def operate_governance_topic(
             decision is None
             or decision.project_id != project.id
             or decision.topic_id != topic.id
-            or decision.status != "implemented"
+            or decision.status != "approved"
         ):
             raise HTTPException(
-                status_code=409, detail={"code": "decision_required", "message": "请选择当前议题已拍板的关联决策"}
+                status_code=409, detail={"code": "decision_required", "message": "请选择当前议题已批准的关联决策"}
             )
         topic.progress = "decided"
         topic.execution_hint = None
@@ -538,6 +545,8 @@ async def create_governance_task(
     )
     project = await _require_project(project_id=project_id, db=db, user=user)
     repo = GovernanceRepository(db)
+    if decision_id is not None:
+        await repo.lock_decision_project(project.id)
     if topic_id is not None:
         topic = await repo.get_topic_for_update(topic_id=topic_id)
         if topic is None or topic.project_id != project.id:
@@ -613,6 +622,86 @@ async def review_governance_task(
     return _serialize_task(row)
 
 
+async def _decision_event(repo, row, *, kind: str, reason: str, user: User, details: dict | None = None):
+    """在同一事务保存局部历史和关联议题节点。"""
+    details = details or {}
+    await repo.add_decision_event(row, kind=kind, reason=reason, details=details, user=user)
+    if row.topic_id:
+        topic = await repo.get_topic_for_update(topic_id=row.topic_id)
+        if topic:
+            await repo.add_topic_event(
+                topic,
+                kind=f"decision_{kind}",
+                reason=reason,
+                operator=str(user.uid),
+                author_name=user.username,
+                details={
+                    **details,
+                    "decision_id": row.id,
+                    "decision_title": row.title,
+                    "decision_revision": row.revision_number,
+                    "target_decision_id": row.target_decision_id,
+                },
+            )
+
+
+async def _decision_target(
+    repo, *, project_id: str, relation_type: str, target_decision_id: str | None, decision_id=None
+):
+    """关系必须指向同项目有效决策，普通决策不携带目标。"""
+    if relation_type == "ordinary" and target_decision_id is None:
+        return None
+    if (
+        relation_type not in ("supplement", "replacement")
+        or not target_decision_id
+        or target_decision_id == decision_id
+    ):
+        raise HTTPException(422, detail={"code": "invalid_relation", "message": "请选择补充或整条替代的目标决策"})
+    target = await repo.get_decision_for_update(target_decision_id)
+    if target is None or target.project_id != project_id:
+        raise HTTPException(404, detail="目标决策不存在")
+    if target.status != "approved":
+        raise HTTPException(
+            409, detail={"code": "target_not_approved", "message": "原依据已变化，请重新选择当前有效决策"}
+        )
+    return target
+
+
+def _decision_version(row, expected_revision: int):
+    """冲突显式返回，客户端保留未保存草案。"""
+    if row.revision_number != expected_revision:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "revision_conflict",
+                "message": "决策已被修改，请保留草稿并重新读取",
+                "current_revision": row.revision_number,
+            },
+        )
+
+
+async def _locked_decision(*, project_id: str, decision_id: str, db: AsyncSession, user: User):
+    """统一授权和项目先行锁顺序。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    await repo.lock_decision_project(project_id)
+    row = await repo.get_decision_for_update(decision_id)
+    if row is None or row.project_id != project_id:
+        raise HTTPException(404, detail="决策不存在")
+    return repo, row
+
+
+async def _decision_topic(repo, *, project_id: str, topic_id: str | None):
+    """创建、修订及批准时核对来源议题可写。"""
+    if not topic_id:
+        return None
+    topic = await repo.get_topic_for_update(topic_id=topic_id)
+    if topic is None or topic.project_id != project_id:
+        raise HTTPException(404, detail="来源议题不存在")
+    _require_topic_writable(topic)
+    return topic
+
+
 async def create_governance_decision(
     *,
     project_id: str,
@@ -620,35 +709,279 @@ async def create_governance_decision(
     conclusion: str,
     rationale: str | None,
     topic_id: str | None,
-    decided: bool,
+    db: AsyncSession,
+    user: User,
+    relation_type: str = "ordinary",
+    target_decision_id: str | None = None,
+) -> dict[str, Any]:
+    """只新增草案，不自动批准或确认议题。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    await repo.lock_decision_project(project_id)
+    await _decision_target(
+        repo, project_id=project_id, relation_type=relation_type, target_decision_id=target_decision_id
+    )
+    topic = await _decision_topic(repo, project_id=project_id, topic_id=topic_id)
+    row = await repo.add_decision(
+        project_id=project_id,
+        title=normalize_title(title),
+        conclusion=_normalize_topic_text(conclusion, required=True),
+        rationale=_normalize_topic_text(rationale, required=False),
+        topic_id=topic_id,
+        relation_type=relation_type,
+        target_decision_id=target_decision_id,
+        topic_revision_number=topic.revision_number if topic else None,
+        operator=str(user.uid),
+    )
+    await repo.add_decision_revision(row, reason="新增草案", user=user)
+    await _decision_event(repo, row, kind="created", reason="新增草案", user=user)
+    await db.commit()
+    return _serialize_decision(row)
+
+
+async def update_governance_decision(
+    *,
+    project_id: str,
+    decision_id: str,
+    title: str,
+    conclusion: str,
+    rationale: str | None,
+    topic_id: str | None,
+    relation_type: str,
+    target_decision_id: str | None,
+    expected_revision: int,
+    reason: str,
     db: AsyncSession,
     user: User,
 ) -> dict[str, Any]:
-    """记录人拍板决策；decided 为真时落为 implemented。"""
-    normalized_title = normalize_title(title)
-    normalized_conclusion = str(conclusion or "").strip()
-    if not normalized_conclusion:
-        raise HTTPException(status_code=422, detail={"code": "invalid_conclusion", "message": "结论不能为空"})
-    project = await _require_project(project_id=project_id, db=db, user=user)
-    repo = GovernanceRepository(db)
-    if topic_id is not None:
-        topic = await repo.get_topic_for_update(topic_id=topic_id)
-        if topic is None or topic.project_id != project.id:
-            raise HTTPException(status_code=404, detail="来源议题不存在")
-        _require_topic_writable(topic)
-    row = await repo.add_decision(
-        project_id=project.id,
-        title=normalized_title,
-        conclusion=normalized_conclusion,
-        rationale=rationale,
-        topic_id=topic_id,
-        decided=decided,
-        topic_revision_number=topic.revision_number if topic_id is not None else None,
-        operator=str(user.uid),
+    """修订草案并追加快照，已批准原文不可覆盖。"""
+    repo, row = await _locked_decision(project_id=project_id, decision_id=decision_id, db=db, user=user)
+    _decision_version(row, expected_revision)
+    if row.status != "draft":
+        raise HTTPException(
+            409, detail={"code": "decision_read_only", "message": "批准原文不可覆盖，请追加勘误或新决策"}
+        )
+    reason = _normalize_topic_reason(reason, required=True)
+    await _decision_target(
+        repo,
+        project_id=project_id,
+        relation_type=relation_type,
+        target_decision_id=target_decision_id,
+        decision_id=row.id,
+    )
+    topic = await _decision_topic(repo, project_id=project_id, topic_id=topic_id)
+    old_topic_id = row.topic_id
+    row.title = normalize_title(title)
+    row.conclusion = _normalize_topic_text(conclusion, required=True)
+    row.rationale = _normalize_topic_text(rationale, required=False)
+    row.topic_id, row.relation_type, row.target_decision_id = topic_id, relation_type, target_decision_id
+    row.topic_revision_number = topic.revision_number if topic else None
+    row.revision_number += 1
+    await repo.add_decision_revision(row, reason=reason, user=user)
+    await _decision_event(
+        repo, row, kind="revised", reason=reason, user=user, details={"previous_topic_id": old_topic_id}
+    )
+    if old_topic_id and old_topic_id != topic_id:
+        old_topic = await repo.get_topic_for_update(topic_id=old_topic_id)
+        if old_topic:
+            await repo.add_topic_event(
+                old_topic,
+                kind="decision_moved",
+                operator=str(user.uid),
+                author_name=user.username,
+                reason=reason,
+                details={"decision_id": row.id, "decision_title": row.title, "topic_id": topic_id},
+            )
+    await db.commit()
+    return _serialize_decision(row)
+
+
+async def operate_governance_decision(
+    *,
+    project_id: str,
+    decision_id: str,
+    action: str,
+    expected_revision: int,
+    reason: str,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """批准、撤销与受引用保护的草案删除均保留局部历史。"""
+    repo, row = await _locked_decision(project_id=project_id, decision_id=decision_id, db=db, user=user)
+    if action == "approve" and row.status == "approved" and expected_revision == row.revision_number - 1:
+        return _serialize_decision(row)
+    _decision_version(row, expected_revision)
+    reason = _normalize_topic_reason(reason, required=True)
+    if action == "approve" and row.status == "draft":
+        target = await _decision_target(
+            repo,
+            project_id=project_id,
+            relation_type=row.relation_type,
+            target_decision_id=row.target_decision_id,
+            decision_id=row.id,
+        )
+        topic = await _decision_topic(repo, project_id=project_id, topic_id=row.topic_id)
+        row.status, row.decided_by, row.decided_at = "approved", str(user.uid), utc_now_naive()
+        row.topic_revision_number = topic.revision_number if topic else None
+        row.revision_number += 1
+        await repo.add_decision_revision(row, reason=reason, user=user)
+        if target:
+            if row.relation_type == "replacement":
+                target.status = "superseded"
+            await _decision_event(
+                repo,
+                target,
+                kind="superseded" if row.relation_type == "replacement" else "supplemented",
+                reason=reason,
+                user=user,
+                details={"related_decision_id": row.id},
+            )
+        await _decision_event(repo, row, kind="approved", reason=reason, user=user)
+    elif action == "revoke" and row.status == "approved":
+        row.status = "revoked"
+        await _decision_event(repo, row, kind="revoked", reason=reason, user=user)
+    elif action == "delete" and row.status == "draft":
+        references = await repo.decision_references(row.id)
+        if references:
+            raise HTTPException(
+                409, detail={"code": "decision_referenced", "message": "已有引用，不能删除", "references": references}
+            )
+        row.deleted_at = utc_now_naive()
+        await _decision_event(repo, row, kind="deleted", reason=reason, user=user)
+    else:
+        raise HTTPException(409, detail={"code": "invalid_state", "message": "当前决策状态不支持此操作"})
+    await db.commit()
+    return _serialize_decision(row)
+
+
+async def create_governance_decision_erratum(
+    *,
+    project_id: str,
+    decision_id: str,
+    field: str,
+    original_text: str,
+    corrected_text: str,
+    reason: str,
+    meaning_unchanged: bool,
+    expected_revision: int,
+    db: AsyncSession,
+    user: User,
+) -> dict[str, Any]:
+    """追加声明不改变业务含义的文字勘误，保留批准原文。"""
+    repo, row = await _locked_decision(project_id=project_id, decision_id=decision_id, db=db, user=user)
+    _decision_version(row, expected_revision)
+    if row.status == "draft":
+        raise HTTPException(409, detail="草案请直接修订")
+    original_text = _normalize_topic_text(original_text, required=True)
+    corrected_text = _normalize_topic_text(corrected_text, required=True)
+    if (
+        not meaning_unchanged
+        or field not in ("title", "conclusion", "rationale")
+        or original_text not in (getattr(row, field, None) or "")
+        or original_text == corrected_text
+    ):
+        raise HTTPException(
+            422,
+            detail={
+                "code": "invalid_erratum",
+                "message": "请选取批准原文中的文字并确认含义不变；数值、范围、条件变化请新增决策",
+            },
+        )
+    reason = _normalize_topic_reason(reason, required=True)
+    erratum = GovernanceDecisionErratum(
+        id=str(uuid.uuid4()),
+        decision_id=row.id,
+        revision_number=row.revision_number,
+        field=field,
+        original_text=original_text,
+        corrected_text=corrected_text,
+        reason=reason,
+        meaning_unchanged=True,
+        created_by=str(user.uid),
+        author_name=user.username,
+    )
+    db.add(erratum)
+    await db.flush()
+    await _decision_event(
+        repo,
+        row,
+        kind="erratum",
+        reason=reason,
+        user=user,
+        details={
+            "erratum_id": erratum.id,
+            "field": field,
+            "original_text": original_text,
+            "corrected_text": corrected_text,
+        },
     )
     await db.commit()
-    await db.refresh(row)
     return _serialize_decision(row)
+
+
+async def get_governance_decision(
+    *,
+    project_id: str,
+    decision_id: str,
+    db: AsyncSession,
+    user: User,
+    before: int | None = None,
+    limit: int = 30,
+) -> dict[str, Any]:
+    """读取决策原文、勘误、双向关系和倒序局部时间线。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    row = await repo.get_decision(decision_id=decision_id)
+    if row is None or row.project_id != project_id:
+        raise HTTPException(404, detail="决策不存在")
+    decisions = await repo.list_decisions(project_id=project_id)
+    targets = {decision.id: decision for decision in decisions}
+    target = targets.get(row.target_decision_id)
+    result = _serialize_decision(row)
+    result["target"] = _serialize_decision(target) if target else None
+    result["related_decisions"] = [
+        _serialize_decision(other) for other in decisions if other.target_decision_id == row.id
+    ]
+    result["requires_review"] = row.relation_type == "supplement" and target is not None and target.status != "approved"
+    result["references"] = await repo.decision_references(row.id)
+    result["tasks"] = [
+        _serialize_task(task) for task in await repo.list_tasks(project_id=project_id) if task.decision_id == row.id
+    ]
+    result["errata"] = [
+        {
+            key: getattr(erratum, key)
+            for key in (
+                "id",
+                "revision_number",
+                "field",
+                "original_text",
+                "corrected_text",
+                "reason",
+                "created_by",
+                "author_name",
+            )
+        }
+        | {"created_at": format_utc_datetime(erratum.created_at)}
+        for erratum in await repo.list_decision_errata(row.id)
+    ]
+    events = await repo.list_decision_events(row.id, before=before, limit=limit + 1)
+    result["timeline"] = [
+        {
+            "sequence": event.sequence,
+            "kind": event.kind,
+            "reason": event.reason,
+            "details": event.details,
+            "revision_number": event.revision_number,
+            "created_by": event.created_by,
+            "author_name": event.author_name,
+            "created_at": format_utc_datetime(event.created_at),
+            "snapshot": revision.snapshot,
+            "origin": revision.origin,
+        }
+        for event, revision in events[:limit]
+    ]
+    result["next_before"] = events[limit - 1][0].sequence if len(events) > limit else None
+    return result
 
 
 async def create_governance_report(
@@ -704,4 +1037,13 @@ async def list_governance_decisions(
     rows = await repo.list_decisions(project_id=project.id)
     topics = await repo.list_topics(project_id=project.id, include_archived=True)
     hints = {topic.id: topic.execution_hint for topic in topics}
-    return [_serialize_decision(row, topic_execution_hint=hints.get(row.topic_id)) for row in rows]
+    targets = {row.id: row for row in rows}
+    return [
+        _serialize_decision(row, topic_execution_hint=hints.get(row.topic_id))
+        | {
+            "requires_review": row.relation_type == "supplement"
+            and row.target_decision_id in targets
+            and targets[row.target_decision_id].status != "approved",
+        }
+        for row in rows
+    ]

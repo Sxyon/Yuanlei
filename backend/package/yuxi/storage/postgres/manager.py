@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 28
+YUANLEI_SCHEMA_VERSION = 29
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1670,6 +1670,112 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v28_to_v29(self) -> None:
+        """迁移决策批准语义及局部历史，保留未知旧版本。"""
+        from yuxi.storage.postgres.models_business import (
+            GovernanceDecisionRevision,
+            GovernanceDecisionEvent,
+            GovernanceDecisionErratum,
+        )
+        from yuxi.utils.datetime_utils import utc_now_naive
+
+        self._check_initialized()
+        async with self.async_engine.begin() as connection:
+            for statement in (
+                "ALTER TABLE governance_decisions DROP CONSTRAINT IF EXISTS ck_governance_decisions_status",
+                "ALTER TABLE governance_decisions DROP CONSTRAINT IF EXISTS ck_governance_decisions_decision_shape",
+                "ALTER TABLE governance_decisions ADD COLUMN IF NOT EXISTS "
+                "relation_type VARCHAR(16) NOT NULL DEFAULT 'ordinary'",
+                "ALTER TABLE governance_decisions ADD COLUMN IF NOT EXISTS target_decision_id VARCHAR(64)",
+                "ALTER TABLE governance_decisions ADD COLUMN IF NOT EXISTS revision_number INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE governance_decisions ADD COLUMN IF NOT EXISTS history_sequence INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE governance_decisions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP",
+                "UPDATE governance_decisions SET status = CASE status WHEN 'proposed' THEN 'draft' "
+                "WHEN 'implemented' THEN 'approved' ELSE status END WHERE status IN ('proposed', 'implemented')",
+                "ALTER TABLE governance_decisions ALTER COLUMN status SET DEFAULT 'draft'",
+                "ALTER TABLE governance_decisions ADD CONSTRAINT ck_governance_decisions_status "
+                "CHECK (status IN ('draft','approved','superseded','revoked'))",
+                "ALTER TABLE governance_decisions ADD CONSTRAINT ck_governance_decisions_decision_shape CHECK "
+                "((status='draft' AND decided_by IS NULL AND decided_at IS NULL) OR "
+                "(status IN ('approved','superseded','revoked') "
+                "AND decided_by IS NOT NULL AND decided_at IS NOT NULL))",
+            ):
+                await connection.execute(text(statement))
+            for name, clause in (
+                ("uq_governance_decision_project", "UNIQUE (id, project_id)"),
+                (
+                    "fk_decision_target_project",
+                    "FOREIGN KEY (target_decision_id, project_id) REFERENCES governance_decisions(id, project_id)",
+                ),
+                (
+                    "ck_decision_relation_shape",
+                    "CHECK ((relation_type='ordinary' AND target_decision_id IS NULL) OR "
+                    "(relation_type IN ('supplement','replacement') "
+                    "AND target_decision_id IS NOT NULL AND target_decision_id<>id))",
+                ),
+                ("ck_decision_revision_sequence", "CHECK (revision_number>=1 AND history_sequence>=0)"),
+            ):
+                await connection.execute(
+                    text(
+                        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='{name}' "
+                        "AND conrelid='governance_decisions'::regclass) THEN "
+                        f"ALTER TABLE governance_decisions ADD CONSTRAINT {name} {clause}; END IF; END $$"
+                    )
+                )
+            for model in (GovernanceDecisionRevision, GovernanceDecisionErratum, GovernanceDecisionEvent):
+                await connection.run_sync(lambda sync, table=model.__table__: table.create(sync, checkfirst=True))
+            rows = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT * FROM governance_decisions d WHERE NOT EXISTS "
+                            "(SELECT 1 FROM governance_decision_revisions r WHERE r.decision_id=d.id)"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            for row in rows:
+                snapshot = {
+                    key: row[key]
+                    for key in (
+                        "title",
+                        "conclusion",
+                        "rationale",
+                        "topic_id",
+                        "topic_revision_number",
+                        "relation_type",
+                        "target_decision_id",
+                    )
+                }
+                now = utc_now_naive()
+                await connection.execute(
+                    GovernanceDecisionRevision.__table__.insert().values(
+                        decision_id=row["id"],
+                        number=1,
+                        snapshot=snapshot,
+                        origin="migration",
+                        reason="旧决策当前文本基线；此前修订未知",
+                        created_at=now,
+                    )
+                )
+                await connection.execute(
+                    GovernanceDecisionEvent.__table__.insert().values(
+                        decision_id=row["id"],
+                        sequence=1,
+                        revision_number=1,
+                        kind="migration_baseline",
+                        reason="保留原批准事实，不推断实施情况",
+                        details={"status": row["status"]},
+                        created_at=now,
+                    )
+                )
+                await connection.execute(
+                    text("UPDATE governance_decisions SET revision_number=1, history_sequence=1 WHERE id=:id"),
+                    {"id": row["id"]},
+                )
 
     async def upgrade_yuanlei_schema_v27_to_v28(self) -> None:
         """拆分议题进度并建立迁移基线，保留未知历史版本。"""

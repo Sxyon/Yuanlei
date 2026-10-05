@@ -27,7 +27,7 @@
       <a-select
         v-if="action === 'decide'"
         v-model:value="decisionId"
-        aria-label="已拍板关联决策"
+        aria-label="已批准关联决策"
         style="min-width: 200px"
       >
         <a-select-option
@@ -37,6 +37,9 @@
           >{{ decision.title }}</a-select-option
         >
       </a-select>
+      <p v-if="action === 'decide'">
+        确认后将清除本议题的继续执行或建议暂停提示；任务和执行记录保持各自状态。
+      </p>
       <a-select
         v-if="action === 'reopen'"
         v-model:value="executionHint"
@@ -96,10 +99,13 @@
         }}
       </p>
       <p v-if="event.details?.decision_id">
-        确认依据：{{
+        决策记录：{{
           decisions.find((d) => d.id === event.details.decision_id)?.title ||
           event.details.decision_id
         }}
+        <router-link :to="{ query: { ...$route.query, decision_id: event.details.decision_id } }"
+          >查看决策详情</router-link
+        >
       </p>
       <MarkdownPreview v-if="event.comment" :content="event.comment.content" />
       <small v-if="event.comment && !event.revision_number">当时正文版本未知</small>
@@ -164,9 +170,18 @@ onBeforeUnmount(() => {
 })
 const timestampLabel = (raw) => (raw ? new Date(raw).toLocaleString('zh-CN') : '')
 const eligibleDecisions = computed(() =>
-  props.decisions.filter((d) => d.topic_id === props.topic.id && d.status === 'implemented')
+  props.decisions.filter((d) => d.topic_id === props.topic.id && d.status === 'approved')
 )
 const labels = {
+  decision_created: '新增决策草案',
+  decision_revised: '修订决策草案',
+  decision_approved: '批准决策',
+  decision_supplemented: '批准补充决策',
+  decision_superseded: '决策整条被替代',
+  decision_revoked: '撤销决策',
+  decision_deleted: '删除决策草案',
+  decision_erratum: '追加文字勘误',
+  decision_moved: '调整决策来源议题',
   created: '创建议题',
   revised: '修改正文',
   admitted: '纳入通过',
@@ -228,7 +243,7 @@ async function operate() {
     return
   }
   if (action.value === 'decide' && !decisionId.value) {
-    error.value = '请选择当前议题已拍板的关联决策'
+    error.value = '请选择当前议题已批准的关联决策'
     return
   }
   if (action.value === 'reopen' && !executionHint.value) {

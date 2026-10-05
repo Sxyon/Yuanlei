@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services.governance_service import (
     create_governance_decision,
+    update_governance_decision,
+    operate_governance_decision,
+    create_governance_decision_erratum,
+    get_governance_decision,
     create_governance_report,
     create_governance_task,
     create_governance_topic_comment,
@@ -90,10 +94,39 @@ class GovernanceDecisionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(..., max_length=512)
-    conclusion: str
-    rationale: str | None = None
+    conclusion: str = Field(..., min_length=1, max_length=100_000)
+    rationale: str | None = Field(None, max_length=100_000)
     topic_id: str | None = Field(None, max_length=64)
-    decided: bool = True
+    relation_type: Literal["ordinary", "supplement", "replacement"] = "ordinary"
+    target_decision_id: str | None = Field(None, max_length=64)
+
+
+class GovernanceDecisionUpdate(GovernanceDecisionCreate):
+    """修订草案并提供预期版本。"""
+
+    expected_revision: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=1, max_length=100_000)
+
+
+class GovernanceDecisionOperation(BaseModel):
+    """显式批准、撤销或删除。"""
+
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["approve", "revoke", "delete"]
+    expected_revision: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=1, max_length=100_000)
+
+
+class GovernanceDecisionErratumCreate(BaseModel):
+    """声明含义不变的文字勘误。"""
+
+    model_config = ConfigDict(extra="forbid")
+    field: Literal["title", "conclusion", "rationale"]
+    original_text: str = Field(..., min_length=1, max_length=100_000)
+    corrected_text: str = Field(..., min_length=1, max_length=100_000)
+    reason: str = Field(..., min_length=1, max_length=100_000)
+    meaning_unchanged: bool
+    expected_revision: int = Field(..., ge=1)
 
 
 class GovernanceTaskCreate(BaseModel):
@@ -317,9 +350,67 @@ async def create_decision(
         conclusion=payload.conclusion,
         rationale=payload.rationale,
         topic_id=payload.topic_id,
-        decided=payload.decided,
+        relation_type=payload.relation_type,
+        target_decision_id=payload.target_decision_id,
         db=db,
         user=current_user,
+    )
+
+
+@governance.get("/projects/{project_id}/governance/decisions/{decision_id}")
+async def get_decision(
+    project_id: str,
+    decision_id: str,
+    before: int | None = Query(None, ge=1),
+    limit: int = Query(30, ge=1, le=100),
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取原文和局部时间线。"""
+    return await get_governance_decision(
+        project_id=project_id, decision_id=decision_id, before=before, limit=limit, db=db, user=current_user
+    )
+
+
+@governance.put("/projects/{project_id}/governance/decisions/{decision_id}")
+async def update_decision(
+    project_id: str,
+    decision_id: str,
+    payload: GovernanceDecisionUpdate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """修订草案，批准原文只读。"""
+    return await update_governance_decision(
+        project_id=project_id, decision_id=decision_id, **payload.model_dump(), db=db, user=current_user
+    )
+
+
+@governance.post("/projects/{project_id}/governance/decisions/{decision_id}/operations")
+async def operate_decision(
+    project_id: str,
+    decision_id: str,
+    payload: GovernanceDecisionOperation,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """操作不控制任务或执行记录。"""
+    return await operate_governance_decision(
+        project_id=project_id, decision_id=decision_id, **payload.model_dump(), db=db, user=current_user
+    )
+
+
+@governance.post("/projects/{project_id}/governance/decisions/{decision_id}/errata")
+async def create_decision_erratum(
+    project_id: str,
+    decision_id: str,
+    payload: GovernanceDecisionErratumCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """追加勘误并保留批准原文。"""
+    return await create_governance_decision_erratum(
+        project_id=project_id, decision_id=decision_id, **payload.model_dump(), db=db, user=current_user
     )
 
 

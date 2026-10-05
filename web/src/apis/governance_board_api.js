@@ -114,6 +114,33 @@ export const governanceBoardApi = {
     return apiPost(`${projectPath(projectId)}/governance/decisions`, payload)
   },
 
+  getDecision(projectId, decisionId, before) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/decisions/${encodeURIComponent(decisionId)}${before ? `?before=${before}` : ''}`
+    )
+  },
+
+  updateDecision(projectId, decisionId, payload) {
+    return apiPut(
+      `${projectPath(projectId)}/governance/decisions/${encodeURIComponent(decisionId)}`,
+      payload
+    )
+  },
+
+  operateDecision(projectId, decisionId, payload) {
+    return apiPost(
+      `${projectPath(projectId)}/governance/decisions/${encodeURIComponent(decisionId)}/operations`,
+      payload
+    )
+  },
+
+  createDecisionErratum(projectId, decisionId, payload) {
+    return apiPost(
+      `${projectPath(projectId)}/governance/decisions/${encodeURIComponent(decisionId)}/errata`,
+      payload
+    )
+  },
+
   createTask(projectId, payload) {
     return apiPost(`${projectPath(projectId)}/governance/tasks`, payload)
   },

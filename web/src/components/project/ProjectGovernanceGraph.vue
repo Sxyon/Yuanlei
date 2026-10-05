@@ -451,11 +451,15 @@ watch(
   fill: #d97706;
 }
 .status-dot.status-canonical,
-.status-dot.status-implemented {
+.status-dot.status-approved {
   fill: #059669;
 }
-.status-dot.status-rejected {
+.status-dot.status-rejected,
+.status-dot.status-revoked {
   fill: #dc2626;
+}
+.status-dot.status-superseded {
+  fill: var(--gray-500);
 }
 .graph-empty {
   margin: 18px 0 0;

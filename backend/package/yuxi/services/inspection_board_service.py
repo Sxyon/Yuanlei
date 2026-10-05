@@ -84,7 +84,7 @@ async def _build_project_board(*, project: Project, db: AsyncSession, user: User
             "pending_topics": [t for t in topics if t["admission_status"] == "proposed"],
             "open_topics": [t for t in topics if t["progress"] == "open"],
             "pending_tasks": _pending(tasks),
-            "pending_decisions": _pending(decisions),
+            "pending_decisions": [row for row in decisions if row["status"] == "draft"],
         },
         "execution": {
             "run_status_counts": await run_repo.count_runs_by_status(project_id=project_id, uid=uid),

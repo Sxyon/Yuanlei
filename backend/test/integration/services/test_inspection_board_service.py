@@ -147,7 +147,6 @@ async def test_project_board_reads_governance_and_run_facts_from_source() -> Non
                 conclusion="进入实施",
                 rationale=None,
                 topic_id=topic["id"],
-                decided=False,
                 db=session,
                 user=user,
             )

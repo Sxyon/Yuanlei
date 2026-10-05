@@ -1356,10 +1356,13 @@ class GovernanceDecision(Base):
 
     __tablename__ = "governance_decisions"
     __table_args__ = (
-        CheckConstraint("status IN ('proposed', 'implemented')", name="ck_governance_decisions_status"),
         CheckConstraint(
-            "(status = 'proposed' AND decided_by IS NULL AND decided_at IS NULL)"
-            " OR (status = 'implemented' AND decided_by IS NOT NULL AND decided_at IS NOT NULL)",
+            "status IN ('draft', 'approved', 'superseded', 'revoked')", name="ck_governance_decisions_status"
+        ),
+        CheckConstraint(
+            "(status = 'draft' AND decided_by IS NULL AND decided_at IS NULL)"
+            " OR (status IN ('approved', 'superseded', 'revoked') "
+            "AND decided_by IS NOT NULL AND decided_at IS NOT NULL)",
             name="ck_governance_decisions_decision_shape",
         ),
         ForeignKeyConstraint(
@@ -1367,6 +1370,19 @@ class GovernanceDecision(Base):
             ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
             name="fk_topic_decision_revision",
         ),
+        UniqueConstraint("id", "project_id", name="uq_governance_decision_project"),
+        ForeignKeyConstraint(
+            ["target_decision_id", "project_id"],
+            ["governance_decisions.id", "governance_decisions.project_id"],
+            name="fk_decision_target_project",
+        ),
+        CheckConstraint(
+            "(relation_type = 'ordinary' AND target_decision_id IS NULL) OR "
+            "(relation_type IN ('supplement', 'replacement') AND target_decision_id IS NOT NULL "
+            "AND target_decision_id <> id)",
+            name="ck_decision_relation_shape",
+        ),
+        CheckConstraint("revision_number >= 1 AND history_sequence >= 0", name="ck_decision_revision_sequence"),
         Index("ix_governance_decisions_project_id", "project_id"),
         Index("ix_governance_decisions_topic_id", "topic_id"),
     )
@@ -1388,12 +1404,85 @@ class GovernanceDecision(Base):
     title = Column(String(512), nullable=False, comment="决策标题")
     conclusion = Column(Text, nullable=False, comment="结论")
     rationale = Column(Text, nullable=True, comment="理由与被否替代")
-    status = Column(String(16), nullable=False, default="proposed", comment="proposed/implemented")
+    status = Column(String(16), nullable=False, default="draft", comment="draft/approved/superseded/revoked")
+    relation_type = Column(String(16), nullable=False, default="ordinary", server_default="ordinary")
+    target_decision_id = Column(String(64), nullable=True)
+    revision_number = Column(Integer, nullable=False, default=1, server_default="1")
+    history_sequence = Column(Integer, nullable=False, default=0, server_default="0")
+    deleted_at = Column(DateTime, nullable=True)
     decided_by = Column(String(64), nullable=True, comment="拍板人 uid")
     decided_at = Column(DateTime, nullable=True, comment="拍板时间")
     created_by = Column(String(64), nullable=True, comment="创建者 uid")
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class GovernanceDecisionRevision(Base):
+    """决策局部完整快照，批准依据保留在该版本。"""
+
+    __tablename__ = "governance_decision_revisions"
+    decision_id = Column(String(64), ForeignKey("governance_decisions.id", ondelete="CASCADE"), primary_key=True)
+    number = Column(Integer, primary_key=True)
+    snapshot = Column(JSON_VALUE, nullable=False)
+    origin = Column(String(16), nullable=False, default="authored")
+    reason = Column(Text, nullable=True)
+    author_name = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        CheckConstraint("number >= 1", name="ck_decision_snapshot_number"),
+        CheckConstraint("origin IN ('authored', 'migration')", name="ck_decision_snapshot_origin"),
+    )
+
+
+class GovernanceDecisionErratum(Base):
+    """不覆盖批准原文的文字勘误及用户声明。"""
+
+    __tablename__ = "governance_decision_errata"
+    id = Column(String(64), primary_key=True)
+    decision_id = Column(String(64), ForeignKey("governance_decisions.id", ondelete="CASCADE"), nullable=False)
+    revision_number = Column(Integer, nullable=False)
+    field = Column(String(16), nullable=False)
+    original_text = Column(Text, nullable=False)
+    corrected_text = Column(Text, nullable=False)
+    reason = Column(Text, nullable=False)
+    meaning_unchanged = Column(Boolean, nullable=False)
+    created_by = Column(String(64), nullable=False)
+    author_name = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["decision_id", "revision_number"],
+            ["governance_decision_revisions.decision_id", "governance_decision_revisions.number"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "field IN ('title', 'conclusion', 'rationale') AND meaning_unchanged", name="ck_decision_erratum"
+        ),
+    )
+
+
+class GovernanceDecisionEvent(Base):
+    """决策专用历史节点，与当前状态同事务保存。"""
+
+    __tablename__ = "governance_decision_events"
+    decision_id = Column(String(64), ForeignKey("governance_decisions.id", ondelete="CASCADE"), primary_key=True)
+    sequence = Column(Integer, primary_key=True)
+    kind = Column(String(32), nullable=False)
+    revision_number = Column(Integer, nullable=False)
+    reason = Column(Text, nullable=True)
+    details = Column(JSON_VALUE, nullable=False, default=dict)
+    author_name = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["decision_id", "revision_number"],
+            ["governance_decision_revisions.decision_id", "governance_decision_revisions.number"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("sequence >= 1", name="ck_decision_event_sequence"),
+    )
 
 
 class GovernanceTask(Base):
