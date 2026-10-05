@@ -128,6 +128,8 @@ def _task_data(row: ProjectWorkTask) -> dict:
         "id": row.id,
         "project_id": row.project_id,
         "topic_id": row.topic_id,
+        "source_decision_id": row.source_decision_id,
+        "source_decision_revision": row.source_decision_revision,
         "parent_id": row.parent_id,
         "number": row.number,
         "title": row.title,
@@ -251,7 +253,7 @@ async def configure_topic_code(*, db: AsyncSession, user: User, project_id: str,
     normalized = _code(code)
     if normalized == "GEN":
         raise HTTPException(status_code=422, detail="GEN 保留给无议题任务")
-    await _project(db, user, project_id)
+    await _writable_project(db, user, project_id)
     topic = await GovernanceRepository(db).get_topic_for_update(topic_id=topic_id)
     if topic is None or topic.project_id != project_id or topic.archived_at is not None:
         raise HTTPException(status_code=404, detail="议题不存在")
@@ -303,6 +305,8 @@ async def create_task(
     primary_owner_agent_slug: str | None,
     start_date: date | None = None,
     due_date: date | None = None,
+    source_decision_id: str | None = None,
+    review_confirmed: bool = False,
 ) -> dict:
     """在项目缩写行锁内分配唯一编号并创建任务。"""
     normalized_title = _text(title, limit=512, label="标题")
@@ -310,6 +314,7 @@ async def create_task(
         raise HTTPException(status_code=422, detail="计划结束日期不能早于开始日期")
     await _writable_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
+    await repo.validate_source(topic_id=topic_id, decision_id=source_decision_id, review_confirmed=review_confirmed)
     if parent_id is not None:
         await _task(db, user, project_id, parent_id)
     topic_code = "GEN"
@@ -345,6 +350,8 @@ async def create_task(
         start_date=start_date,
         due_date=due_date,
         created_by=str(user.uid),
+        source_decision_id=source_decision_id,
+        review_confirmed=review_confirmed,
     )
     await db.commit()
     return _task_data(row)
@@ -374,6 +381,8 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     candidates, _ = await settings.knowledge(user) if linked else ([], set())
     return {
         **_task_data(task),
+        "source": await repo.source_detail(topic_id=task.topic_id, decision_id=task.source_decision_id,
+                                           revision=task.source_decision_revision),
         "knowledge_candidates": [item for item in candidates if item["kb_id"] in linked],
         "issues": [_issue_data(row, task.number) for row in issues],
         "comments": [_comment_data(row) for row in comments],
@@ -381,6 +390,32 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
         "attachments": [_attachment_data(row) for row in attachments],
         "inspection_runs": [_inspection_data(row) for row in inspection_runs],
     }
+
+
+async def update_source(
+    *, db: AsyncSession, user: User, project_id: str, task_id: str,
+    topic_id: str | None, source_decision_id: str | None, review_confirmed: bool,
+    expected_topic_id: str | None, expected_decision_id: str | None, expected_decision_revision: int | None,
+) -> dict:
+    """调整工作当前来源，原编号和旧执行输入保持不变。"""
+    await _writable_project(db, user, project_id)
+    repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
+    task = await _task(db, user, project_id, task_id)
+    if (task.topic_id, task.source_decision_id, task.source_decision_revision) != (
+        expected_topic_id, expected_decision_id, expected_decision_revision
+    ):
+        raise HTTPException(status_code=409, detail={"code": "work_source_conflict", "message": "工作来源已改变，请核对最新来源；本次选择尚未保存"})
+    if (task.topic_id, task.source_decision_id) != (topic_id, source_decision_id):
+        revision = await repo.validate_source(
+            topic_id=topic_id, decision_id=source_decision_id, review_confirmed=review_confirmed
+        )
+        task = await _task(db, user, project_id, task_id, lock=True)
+        task.topic_id = topic_id
+        task.source_decision_id = source_decision_id
+        task.source_decision_revision = revision
+        task.updated_at = utc_now_naive()
+    await db.commit()
+    return await get_task(db=db, user=user, project_id=project_id, task_id=task_id)
 
 
 async def add_reference(*, db: AsyncSession, user: User, project_id: str, task_id: str, title: str, url: str) -> dict:

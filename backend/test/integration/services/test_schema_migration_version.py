@@ -1686,3 +1686,47 @@ async def test_project_git_schema_enforces_alias_and_user_boundaries() -> None:
         async with admin_engine.begin() as connection:
             await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         await admin_engine.dispose()
+
+
+async def test_yuanlei_v29_to_v30_preserves_empty_sources_and_constraints() -> None:
+    """旧工作与尝试保持空来源，重入保留明确来源及项目约束。"""
+    schema, admin_engine, scoped_engine, manager = await _create_isolated_manager("pytest_work_source_schema")
+    try:
+        async with scoped_engine.begin() as conn:
+            for statement in (
+                "CREATE TABLE governance_topics(id VARCHAR(64), project_id VARCHAR(64), PRIMARY KEY(id,project_id))",
+                "CREATE TABLE governance_decisions(id VARCHAR(64), project_id VARCHAR(64), PRIMARY KEY(id,project_id))",
+                "CREATE TABLE governance_decision_revisions(decision_id VARCHAR(64), number INTEGER, "
+                "PRIMARY KEY(decision_id,number))",
+                "CREATE TABLE project_work_tasks(id VARCHAR(64) PRIMARY KEY, project_id VARCHAR(64), number VARCHAR(48))",
+                "CREATE TABLE project_work_executions(id VARCHAR(64) PRIMARY KEY, project_id VARCHAR(64), prompt TEXT)",
+                "INSERT INTO project_work_tasks VALUES ('old','p','W-GEN-000001')",
+                "INSERT INTO project_work_executions VALUES ('old-attempt','p','旧输入')",
+                "INSERT INTO governance_decisions VALUES ('d','p')",
+                "INSERT INTO governance_decision_revisions VALUES ('d',2)",
+            ):
+                await conn.execute(text(statement))
+        await manager.upgrade_yuanlei_schema_v29_to_v30()
+        async with scoped_engine.begin() as conn:
+            assert (await conn.execute(text("SELECT number,source_decision_id,source_decision_revision "
+                                           "FROM project_work_tasks"))).one() == ('W-GEN-000001', None, None)
+            assert (await conn.execute(text("SELECT prompt,source_topic_id,source_decision_id,source_decision_revision "
+                                           "FROM project_work_executions"))).one() == ('旧输入', None, None, None)
+            await conn.execute(text("UPDATE project_work_tasks SET source_decision_id='d',source_decision_revision=2"))
+        await manager.upgrade_yuanlei_schema_v29_to_v30()
+        async with scoped_engine.connect() as conn:
+            assert (await conn.execute(text("SELECT source_decision_id,source_decision_revision "
+                                           "FROM project_work_tasks"))).one() == ('d', 2)
+        for table in ('project_work_tasks', 'project_work_executions'):
+            with pytest.raises(IntegrityError):
+                async with scoped_engine.begin() as conn:
+                    await conn.execute(text(f"UPDATE {table} SET source_decision_id='d',source_decision_revision=2,"
+                                            "project_id='wrong'"))
+            with pytest.raises(IntegrityError):
+                async with scoped_engine.begin() as conn:
+                    await conn.execute(text(f"UPDATE {table} SET source_decision_id='d',source_decision_revision=99"))
+            with pytest.raises(IntegrityError):
+                async with scoped_engine.begin() as conn:
+                    await conn.execute(text(f"UPDATE {table} SET source_decision_id='d',source_decision_revision=NULL"))
+    finally:
+        await _drop_isolated_schema(schema, admin_engine, scoped_engine)

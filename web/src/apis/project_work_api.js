@@ -13,6 +13,8 @@ export const projectWorkApi = {
     apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks`, payload),
   getTask: (projectId, taskId) =>
     apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}`),
+  updateSource: (projectId, taskId, payload) =>
+    apiPut(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/source`, payload),
   getGitOutcomes: (projectId, taskId) =>
     apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/git-outcomes`),
   updateTask: (projectId, taskId, payload) =>

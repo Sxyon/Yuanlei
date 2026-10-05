@@ -1,18 +1,20 @@
 import assert from 'node:assert/strict'
-import { after, before, test } from 'node:test'
+import { after, before, beforeEach, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, ssrContextKey } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createServer } from 'vite'
 
-let vite, View, projectWorkApi, projectAgentApi
+let vite, View, projectWorkApi, projectAgentApi, governanceBoardApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/views/ProjectWorkTasksView.vue'))
   ;({ projectWorkApi } = await vite.ssrLoadModule('/src/apis/project_work_api.js'))
+  ;({ governanceBoardApi } = await vite.ssrLoadModule('/src/apis/governance_board_api.js'))
   ;({ projectAgentApi } = await vite.ssrLoadModule('/src/apis/project_agent_api.js'))
 })
+beforeEach(t => { t.mock.method(governanceBoardApi, 'listDecisions', async () => []) })
 after(async () => {
   await vite?.close()
   delete globalThis.localStorage
@@ -236,4 +238,36 @@ test('看板完成任务先检查成果，检查失败也需明确选择保留',
   await state.changeStatus(state.gitCompletionTask, 'done', true)
   assert.deepEqual(writes, [['a', 'task', { status: 'done' }]])
   assert.equal(state.gitCompletionOpen, false)
+})
+
+
+test('从决策创建工作预填来源，需复核确认传入创建且失败保留选择', async t => {
+  const decision = { id: 'supplement', title: '补充决策', status: 'approved', requires_review: true }
+  t.mock.method(governanceBoardApi, 'listDecisions', async () => [decision])
+  t.mock.method(projectWorkApi, 'listTasks', async () => [])
+  t.mock.method(projectWorkApi, 'getCode', async () => ({ code: 'YL' }))
+  t.mock.method(projectWorkApi, 'listTopics', async () => [])
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  const create = t.mock.method(projectWorkApi, 'createTask', async () => { throw new Error('需复核') })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/work/tasks', component: View }] })
+  await router.push('/projects/a/work/tasks?create=1&source_decision_id=supplement')
+  await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component); app.use(router); app.provide(ssrContextKey, { modules: new Set() }); app.mount({})
+  t.after(() => app.unmount()); await settle()
+  const state = instance.setupState
+  assert.equal(state.createOpen, true)
+  assert.equal(state.title, '补充决策')
+  assert.equal(state.decisionId, 'supplement')
+  assert.equal(state.reviewConfirmed, false)
+  await state.createTask()
+  assert.equal(create.mock.calls[0].arguments[1].review_confirmed, false)
+  assert.equal(state.createOpen, true)
+  assert.equal(state.decisionId, 'supplement')
+  assert.equal(state.formError, '需复核')
+  state.reviewConfirmed = true
+  await state.createTask()
+  assert.equal(create.mock.calls[1].arguments[1].source_decision_id, 'supplement')
+  assert.equal(create.mock.calls[1].arguments[1].review_confirmed, true)
 })

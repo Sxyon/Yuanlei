@@ -22,6 +22,7 @@ from yuxi.storage.postgres.models_business import (
     GovernanceTopicRevision,
     GovernanceTopicEvent,
     ProjectWorkTask,
+    ProjectWorkExecution,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -216,6 +217,10 @@ class GovernanceRepository:
         ):
             if await self.db.scalar(select(model.id).where(model.topic_id == topic_id).limit(1)):
                 references.append(label)
+        if await self.db.scalar(select(ProjectWorkExecution.id).where(
+            ProjectWorkExecution.source_topic_id == topic_id
+        ).limit(1)):
+            references.append("正式工作历史执行依据")
         return references
 
     async def add_task(
@@ -382,6 +387,10 @@ class GovernanceRepository:
             .limit(1)
         ):
             refs.append("补充或替代决策")
+        for model in (ProjectWorkTask, ProjectWorkExecution):
+            if await self.db.scalar(select(model.id).where(model.source_decision_id == decision_id).limit(1)):
+                refs.append("正式工作及其历史执行依据")
+                break
         return refs
 
     async def list_decision_errata(self, decision_id: str):

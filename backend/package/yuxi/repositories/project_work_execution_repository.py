@@ -41,8 +41,14 @@ class ProjectWorkExecutionRepository:
         self, *, task_id: str, project_id: str, uid: str, agent_slug: str, prompt: str
     ) -> ProjectWorkExecution:
         """写入待接受分配，持久化边界复核任务与数字员工归属。"""
+        project = await self.db.scalar(select(Project.id).where(
+            Project.id == project_id, Project.uid == uid, Project.status == "active",
+            Project.selection_status == "selectable",
+        ).with_for_update())
+        if project is None:
+            raise PermissionError("Project 不可见")
         scope = await self.db.scalar(
-            select(ProjectWorkTask.id)
+            select(ProjectWorkTask)
             .join(Project, Project.id == ProjectWorkTask.project_id)
             .join(
                 ProjectAgent,
@@ -56,7 +62,7 @@ class ProjectWorkExecutionRepository:
                 Project.status == "active",
                 Project.selection_status == "selectable",
                 ProjectWorkTask.status.notin_(("done", "cancelled")),
-            )
+            ).with_for_update(of=ProjectWorkTask).execution_options(populate_existing=True)
         )
         if scope is None:
             raise PermissionError("任务或项目数字员工不可用")
@@ -69,6 +75,9 @@ class ProjectWorkExecutionRepository:
             agent_slug=agent_slug,
             status="pending_acceptance",
             prompt=prompt,
+            source_topic_id=scope.topic_id,
+            source_decision_id=scope.source_decision_id,
+            source_decision_revision=scope.source_decision_revision,
             request_id=str(uuid.uuid4()),
             thread_id=str(uuid.uuid4()),
             created_at=now,

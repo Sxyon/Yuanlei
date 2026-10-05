@@ -1108,6 +1108,21 @@ class ProjectWorkTask(Base):
 
     __tablename__ = "project_work_tasks"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_decision_id", "project_id"],
+            ["governance_decisions.id", "governance_decisions.project_id"],
+            name="fk_work_task_source_project",
+        ),
+        ForeignKeyConstraint(
+            ["source_decision_id", "source_decision_revision"],
+            ["governance_decision_revisions.decision_id", "governance_decision_revisions.number"],
+            name="fk_work_task_source_revision",
+        ),
+        CheckConstraint(
+            "(source_decision_id IS NULL AND source_decision_revision IS NULL) OR "
+            "(source_decision_id IS NOT NULL AND source_decision_revision IS NOT NULL)",
+            name="ck_work_task_source_shape",
+        ),
         UniqueConstraint("id", "project_id", name="uq_project_work_tasks_id_project"),
         UniqueConstraint("project_id", "number", name="uq_project_work_tasks_project_number"),
         ForeignKeyConstraint(
@@ -1131,6 +1146,8 @@ class ProjectWorkTask(Base):
     )
 
     id = Column(String(64), primary_key=True)
+    source_decision_id = Column(String(64), nullable=True)
+    source_decision_revision = Column(Integer, nullable=True)
     project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     topic_id = Column(String(64), ForeignKey("governance_topics.id", ondelete="SET NULL"), nullable=True)
     parent_id = Column(String(64), ForeignKey("project_work_tasks.id", ondelete="SET NULL"), nullable=True)
@@ -1161,6 +1178,26 @@ class ProjectWorkExecution(Base):
     __tablename__ = "project_work_executions"
     __table_args__ = (
         ForeignKeyConstraint(
+            ["source_decision_id", "project_id"],
+            ["governance_decisions.id", "governance_decisions.project_id"],
+            name="fk_work_execution_source_project",
+        ),
+        ForeignKeyConstraint(
+            ["source_decision_id", "source_decision_revision"],
+            ["governance_decision_revisions.decision_id", "governance_decision_revisions.number"],
+            name="fk_work_execution_source_revision",
+        ),
+        CheckConstraint(
+            "(source_decision_id IS NULL AND source_decision_revision IS NULL) OR "
+            "(source_decision_id IS NOT NULL AND source_decision_revision IS NOT NULL)",
+            name="ck_work_execution_source_shape",
+        ),
+        ForeignKeyConstraint(
+            ["source_topic_id", "project_id"],
+            ["governance_topics.id", "governance_topics.project_id"],
+            name="fk_work_execution_source_topic_project",
+        ),
+        ForeignKeyConstraint(
             ["task_id", "project_id"],
             ["project_work_tasks.id", "project_work_tasks.project_id"],
             name="fk_project_work_executions_task_project",
@@ -1189,6 +1226,9 @@ class ProjectWorkExecution(Base):
     )
 
     id = Column(String(64), primary_key=True)
+    source_decision_id = Column(String(64), nullable=True)
+    source_decision_revision = Column(Integer, nullable=True)
+    source_topic_id = Column(String(64), nullable=True)
     task_id = Column(String(64), nullable=False)
     project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     uid = Column(String(64), nullable=False)

@@ -15,6 +15,7 @@ from yuxi.services.governance_service import (
     operate_governance_decision,
     create_governance_decision_erratum,
     get_governance_decision,
+    list_governance_decisions,
     create_governance_report,
     create_governance_task,
     create_governance_topic_comment,
@@ -334,6 +335,16 @@ async def review_task(
         db=db,
         user=current_user,
     )
+
+
+@governance.get("/projects/{project_id}/governance/decisions")
+async def list_decisions(
+    project_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取来源候选及历史效力，批准不等于免于复核。"""
+    return await list_governance_decisions(project_id=project_id, user=user, db=db)
 
 
 @governance.post("/projects/{project_id}/governance/decisions")

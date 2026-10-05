@@ -1226,9 +1226,21 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             json={"code": f"P{uuid.uuid4().hex[:8].upper()}"},
         )
         assert code.status_code == 200, code.text
+        governance_root = f"/api/projects/{project_id}/governance"
+        source_draft = await e2e_client.post(
+            f"{governance_root}/decisions", headers=e2e_headers,
+            json={"title": "执行来源", "conclusion": "明确本次执行依据"},
+        )
+        assert source_draft.status_code == 200, source_draft.text
+        source_id = source_draft.json()["id"]
+        approved_source = await e2e_client.post(
+            f"{governance_root}/decisions/{source_id}/operations", headers=e2e_headers,
+            json={"action": "approve", "expected_revision": 1, "reason": "批准确定性验证依据"},
+        )
+        assert approved_source.status_code == 200, approved_source.text
         created = await e2e_client.post(
             f"{root}/tasks", headers=e2e_headers,
-            json={"title": f"Verify worker {EXPECTED_OUTPUT}"},
+            json={"title": f"Verify worker {EXPECTED_OUTPUT}", "source_decision_id": source_id},
         )
         assert created.status_code == 200, created.text
         task_id = str(created.json()["id"])
@@ -1246,6 +1258,15 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         execution_id = str(assigned.json()["id"])
         execution_status = assigned.json()["status"]
         assert execution_status == ("queued" if auto_accept else "pending_acceptance")
+        assert assigned.json()["source_decision_id"] == source_id
+        assert assigned.json()["source_decision_revision"] == 2
+        source_changed = await e2e_client.put(
+            f"{root}/tasks/{task_id}/source", headers=e2e_headers,
+            json={"source_decision_id": None, "topic_id": None, "expected_topic_id": None,
+                  "expected_decision_id": source_id, "expected_decision_revision": 2},
+        )
+        assert source_changed.status_code == 200, source_changed.text
+        assert source_changed.json()["source_decision_id"] is None
         if not auto_accept:
             accepted = await e2e_client.post(
                 f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
@@ -1334,6 +1355,16 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                        WHERE e.id = $1""",
                     execution_id, run_id,
                 )
+                source_fact = await conn.fetchrow(
+                    "SELECT e.source_decision_id,e.source_decision_revision,q.origin_metadata AS request_origin,"
+                    "r.origin_metadata AS run_origin FROM project_work_executions e "
+                    "JOIN agent_run_requests q ON q.request_id=e.request_id JOIN agent_runs r ON r.id=$2 WHERE e.id=$1",
+                    execution_id, run_id,
+                )
+                assert source_fact["source_decision_id"] == source_id and source_fact["source_decision_revision"] == 2
+                for origin in (source_fact["request_origin"], source_fact["run_origin"]):
+                    origin = json.loads(origin) if isinstance(origin, str) else origin
+                    assert origin["source_decision_id"] == source_id and origin["source_decision_revision"] == 2
                 assert row is not None
                 assert row["request_id"] == row["run_request_id"] == execution["request_id"]
                 assert row["thread_id"] == row["conversation_thread_id"] == thread_id
@@ -1384,6 +1415,16 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                    WHERE e.id = $1""",
                 execution_id, run_id,
             )
+            source_fact = await conn.fetchrow(
+                "SELECT e.source_decision_id,e.source_decision_revision,q.origin_metadata AS request_origin,"
+                "r.origin_metadata AS run_origin FROM project_work_executions e "
+                "JOIN agent_run_requests q ON q.request_id=e.request_id JOIN agent_runs r ON r.id=$2 WHERE e.id=$1",
+                execution_id, run_id,
+            )
+            assert source_fact["source_decision_id"] == source_id and source_fact["source_decision_revision"] == 2
+            for origin in (source_fact["request_origin"], source_fact["run_origin"]):
+                origin = json.loads(origin) if isinstance(origin, str) else origin
+                assert origin["source_decision_id"] == source_id and origin["source_decision_revision"] == 2
             assert row is not None
             assert row["request_id"] == request_id
             assert row["request_status"] == "dispatched"

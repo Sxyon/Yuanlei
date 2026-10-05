@@ -8,6 +8,7 @@
       description="此提示仅记录议题意见，不暂停关联任务或执行记录，也不撤销正式决策。"
     />
     <p>纳入议题不等于批准决策。正文修改保留修订，不覆盖正式决策。</p>
+    <RouterLink class="source-work-link" v-if="!topic.archived_at" :to="{ name: 'ProjectWorkTasksView', params: { project_id: projectId }, query: { create: '1', topic_id: topic.id } }">从此议题创建工作</RouterLink>
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <div v-if="!topic.archived_at" class="topic-maintenance">
       <a-select v-model:value="action" aria-label="议题操作" style="min-width: 160px">
@@ -316,6 +317,7 @@ watch(
 </script>
 
 <style scoped>
+.source-work-link { color: var(--main-color); }
 .topic-history,
 .topic-maintenance,
 .topic-discussion {

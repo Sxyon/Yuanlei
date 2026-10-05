@@ -31,10 +31,24 @@ class WorkTaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=512)
     description: str | None = None
     topic_id: str | None = Field(default=None, max_length=64)
+    source_decision_id: str | None = Field(default=None, max_length=64)
+    review_confirmed: bool = False
     parent_id: str | None = Field(default=None, max_length=64)
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
     start_date: date | None = None
     due_date: date | None = None
+
+
+class WorkSourceUpdate(BaseModel):
+    """来源调整与原来源并发校验。"""
+
+    model_config = ConfigDict(extra="forbid")
+    topic_id: str | None = Field(default=None, max_length=64)
+    source_decision_id: str | None = Field(default=None, max_length=64)
+    review_confirmed: bool = False
+    expected_topic_id: str | None = Field(max_length=64)
+    expected_decision_id: str | None = Field(max_length=64)
+    expected_decision_revision: int | None = Field(ge=1)
 
 
 class WorkTaskUpdate(BaseModel):
@@ -156,6 +170,18 @@ async def get_task(
 ):
     """读取任务、问题单与讨论。"""
     return await work.get_task(db=db, user=user, project_id=project_id, task_id=task_id)
+
+
+@project_work.put("/projects/{project_id}/work/tasks/{task_id}/source")
+async def update_source(
+    project_id: str,
+    task_id: str,
+    payload: WorkSourceUpdate,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """修改当前来源，保留旧执行尝试的依据。"""
+    return await work.update_source(db=db, user=user, project_id=project_id, task_id=task_id, **payload.model_dump())
 
 
 @project_work.get("/projects/{project_id}/work/tasks/{task_id}/git-outcomes")

@@ -20,6 +20,32 @@
         </p>
 
         <section class="work-task-section">
+          <h2>工作来源 <a-button size="small" @click="editSource">调整来源</a-button></h2>
+          <p v-if="!task.source?.topic && !task.source?.decision" class="work-task-muted">独立工作，未关联议题或决策。</p>
+          <p v-if="task.source?.topic">来源议题：<RouterLink class="work-task-link" :to="inspectionLink({ topic_id: task.topic_id })">{{ task.source.topic.title }}</RouterLink>
+            {{ task.source.topic.archived ? ' · 已归档' : '' }}</p>
+          <template v-if="task.source?.decision">
+            <p>来源决策：<RouterLink class="work-task-link" :to="inspectionLink({ decision_id: task.source_decision_id })">{{ task.source.decision.title }}</RouterLink>
+              · 版本 {{ task.source_decision_revision }} · {{ governanceStatusLabel(task.source.decision.status) }}</p>
+            <a-alert v-if="['superseded', 'revoked'].includes(task.source.decision.status)" type="warning" show-icon
+              message="来源决策已被替代或撤销，请重新核对工作依据" description="当前来源及执行保持原样，可维持历史依据或手动调整后续来源。" />
+            <a-alert v-if="task.source.decision.requires_review" type="warning" show-icon message="补充决策原依据已变化，需复核；工作继续保持当前来源。" />
+            <details><summary>选定版本的批准原文</summary>
+              <MarkdownPreview :content="task.source.decision.snapshot?.conclusion || ''" />
+              <MarkdownPreview :content="task.source.decision.snapshot?.rationale || ''" />
+            </details>
+          </template>
+          <form v-if="sourceEditing" @submit.prevent="saveSource">
+            <WorkSourceFields v-model:topic-id="sourceTopic" v-model:decision-id="sourceDecision"
+              v-model:review-confirmed="sourceReviewed" :topics="sourceTopics" :decisions="sourceDecisions" :disabled="saving" />
+            <p class="work-task-muted">调整只影响后续分配；当前尝试、旧输入和工作编号保留。</p>
+            <p v-if="sourceError" class="work-task-error" role="alert">{{ sourceError }}</p>
+            <a-button @click="sourceEditing = false">取消</a-button>
+            <a-button html-type="submit" type="primary" :loading="saving">保存来源</a-button>
+          </form>
+        </section>
+
+        <section class="work-task-section">
           <h2>任务管理</h2>
           <div class="work-task-controls">
             <label for="task-status">状态</label>
@@ -136,6 +162,8 @@
             <li v-for="item in executions" :key="item.id">
               <span class="work-execution-main">
                 {{ agentName(item.agent_slug) }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}
+                <span v-if="item.source_decision_id"> · 当次来源：<RouterLink class="work-task-link" :to="inspectionLink({ decision_id: item.source_decision_id })">决策版本 {{ item.source_decision_revision }}</RouterLink></span>
+                <span v-if="item.source_topic_id"> · <RouterLink class="work-task-link" :to="inspectionLink({ topic_id: item.source_topic_id })">当次议题</RouterLink></span>
                 <span v-if="item.current_run_id" class="work-execution-run"> · Run {{ item.current_run_id }}</span>
                 <span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span>
               </span>
@@ -226,6 +254,10 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
+import WorkSourceFields from '@/components/project/WorkSourceFields.vue'
+import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
+import { governanceStatusLabel } from '@/utils/governanceBoard'
+import { governanceBoardApi } from '@/apis/governance_board_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 
@@ -263,6 +295,45 @@ const attachmentError = ref('')
 const inspectionEnabled = ref(false)
 const inspectionInterval = ref(60)
 const inspectionError = ref('')
+const sourceEditing = ref(false)
+const sourceTopic = ref(undefined)
+const sourceDecision = ref(undefined)
+const sourceReviewed = ref(false)
+const sourceTopics = ref([])
+const sourceDecisions = ref([])
+const sourceError = ref('')
+let sourceExpected = null
+const inspectionLink = (query) => ({ name: 'ProjectInspectionBoardComp', params: { project_id: route.params.project_id }, query })
+async function editSource() {
+  const project = route.params.project_id, id = task.value.id
+  sourceError.value = ''
+  try {
+    const [topics, decisions] = await Promise.all([projectWorkApi.listTopics(project), governanceBoardApi.listDecisions(project)])
+    if (project !== route.params.project_id || id !== task.value?.id) return
+    sourceTopics.value = topics
+    sourceDecisions.value = decisions
+    sourceTopic.value = task.value.topic_id || undefined
+    sourceDecision.value = task.value.source_decision_id || undefined
+    sourceReviewed.value = false
+    sourceExpected = { expected_topic_id: task.value.topic_id, expected_decision_id: task.value.source_decision_id,
+      expected_decision_revision: task.value.source_decision_revision }
+    sourceEditing.value = true
+  } catch (cause) { actionError.value = cause?.message || '来源加载失败' }
+}
+async function saveSource() {
+  if (saving.value) return
+  const project = route.params.project_id, id = task.value.id
+  saving.value = true
+  sourceError.value = ''
+  try {
+    await projectWorkApi.updateSource(project, id, { ...sourceExpected, topic_id: sourceTopic.value || null,
+      source_decision_id: sourceDecision.value || null, review_confirmed: sourceReviewed.value })
+    if (project !== route.params.project_id || id !== task.value?.id) return
+    sourceEditing.value = false
+    await load()
+  } catch (cause) { if (project === route.params.project_id && id === task.value?.id) sourceError.value = cause?.message || '来源保存失败，选择已保留' }
+  finally { saving.value = false }
+}
 let loadVersion = 0
 let issueVersion = 0
 const statuses = [
@@ -305,6 +376,7 @@ async function load() {
       inspectionEnabled.value === (task.value?.inspection_enabled ?? false) &&
       inspectionInterval.value === (task.value?.inspection_interval_minutes ?? null)
     if (!sameTask || JSON.stringify(selectedKnowledges.value) === JSON.stringify(task.value?.knowledge_ids || [])) selectedKnowledges.value = result.knowledge_ids || []
+    if (!sameTask) sourceEditing.value = false
     task.value = result
     agents.value = bindings.agents || []
     executions.value = history

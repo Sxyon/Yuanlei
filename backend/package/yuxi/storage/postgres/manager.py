@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 29
+YUANLEI_SCHEMA_VERSION = 30
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1670,6 +1670,32 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v29_to_v30(self) -> None:
+        """增加正式工作与执行尝试的可空来源定位，不推断旧数据。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for table, prefix in (("project_work_tasks", "work_task"), ("project_work_executions", "work_execution")):
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_decision_id VARCHAR(64)"))
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_decision_revision INTEGER"))
+                constraints = [
+                    (f"fk_{prefix}_source_project", "FOREIGN KEY (source_decision_id, project_id) "
+                     "REFERENCES governance_decisions(id, project_id)"),
+                    (f"fk_{prefix}_source_revision", "FOREIGN KEY (source_decision_id, source_decision_revision) "
+                     "REFERENCES governance_decision_revisions(decision_id, number)"),
+                    (f"ck_{prefix}_source_shape", "CHECK ((source_decision_id IS NULL AND source_decision_revision IS NULL) "
+                     "OR (source_decision_id IS NOT NULL AND source_decision_revision IS NOT NULL))"),
+                ]
+                if table == "project_work_executions":
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_topic_id VARCHAR(64)"))
+                    constraints.append(("fk_work_execution_source_topic_project", "FOREIGN KEY (source_topic_id, project_id) "
+                                        "REFERENCES governance_topics(id, project_id)"))
+                for name, clause in constraints:
+                    await conn.execute(text(
+                        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='{name}' "
+                        f"AND conrelid='{table}'::regclass) THEN ALTER TABLE {table} "
+                        f"ADD CONSTRAINT {name} {clause}; END IF; END $$"
+                    ))
 
     async def upgrade_yuanlei_schema_v28_to_v29(self) -> None:
         """迁移决策批准语义及局部历史，保留未知旧版本。"""

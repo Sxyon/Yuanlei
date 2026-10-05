@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import (
     GovernanceTopic,
+    GovernanceDecision,
+    GovernanceDecisionRevision,
     Project,
     ProjectAgent,
     ProjectTopicCode,
@@ -41,7 +43,7 @@ class ProjectWorkRepository:
                 Project.status == "active",
                 Project.selection_status == "selectable",
             )
-            .with_for_update(read=True)
+            .with_for_update()
         )
         if visible is None:
             raise PermissionError("Project 不可见")
@@ -130,6 +132,102 @@ class ProjectWorkRepository:
         await self.db.flush()
         return row
 
+    async def validate_source(
+        self, *, topic_id: str | None, decision_id: str | None, review_confirmed: bool = False
+    ) -> int | None:
+        """按项目优先顺序校验新来源；返回不可覆盖的批准版本。"""
+        from fastapi import HTTPException
+
+        await self._require_project()
+        decision = await self.db.get(GovernanceDecision, decision_id) if decision_id else None
+        if decision_id and (decision is None or decision.project_id != self.project_id or decision.deleted_at):
+            raise HTTPException(
+                status_code=404, detail={"code": "source_decision_missing", "message": "来源决策不存在"}
+            )
+        if decision and topic_id and decision.topic_id != topic_id:
+            raise HTTPException(
+                status_code=422, detail={"code": "work_source_mismatch", "message": "议题须与来源决策的议题一致"}
+            )
+        for source_topic in dict.fromkeys([topic_id, decision.topic_id if decision else None]):
+            if source_topic is None:
+                continue
+            topic = await self.db.scalar(
+                select(GovernanceTopic)
+                .where(
+                    GovernanceTopic.id == source_topic,
+                    GovernanceTopic.project_id == self.project_id,
+                    GovernanceTopic.deleted_at.is_(None),
+                    GovernanceTopic.archived_at.is_(None),
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if topic is None:
+                raise HTTPException(
+                    status_code=404, detail={"code": "source_topic_unavailable", "message": "来源议题不存在或已归档"}
+                )
+        if decision is None:
+            return None
+        decision = await self.db.scalar(
+            select(GovernanceDecision)
+            .where(GovernanceDecision.id == decision_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if decision.status != "approved":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "source_decision_not_approved",
+                    "message": "新来源须选择已批准决策；已替代或已撤销的历史依据保持可读",
+                },
+            )
+        if decision.relation_type == "supplement":
+            target = await self.db.get(GovernanceDecision, decision.target_decision_id, populate_existing=True)
+            if target.status != "approved" and not review_confirmed:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "source_review_required",
+                        "message": "补充决策原依据已变化，须明确确认已复核后关联",
+                    },
+                )
+        return decision.revision_number
+
+    async def source_detail(self, *, topic_id: str | None, decision_id: str | None, revision: int | None) -> dict:
+        """读取当前状态与选定版本，历史依据退出候选后仍可定位。"""
+        topic = await self.db.get(GovernanceTopic, topic_id) if topic_id else None
+        decision = await self.db.get(GovernanceDecision, decision_id) if decision_id else None
+        version = await self.db.get(GovernanceDecisionRevision, (decision_id, revision)) if decision_id else None
+        target = (
+            await self.db.get(GovernanceDecision, decision.target_decision_id)
+            if decision and decision.target_decision_id
+            else None
+        )
+        return {
+            "topic": {
+                "id": topic.id,
+                "title": topic.title,
+                "archived": topic.archived_at is not None,
+                "admission_status": topic.status,
+                "progress": topic.progress,
+            }
+            if topic
+            else None,
+            "decision": {
+                "id": decision.id,
+                "title": (version.snapshot if version else {}).get("title", decision.title),
+                "status": decision.status,
+                "revision_number": revision,
+                "snapshot": version.snapshot if version else None,
+                "requires_review": bool(
+                    decision.relation_type == "supplement" and target and target.status != "approved"
+                ),
+            }
+            if decision
+            else None,
+        }
+
     async def add_task(
         self,
         *,
@@ -143,11 +241,16 @@ class ProjectWorkRepository:
         created_by: str,
         start_date: date | None = None,
         due_date: date | None = None,
+        source_decision_id: str | None = None,
+        review_confirmed: bool = False,
     ) -> ProjectWorkTask:
         """新增任务并 flush。"""
         await self._require_project()
         if project_id != self.project_id or created_by != self.uid:
             raise PermissionError("任务不属于当前用户 Project")
+        source_revision = await self.validate_source(
+            topic_id=topic_id, decision_id=source_decision_id, review_confirmed=review_confirmed
+        )
         if parent_id is not None and await self.get_task(parent_id) is None:
             raise PermissionError("父任务不属于 Project")
         if topic_id is not None:
@@ -181,6 +284,8 @@ class ProjectWorkRepository:
             topic_id=topic_id,
             parent_id=parent_id,
             number=number,
+            source_decision_id=source_decision_id,
+            source_decision_revision=source_revision,
             title=title,
             description=description,
             status="todo",

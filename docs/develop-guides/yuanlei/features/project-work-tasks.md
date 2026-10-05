@@ -22,6 +22,9 @@
 - 任务网页引用独立保存标题、HTTP(S) URL、添加人和时间；当前项目用户可添加与移除。服务器不抓取目标网页，网页引用不承载文件字节。
 - 文件附件以 yuanlei 域元数据引用既有对象存储内容：保存项目、任务、文件名、内容类型、大小与对象名，内容写入 `documents` bucket。当前项目用户可上传、下载与删除；文件名去目录化，扩展名须在允许清单内，大小上限 5 MB，均在真实 HTTP 边界校验。权限在 repository 可见性查询处 fail-closed，跨项目与外部用户不可读。删除先提交元数据再尽力删除对象，上传写库失败回滚元数据并清理对象。
 
+- 正式工作可选关联同项目已批准主要来源决策及批准修订号，议题和决策均可为空。同时给议题时与决策来源一致；归档议题拒绝新引用。需复核补充要求个人明确确认；已替代或撤销只显示历史和提示，不自动停工或重定向。来源调整保留编号，原来源校验拒绝竞争覆盖。
+- 分配时固化当次议题和决策修订定位，Request 与 Run 读取该尝试定位；工作当前来源修改不改变旧 prompt、尝试或请求输入。当前引用与历史执行定位均参与删除保护，项目锁先于议题、决策与工作对象。v29→v30 的旧工作和尝试保持空关联，不推断历史。
+
 ## 与 Yuxi 的边界
 
 上游继续拥有 Project、Agent、Conversation、AgentRun、聊天 FIFO 和 Durable Task。工作任务不改变其表或状态机；任务与 Issue 表、编号配置和评论表由 yuanlei schema v13 拥有。既有治理任务和来源审核流程不迁移、不改变。
@@ -50,6 +53,7 @@
 
 ## 决策与证据
 
+- [正式工作来源与执行依据定位](../decisions/implemented/2026-10-05-work-decision-source.md)
 - [项目工作任务第一阶段](../decisions/implemented/2026-09-27-project-work-task-foundation.md)
 - [项目工作任务页面入口](../decisions/implemented/2026-09-28-project-work-task-interface.md)
 - [项目任务执行队列](../decisions/implemented/2026-09-28-project-work-execution-queue.md)

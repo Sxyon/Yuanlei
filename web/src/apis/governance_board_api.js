@@ -58,6 +58,10 @@ export const governanceBoardApi = {
     return apiPut(`${projectPath(projectId)}/blueprint/${encodeURIComponent(name)}`, { content })
   },
 
+  listDecisions(projectId) {
+    return apiGet(`${projectPath(projectId)}/governance/decisions`)
+  },
+
   createTopic(projectId, payload) {
     return apiPost(`${projectPath(projectId)}/governance/topics`, {
       ...payload,

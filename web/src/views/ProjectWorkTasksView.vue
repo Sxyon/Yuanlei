@@ -125,13 +125,8 @@
           <a-input v-model:value="projectCode" maxlength="12" placeholder="例如 YL" aria-label="项目编号缩写" />
         </div>
         <label><span class="field-title">任务标题 <em>*</em></span><a-input v-model:value="title" maxlength="512" placeholder="例如：完成季度客户访谈" /></label>
-        <label>归属议题
-          <a-select v-model:value="topicId" allow-clear :disabled="saving" placeholder="可选：归入项目议题">
-            <a-select-option v-for="topic in topics" :key="topic.id" :value="topic.id">
-              {{ topic.title }}{{ topic.code ? ` · ${topic.code}` : ' · 未设缩写' }}
-            </a-select-option>
-          </a-select>
-        </label>
+        <WorkSourceFields v-model:topic-id="topicId" v-model:decision-id="decisionId"
+          v-model:review-confirmed="reviewConfirmed" :topics="topics" :decisions="decisions" :disabled="saving" />
         <p v-if="selectedTopicMissingCode" class="tasks-hint">所选议题尚未配置缩写，任务编号需要它。<a @click.prevent="openTopicCodes">前往配置议题编号</a></p>
         <label>任务详情<a-textarea v-model:value="description" :rows="4" placeholder="写明目标、交付物和验收条件" /></label>
         <div class="form-pair">
@@ -191,6 +186,8 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
+import WorkSourceFields from '@/components/project/WorkSourceFields.vue'
+import { governanceBoardApi } from '@/apis/governance_board_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 
 const route = useRoute()
@@ -200,6 +197,10 @@ const tasks = ref([])
 const agents = ref([])
 const topics = ref([])
 const topicId = ref(undefined)
+const decisionId = ref(undefined)
+const reviewConfirmed = ref(false)
+const decisions = ref([])
+let sourcePrefilled = false
 const topicCodeOpen = ref(false)
 const topicCodeDrafts = ref({})
 const loading = ref(false)
@@ -282,14 +283,24 @@ async function load({ silent = false } = {}) {
   if (!silent) loading.value = true
   error.value = ''
   try {
-    const [items, bindings, code, topicRows] = await Promise.all([
+    const [items, bindings, code, topicRows, decisionRows] = await Promise.all([
       projectWorkApi.listTasks(project), projectAgentApi.list(project),
-      projectWorkApi.getCode(project), projectWorkApi.listTopics(project)
+      projectWorkApi.getCode(project), projectWorkApi.listTopics(project), governanceBoardApi.listDecisions(project)
     ])
     if (version !== loadVersion || project !== projectId.value) return
     tasks.value = items
     agents.value = bindings.agents || []
     topics.value = topicRows
+    decisions.value = decisionRows
+    if (!sourcePrefilled && route.query.create === '1') {
+      sourcePrefilled = true
+      topicId.value = route.query.topic_id || undefined
+      decisionId.value = route.query.source_decision_id || undefined
+      const source = decisionRows.find((item) => item.id === decisionId.value)
+      title.value = source?.title || topicRows.find((item) => item.id === topicId.value)?.title || ''
+      createOpen.value = true
+      if (decisionId.value && (!source || source.status !== 'approved')) formError.value = '来源决策不可用于新工作，请核对来源'
+    }
     if (codeVersion === codeWriteVersion) {
       projectCode.value = code.code || ''
       codeSaved.value = Boolean(code.code)
@@ -359,6 +370,7 @@ async function createTask() {
     const created = await projectWorkApi.createTask(project, {
       title: title.value.trim(), description: description.value.trim() || null,
       topic_id: topicId.value || null,
+      source_decision_id: decisionId.value || null, review_confirmed: reviewConfirmed.value,
       parent_id: parentId.value || null, primary_owner_agent_slug: ownerSlug.value || null,
       start_date: startDate.value || null, due_date: dueDate.value || null
     })
@@ -369,6 +381,8 @@ async function createTask() {
     startDate.value = ''
     dueDate.value = ''
     topicId.value = undefined
+    decisionId.value = undefined
+    reviewConfirmed.value = false
     parentId.value = undefined
     ownerSlug.value = undefined
     await load()
@@ -448,6 +462,10 @@ watch(projectId, () => {
   tasks.value = []
   agents.value = []
   topics.value = []
+  decisions.value = []
+  decisionId.value = undefined
+  reviewConfirmed.value = false
+  sourcePrefilled = false
   topicId.value = undefined
   topicCodeDrafts.value = {}
   projectCode.value = ''

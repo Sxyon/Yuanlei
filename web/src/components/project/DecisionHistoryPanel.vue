@@ -30,6 +30,7 @@
       />
       <MarkdownPreview :content="decision.conclusion" />
       <a-button @click="open(decision)">查看决策与历史</a-button>
+      <RouterLink class="source-work-link" v-if="decision.status === 'approved'" :to="workLink(decision)">创建工作</RouterLink>
     </article>
     <details :open="historicalSelected">
       <summary>历史决策（{{ historicalDecisions.length }} 条）</summary>
@@ -55,6 +56,7 @@
           show-icon
           message="原依据已变化，需复核。此补充不自动成为新的整体方案。"
         />
+        <RouterLink class="source-work-link" v-if="detail.status === 'approved'" :to="workLink(detail)">基于此决策创建工作</RouterLink>
         <p v-if="detail.topic_id">
           关联议题：<a @click="$emit('topic', detail.topic_id)">{{
             topics.find((t) => t.id === detail.topic_id)?.title || detail.topic_id
@@ -276,6 +278,8 @@ import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceStatusColor, governanceStatusLabel } from '@/utils/governanceBoard'
 
+const workLink = (decision) => ({ name: 'ProjectWorkTasksView', params: { project_id: props.projectId },
+  query: { create: '1', source_decision_id: decision.id, ...(decision.topic_id ? { topic_id: decision.topic_id } : {}) } })
 const props = defineProps({
   projectId: { type: String, required: true },
   decisions: { type: Array, default: () => [] },
@@ -501,6 +505,7 @@ watch(
 </script>
 
 <style scoped>
+.source-work-link { color: var(--main-color); }
 .decision-panel,
 .decision-detail,
 form {

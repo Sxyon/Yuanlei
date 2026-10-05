@@ -5,13 +5,14 @@ import { createRenderer, getCurrentInstance, h, KeepAlive, nextTick, ssrContextK
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createServer } from 'vite'
 
-let vite, View, projectWorkApi, projectAgentApi, projectWorkExecutionApi
+let vite, View, projectWorkApi, projectAgentApi, projectWorkExecutionApi, governanceBoardApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/views/ProjectWorkTaskView.vue'))
   ;({ projectWorkApi } = await vite.ssrLoadModule('/src/apis/project_work_api.js'))
   ;({ projectAgentApi } = await vite.ssrLoadModule('/src/apis/project_agent_api.js'))
+  ;({ governanceBoardApi } = await vite.ssrLoadModule('/src/apis/governance_board_api.js'))
   ;({ projectWorkExecutionApi } = await vite.ssrLoadModule('/src/apis/project_work_execution_api.js'))
 })
 after(async () => {
@@ -416,4 +417,32 @@ test('任务知识库保存显式选择，刷新保留未保存草稿', async (t
   await instance.setupState.saveKnowledges()
   assert.deepEqual(saved, ['linked'])
   assert.deepEqual(instance.setupState.task.knowledge_ids, ['linked'])
+})
+
+
+test('来源调整冲突保留所选来源及预期版本，旧执行定位不改写', async t => {
+  const original = { id: 'task', status: 'todo', topic_id: 'topic', source_decision_id: 'old', source_decision_revision: 2 }
+  t.mock.method(projectWorkApi, 'getTask', async () => original)
+  t.mock.method(projectWorkApi, 'listTopics', async () => [{ id: 'topic', title: '来源议题' }])
+  t.mock.method(governanceBoardApi, 'listDecisions', async () => [{ id: 'old', status: 'superseded' }, { id: 'new', status: 'approved' }])
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [{ id: 'attempt', source_decision_id: 'old', source_decision_revision: 2 }])
+  const update = t.mock.method(projectWorkApi, 'updateSource', async () => { throw new Error('工作来源已改变') })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }] })
+  await router.push('/projects/a/work/tasks/task'); await router.isReady()
+  let instance
+  const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
+  const app = renderer.createApp(Component); app.use(router); app.provide(ssrContextKey, { modules: new Set() }); app.mount({})
+  t.after(() => app.unmount()); await settle()
+  const state = instance.setupState
+  await state.editSource()
+  state.sourceDecision = 'new'
+  await state.saveSource()
+  assert.equal(state.sourceEditing, true)
+  assert.equal(state.sourceDecision, 'new')
+  assert.equal(state.sourceError, '工作来源已改变')
+  assert.equal(update.mock.calls[0].arguments[2].expected_decision_id, 'old')
+  assert.equal(update.mock.calls[0].arguments[2].expected_decision_revision, 2)
+  assert.equal(state.executions[0].source_decision_id, 'old')
+  assert.equal(state.task.source_decision_id, 'old')
 })
