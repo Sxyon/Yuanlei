@@ -252,8 +252,8 @@ async def configure_topic_code(*, db: AsyncSession, user: User, project_id: str,
     if normalized == "GEN":
         raise HTTPException(status_code=422, detail="GEN 保留给无议题任务")
     await _project(db, user, project_id)
-    topic = await GovernanceRepository(db).get_topic(topic_id=topic_id)
-    if topic is None or topic.project_id != project_id:
+    topic = await GovernanceRepository(db).get_topic_for_update(topic_id=topic_id)
+    if topic is None or topic.project_id != project_id or topic.archived_at is not None:
         raise HTTPException(status_code=404, detail="议题不存在")
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
     existing = await repo.get_topic_code(topic_id)
@@ -279,7 +279,16 @@ async def list_topics(*, db: AsyncSession, user: User, project_id: str) -> list[
     await _project(db, user, project_id)
     topics = await GovernanceRepository(db).list_topics(project_id=project_id)
     codes = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).list_topic_codes()
-    return [{"id": row.id, "title": row.title, "status": row.status, "code": codes.get(row.id)} for row in topics]
+    return [
+        {
+            "id": row.id,
+            "title": row.title,
+            "admission_status": row.status,
+            "progress": row.progress,
+            "code": codes.get(row.id),
+        }
+        for row in topics
+    ]
 
 
 async def create_task(
@@ -305,8 +314,8 @@ async def create_task(
         await _task(db, user, project_id, parent_id)
     topic_code = "GEN"
     if topic_id is not None:
-        topic = await GovernanceRepository(db).get_topic(topic_id=topic_id)
-        if topic is None or topic.project_id != project_id:
+        topic = await GovernanceRepository(db).get_topic_for_update(topic_id=topic_id)
+        if topic is None or topic.project_id != project_id or topic.archived_at is not None:
             raise HTTPException(status_code=404, detail="议题不存在")
         configured = await repo.get_topic_code(topic_id)
         if configured is None:

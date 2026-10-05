@@ -9,7 +9,9 @@
       <RouterLink :to="workbenchRoute">打开项目工作台 <ArrowUpRight :size="14" /></RouterLink>
     </header>
 
-    <p v-if="!nodes.length" class="graph-empty">提出议题、记录决策或创建任务后，关系图会在这里展示。</p>
+    <p v-if="!nodes.length" class="graph-empty">
+      提出议题、记录决策或创建任务后，关系图会在这里展示。
+    </p>
     <div v-else class="graph-scroll" role="group" aria-label="项目议题、决策和任务关系图">
       <svg
         class="governance-graph"
@@ -19,14 +21,24 @@
         aria-labelledby="governance-graph-title governance-graph-description"
       >
         <title id="governance-graph-title">项目治理关系图</title>
-        <desc id="governance-graph-description">按议题、决策和任务分列显示，连线表示数据中已保存的关联。</desc>
+        <desc id="governance-graph-description">
+          按议题、决策和任务分列显示，连线表示数据中已保存的关联。
+        </desc>
         <defs>
-          <marker id="governance-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <marker
+            id="governance-arrow"
+            markerWidth="8"
+            markerHeight="8"
+            refX="7"
+            refY="4"
+            orient="auto"
+          >
             <path d="M0,0 L8,4 L0,8 Z" />
           </marker>
         </defs>
         <text v-for="column in columns" :key="column.key" class="column-label" :x="column.x" y="35">
-          {{ column.title }} <tspan>{{ column.nodes.length }}</tspan>
+          {{ column.title }}
+          <tspan>{{ column.nodes.length }}</tspan>
         </text>
         <path
           v-for="edge in edges"
@@ -36,7 +48,12 @@
           marker-end="url(#governance-arrow)"
         />
         <g v-for="column in columns" :key="`${column.key}-empty`">
-          <text v-if="!column.nodes.length" class="column-empty" :x="column.x + nodeWidth / 2" y="102">
+          <text
+            v-if="!column.nodes.length"
+            class="column-empty"
+            :x="column.x + nodeWidth / 2"
+            y="102"
+          >
             暂无{{ column.title }}
           </text>
         </g>
@@ -48,7 +65,7 @@
           :transform="`translate(${node.x} ${node.y})`"
           role="button"
           tabindex="0"
-          :aria-label="`${node.kindLabel}：${node.item.title}，${governanceStatusLabel(node.item.status)}`"
+          :aria-label="`${node.kindLabel}：${node.item.title}，${node.kind === 'topic' ? `${topicAdmissionLabel(node.item.admission_status)} · ${topicProgressLabel(node.item.progress)}` : governanceStatusLabel(node.item.status)}`"
           :aria-pressed="selectedKey === node.key"
           @click="selectedKey = node.key"
           @keydown.enter.prevent="selectedKey = node.key"
@@ -56,25 +73,61 @@
         >
           <title>{{ node.kindLabel }}：{{ node.item.title }}</title>
           <rect class="node-card" :width="nodeWidth" :height="nodeHeight" rx="9" />
-          <circle class="status-dot" cx="16" cy="18" r="4" :class="`status-${node.item.status}`" />
+          <circle
+            class="status-dot"
+            cx="16"
+            cy="18"
+            r="4"
+            :class="`status-${node.item.admission_status || node.item.status}`"
+          />
           <text class="node-kind" x="28" y="22">
-            {{ node.kindLabel }} · {{ governanceStatusLabel(node.item.status) }}
+            {{ node.kindLabel }} ·
+            {{
+              node.kind === 'topic'
+                ? `${topicAdmissionLabel(node.item.admission_status)} · ${topicProgressLabel(node.item.progress)}`
+                : governanceStatusLabel(node.item.status)
+            }}
           </text>
-          <text v-for="(line, index) in node.lines" :key="index" class="node-title" x="14" :y="48 + index * 17">
+          <text
+            v-for="(line, index) in node.lines"
+            :key="index"
+            class="node-title"
+            x="14"
+            :y="48 + index * 17"
+          >
             {{ line }}
           </text>
         </g>
       </svg>
     </div>
-    <p v-if="hasMore" class="graph-note">图中每类最多显示最近 {{ maxPerKind }} 条；工作台可查看全部记录。</p>
+    <p v-if="hasMore" class="graph-note">
+      图中每类最多显示最近 {{ maxPerKind }} 条；工作台可查看全部记录。
+    </p>
     <div v-if="selectedNode" class="node-detail">
       <div class="node-detail-heading">
         <div>
-          <p class="eyebrow">{{ selectedNode.kindLabel }} · {{ governanceStatusLabel(selectedNode.item.status) }}</p>
+          <p class="eyebrow">
+            {{ selectedNode.kindLabel }} ·
+            {{
+              selectedNode.kind === 'topic'
+                ? `${topicAdmissionLabel(selectedNode.item.admission_status)} · ${topicProgressLabel(selectedNode.item.progress)}`
+                : governanceStatusLabel(selectedNode.item.status)
+            }}
+          </p>
           <h3>{{ selectedNode.item.title }}</h3>
         </div>
         <a-button type="primary" @click="openSelectedInWorkbench">在工作台查看</a-button>
       </div>
+      <a-alert
+        v-if="
+          selectedNode?.item?.topic_execution_hint === 'pause_recommended' ||
+          selectedNode?.item?.execution_hint === 'pause_recommended'
+        "
+        type="warning"
+        show-icon
+        message="议题建议暂停原方案"
+        description="仅为议题提示，不撤销决策或暂停任务、Run。"
+      />
       <MarkdownPreview v-if="selectedBody" :content="selectedBody" compact />
       <p v-else class="node-detail-empty">这条记录还没有补充说明。</p>
       <p v-if="selectedRelations.length" class="node-relations">
@@ -83,7 +136,9 @@
           :key="relation.key"
           type="button"
           @click="selectedKey = relation.key"
-        >{{ relation.kindLabel }} · {{ relation.item.title }}</button>
+        >
+          {{ relation.kindLabel }} · {{ relation.item.title }}
+        </button>
       </p>
     </div>
   </section>
@@ -94,7 +149,11 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { ArrowUpRight, Workflow } from '@lucide/vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
-import { governanceStatusLabel } from '@/utils/governanceBoard'
+import {
+  governanceStatusLabel,
+  topicAdmissionLabel,
+  topicProgressLabel
+} from '@/utils/governanceBoard'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -133,15 +192,18 @@ const columns = computed(() => [
 ])
 
 function latest(items, kind) {
-  return (items || []).slice(-maxPerKind).reverse().map((item, index) => ({
-    key: `${kind}:${item.id}`,
-    kind,
-    kindLabel: { topic: '议题', decision: '决策', task: '任务' }[kind],
-    item,
-    x: columnX[kind],
-    y: 57 + index * 96,
-    lines: wrapTitle(item.title)
-  }))
+  return (items || [])
+    .slice(-maxPerKind)
+    .reverse()
+    .map((item, index) => ({
+      key: `${kind}:${item.id}`,
+      kind,
+      kindLabel: { topic: '议题', decision: '决策', task: '任务' }[kind],
+      item,
+      x: columnX[kind],
+      y: 57 + index * 96,
+      lines: wrapTitle(item.title)
+    }))
 }
 
 function wrapTitle(title) {
@@ -152,7 +214,9 @@ function wrapTitle(title) {
 }
 
 const nodes = computed(() => columns.value.flatMap((column) => column.nodes))
-const graphHeight = computed(() => Math.max(166, ...columns.value.map((column) => 86 + column.nodes.length * 96)))
+const graphHeight = computed(() =>
+  Math.max(166, ...columns.value.map((column) => 86 + column.nodes.length * 96))
+)
 const nodeMap = computed(() => new Map(nodes.value.map((node) => [node.key, node])))
 const selectedKey = ref('')
 const selectedNode = computed(() => nodeMap.value.get(selectedKey.value) || nodes.value[0] || null)
@@ -206,19 +270,29 @@ const selectedRelations = computed(() => {
         .filter((candidate) => candidate.kind === 'decision' && candidate.item.topic_id === item.id)
         .map((candidate) => candidate.item.id)
     )
-    return nodes.value.filter((candidate) =>
-      (candidate.kind === 'decision' && candidate.item.topic_id === item.id) ||
-      (candidate.kind === 'task' &&
-        (item.id === candidate.item.topic_id || linkedDecisionIds.has(candidate.item.decision_id)))
+    return nodes.value.filter(
+      (candidate) =>
+        (candidate.kind === 'decision' && candidate.item.topic_id === item.id) ||
+        (candidate.kind === 'task' &&
+          (item.id === candidate.item.topic_id ||
+            linkedDecisionIds.has(candidate.item.decision_id)))
     )
   }
   if (node.kind === 'decision') {
-    const topic = nodes.value.find((candidate) => candidate.kind === 'topic' && candidate.item.id === item.topic_id)
-    const tasks = nodes.value.filter((candidate) => candidate.kind === 'task' && candidate.item.decision_id === item.id)
+    const topic = nodes.value.find(
+      (candidate) => candidate.kind === 'topic' && candidate.item.id === item.topic_id
+    )
+    const tasks = nodes.value.filter(
+      (candidate) => candidate.kind === 'task' && candidate.item.decision_id === item.id
+    )
     return [...(topic ? [topic] : []), ...tasks]
   }
-  const topic = nodes.value.find((candidate) => candidate.kind === 'topic' && candidate.item.id === item.topic_id)
-  const decision = nodes.value.find((candidate) => candidate.kind === 'decision' && candidate.item.id === item.decision_id)
+  const topic = nodes.value.find(
+    (candidate) => candidate.kind === 'topic' && candidate.item.id === item.topic_id
+  )
+  const decision = nodes.value.find(
+    (candidate) => candidate.kind === 'decision' && candidate.item.id === item.decision_id
+  )
   return [topic, decision].filter(Boolean)
 })
 
@@ -247,7 +321,8 @@ function openSelectedInWorkbench() {
 watch(
   nodes,
   (current) => {
-    if (!current.some((node) => node.key === selectedKey.value)) selectedKey.value = current[0]?.key || ''
+    if (!current.some((node) => node.key === selectedKey.value))
+      selectedKey.value = current[0]?.key || ''
   },
   { immediate: true }
 )

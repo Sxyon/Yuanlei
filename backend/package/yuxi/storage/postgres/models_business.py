@@ -946,11 +946,17 @@ _GOVERNANCE_REVIEW_SHAPE_SQL = (
 
 
 class GovernanceTopic(Base):
-    """项目治理议题：来源归一化后的 proposed → 审核 → canonical 事实（yuanlei 域）。"""
+    """项目议题：纳入资格、独立研讨进度与可见性事实（yuanlei 域）。"""
 
     __tablename__ = "governance_topics"
     __table_args__ = (
         UniqueConstraint("id", "project_id", name="uq_governance_topics_id_project"),
+        CheckConstraint("progress IN ('open', 'decided', 'closed')", name="ck_topic_progress"),
+        CheckConstraint(
+            "execution_hint IS NULL OR execution_hint IN ('continue', 'pause_recommended')",
+            name="ck_topic_execution_hint",
+        ),
+        CheckConstraint("revision_number >= 1 AND history_sequence >= 0", name="ck_topic_counters"),
         CheckConstraint(_GOVERNANCE_STATUS_SQL, name="ck_governance_topics_status"),
         CheckConstraint(_GOVERNANCE_SOURCE_CHANNEL_SQL, name="ck_governance_topics_source_channel"),
         CheckConstraint(_GOVERNANCE_SOURCE_SHAPE_SQL, name="ck_governance_topics_source_shape"),
@@ -977,6 +983,12 @@ class GovernanceTopic(Base):
     title = Column(String(512), nullable=False, comment="规范化标题")
     summary = Column(Text, nullable=True, comment="背景与候选方案摘要")
     status = Column(String(16), nullable=False, default="proposed", comment="proposed/canonical/rejected")
+    progress = Column(String(16), nullable=False, default="open", server_default="open")
+    execution_hint = Column(String(32), nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
+    revision_number = Column(Integer, nullable=False, default=1, server_default="1")
+    history_sequence = Column(Integer, nullable=False, default=0, server_default="0")
     source_channel = Column(String(32), nullable=False, comment="project/multica/github/gitea")
     source_external_id = Column(String(191), nullable=True, comment="外部渠道标识，项目内来源为空")
     source_url = Column(String(1024), nullable=True, comment="原文链接")
@@ -992,7 +1004,17 @@ class GovernanceTopicComment(Base):
     """项目议题讨论回复；按议题追加保存作者、正文与时间。"""
 
     __tablename__ = "governance_topic_comments"
-    __table_args__ = (Index("ix_governance_topic_comments_topic_created", "topic_id", "created_at", "id"),)
+    __table_args__ = (
+        Index("ix_governance_topic_comments_topic_created", "topic_id", "created_at", "id"),
+        CheckConstraint(
+            "discussion_type IN ('discussion', 'reconsideration', 'correction')", name="ck_topic_discussion_type"
+        ),
+        ForeignKeyConstraint(
+            ["topic_id", "revision_number"],
+            ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
+            name="fk_topic_comment_revision",
+        ),
+    )
 
     id = Column(String(64), primary_key=True, comment="议题回复 UUID")
     topic_id = Column(
@@ -1001,10 +1023,54 @@ class GovernanceTopicComment(Base):
         nullable=False,
         comment="所属议题",
     )
+    discussion_type = Column(String(32), nullable=False, default="discussion", server_default="discussion")
+    revision_number = Column(Integer, nullable=True)
     content = Column(Text, nullable=False, comment="Markdown 回复正文")
     author_name = Column(Text, nullable=False, comment="发帖时作者显示名快照")
     created_by = Column(String(64), nullable=True, comment="作者 uid，不建立用户外键以保留历史回复")
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
+class GovernanceTopicRevision(Base):
+    """议题标题与正文的不可变修订快照。"""
+
+    __tablename__ = "governance_topic_revisions"
+    topic_id = Column(String(64), ForeignKey("governance_topics.id", ondelete="CASCADE"), primary_key=True)
+    number = Column(Integer, primary_key=True)
+    title = Column(String(512), nullable=False)
+    summary = Column(Text, nullable=True)
+    reason = Column(Text, nullable=True)
+    author_name = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    origin = Column(String(16), nullable=False, default="authored")
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        CheckConstraint("number >= 1", name="ck_topic_revision_number"),
+        CheckConstraint("origin IN ('authored', 'migration')", name="ck_topic_revision_origin"),
+    )
+
+
+class GovernanceTopicEvent(Base):
+    """议题专用历史节点，序号在议题行锁内分配。"""
+
+    __tablename__ = "governance_topic_events"
+    topic_id = Column(String(64), ForeignKey("governance_topics.id", ondelete="CASCADE"), primary_key=True)
+    sequence = Column(Integer, primary_key=True)
+    kind = Column(String(32), nullable=False)
+    revision_number = Column(Integer, nullable=True)
+    comment_id = Column(String(64), ForeignKey("governance_topic_comments.id"), nullable=True)
+    author_name = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    reason = Column(Text, nullable=True)
+    details = Column(JSON_VALUE, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["topic_id", "revision_number"],
+            ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
+        ),
+        CheckConstraint("sequence >= 1", name="ck_topic_event_sequence"),
+    )
 
 
 class ProjectWorkCode(Base):
@@ -1296,6 +1362,11 @@ class GovernanceDecision(Base):
             " OR (status = 'implemented' AND decided_by IS NOT NULL AND decided_at IS NOT NULL)",
             name="ck_governance_decisions_decision_shape",
         ),
+        ForeignKeyConstraint(
+            ["topic_id", "topic_revision_number"],
+            ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
+            name="fk_topic_decision_revision",
+        ),
         Index("ix_governance_decisions_project_id", "project_id"),
         Index("ix_governance_decisions_topic_id", "topic_id"),
     )
@@ -1313,6 +1384,7 @@ class GovernanceDecision(Base):
         nullable=True,
         comment="来源议题",
     )
+    topic_revision_number = Column(Integer, nullable=True)
     title = Column(String(512), nullable=False, comment="决策标题")
     conclusion = Column(Text, nullable=False, comment="结论")
     rationale = Column(Text, nullable=True, comment="理由与被否替代")

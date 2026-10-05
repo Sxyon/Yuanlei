@@ -29,8 +29,12 @@
             <li v-for="item in group.items" :key="item.id" class="board-list-item">
               <div class="board-item-main">
                 <span class="board-item-title">{{ item.title }}</span>
-                <a-tag :color="governanceStatusColor(item.status)">
-                  {{ governanceStatusLabel(item.status) }}
+                <a-tag :color="governanceStatusColor(item.admission_status || item.status)">
+                  {{
+                    item.admission_status
+                      ? topicAdmissionLabel(item.admission_status)
+                      : governanceStatusLabel(item.status)
+                  }}
                 </a-tag>
               </div>
               <p v-if="itemNote(item)" class="board-item-note">{{ itemNote(item) }}</p>
@@ -80,6 +84,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
+  topicAdmissionLabel,
   governanceStatusColor,
   governanceStatusLabel,
   runStatusEntries,
@@ -102,7 +107,7 @@ const runStatuses = computed(() => runStatusEntries(props.board?.execution?.run_
 
 // 待决策队列直接按读视图给出的 pending_* 分组，前端不再自行筛选状态。
 const pendingGroups = computed(() => [
-  { key: 'topics', label: '待审核议题', items: governance.value.pending_topics || [] },
+  { key: 'topics', label: '待纳入议题', items: governance.value.pending_topics || [] },
   { key: 'tasks', label: '待审核任务', items: governance.value.pending_tasks || [] },
   { key: 'decisions', label: '待决策', items: governance.value.pending_decisions || [] }
 ])

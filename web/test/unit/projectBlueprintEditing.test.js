@@ -48,6 +48,7 @@ async function mountWorkbench(t) {
   t.mock.method(api, 'listBlueprintArchives', async () => ({ documents: [] }))
   t.mock.method(api, 'getBlueprint', async () => ({ name: 'plan.md', content: '磁盘正文' }))
   t.mock.method(api, 'listDelegations', async () => [])
+  t.mock.method(api, 'listTopics', async () => [])
   t.mock.method(agentApi, 'list', async () => ({ agents: [] }))
   const router = createRouter({
     history: createMemoryHistory(),
@@ -143,4 +144,12 @@ test('删除收到真实 204 空 Response 后关闭弹窗并回读列表', async
   assert.equal(state.deleteBlueprintOpen, false)
   assert.equal(state.blueprintName, '')
   assert.deepEqual(state.blueprints, [])
+})
+
+ test('归档议题读取失败仍加载蓝图，并明确展示局部错误', async (t) => {
+  const state = await mountWorkbench(t)
+  t.mock.method(api, 'listTopics', async () => { throw new Error('议题列表读取失败') })
+  await state.load()
+  assert.equal(state.savedBlueprintContent, '磁盘正文')
+  assert.match(state.actionError, /议题列表读取失败/)
 })

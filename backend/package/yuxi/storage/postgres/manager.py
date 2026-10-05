@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 27
+YUANLEI_SCHEMA_VERSION = 28
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1670,6 +1670,143 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v27_to_v28(self) -> None:
+        """拆分议题进度并建立迁移基线，保留未知历史版本。"""
+        from yuxi.storage.postgres.models_business import GovernanceTopicEvent, GovernanceTopicRevision
+        from yuxi.utils.datetime_utils import utc_now_naive
+
+        self._check_initialized()
+        async with self.async_engine.begin() as connection:
+            for statement in (
+                "ALTER TABLE governance_topics ADD COLUMN IF NOT EXISTS progress VARCHAR(16) NOT NULL DEFAULT 'open'",
+                "ALTER TABLE governance_topics ADD COLUMN IF NOT EXISTS execution_hint VARCHAR(32)",
+                "ALTER TABLE governance_topics ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP",
+                "ALTER TABLE governance_topics ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP",
+                "ALTER TABLE governance_topics ADD COLUMN IF NOT EXISTS revision_number INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE governance_topics ADD COLUMN IF NOT EXISTS history_sequence INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE governance_topic_comments ADD COLUMN IF NOT EXISTS "
+                "discussion_type VARCHAR(32) NOT NULL DEFAULT 'discussion'",
+                "ALTER TABLE governance_topic_comments ADD COLUMN IF NOT EXISTS revision_number INTEGER",
+                "ALTER TABLE governance_decisions ADD COLUMN IF NOT EXISTS topic_revision_number INTEGER",
+            ):
+                await connection.execute(text(statement))
+            await connection.run_sync(lambda conn: GovernanceTopicRevision.__table__.create(conn, checkfirst=True))
+            await connection.run_sync(lambda conn: GovernanceTopicEvent.__table__.create(conn, checkfirst=True))
+            for table, name, clause in (
+                ("governance_topics", "ck_topic_progress", "CHECK (progress IN ('open', 'decided', 'closed'))"),
+                (
+                    "governance_topics",
+                    "ck_topic_execution_hint",
+                    "CHECK (execution_hint IS NULL OR execution_hint IN ('continue', 'pause_recommended'))",
+                ),
+                ("governance_topics", "ck_topic_counters", "CHECK (revision_number >= 1 AND history_sequence >= 0)"),
+                (
+                    "governance_topic_comments",
+                    "ck_topic_discussion_type",
+                    "CHECK (discussion_type IN ('discussion', 'reconsideration', 'correction'))",
+                ),
+                (
+                    "governance_topic_comments",
+                    "fk_topic_comment_revision",
+                    "FOREIGN KEY (topic_id, revision_number) REFERENCES governance_topic_revisions(topic_id, number)",
+                ),
+                (
+                    "governance_decisions",
+                    "fk_topic_decision_revision",
+                    "FOREIGN KEY (topic_id, topic_revision_number) "
+                    "REFERENCES governance_topic_revisions(topic_id, number)",
+                ),
+            ):
+                await connection.execute(
+                    text(
+                        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '{name}' "
+                        f"AND conrelid = '{table}'::regclass) THEN "
+                        f"ALTER TABLE {table} ADD CONSTRAINT {name} {clause}; END IF; END $$"
+                    )
+                )
+            topics = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT * FROM governance_topics t WHERE NOT EXISTS "
+                            "(SELECT 1 FROM governance_topic_revisions r WHERE r.topic_id=t.id)"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            for topic in topics:
+                timestamp = utc_now_naive()
+                await connection.execute(
+                    GovernanceTopicRevision.__table__.insert().values(
+                        topic_id=topic["id"],
+                        number=1,
+                        title=topic["title"],
+                        summary=topic["summary"],
+                        reason="迁移时当前内容；更早正文未保存",
+                        origin="migration",
+                        created_at=timestamp,
+                    )
+                )
+                events = [
+                    {
+                        "kind": "created",
+                        "created_at": topic["created_at"],
+                        "created_by": topic["created_by"],
+                        "details": {"historical": True},
+                    }
+                ]
+                if topic["reviewed_at"]:
+                    events.append(
+                        {
+                            "kind": "admitted" if topic["status"] == "canonical" else "rejected",
+                            "created_at": topic["reviewed_at"],
+                            "created_by": topic["review_owner_uid"],
+                            "reason": topic["review_note"],
+                            "details": {"historical": True},
+                        }
+                    )
+                comments = (
+                    (
+                        await connection.execute(
+                            text("SELECT * FROM governance_topic_comments WHERE topic_id=:id ORDER BY created_at,id"),
+                            {"id": topic["id"]},
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+                events.extend(
+                    {
+                        "kind": "comment",
+                        "comment_id": c["id"],
+                        "created_at": c["created_at"],
+                        "author_name": c["author_name"],
+                        "created_by": c["created_by"],
+                        "details": {"historical": True, "discussion_type": "discussion"},
+                    }
+                    for c in comments
+                )
+                events.sort(key=lambda event: (event["created_at"], event.get("comment_id", "")))
+                events.append(
+                    {
+                        "kind": "migration_baseline",
+                        "revision_number": 1,
+                        "created_at": timestamp,
+                        "reason": "旧议题进度未记录，迁移为开放；旧评论版本未知",
+                        "details": {"origin": "migration"},
+                    }
+                )
+                for sequence, event in enumerate(events, 1):
+                    await connection.execute(
+                        GovernanceTopicEvent.__table__.insert().values(topic_id=topic["id"], sequence=sequence, **event)
+                    )
+                await connection.execute(
+                    text("UPDATE governance_topics SET history_sequence=:sequence WHERE id=:id"),
+                    {"sequence": len(events), "id": topic["id"]},
+                )
 
     async def upgrade_yuanlei_schema_v26_to_v27(self):
         """幂等增加任务显式知识库选择，旧任务保持不选择。"""

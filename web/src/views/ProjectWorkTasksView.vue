@@ -151,7 +151,7 @@
         <p class="tasks-hint">议题缩写首次保存后固化，任务编号形如 <code>{项目缩写}-{议题缩写}-{序号}</code>。</p>
         <p v-if="!topics.length" class="tasks-hint">当前项目还没有议题，请先在项目工作台创建议题。</p>
         <div v-for="topic in topics" :key="topic.id" class="topic-code-row">
-          <div class="topic-code-name"><strong>{{ topic.title }}</strong><small>{{ topic.status }}</small></div>
+          <div class="topic-code-name"><strong>{{ topic.title }}</strong><small>{{ topicAdmissionLabel(topic.admission_status) }} · {{ topicProgressLabel(topic.progress) }}</small></div>
           <span v-if="topic.code" class="topic-code-locked">{{ topic.code }} · 已固化</span>
           <template v-else>
             <a-input v-model:value="topicCodeDrafts[topic.id]" maxlength="12" placeholder="例如 REG" aria-label="议题编号缩写" />
@@ -185,6 +185,7 @@
 </template>
 
 <script setup>
+import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'

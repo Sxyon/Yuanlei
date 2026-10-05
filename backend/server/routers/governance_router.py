@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,10 @@ from yuxi.services.governance_service import (
     review_governance_task,
     review_governance_topic,
     update_governance_topic,
+    get_governance_topic,
+    get_governance_topic_timeline,
+    list_governance_topics,
+    operate_governance_topic,
 )
 from yuxi.services.inspection_board_service import (
     get_project_inspection_board,
@@ -42,12 +46,14 @@ class GovernanceTopicCreate(BaseModel):
 
 
 class GovernanceTopicUpdate(BaseModel):
-    """编辑待审议议题的标题和 Markdown 正文。"""
+    """修订议题标题和 Markdown 正文，携带预期修订号。"""
 
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(..., max_length=512)
     summary: str | None = None
+    expected_revision: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=1, max_length=100_000)
 
 
 class GovernanceTopicCommentCreate(BaseModel):
@@ -56,6 +62,17 @@ class GovernanceTopicCommentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(..., max_length=100_000)
+    discussion_type: Literal["discussion", "reconsideration", "correction"] = "discussion"
+
+
+class GovernanceTopicOperation(BaseModel):
+    """议题操作与业务提示，不携带运行控制。"""
+
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["resubmit", "decide", "close", "reopen", "archive", "restore", "delete"]
+    reason: str | None = Field(None, max_length=100_000)
+    execution_hint: Literal["continue", "pause_recommended"] | None = None
+    decision_id: str | None = Field(None, max_length=64)
 
 
 class GovernanceReview(BaseModel):
@@ -142,6 +159,56 @@ async def create_topic(
     )
 
 
+@governance.get("/projects/{project_id}/governance/topics")
+async def list_topics(
+    project_id: str,
+    include_archived: bool = False,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """默认读取活跃议题，可显式包含归档。"""
+    return await list_governance_topics(
+        project_id=project_id, include_archived=include_archived, db=db, user=current_user
+    )
+
+
+@governance.get("/projects/{project_id}/governance/topics/{topic_id}")
+async def get_topic(
+    project_id: str, topic_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)
+):
+    """读取议题，归档历史仍可定位。"""
+    return await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=current_user)
+
+
+@governance.get("/projects/{project_id}/governance/topics/{topic_id}/timeline")
+async def get_topic_timeline(
+    project_id: str,
+    topic_id: str,
+    before: int | None = Query(None, ge=1),
+    limit: int = Query(30, ge=1, le=100),
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """稳定倒序分页读取时间线。"""
+    return await get_governance_topic_timeline(
+        project_id=project_id, topic_id=topic_id, before=before, limit=limit, db=db, user=current_user
+    )
+
+
+@governance.post("/projects/{project_id}/governance/topics/{topic_id}/operations")
+async def operate_topic(
+    project_id: str,
+    topic_id: str,
+    payload: GovernanceTopicOperation,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """维护议题纳入、研讨及可见性。"""
+    return await operate_governance_topic(
+        project_id=project_id, topic_id=topic_id, db=db, user=current_user, **payload.model_dump()
+    )
+
+
 @governance.put("/projects/{project_id}/governance/topics/{topic_id}")
 async def update_topic(
     project_id: str,
@@ -150,12 +217,14 @@ async def update_topic(
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """更新仍待审议议题的标题与正文。"""
+    """保存议题标题正文的新修订。"""
     return await update_governance_topic(
         project_id=project_id,
         topic_id=topic_id,
         title=payload.title,
         summary=payload.summary,
+        expected_revision=payload.expected_revision,
+        reason=payload.reason,
         db=db,
         user=current_user,
     )
@@ -168,7 +237,7 @@ async def list_topic_comments(
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """读取议题讨论串，审核后仍可只读回看。"""
+    """读取议题讨论历史，纳入审核不锁死讨论。"""
     return await list_governance_topic_comments(
         project_id=project_id,
         topic_id=topic_id,
@@ -185,11 +254,12 @@ async def create_topic_comment(
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """向仍待审议议题追加一条回复。"""
+    """向未归档议题追加带意图类型的讨论。"""
     return await create_governance_topic_comment(
         project_id=project_id,
         topic_id=topic_id,
         content=payload.content,
+        discussion_type=payload.discussion_type,
         db=db,
         user=current_user,
     )

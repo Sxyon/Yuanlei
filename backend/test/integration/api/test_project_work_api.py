@@ -121,7 +121,7 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         listed_topics = await test_client.get(topics_path, headers=headers)
         assert listed_topics.status_code == 200, listed_topics.text
         assert listed_topics.json() == [
-            {"id": topic_id, "title": "Integration topic", "status": "proposed", "code": None}
+            {"id": topic_id, "title": "Integration topic", "admission_status": "proposed", "progress": "open", "code": None}
         ]
         no_topic_code = await test_client.post(
             f"{root}/tasks", headers=headers, json={"title": "Topic before code", "topic_id": topic_id}

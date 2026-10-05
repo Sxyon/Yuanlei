@@ -192,7 +192,7 @@ async def test_project_board_reads_governance_and_run_facts_from_source() -> Non
             assert [item["id"] for item in board["governance"]["pending_tasks"]] == [task["id"]]
             assert [item["id"] for item in board["governance"]["pending_decisions"]] == [decision["id"]]
             assert [item["id"] for item in board["governance"]["reports"]] == [report["id"]]
-            assert board["governance"]["pending_topics"][0]["status"] == "proposed"
+            assert board["governance"]["pending_topics"][0]["admission_status"] == "proposed"
 
             execution = board["execution"]
             assert execution["run_status_counts"] == {"completed": 1, "failed": 1}

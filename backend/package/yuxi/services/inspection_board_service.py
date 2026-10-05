@@ -52,7 +52,7 @@ def _summarize(boards: list[dict[str, Any]]) -> dict[str, int]:
     """汇总跨项目待决策队列与阻塞项。"""
     return {
         "projects": len(boards),
-        "open_topics": sum(len(board["governance"]["pending_topics"]) for board in boards),
+        "open_topics": sum(len(board["governance"]["open_topics"]) for board in boards),
         "pending_tasks": sum(len(board["governance"]["pending_tasks"]) for board in boards),
         "pending_decisions": sum(len(board["governance"]["pending_decisions"]) for board in boards),
         "blockers": sum(
@@ -81,7 +81,8 @@ async def _build_project_board(*, project: Project, db: AsyncSession, user: User
             "tasks": tasks,
             "decisions": decisions,
             "reports": reports,
-            "pending_topics": _pending(topics),
+            "pending_topics": [t for t in topics if t["admission_status"] == "proposed"],
+            "open_topics": [t for t in topics if t["progress"] == "open"],
             "pending_tasks": _pending(tasks),
             "pending_decisions": _pending(decisions),
         },

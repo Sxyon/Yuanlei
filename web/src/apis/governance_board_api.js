@@ -65,6 +65,24 @@ export const governanceBoardApi = {
     })
   },
 
+  listTopics(projectId, includeArchived = false) {
+    return apiGet(`${projectPath(projectId)}/governance/topics?include_archived=${includeArchived}`)
+  },
+
+  getTopicTimeline(projectId, topicId, before = null) {
+    const query = before ? `?before=${before}` : ''
+    return apiGet(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/timeline${query}`
+    )
+  },
+
+  operateTopic(projectId, topicId, payload) {
+    return apiPost(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/operations`,
+      payload
+    )
+  },
+
   updateTopic(projectId, topicId, payload) {
     return apiPut(
       `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}`,
@@ -78,10 +96,10 @@ export const governanceBoardApi = {
     )
   },
 
-  createTopicComment(projectId, topicId, content) {
+  createTopicComment(projectId, topicId, content, discussionType = 'discussion') {
     return apiPost(
       `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments`,
-      { content }
+      { content, discussion_type: discussionType }
     )
   },
 

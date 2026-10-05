@@ -78,3 +78,12 @@ export function describeBoardError(error) {
   if (detail && typeof detail === 'object') return detail.message || '督查板加载失败'
   return error?.message || '督查板加载失败'
 }
+
+/** 纳入资格与研讨进度各自展示。 */
+export function topicAdmissionLabel(status) {
+  return { proposed: '待纳入', canonical: '已纳入', rejected: '拒绝纳入' }[status] || status
+}
+
+export function topicProgressLabel(progress) {
+  return { open: '研讨中', decided: '已形成决策', closed: '已关闭' }[progress] || progress
+}

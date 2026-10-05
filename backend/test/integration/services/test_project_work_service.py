@@ -109,7 +109,7 @@ async def test_project_work_numbering_issue_discussion_and_scope() -> None:
             await configure_project_code(db=db, user=user, project_id="work-b", code="WORKB")
         async with sessions() as db:
             assert await list_topics(db=db, user=user, project_id="work-a") == [
-                {"id": "work-topic", "title": "Topic", "status": "proposed", "code": None}
+                {"id": "work-topic", "title": "Topic", "admission_status": "proposed", "progress": "open", "code": None}
             ]
             with pytest.raises(HTTPException) as outsider_topics:
                 await list_topics(
@@ -123,7 +123,7 @@ async def test_project_work_numbering_issue_discussion_and_scope() -> None:
             await configure_topic_code(db=db, user=user, project_id="work-a", topic_id="work-topic", code="TOP")
         async with sessions() as db:
             assert await list_topics(db=db, user=user, project_id="work-a") == [
-                {"id": "work-topic", "title": "Topic", "status": "proposed", "code": "TOP"}
+                {"id": "work-topic", "title": "Topic", "admission_status": "proposed", "progress": "open", "code": "TOP"}
             ]
 
         async def make_task(title: str) -> dict:

@@ -152,9 +152,14 @@ class ProjectWorkRepository:
             raise PermissionError("父任务不属于 Project")
         if topic_id is not None:
             topic = await self.db.scalar(
-                select(GovernanceTopic.id).where(
-                    GovernanceTopic.id == topic_id, GovernanceTopic.project_id == self.project_id
+                select(GovernanceTopic.id)
+                .where(
+                    GovernanceTopic.id == topic_id,
+                    GovernanceTopic.project_id == self.project_id,
+                    GovernanceTopic.deleted_at.is_(None),
+                    GovernanceTopic.archived_at.is_(None),
                 )
+                .with_for_update()
             )
             if topic is None:
                 raise PermissionError("议题不属于 Project")
@@ -261,16 +266,18 @@ class ProjectWorkRepository:
         )
         return list(rows)
 
-    async def add_reference(
-        self, *, task_id: str, title: str, url: str, created_by: str
-    ) -> ProjectWorkReference:
+    async def add_reference(self, *, task_id: str, title: str, url: str, created_by: str) -> ProjectWorkReference:
         """为当前项目任务追加网页引用。"""
         await self._require_project()
         if created_by != self.uid or await self.get_task(task_id) is None:
             raise PermissionError("任务不属于当前用户 Project")
         row = ProjectWorkReference(
-            id=str(uuid.uuid4()), task_id=task_id, title=title, url=url,
-            created_by=created_by, created_at=utc_now_naive(),
+            id=str(uuid.uuid4()),
+            task_id=task_id,
+            title=title,
+            url=url,
+            created_by=created_by,
+            created_at=utc_now_naive(),
         )
         self.db.add(row)
         await self.db.flush()

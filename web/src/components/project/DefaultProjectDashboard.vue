@@ -13,7 +13,7 @@
 
     <div class="overview-stats" aria-label="项目待办概览">
       <div class="stat">
-        <span>待审核议题</span><strong>{{ governance.pending_topics?.length || 0 }}</strong>
+        <span>待纳入议题</span><strong>{{ governance.pending_topics?.length || 0 }}</strong>
       </div>
       <div class="stat">
         <span>待审核任务</span><strong>{{ governance.pending_tasks?.length || 0 }}</strong>
@@ -48,6 +48,13 @@
             <strong>{{ decision.title }}</strong>
             <span>{{ governanceStatusLabel(decision.status) }}</span>
           </header>
+          <a-alert
+            v-if="decision.topic_execution_hint === 'pause_recommended'"
+            type="warning"
+            show-icon
+            message="关联议题建议暂停原方案"
+            description="仅为议题提示，不撤销决策或暂停任务、Run。"
+          />
           <MarkdownPreview :content="decision.conclusion" compact />
         </article>
       </div>

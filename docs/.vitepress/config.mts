@@ -88,6 +88,7 @@ export default defineConfig({
         items: [
           { text: '阅读路径', link: '/mechanisms/' },
           { text: '项目治理与督查', link: '/mechanisms/project-governance' },
+          { text: '议题状态与历史', link: '/mechanisms/topic-lifecycle' },
           { text: 'Agent 运行时上下文', link: '/mechanisms/agent-runtime' },
           { text: '沙盒与文件系统', link: '/mechanisms/sandbox' },
           { text: '编码执行（opencode/codex）', link: '/mechanisms/coding-execution' },

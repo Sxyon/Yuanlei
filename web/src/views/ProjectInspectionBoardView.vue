@@ -291,6 +291,7 @@
             <aside class="topic-sidebar">
               <div class="topic-sidebar-heading">
                 <strong>议题列表</strong>
+                <a-checkbox v-model:checked="showArchivedTopics">显示归档</a-checkbox>
                 <span>{{ allTopics.length }}</span>
                 <a-button size="small" :disabled="busy" @click="topicComposerVisible = true">
                   提出议题
@@ -298,19 +299,24 @@
               </div>
               <p v-if="!allTopics.length" class="hint topic-list-empty">还没有议题。</p>
               <article
-                v-for="topic in allTopics"
+                v-for="topic in visibleTopics"
                 :key="topic.id"
                 class="topic-list-card"
                 :class="{ active: selectedTopicId === topic.id }"
               >
                 <button type="button" class="topic-select" @click="selectTopic(topic)">
                   <span class="topic-list-title">{{ topic.title }}</span>
-                  <a-tag :color="governanceStatusColor(topic.status)">{{
-                    governanceStatusLabel(topic.status)
+                  <a-tag :color="governanceStatusColor(topic.admission_status)">{{
+                    topicAdmissionLabel(topic.admission_status)
                   }}</a-tag>
                   <span class="topic-list-summary">{{ topic.summary || '暂无议题说明' }}</span>
                 </button>
-                <a-button size="small" :disabled="busy" @click="createDecisionFromTopic(topic)"
+                <a-tag>{{ topicProgressLabel(topic.progress) }}</a-tag>
+                <a-button
+                  v-if="!topic.archived_at"
+                  size="small"
+                  :disabled="busy"
+                  @click="createDecisionFromTopic(topic)"
                   >新增决策</a-button
                 >
               </article>
@@ -321,12 +327,14 @@
                 <div>
                   <p class="eyebrow">议题详情</p>
                   <h3>{{ selectedTopic.title }}</h3>
-                  <a-tag :color="governanceStatusColor(selectedTopic.status)">{{
-                    governanceStatusLabel(selectedTopic.status)
+                  <a-tag :color="governanceStatusColor(selectedTopic.admission_status)">{{
+                    topicAdmissionLabel(selectedTopic.admission_status)
                   }}</a-tag>
+                  <a-tag>{{ topicProgressLabel(selectedTopic.progress) }}</a-tag>
+                  <a-tag v-if="selectedTopic.archived_at">已归档</a-tag>
                 </div>
                 <a-button
-                  v-if="selectedTopic.status === 'proposed' && !editingTopic"
+                  v-if="!selectedTopic.archived_at && !editingTopic"
                   :disabled="busy"
                   @click="beginEditTopic"
                   >修改提议</a-button
@@ -341,10 +349,15 @@
                   :auto-size="{ minRows: 16, maxRows: 36 }"
                   placeholder="使用 Markdown 编辑议题正文"
                 />
+                <a-input
+                  v-model:value="editingTopicReason"
+                  placeholder="修改原因（必填）"
+                  aria-label="议题修改原因"
+                />
                 <div class="form-row">
                   <a-button
                     type="primary"
-                    :disabled="!editingTopicTitle.trim() || busy"
+                    :disabled="!editingTopicTitle.trim() || !editingTopicReason.trim() || busy"
                     @click="saveTopicEdit"
                     >保存议题修改</a-button
                   >
@@ -355,56 +368,32 @@
                 <MarkdownPreview v-if="selectedTopic.summary" :content="selectedTopic.summary" />
                 <p v-else class="hint">
                   暂无议题说明。{{
-                    selectedTopic.status === 'proposed' ? '可以先修改提议，补充背景和方案。' : ''
+                    selectedTopic.admission_status === 'proposed'
+                      ? '可以先修改提议，补充背景和方案。'
+                      : ''
                   }}
                 </p>
               </section>
 
-              <section class="discussion-thread">
-                <div class="discussion-heading">
-                  <div>
-                    <h4>讨论</h4>
-                    <p>补充问题、证据和不同意见，确认提议后再审核。</p>
-                  </div>
-                  <span>{{ topicComments.length }} 条回复</span>
-                </div>
-                <a-spin v-if="topicCommentsLoading" />
-                <p v-else-if="!topicComments.length" class="discussion-empty">
-                  还没有回复，开始这场讨论。
-                </p>
-                <article v-for="comment in topicComments" :key="comment.id" class="discussion-post">
-                  <header>
-                    <strong>{{ comment.author_name || '项目成员' }}</strong>
-                    <time>{{ timestampLabel(comment.created_at) }}</time>
-                  </header>
-                  <MarkdownPreview :content="comment.content" />
-                </article>
-                <div v-if="selectedTopic.status === 'proposed'" class="discussion-reply">
-                  <a-textarea
-                    v-model:value="commentDraft"
-                    :maxlength="100000"
-                    :auto-size="{ minRows: 8, maxRows: 24 }"
-                    placeholder="写下讨论内容，支持 Markdown。"
-                  />
-                  <div class="form-row">
-                    <a-button
-                      type="primary"
-                      :disabled="!commentDraft.trim() || busy"
-                      @click="postTopicComment"
-                      >发布回复</a-button
-                    >
-                    <span class="hint">议题审核通过或拒绝后，讨论串保留只读。</span>
-                  </div>
-                </div>
-              </section>
+              <TopicHistoryPanel
+                :key="`${projectId}:${selectedTopic.id}`"
+                :project-id="projectId"
+                :topic="selectedTopic"
+                :decisions="board.governance?.decisions || []"
+                @updated="load"
+              />
 
               <footer
-                v-if="selectedTopic.status === 'proposed' && !editingTopic"
+                v-if="
+                  selectedTopic.admission_status === 'proposed' &&
+                  !selectedTopic.archived_at &&
+                  !editingTopic
+                "
                 class="topic-review-actions"
               >
                 <div>
-                  <strong>结束讨论并审核</strong>
-                  <p>审核后议题正文和讨论串将保留为历史记录。</p>
+                  <strong>纳入审核</strong>
+                  <p>纳入后仍可修改和研讨；纳入不代表批准决策。</p>
                 </div>
                 <div class="form-row">
                   <a-button danger :disabled="busy" @click="reviewTopic(selectedTopic, false)"
@@ -415,12 +404,12 @@
                     :disabled="busy"
                     @click="reviewTopic(selectedTopic, true)"
                   >
-                    通过并结束讨论
+                    通过纳入
                   </a-button>
                 </div>
               </footer>
               <p v-else-if="selectedTopic.review?.reviewed_at" class="hint topic-review-note">
-                {{ selectedTopic.status === 'canonical' ? '已通过' : '已拒绝' }} ·
+                {{ selectedTopic.admission_status === 'canonical' ? '已通过' : '已拒绝' }} ·
                 {{ timestampLabel(selectedTopic.review.reviewed_at) }}
                 <span v-if="selectedTopic.review.note"> · {{ selectedTopic.review.note }}</span>
               </p>
@@ -451,7 +440,11 @@
                 placeholder="关联议题"
                 style="min-width: 220px"
               >
-                <a-select-option v-for="topic in allTopics" :key="topic.id" :value="topic.id">
+                <a-select-option
+                  v-for="topic in selectableTopics"
+                  :key="topic.id"
+                  :value="topic.id"
+                >
                   {{ topic.title }}
                 </a-select-option>
               </a-select>
@@ -497,6 +490,16 @@
                   governanceStatusLabel(decision.status)
                 }}</a-tag>
               </header>
+              <a-alert
+                v-if="
+                  allTopics.find((t) => t.id === decision.topic_id)?.execution_hint ===
+                  'pause_recommended'
+                "
+                type="warning"
+                show-icon
+                message="关联议题建议暂停原方案"
+                description="仅为业务提示，不撤销此决策，不暂停任务或 Run。"
+              />
               <p v-if="topicTitleFor(decision.topic_id)" class="hint">
                 关联议题：{{ topicTitleFor(decision.topic_id) }}
               </p>
@@ -536,7 +539,7 @@
               placeholder="关联议题"
               style="min-width: 180px"
             >
-              <a-select-option v-for="topic in allTopics" :key="topic.id" :value="topic.id">
+              <a-select-option v-for="topic in selectableTopics" :key="topic.id" :value="topic.id">
                 {{ topic.title }}
               </a-select-option>
             </a-select>
@@ -582,15 +585,28 @@
                 >拒绝</a-button
               >
               <template v-if="task.status === 'canonical' && task.assignee_agent_slug">
-                <a-select :value="selectedExecutorFor(task)" style="width: 120px"
-                  :disabled="!configuredExecutors(task).length" placeholder="未启用"
-                  @change="(value) => executorSelection[task.id] = value"
-                  ><a-select-option v-for="key in configuredExecutors(task)" :key="key" :value="key">{{ key === 'codex' ? 'Codex' : 'OpenCode' }}</a-select-option></a-select
+                <a-select
+                  :value="selectedExecutorFor(task)"
+                  style="width: 120px"
+                  :disabled="!configuredExecutors(task).length"
+                  placeholder="未启用"
+                  @change="(value) => (executorSelection[task.id] = value)"
+                  ><a-select-option
+                    v-for="key in configuredExecutors(task)"
+                    :key="key"
+                    :value="key"
+                    >{{ key === 'codex' ? 'Codex' : 'OpenCode' }}</a-select-option
+                  ></a-select
                 >
-                <a-button size="small" :disabled="busy || !configuredExecutors(task).length" @click="delegateTask(task)"
+                <a-button
+                  size="small"
+                  :disabled="busy || !configuredExecutors(task).length"
+                  @click="delegateTask(task)"
                   >委派执行</a-button
                 >
-                <span v-if="!configuredExecutors(task).length" class="workbench-muted">请先在数字员工设置中启用执行器</span>
+                <span v-if="!configuredExecutors(task).length" class="workbench-muted"
+                  >请先在数字员工设置中启用执行器</span
+                >
               </template>
               <ul v-if="taskDelegations(task.id).length" class="delegation-list">
                 <li v-for="item in taskDelegations(task.id)" :key="item.operation_id">
@@ -613,11 +629,21 @@
                   >
                   <p v-if="item.result?.summary">{{ item.result.summary }}</p>
                   <p v-if="item.artifact_path">产物：{{ item.artifact_path }}</p>
-                  <a-button v-if="item.session_id" type="link" size="small" @click="showSession(item)">查看执行详情</a-button>
+                  <a-button
+                    v-if="item.session_id"
+                    type="link"
+                    size="small"
+                    @click="showSession(item)"
+                    >查看执行详情</a-button
+                  >
                   <p v-if="sessionDetails[item.session_id]" class="delegation-detail">
                     会话 {{ item.session_id }} · {{ sessionDetails[item.session_id].status }}
-                    <span v-if="sessionDetails[item.session_id].error_code"> · {{ sessionDetails[item.session_id].error_code }}</span>
-                    <span v-if="sessionDetails[item.session_id].error_message"> · {{ sessionDetails[item.session_id].error_message }}</span>
+                    <span v-if="sessionDetails[item.session_id].error_code">
+                      · {{ sessionDetails[item.session_id].error_code }}</span
+                    >
+                    <span v-if="sessionDetails[item.session_id].error_message">
+                      · {{ sessionDetails[item.session_id].error_message }}</span
+                    >
                   </p>
                 </li>
               </ul>
@@ -648,6 +674,8 @@
 </template>
 
 <script setup>
+import TopicHistoryPanel from '@/components/project/TopicHistoryPanel.vue'
+import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
@@ -697,10 +725,7 @@ const topicComposerVisible = ref(false)
 const topicDraftTitle = ref('')
 const topicDraftSummary = ref('')
 const selectedTopicId = ref('')
-const topicComments = ref([])
-const topicCommentsLoading = ref(false)
 const topicCommentError = ref('')
-const commentDraft = ref('')
 const editingTopic = ref(false)
 const editingTopicTitle = ref('')
 const editingTopicSummary = ref('')
@@ -726,11 +751,18 @@ const jumpTo = (id) =>
 let blueprintReadSeq = 0
 let archiveReadSeq = 0
 let loadSeq = 0
-let topicCommentSeq = 0
 const pageTitle = computed(() =>
   board.value?.project?.name ? `${board.value.project.name} · 项目工作台` : '项目工作台'
 )
-const allTopics = computed(() => board.value.governance?.topics || [])
+const topicRows = ref([])
+const showArchivedTopics = ref(false)
+const allTopics = computed(() => topicRows.value)
+const visibleTopics = computed(() =>
+  allTopics.value.filter((t) => showArchivedTopics.value || !t.archived_at)
+)
+const selectableTopics = computed(() => allTopics.value.filter((t) => !t.archived_at))
+const editingTopicReason = ref('')
+const editingTopicRevision = ref(null)
 const selectedTopic = computed(() =>
   allTopics.value.find((item) => item.id === selectedTopicId.value)
 )
@@ -743,7 +775,10 @@ const taskDelegations = (taskId) =>
   delegations.value.filter((item) => item.governance_task_id === taskId)
 const configuredExecutors = (task) => {
   const agent = agents.value.find((item) => item.slug === task.assignee_agent_slug)
-  const coding = { ...(agent?.config_json?.coding || {}), ...(agent?.config_overrides?.coding || {}) }
+  const coding = {
+    ...(agent?.config_json?.coding || {}),
+    ...(agent?.config_overrides?.coding || {})
+  }
   return Array.isArray(coding.executors)
     ? coding.executors.filter((key) => ['codex', 'opencode'].includes(key))
     : []
@@ -754,10 +789,19 @@ const selectedExecutorFor = (task) => {
     ? executorSelection.value[task.id]
     : enabled[0]
 }
-const delegationStatusLabel = (item) => ({
-  queued: '等待派发', dispatching: '派发中', dispatched: '已派发', reclaimed: '已回收',
-  running: '执行中', completed: '已完成', failed: '失败', cancelled: '已取消'
-})[item.remote_status || item.dispatch_state] || item.remote_status || item.dispatch_state
+const delegationStatusLabel = (item) =>
+  ({
+    queued: '等待派发',
+    dispatching: '派发中',
+    dispatched: '已派发',
+    reclaimed: '已回收',
+    running: '执行中',
+    completed: '已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  })[item.remote_status || item.dispatch_state] ||
+  item.remote_status ||
+  item.dispatch_state
 const terminalTurn = (status) =>
   ['completed', 'failed', 'cancelled', 'interrupted'].includes(status)
 const archiveTimeLabel = (raw) => {
@@ -834,7 +878,6 @@ function selectTopic(topic) {
   if (!canLeaveTopicEditor()) return
   selectedTopicId.value = topic.id
   editingTopic.value = false
-  commentDraft.value = ''
   topicCommentError.value = ''
   setTopicRoute(topic.id)
 }
@@ -863,35 +906,12 @@ function canLeaveTopicEditor() {
 }
 
 function beginEditTopic() {
-  if (!selectedTopic.value || selectedTopic.value.status !== 'proposed') return
+  if (!selectedTopic.value || selectedTopic.value.archived_at) return
   editingTopicTitle.value = selectedTopic.value.title
   editingTopicSummary.value = selectedTopic.value.summary || ''
+  editingTopicReason.value = ''
+  editingTopicRevision.value = selectedTopic.value.revision_number
   editingTopic.value = true
-}
-
-async function loadTopicComments() {
-  const project = projectId.value
-  const topicId = selectedTopicId.value
-  const seq = ++topicCommentSeq
-  topicComments.value = []
-  topicCommentError.value = ''
-  if (!topicId || !project) {
-    topicCommentsLoading.value = false
-    return
-  }
-  topicCommentsLoading.value = true
-  try {
-    const comments = await api.listTopicComments(project, topicId)
-    if (seq !== topicCommentSeq || projectId.value !== project || selectedTopicId.value !== topicId)
-      return
-    topicComments.value = comments
-  } catch (error) {
-    if (seq === topicCommentSeq && projectId.value === project && selectedTopicId.value === topicId)
-      topicCommentError.value = describeBoardError(error)
-  } finally {
-    if (seq === topicCommentSeq && projectId.value === project && selectedTopicId.value === topicId)
-      topicCommentsLoading.value = false
-  }
 }
 
 async function load() {
@@ -900,29 +920,33 @@ async function load() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [boardResult, docsResult, archiveResult, agentResult, delegationResult] =
+    const [boardResult, docsResult, archiveResult, agentResult, delegationResult, topicsResult] =
       await Promise.allSettled([
         api.getProjectBoard(project),
         api.listBlueprints(project),
         api.listBlueprintArchives(project),
         projectAgentApi.list(project),
-        api.listDelegations(project)
+        api.listDelegations(project),
+        api.listTopics(project, true)
       ])
     if (seq !== loadSeq || projectId.value !== project) return
     if (boardResult.status === 'rejected') throw boardResult.reason
     board.value = boardResult.value
-    const topics = boardResult.value.governance?.topics || []
+    topicRows.value = topicsResult.status === 'fulfilled' ? topicsResult.value : boardResult.value.governance?.topics || []
+    const topics = topicRows.value
     const requestedTopicId = String(route.query.topic_id || '')
     const nextTopic =
       topics.find((item) => item.id === requestedTopicId) ||
       topics.find((item) => item.id === selectedTopicId.value) ||
-      [...topics].reverse().find((item) => item.status === 'proposed') ||
+      [...topics]
+        .reverse()
+        .find((item) => item.admission_status === 'proposed' && !item.archived_at) ||
       [...topics].reverse()[0]
     selectedTopicId.value = nextTopic?.id || ''
-    if (requestedTopicId && !topics.some((item) => item.id === requestedTopicId)) setTopicRoute('')
+    if (topicsResult.status === 'fulfilled' && requestedTopicId && !topics.some((item) => item.id === requestedTopicId)) setTopicRoute('')
     agents.value = agentResult.status === 'fulfilled' ? agentResult.value.agents || [] : []
     delegations.value = delegationResult.status === 'fulfilled' ? delegationResult.value : []
-    const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult]
+    const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult, topicsResult]
       .filter((result) => result.status === 'rejected')
       .map((result) => describeBoardError(result.reason))
     if (auxiliaryErrors.length)
@@ -1136,16 +1160,12 @@ const saveTopicEdit = () =>
   act(async () => {
     await api.updateTopic(projectId.value, selectedTopic.value.id, {
       title: editingTopicTitle.value,
-      summary: editingTopicSummary.value
+      summary: editingTopicSummary.value,
+      expected_revision: editingTopicRevision.value,
+      reason: editingTopicReason.value
     })
     editingTopic.value = false
   })
-const postTopicComment = () =>
-  act(async () => {
-    await api.createTopicComment(projectId.value, selectedTopic.value.id, commentDraft.value)
-    commentDraft.value = ''
-    await loadTopicComments()
-  }, topicCommentError)
 const reviewTopic = (topic, approve) =>
   act(() => api.reviewTopic(projectId.value, topic.id, approve))
 const createDecision = () =>
@@ -1187,8 +1207,14 @@ async function showSession(item) {
 }
 let delegationPoll = null
 async function pollDelegations() {
-  if (loading.value || busy.value || !delegations.value.some((item) =>
-    item.dispatch_state !== 'reclaimed' && !terminalTurn(item.remote_status))) return
+  if (
+    loading.value ||
+    busy.value ||
+    !delegations.value.some(
+      (item) => item.dispatch_state !== 'reclaimed' && !terminalTurn(item.remote_status)
+    )
+  )
+    return
   const project = projectId.value
   try {
     const rows = await api.listDelegations(project)
@@ -1223,11 +1249,9 @@ watch(projectId, () => {
   savedBlueprintContent.value = ''
   blueprintActionError.value = ''
   selectedTopicId.value = ''
-  topicComments.value = []
-  topicCommentsLoading.value = false
-  topicCommentSeq += 1
+  topicRows.value = []
+  showArchivedTopics.value = false
   topicCommentError.value = ''
-  commentDraft.value = ''
   topicComposerVisible.value = false
   topicDraftTitle.value = ''
   topicDraftSummary.value = ''
@@ -1253,7 +1277,6 @@ watch(
     selectedTopicId.value = requested
   }
 )
-watch(selectedTopicId, loadTopicComments)
 watch(
   [loading, () => route.query.task_id, () => route.query.decision_id],
   async ([isLoading, taskId, decisionId]) => {

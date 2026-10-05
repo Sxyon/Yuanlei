@@ -125,7 +125,7 @@ test('展示面只消费读视图给出的 pending/blocked 字段，前端不自
   assert.match(panelSource, /pending_decisions/)
   assert.match(panelSource, /blocked_runs/)
   assert.equal(containsStatusLiteralBranch(panelSource), false)
-  assert.match(panelSource, /governanceStatusColor\(item\.status\)/)
+  assert.match(panelSource, /governanceStatusColor\(item\.admission_status \|\| item\.status\)/)
 
   assert.match(crossViewSource, /governanceBoardApi\.getCrossProjectBoard\(\)/)
   assert.match(projectViewSource, /const project = projectId\.value/)

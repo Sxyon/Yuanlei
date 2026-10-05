@@ -15,6 +15,9 @@ from yuxi.storage.postgres.models_business import (
     GovernanceTask,
     GovernanceTopic,
     GovernanceTopicComment,
+    GovernanceTopicRevision,
+    GovernanceTopicEvent,
+    ProjectWorkTask,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -58,12 +61,17 @@ class GovernanceRepository:
 
     async def get_topic(self, *, topic_id: str) -> GovernanceTopic | None:
         """按 id 读取议题，不持有行锁。"""
-        return await self.db.scalar(select(GovernanceTopic).where(GovernanceTopic.id == str(topic_id)))
+        return await self.db.scalar(
+            select(GovernanceTopic).where(GovernanceTopic.id == str(topic_id), GovernanceTopic.deleted_at.is_(None))
+        )
 
     async def get_topic_for_update(self, *, topic_id: str) -> GovernanceTopic | None:
         """锁定读取议题，供单次审核读改写使用。"""
         return await self.db.scalar(
-            select(GovernanceTopic).where(GovernanceTopic.id == str(topic_id)).with_for_update()
+            select(GovernanceTopic)
+            .where(GovernanceTopic.id == str(topic_id), GovernanceTopic.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def find_topic_by_source(
@@ -82,11 +90,15 @@ class GovernanceRepository:
             )
         )
 
-    async def list_topics(self, *, project_id: str) -> list[GovernanceTopic]:
+    async def list_topics(self, *, project_id: str, include_archived: bool = False) -> list[GovernanceTopic]:
         """按创建时间读取项目内议题。"""
         result = await self.db.scalars(
             select(GovernanceTopic)
-            .where(GovernanceTopic.project_id == str(project_id))
+            .where(
+                GovernanceTopic.project_id == str(project_id),
+                GovernanceTopic.deleted_at.is_(None),
+                True if include_archived else GovernanceTopic.archived_at.is_(None),
+            )
             .order_by(GovernanceTopic.created_at, GovernanceTopic.id)
         )
         return list(result)
@@ -99,12 +111,16 @@ class GovernanceRepository:
         author_name: str,
         operator: str,
         now: datetime | None = None,
+        discussion_type: str = "discussion",
+        revision_number: int | None = None,
     ) -> GovernanceTopicComment:
         """插入一条议题讨论回复并 flush。"""
         row = GovernanceTopicComment(
             id=str(uuid.uuid4()),
             topic_id=str(topic_id),
             content=content,
+            discussion_type=discussion_type,
+            revision_number=revision_number,
             author_name=author_name,
             created_by=operator,
             created_at=now or utc_now_naive(),
@@ -122,6 +138,82 @@ class GovernanceRepository:
         )
         return list(result)
 
+    async def add_topic_revision(
+        self, topic: GovernanceTopic, *, operator: str, author_name: str, reason: str | None
+    ) -> None:
+        """在拥有议题锁的事务内保存当前正文快照。"""
+        self.db.add(
+            GovernanceTopicRevision(
+                topic_id=topic.id,
+                number=topic.revision_number,
+                title=topic.title,
+                summary=topic.summary,
+                reason=reason,
+                created_by=operator,
+                author_name=author_name,
+                origin="authored",
+            )
+        )
+        await self.db.flush()
+
+    async def add_topic_event(
+        self,
+        topic: GovernanceTopic,
+        *,
+        kind: str,
+        operator: str,
+        author_name: str,
+        reason: str | None = None,
+        comment_id: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        """共享议题行锁分配历史序号，提交由服务负责。"""
+        topic.history_sequence += 1
+        self.db.add(
+            GovernanceTopicEvent(
+                topic_id=topic.id,
+                sequence=topic.history_sequence,
+                kind=kind,
+                revision_number=topic.revision_number,
+                comment_id=comment_id,
+                created_by=operator,
+                author_name=author_name,
+                reason=reason,
+                details=details or {},
+            )
+        )
+        await self.db.flush()
+
+    async def list_topic_timeline(self, topic_id: str, *, before: int | None, limit: int):
+        """按稳定序号倒序分页，联结对应快照及讨论。"""
+        query = (
+            select(GovernanceTopicEvent, GovernanceTopicRevision, GovernanceTopicComment)
+            .outerjoin(
+                GovernanceTopicRevision,
+                (GovernanceTopicRevision.topic_id == GovernanceTopicEvent.topic_id)
+                & (GovernanceTopicRevision.number == GovernanceTopicEvent.revision_number),
+            )
+            .outerjoin(GovernanceTopicComment, GovernanceTopicComment.id == GovernanceTopicEvent.comment_id)
+            .where(
+                GovernanceTopicEvent.topic_id == topic_id,
+            )
+        )
+        if before is not None:
+            query = query.where(GovernanceTopicEvent.sequence < before)
+        return (await self.db.execute(query.order_by(GovernanceTopicEvent.sequence.desc()).limit(limit))).all()
+
+    async def topic_references(self, topic_id: str) -> list[str]:
+        """检查决策和两类任务；执行依据由其不可删除的来源关系保护。"""
+        references = []
+        for model, label in (
+            (GovernanceDecision, "关联决策"),
+            (GovernanceTask, "治理任务及其执行依据"),
+            (ProjectWorkTask, "正式工作及其执行依据"),
+        ):
+            if await self.db.scalar(select(model.id).where(model.topic_id == topic_id).limit(1)):
+                references.append(label)
+        return references
+
     async def add_task(
         self,
         *,
@@ -138,6 +230,10 @@ class GovernanceRepository:
         now: datetime | None = None,
     ) -> GovernanceTask:
         """插入一条 proposed 任务并 flush。"""
+        if topic_id is not None:
+            topic = await self.get_topic_for_update(topic_id=topic_id)
+            if topic is None or topic.project_id != project_id or topic.archived_at is not None:
+                raise PermissionError("议题已删除、归档或不属于项目")
         timestamp = now or utc_now_naive()
         row = GovernanceTask(
             id=str(uuid.uuid4()),
@@ -203,10 +299,16 @@ class GovernanceRepository:
         decided: bool,
         operator: str,
         now: datetime | None = None,
+        topic_revision_number: int | None = None,
     ) -> GovernanceDecision:
         """插入决策；decided 为真时同时记录拍板人与时间。"""
+        if topic_id is not None:
+            topic = await self.get_topic_for_update(topic_id=topic_id)
+            if topic is None or topic.project_id != project_id or topic.archived_at is not None:
+                raise PermissionError("议题已删除、归档或不属于项目")
         timestamp = now or utc_now_naive()
         row = GovernanceDecision(
+            topic_revision_number=topic_revision_number,
             id=str(uuid.uuid4()),
             project_id=str(project_id),
             topic_id=topic_id,
