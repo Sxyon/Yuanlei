@@ -53,7 +53,7 @@
             type="warning"
             show-icon
             message="关联议题建议暂停原方案"
-            description="仅为议题提示，不撤销决策或暂停任务、Run。"
+            description="仅为议题提示，不撤销决策或暂停任务或执行记录。"
           />
           <MarkdownPreview :content="decision.conclusion" compact />
         </article>

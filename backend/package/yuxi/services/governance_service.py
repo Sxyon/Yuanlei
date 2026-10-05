@@ -467,7 +467,11 @@ async def operate_governance_topic(
         if references:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "topic_referenced", "message": "议题存在业务引用，请归档", "references": references},
+                detail={
+                    "code": "topic_referenced",
+                    "message": f"议题存在业务引用（{'、'.join(references)}），请归档",
+                    "references": references,
+                },
             )
         topic.deleted_at = utc_now_naive()
     else:

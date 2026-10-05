@@ -153,3 +153,22 @@ test('删除收到真实 204 空 Response 后关闭弹窗并回读列表', async
   assert.equal(state.savedBlueprintContent, '磁盘正文')
   assert.match(state.actionError, /议题列表读取失败/)
 })
+
+test('议题保存冲突在编辑区提示并保留标题正文和原因', async t => {
+  const state = await mountWorkbench(t)
+  state.topicRows = [{ id: 'topic', title: '原标题', summary: '原正文', revision_number: 1 }]
+  state.selectedTopicId = 'topic'
+  state.beginEditTopic()
+  state.editingTopicTitle = '我的标题'
+  state.editingTopicSummary = '我的未保存正文'
+  state.editingTopicReason = '我的修改原因'
+  t.mock.method(api, 'updateTopic', async () => {
+    throw { response: { data: { detail: { code: 'revision_conflict', message: '议题已被修改，请重新读取后保存' } } } }
+  })
+  await state.saveTopicEdit()
+  assert.equal(state.editingTopic, true)
+  assert.equal(state.editingTopicTitle, '我的标题')
+  assert.equal(state.editingTopicSummary, '我的未保存正文')
+  assert.equal(state.editingTopicReason, '我的修改原因')
+  assert.match(state.topicEditError, /草稿已保留.*复制正文/)
+})

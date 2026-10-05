@@ -126,7 +126,7 @@
         type="warning"
         show-icon
         message="议题建议暂停原方案"
-        description="仅为议题提示，不撤销决策或暂停任务、Run。"
+        description="仅为议题提示，不撤销决策或暂停任务或执行记录。"
       />
       <MarkdownPreview v-if="selectedBody" :content="selectedBody" compact />
       <p v-else class="node-detail-empty">这条记录还没有补充说明。</p>

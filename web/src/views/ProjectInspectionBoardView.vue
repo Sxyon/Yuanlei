@@ -342,6 +342,7 @@
               </header>
 
               <div v-if="editingTopic" class="topic-editor">
+                <a-alert v-if="topicEditError" type="error" show-icon :message="topicEditError" />
                 <a-input v-model:value="editingTopicTitle" aria-label="议题标题" />
                 <a-textarea
                   v-model:value="editingTopicSummary"
@@ -379,6 +380,7 @@
                 :key="`${projectId}:${selectedTopic.id}`"
                 :project-id="projectId"
                 :topic="selectedTopic"
+                :draft="topicDiscussionDraft(selectedTopic.id)"
                 :decisions="board.governance?.decisions || []"
                 @updated="load"
               />
@@ -498,7 +500,7 @@
                 type="warning"
                 show-icon
                 message="关联议题建议暂停原方案"
-                description="仅为业务提示，不撤销此决策，不暂停任务或 Run。"
+                description="仅为业务提示，不撤销此决策，不暂停任务或执行记录。"
               />
               <p v-if="topicTitleFor(decision.topic_id)" class="hint">
                 关联议题：{{ topicTitleFor(decision.topic_id) }}
@@ -725,6 +727,12 @@ const topicComposerVisible = ref(false)
 const topicDraftTitle = ref('')
 const topicDraftSummary = ref('')
 const selectedTopicId = ref('')
+const topicEditError = ref('')
+const topicDiscussionDrafts = ref({})
+// 草稿由工作台按议题保留，切换详情不会丢失未发送内容。
+function topicDiscussionDraft(topicId) {
+  return topicDiscussionDrafts.value[topicId] ||= { content: '', discussionType: 'discussion' }
+}
 const topicCommentError = ref('')
 const editingTopic = ref(false)
 const editingTopicTitle = ref('')
@@ -907,6 +915,7 @@ function canLeaveTopicEditor() {
 
 function beginEditTopic() {
   if (!selectedTopic.value || selectedTopic.value.archived_at) return
+  topicEditError.value = ''
   editingTopicTitle.value = selectedTopic.value.title
   editingTopicSummary.value = selectedTopic.value.summary || ''
   editingTopicReason.value = ''
@@ -987,6 +996,9 @@ async function act(operation, errorTarget = actionError) {
     await load()
   } catch (error) {
     errorTarget.value = describeBoardError(error)
+    if (error?.response?.data?.detail?.code === 'revision_conflict') {
+      errorTarget.value += '。您的草稿已保留，可先复制正文，再取消编辑并刷新后重新修改。'
+    }
   } finally {
     busy.value = false
   }
@@ -1165,7 +1177,7 @@ const saveTopicEdit = () =>
       reason: editingTopicReason.value
     })
     editingTopic.value = false
-  })
+  }, topicEditError)
 const reviewTopic = (topic, approve) =>
   act(() => api.reviewTopic(projectId.value, topic.id, approve))
 const createDecision = () =>

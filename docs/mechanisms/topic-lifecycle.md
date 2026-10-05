@@ -101,4 +101,4 @@ stateDiagram-v2
 
 业务流程由 `governance_service.py` 拥有，查询和引用保护由 `governance_repository.py` 拥有，PostgreSQL 的 `yuanlei` 表保存最终事实。页面只展示接口结果，相关取舍见[生命周期决策记录](../develop-guides/yuanlei/decisions/implemented/2026-10-05-topic-lifecycle-revisions.md)，差异边界见[项目治理 Feature](../develop-guides/yuanlei/features/project-governance.md)。
 
-真实 PostgreSQL 和 HTTP 测试覆盖修订冲突、重新提交、决策确认、归档恢复、引用删除竞争及运行状态不变；组件测试覆盖异步响应隔离。实际目标达成、回复和采纳不进入当前状态图。真实浏览器页面及截图仍未验证，组件测试和构建不能替代页面验收。
+真实 PostgreSQL 和 HTTP 测试覆盖修订冲突、重新提交、决策确认、归档恢复、引用删除竞争及运行状态不变；组件测试覆盖异步响应隔离。实际目标达成、回复和采纳不进入当前状态图。本地浏览器验收结果与适用屏幕宽度见生命周期决策记录。未发送讨论的正文与类型保留在当前工作台会话中，切换议题可恢复；整页刷新或离开工作台不提供持久草稿恢复。

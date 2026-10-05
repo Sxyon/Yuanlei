@@ -5,7 +5,7 @@
       show-icon
       :type="topic.execution_hint === 'pause_recommended' ? 'warning' : 'info'"
       :message="topic.execution_hint === 'pause_recommended' ? '建议暂停原方案' : '原方案继续执行'"
-      description="此提示仅记录议题意见，不暂停关联任务或 Run，也不撤销正式决策。"
+      description="此提示仅记录议题意见，不暂停关联任务或执行记录，也不撤销正式决策。"
     />
     <p>纳入议题不等于批准决策。正文修改保留修订，不覆盖正式决策。</p>
     <a-alert v-if="error" type="error" show-icon :message="error" />
@@ -20,9 +20,7 @@
           >标记已形成决策</a-select-option
         >
         <a-select-option v-if="topic.progress !== 'closed'" value="close">关闭议题</a-select-option>
-        <a-select-option v-if="topic.progress !== 'open'" value="reopen"
-          >重开议题</a-select-option
-        >
+        <a-select-option v-if="topic.progress !== 'open'" value="reopen">重开议题</a-select-option>
         <a-select-option value="archive">归档</a-select-option>
         <a-select-option value="delete">删除</a-select-option>
       </a-select>
@@ -54,10 +52,12 @@
         aria-label="议题操作原因"
         :maxlength="100000"
       />
-      <p v-if="action === 'delete'">删除后，议题将从页面移除。已关联决策或任务的议题无法删除，请使用归档。</p>
-      <a-button :danger="action === 'delete'" :disabled="busy || !action" @click="operate"
-        >执行操作</a-button
-      >
+      <p v-if="action === 'delete'">
+        删除后，议题将从页面移除。已关联决策或任务的议题无法删除，请使用归档。
+      </p>
+      <a-button :danger="action === 'delete'" :disabled="busy || !action" @click="operate">{{
+        actionLabel
+      }}</a-button>
     </div>
     <a-button v-else :disabled="busy" @click="restore">恢复归档议题</a-button>
     <div v-if="!topic.archived_at" class="topic-discussion">
@@ -88,8 +88,19 @@
         >
       </header>
       <p v-if="event.reason">{{ event.reason }}</p>
-      <p v-if="event.details?.execution_hint">{{ event.details.execution_hint === 'pause_recommended' ? '建议暂停原方案（不控制任务或 Run）' : '原方案继续执行' }}</p>
-      <p v-if="event.details?.decision_id">确认依据：{{ decisions.find(d => d.id === event.details.decision_id)?.title || event.details.decision_id }}</p>
+      <p v-if="event.details?.execution_hint">
+        {{
+          event.details.execution_hint === 'pause_recommended'
+            ? '建议暂停原方案（不控制任务或执行记录）'
+            : '原方案继续执行'
+        }}
+      </p>
+      <p v-if="event.details?.decision_id">
+        确认依据：{{
+          decisions.find((d) => d.id === event.details.decision_id)?.title ||
+          event.details.decision_id
+        }}
+      </p>
       <MarkdownPreview v-if="event.comment" :content="event.comment.content" />
       <small v-if="event.comment && !event.revision_number">当时正文版本未知</small>
       <details v-if="event.revision">
@@ -106,7 +117,8 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { Modal } from 'ant-design-vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import { describeBoardError } from '@/utils/governanceBoard'
@@ -114,7 +126,8 @@ import { describeBoardError } from '@/utils/governanceBoard'
 const props = defineProps({
   projectId: { type: String, required: true },
   topic: { type: Object, required: true },
-  decisions: { type: Array, default: () => [] }
+  decisions: { type: Array, default: () => [] },
+  draft: { type: Object, default: () => ({ content: '', discussionType: 'discussion' }) }
 })
 const emit = defineEmits(['updated'])
 const events = ref([])
@@ -126,12 +139,30 @@ const action = ref(undefined)
 const reason = ref('')
 const decisionId = ref(undefined)
 const executionHint = ref(undefined)
-const discussionType = ref('discussion')
-const content = ref('')
+const discussionType = toRef(props.draft, 'discussionType', 'discussion')
+const content = toRef(props.draft, 'content')
+const actionLabel = computed(
+  () =>
+    ({
+      resubmit: '重新提交纳入',
+      decide: '确认已形成决策',
+      close: '关闭议题',
+      reopen: '重开议题',
+      archive: '归档',
+      delete: '删除'
+    })[action.value] || '选择操作'
+)
 let generation = 0
 let active = true
-onBeforeUnmount(() => { active = false; generation += 1 })
-const timestampLabel = raw => raw ? new Date(raw).toLocaleString('zh-CN') : ''
+let deleteConfirmation
+let cancelDeleteConfirmation
+onBeforeUnmount(() => {
+  active = false
+  generation += 1
+  cancelDeleteConfirmation?.()
+  deleteConfirmation?.destroy()
+})
+const timestampLabel = (raw) => (raw ? new Date(raw).toLocaleString('zh-CN') : '')
 const eligibleDecisions = computed(() =>
   props.decisions.filter((d) => d.topic_id === props.topic.id && d.status === 'implemented')
 )
@@ -184,17 +215,46 @@ async function perform(callback, refresh = true) {
     emit('updated')
     if (refresh) await loadMore(true)
   } catch (failure) {
-    if (active) error.value = describeBoardError(failure)
+    if (active) {
+      error.value = describeBoardError(failure)
+    }
   } finally {
     if (active) busy.value = false
   }
 }
-function operate() {
-  if (
-    action.value === 'delete' &&
-    !window.confirm('确认删除此议题？删除后将无法在页面查看或恢复；已关联决策或任务的议题无法删除。')
-  )
+async function operate() {
+  if (['resubmit', 'reopen', 'close', 'delete'].includes(action.value) && !reason.value.trim()) {
+    error.value = '请填写操作原因'
     return
+  }
+  if (action.value === 'decide' && !decisionId.value) {
+    error.value = '请选择当前议题已拍板的关联决策'
+    return
+  }
+  if (action.value === 'reopen' && !executionHint.value) {
+    error.value = '请选择原方案继续执行或建议暂停'
+    return
+  }
+  if (action.value === 'delete' && content.value.trim()) {
+    error.value = '请先发布或清空讨论草稿，再删除议题'
+    return
+  }
+  if (action.value === 'delete') {
+    const confirmed = await new Promise((resolve) => {
+      cancelDeleteConfirmation = () => resolve(false)
+      deleteConfirmation = Modal.confirm({
+        title: '确认删除此议题？',
+        content: '删除后将无法在页面查看或恢复；已关联决策或任务的议题无法删除。',
+        okText: '删除',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false)
+      })
+    })
+    deleteConfirmation = cancelDeleteConfirmation = undefined
+    if (!active || !confirmed) return
+  }
   return perform(async () => {
     await api.operateTopic(props.projectId, props.topic.id, {
       action: action.value,
@@ -208,16 +268,13 @@ function operate() {
 }
 const restore = () =>
   perform(() => api.operateTopic(props.projectId, props.topic.id, { action: 'restore' }))
-const post = () =>
-  perform(async () => {
-    await api.createTopicComment(
-      props.projectId,
-      props.topic.id,
-      content.value,
-      discussionType.value
-    )
-    content.value = ''
+const post = () => {
+  const submitted = content.value
+  return perform(async () => {
+    await api.createTopicComment(props.projectId, props.topic.id, submitted, discussionType.value)
+    if (content.value === submitted) content.value = ''
   })
+}
 watch(
   () => [props.projectId, props.topic.id],
   () => {
@@ -225,7 +282,7 @@ watch(
     events.value = []
     nextBefore.value = null
     action.value = decisionId.value = executionHint.value = undefined
-    reason.value = content.value = error.value = ''
+    reason.value = error.value = ''
     void loadMore(true)
   },
   { immediate: true }

@@ -119,6 +119,7 @@ async def test_topic_http_revision_reopen_archive_and_delete(test_client):
             f"{path}/operations", headers=headers, json={"action": "delete", "reason": "不再关注"}
         )
         assert protected.status_code == 409 and protected.json()["detail"]["references"] == ["关联决策"]
+        assert "关联决策" in protected.json()["detail"]["message"]
         assert (
             await test_client.post(f"{path}/operations", headers=headers, json={"action": "archive"})
         ).status_code == 200
