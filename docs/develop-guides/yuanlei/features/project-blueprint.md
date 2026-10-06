@@ -50,6 +50,10 @@ Yuxi 继续拥有 Project、Conversation、AgentRun、Workdir 的 no-follow 文�
 
 当上游拥有等价的项目级方案文档事实源，且能保证路径隔离、原子写入与 Workdir 归属时，可删除本用例与端点。删除前需要新的 Decision 说明既有蓝图文档的迁移路径与 Dashboard/Taskboard 消费侧的替换方案。
 
+## 结果交付与反馈
+
+个人确认结果后生成可编辑蓝图复盘预览。预览后的正文或文件身份变化返回冲突，保留草稿并展示最新原文供合并；受控文件操作按物理 Workspace 跨进程协调。任意非协作外部竞争限制与证据见[决策记录](../decisions/implemented/2026-10-06-execution-result-feedback.md)。
+
 ## 决策与证据
 
 - Decision：[项目蓝图 Workdir 事实源](../decisions/implemented/2026-09-24-project-blueprint-workdir.md)。

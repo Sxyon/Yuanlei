@@ -69,6 +69,8 @@ async def assemble_context(*, db, user, project, task, selection=None, expected_
             kind="requirements",
             locator=task.id,
             revision=task.criteria_revision,
+            description=task.description or "",
+            acceptance_criteria=task.acceptance_criteria or "",
             text=required,
             mode="direct",
             note="工作要求完整保留",
@@ -116,7 +118,10 @@ async def assemble_context(*, db, user, project, task, selection=None, expected_
                 locator=row.id,
                 revision=row.version,
                 mode="direct",
-                text=f"{row.summary}\n\n未解决事项：{row.unresolved or '无'}",
+                text=(
+                    f"{row.summary}\n\n未解决事项：{row.unresolved or '无'}"
+                    f"\n\n验收意见（要求修订 {row.criteria_revision or '未记录'}）：{row.review_comment or '尚无意见'}"
+                ),
                 note=f"业务结果状态：{row.status}；要求修订：{row.criteria_revision}",
             )
         )

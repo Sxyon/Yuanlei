@@ -350,6 +350,15 @@ async def create_governance_topic_comment(
     topic = await repo.get_topic_for_update(topic_id=topic_id)
     if topic is None or topic.project_id != project.id:
         raise HTTPException(status_code=404, detail="议题不存在")
+    row = await append_topic_discussion(repo=repo, topic=topic, user=user, content=content,
+                                        discussion_type=discussion_type)
+    await db.commit()
+    await db.refresh(row)
+    return _serialize_topic_comment(row)
+
+
+async def append_topic_discussion(*, repo, topic, user, content, discussion_type, details=None):
+    """在调用方事务中追加讨论及时间线；不自行提交。"""
     _require_topic_writable(topic)
     if discussion_type not in ("discussion", "reconsideration", "correction"):
         raise HTTPException(status_code=422, detail={"code": "invalid_discussion_type"})
@@ -368,11 +377,9 @@ async def create_governance_topic_comment(
         operator=str(user.uid),
         author_name=user.username,
         comment_id=row.id,
-        details={"discussion_type": discussion_type},
+        details={"discussion_type": discussion_type, **(details or {})},
     )
-    await db.commit()
-    await db.refresh(row)
-    return _serialize_topic_comment(row)
+    return row
 
 
 async def review_governance_topic(

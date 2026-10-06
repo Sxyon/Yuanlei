@@ -380,3 +380,178 @@ async def test_context_attachment_reads_owned_object_and_reports_missing_bytes()
                 assert "附件甲" in snapshot["input_text"]
     finally:
         await client.adelete_file(bucket_name=bucket, object_name=object_name)
+
+
+async def test_automatic_results_feedback_and_blueprint_conflicts():
+    """真实事务保存旧依据、幂等反馈及外部文件修改冲突。"""
+    from server.routers.project_work_router import project_work
+    from yuxi.services.project_work_result_service import import_execution_result
+    from yuxi.storage.postgres.models_business import GovernanceTopic, GovernanceTopicRevision, ProjectWorkResult
+
+    async with context_database() as (_, sessions, user, project, workdir):
+        app = FastAPI()
+        app.include_router(project_work, prefix="/api")
+
+        async def session_dep():
+            """反馈用例使用隔离 PostgreSQL。"""
+            async with sessions() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = session_dep
+        app.dependency_overrides[get_required_user] = lambda: user
+        async with sessions() as db:
+            topic = GovernanceTopic(id="feedback-topic", project_id="p", title="原议题", status="canonical",
+                                    created_by=user.uid, source_channel="project", review_owner_uid=user.uid,
+                                    reviewed_at=utc_now_naive(), revision_number=1)
+            db.add(topic)
+            await db.flush()
+            db.add(GovernanceTopicRevision(topic_id=topic.id, number=1, title=topic.title, created_by=user.uid))
+            attempt = ProjectWorkExecution(id="feedback-exec", task_id="t", project_id="p", uid=user.uid,
+                                          agent_slug="agent", status="completed", prompt="当次输入",
+                                          request_id="feedback-request", thread_id="feedback-thread",
+                                          context_snapshot={"items": [{"kind": "requirements", "revision": 1,
+                                              "description": "原描述", "acceptance_criteria": "# 原条件"}]})
+            db.add(attempt)
+            await db.flush()
+            result = await import_execution_result(db=db, project=project, source=attempt, summary="本次输出",
+                                                   output_fact={"run_id": "owned-run"}, evidence=[])
+            rid = result.id
+            assert (await import_execution_result(db=db, project=project, source=attempt, summary="重复",
+                                                  output_fact={}, evidence=[])).id == rid
+            task = await db.get(ProjectWorkTask, "t")
+            task.criteria_revision = 2
+            task.acceptance_criteria = "# 新条件"
+            await db.commit()
+        root = "/api/projects/p/work/tasks/t"
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            blocked = await client.post(root + f"/results/{rid}/review", json={"status": "accepted",
+                "expected_version": 1, "expected_revision": 2, "complete": True})
+            assert blocked.status_code == 409, blocked.text
+            missing = await client.post(root + f"/results/{rid}/review", json={"status": "not_accepted",
+                "expected_version": 1, "expected_revision": 2})
+            assert missing.status_code == 422
+            rejected = await client.post(root + f"/results/{rid}/review", json={"status": "not_accepted",
+                "comment": "需要追加证据", "expected_version": 1, "expected_revision": 2})
+            assert rejected.status_code == 200, rejected.text
+            payload = {"topic_id": "feedback-topic", "content": "结果反馈", "discussion_type": "correction",
+                       "request_id": "one-feedback", "expected_result_version": 2, "expected_topic_revision": 1}
+            assert (await client.post(root + f"/results/{rid}/topic-feedback",
+                json={**payload, "topic_id": "missing", "request_id": "cross-project"})).status_code == 404
+            assert (await client.post(root + f"/results/{rid}/topic-feedback",
+                json={**payload, "expected_topic_revision": 2, "request_id": "stale-topic"})).status_code == 409
+            async with sessions() as db:
+                topic = await db.get(GovernanceTopic, "feedback-topic")
+                topic.archived_at = utc_now_naive()
+                await db.commit()
+            assert (await client.post(root + f"/results/{rid}/topic-feedback",
+                json={**payload, "request_id": "archived"})).status_code == 409
+            async with sessions() as db:
+                topic = await db.get(GovernanceTopic, "feedback-topic")
+                topic.archived_at = None
+                await db.commit()
+            assert (await client.get(root + f"/results/{rid}/blueprint-preview",
+                                    params={"name": "../invalid.md"})).status_code == 422
+            first = await client.post(root + f"/results/{rid}/topic-feedback", json=payload)
+            assert first.status_code == 200, first.text
+            assert (await client.post(root + f"/results/{rid}/topic-feedback", json=payload)).json() == first.json()
+            assert (await client.post(root + f"/results/{rid}/topic-feedback",
+                                     json={**payload, "content": "不同意图"})).status_code == 409
+            preview = await client.get(root + f"/results/{rid}/blueprint-preview", params={"name": "依据.md"})
+            assert preview.status_code == 200, preview.text
+            data = preview.json()
+            assert "需要追加证据" in data["content"]
+            workdir.replace_file("/.yuanlei/blueprint/依据.md", "外部修改".encode())
+            save = {"name": "依据.md", "content": data["content"], "expected_hash": data["content_hash"],
+                    "expected_result_version": 2, "expected_identity": data["file_identity"]}
+            conflict_response = await client.put(root + f"/results/{rid}/blueprint-feedback", json=save)
+            assert conflict_response.status_code == 409, conflict_response.text
+            assert workdir.read_file("/.yuanlei/blueprint/依据.md", 256_000).decode() == "外部修改"
+            fresh = (await client.get(root + f"/results/{rid}/blueprint-preview",
+                                     params={"name": "依据.md"})).json()
+            save.update(
+                content=fresh["content"], expected_hash=fresh["content_hash"],
+                expected_identity=fresh["file_identity"],
+            )
+            assert (await client.put(root + f"/results/{rid}/blueprint-feedback", json=save)).status_code == 200
+            assert (await client.put(root + f"/results/{rid}/blueprint-feedback", json=save)).status_code == 200
+            assert workdir.read_file("/.yuanlei/blueprint/依据.md", 256_000).decode() == fresh["content"]
+        async with sessions() as db:
+            persisted = await db.get(ProjectWorkResult, rid)
+            assert persisted.criteria_snapshot == "# 原条件" and persisted.criteria_revision == 1
+            assert persisted.status == "not_accepted" and persisted.review_comment == "需要追加证据"
+            assert (await db.get(ProjectWorkTask, "t")).status == "todo"
+            assert await db.scalar(text("SELECT count(*) FROM project_work_result_topic_feedback")) == 1
+            assert (await db.get(GovernanceTopic, "feedback-topic")).status == "canonical"
+            from sqlalchemy.exc import IntegrityError
+            db.add(ProjectWorkResult(id="duplicate-auto", project_id="p", task_id="t", request_id="duplicate",
+                request_hash="x", summary="重复", submitted_by=user.uid, origin_kind="automatic",
+                source_execution_id="feedback-exec", criteria_revision=1, criteria_snapshot="原条件"))
+            with pytest.raises(IntegrityError) as duplicate:
+                await db.flush()
+            assert "uq_auto_result_execution" in str(duplicate.value)
+            await db.rollback()
+            auto_count = await db.scalar(
+                text("SELECT count(*) FROM project_work_results WHERE source_execution_id='feedback-exec'")
+            )
+            assert auto_count == 1
+
+
+async def test_v35_migration_preserves_manual_result_and_old_missing_basis():
+    """真实旧表升级可重入，已有结果与旧执行不推断改写。"""
+    from yuxi.storage.postgres.models_business import ProjectWorkResult
+    async with context_database() as (manager, sessions, user, _, _):
+        async with sessions() as db:
+            db.add(ProjectWorkResult(id="manual", project_id="p", task_id="t", request_id="manual-intent",
+                                     request_hash="x", summary="人工历史", criteria_snapshot="原要求",
+                                     criteria_revision=1, status="accepted", version=2, submitted_by=user.uid))
+            await db.commit()
+            await db.execute(text("DROP TABLE project_work_result_topic_feedback"))
+            await db.execute(text("ALTER TABLE project_work_results DROP COLUMN origin_kind CASCADE"))
+            await db.execute(text("ALTER TABLE project_work_results DROP COLUMN source_output"))
+            await db.execute(text("ALTER TABLE project_work_results DROP COLUMN requirements_snapshot"))
+            await db.execute(text("ALTER TABLE project_work_results ALTER COLUMN criteria_snapshot SET NOT NULL"))
+            await db.execute(text("ALTER TABLE project_work_results ALTER COLUMN criteria_revision SET NOT NULL"))
+            await db.commit()
+        await manager.upgrade_yuanlei_schema_v34_to_v35()
+        await manager.upgrade_yuanlei_schema_v34_to_v35()
+        async with sessions() as db:
+            row = await db.get(ProjectWorkResult, "manual")
+            assert (row.summary, row.criteria_snapshot, row.status, row.version) == (
+                "人工历史", "原要求", "accepted", 2)
+            assert row.origin_kind == "manual" and row.requirements_snapshot is None and row.source_output is None
+
+
+async def test_legacy_automatic_result_cannot_infer_current_requirements():
+    """旧组合正文只保留原值，不能用当前条件验收或冒充新执行。"""
+    from fastapi import HTTPException
+    from sqlalchemy.exc import IntegrityError
+    from yuxi.services.project_work_result_service import import_execution_result, review_result
+    from yuxi.storage.postgres.models_business import ProjectWorkResult
+
+    async with context_database() as (_, sessions, user, project, _):
+        async with sessions() as db:
+            attempt = ProjectWorkExecution(id="old-attempt", task_id="t", project_id="p", uid=user.uid,
+                agent_slug="agent", status="completed", prompt="旧输入",
+                request_id="old-request", thread_id="old-thread",
+                context_snapshot={"items": [{"kind": "requirements", "revision": 1, "text": "旧组合正文"}]})
+            db.add(attempt)
+            await db.flush()
+            row = await import_execution_result(db=db, project=project, source=attempt,
+                summary="旧尝试输出", output_fact={"run_id": "old-run"}, evidence=[])
+            rid = row.id
+            await db.commit()
+            assert row.criteria_snapshot is None and row.requirements_snapshot["text"] == "旧组合正文"
+        async with sessions() as db:
+            with pytest.raises(HTTPException) as refused:
+                await review_result(db=db, user=user, project_id="p", task_id="t", result_id=rid,
+                    status="accepted", comment="", expected_version=1, expected_revision=1, complete=False)
+            assert refused.value.status_code == 409
+            assert "未记录可核对" in refused.value.detail["message"]
+            await db.rollback()
+            row = await db.get(ProjectWorkResult, rid)
+            assert row.status == "pending" and row.criteria_snapshot is None
+            db.add(ProjectWorkResult(id="unowned-auto", project_id="p", task_id="t", request_id="no-source",
+                request_hash="x", summary="没有当次来源", submitted_by=user.uid, origin_kind="automatic"))
+            with pytest.raises(IntegrityError) as shape:
+                await db.flush()
+            assert "ck_auto_result_source" in str(shape.value)

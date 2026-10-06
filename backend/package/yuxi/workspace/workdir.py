@@ -68,9 +68,13 @@ class Workdir:
     def write_file(self, path: str, content: bytes) -> dict:
         return self.workspace.write_authorized_file(self.resolve_path(path), content)
 
-    def replace_file(self, path: str, content: bytes) -> dict:
+    def replace_file(
+        self, path: str, content: bytes, *, expected_hash: str | None = None, expected_identity: str | None = None
+    ) -> dict:
         """在 Workdir 内原子创建或替换普通文件。"""
-        return self.workspace.replace_authorized_file(self.resolve_path(path), content)
+        return self.workspace.replace_authorized_file(
+            self.resolve_path(path), content, expected_hash=expected_hash, expected_identity=expected_identity
+        )
 
     def create_file(self, path: str, content: bytes) -> dict:
         """在 Workdir 内独占创建文件，避免新建操作覆盖既有内容。"""

@@ -33,19 +33,20 @@
     </div>
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <p v-if="!task.results?.length" class="muted">尚无业务结果记录。</p>
-    <article v-for="result in task.results || []" :key="result.id" class="result-card">
+    <article v-for="result in task.results || []" :key="result.id" :id="`work-result-${result.id}`" class="result-card">
       <h3>{{ statusName(result.status) }} · {{ formatDateTime(result.created_at) }}</h3>
-      <p class="muted">提交者 {{ result.submitted_by }} · 要求修订 {{ result.criteria_revision }}</p>
+      <p class="muted">{{ result.origin_kind === 'automatic' ? '执行自动导入' : '人工提交' }} · 提交者 {{ result.submitted_by }} · 要求修订 {{ result.criteria_revision || '未记录' }}</p>
       <p v-if="result.source_execution_id"><a :href="`#work-execution-${result.source_execution_id}`">查看当次执行来源</a></p>
       <p v-if="result.source_delegation_id">来源委派：{{ result.source_delegation_id }}</p>
       <pre>{{ result.summary }}</pre>
       <p v-if="result.unresolved">未解决事项：{{ result.unresolved }}</p>
-      <details><summary>提交时验收条件{{ result.criteria_changed ? '（与当前要求不同）' : '' }}</summary><pre>{{ result.criteria_snapshot || '当时未填写条件' }}</pre></details>
+      <details><summary>提交时验收条件{{ result.criteria_changed ? '（与当前要求不同）' : '' }}</summary><pre>{{ result.criteria_snapshot === null ? '旧执行未记录可核对条件，不能作为当前完成依据，请补充人工结果' : result.criteria_snapshot || '当时未填写条件' }}</pre></details>
       <ul><li v-for="(item, index) in result.evidence" :key="index">
         <a v-if="item.kind === 'url'" :href="item.value" target="_blank" rel="noopener noreferrer">{{ item.title || item.value }}</a>
         <span v-else>{{ item.title || item.value }}</span> · {{ item.availability_message }}
       </li></ul>
       <p v-if="result.reviewed_at">{{ result.reviewed_by }} · {{ formatDateTime(result.reviewed_at) }} · {{ result.review_comment || '未填写意见' }}</p>
+      <ResultFeedbackPanel :project-id="projectId" :task-id="task.id" :task-number="task.number" :result="result" @refresh="emit('refresh')" />
       <template v-if="result.status === 'pending'">
         <a-textarea v-model:value="comments[result.id]" aria-label="验收意见" :rows="2" :maxlength="100000" />
         <div class="result-actions">
@@ -60,6 +61,7 @@
 
 <script setup>
 import { ref, watch, onBeforeUnmount } from 'vue'
+import ResultFeedbackPanel from './ResultFeedbackPanel.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import { formatDateTime } from '@/utils/time'
 

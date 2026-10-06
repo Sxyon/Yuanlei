@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 34
+YUANLEI_SCHEMA_VERSION = 35
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1674,6 +1674,43 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v34_to_v35(self) -> None:
+        """增加自动交付来源与结果议题关系，旧结果保持人工来源。"""
+        from yuxi.storage.postgres.models_business import ProjectWorkResultTopicFeedback
+
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in (
+                "ALTER TABLE project_work_results ADD COLUMN IF NOT EXISTS origin_kind "
+                "VARCHAR(16) NOT NULL DEFAULT 'manual'",
+                "ALTER TABLE project_work_results ADD COLUMN IF NOT EXISTS source_output JSONB",
+                "ALTER TABLE project_work_results ADD COLUMN IF NOT EXISTS requirements_snapshot JSONB",
+                "ALTER TABLE project_work_results ALTER COLUMN criteria_snapshot DROP NOT NULL",
+                "ALTER TABLE project_work_results ALTER COLUMN criteria_revision DROP NOT NULL",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_work_result_project ON project_work_results(id, project_id)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_auto_result_execution "
+                "ON project_work_results(source_execution_id) "
+                "WHERE origin_kind='automatic' AND source_execution_id IS NOT NULL",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_auto_result_delegation "
+                "ON project_work_results(source_delegation_id) "
+                "WHERE origin_kind='automatic' AND source_delegation_id IS NOT NULL",
+                """DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_work_result_origin'
+                        AND conrelid='project_work_results'::regclass) THEN
+                        ALTER TABLE project_work_results ADD CONSTRAINT ck_work_result_origin
+                            CHECK (origin_kind IN ('manual','automatic'));
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_auto_result_source'
+                        AND conrelid='project_work_results'::regclass) THEN
+                        ALTER TABLE project_work_results ADD CONSTRAINT ck_auto_result_source
+                            CHECK (origin_kind <> 'automatic' OR source_execution_id IS NOT NULL
+                                   OR source_delegation_id IS NOT NULL);
+                    END IF;
+                END $$""",
+            ):
+                await conn.execute(text(statement))
+            await conn.run_sync(lambda sync: ProjectWorkResultTopicFeedback.__table__.create(sync, checkfirst=True))
 
     async def upgrade_yuanlei_schema_v33_to_v34(self) -> None:
         """增加当次业务快照，旧执行不推断资料。"""

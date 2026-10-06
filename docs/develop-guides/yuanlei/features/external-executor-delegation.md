@@ -65,6 +65,10 @@
 
 当上游拥有等价的外部执行器委派接口与渠道桥接，并能表达 proposed→审核→canonical、外部不反向写、投递意图持久化与核对、结果绑定发起 Run 与 Workdir 边界产物时，可删除本实现。删除前需要新的 Decision 说明 `channel_delegations`、`channel_sync_cursors` 既有数据的迁移与消费侧替换路径。
 
+## 结果交付与反馈
+
+成功终态的委派回收在所属事务生成唯一待验收结果，保留 operation/turn 与当次条件。租约接管后旧回收者不能改写新结果或释放新租约；不制造 AgentRun 或自动完成工作。语义与证据见[决策记录](../decisions/implemented/2026-10-06-execution-result-feedback.md)。
+
 ## 决策与证据
 
 - Decision：[本次执行资料预览与不可变业务快照](../decisions/implemented/2026-10-06-work-context-snapshots.md)。

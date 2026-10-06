@@ -22,6 +22,7 @@ from yuxi.storage.postgres.models_business import (
     GovernanceTopicRevision,
     GovernanceTopicEvent,
     ProjectWorkTask,
+    ProjectWorkResultTopicFeedback,
     ProjectWorkExecution,
     WorkSuggestionAdmission,
     ChannelDelegation,
@@ -219,14 +220,20 @@ class GovernanceRepository:
         ):
             if await self.db.scalar(select(model.id).where(model.topic_id == topic_id).limit(1)):
                 references.append(label)
-        if await self.db.scalar(select(ProjectWorkExecution.id).where(
-            ProjectWorkExecution.source_topic_id == topic_id
-        ).limit(1)):
+        if await self.db.scalar(
+            select(ProjectWorkExecution.id).where(ProjectWorkExecution.source_topic_id == topic_id).limit(1)
+        ):
             references.append("正式工作历史执行依据")
         if await self.db.scalar(
             select(ChannelDelegation.id).where(ChannelDelegation.source_topic_id == topic_id).limit(1)
         ):
             references.append("正式工作历史委派依据")
+        if await self.db.scalar(
+            select(ProjectWorkResultTopicFeedback.id)
+            .where(ProjectWorkResultTopicFeedback.topic_id == topic_id)
+            .limit(1)
+        ):
+            references.append("工作结果反馈")
         return references
 
     async def add_task(

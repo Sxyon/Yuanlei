@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import hashlib
+import fcntl
+from functools import wraps
 import itertools
 import os
 import stat
@@ -15,6 +18,22 @@ from yuxi.utils.paths import open_directory_fd, open_regular_file_fd
 
 from .errors import FileTransferLimitError, WorkspaceContainsSymlinkError
 from .paths import user_workspace_dir
+
+
+def _serialized_write(method):
+    """按物理 Workspace 根目录跨进程串行化受控写入，共用目录使用相同锁。"""
+
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        """锁内完成正文校验及副作用，目录项变更也参与同一顺序。"""
+        root_fd = self._open_directory(self._workspace_root, ())
+        try:
+            fcntl.flock(root_fd, fcntl.LOCK_EX)
+            return method(self, *args, **kwargs)
+        finally:
+            os.close(root_fd)
+
+    return guarded
 
 
 def _rename_noreplace(source_fd: int, source_name: str, target_fd: int, target_name: str) -> None:
@@ -181,6 +200,7 @@ class Workspace:
             content = b"".join(chunks)
         return content[:max_bytes], len(content) > max_bytes
 
+    @_serialized_write
     def write_authorized_file(self, path: str, content: bytes) -> dict:
         """通过已打开的普通文件描述符覆盖内容，拒绝 symlink 与目录。"""
         with self._open_regular_file(path, writable=True) as (target_fd, _target_stat):
@@ -189,7 +209,10 @@ class Workspace:
             final_stat = os.fstat(target_fd)
             return self._metadata_from_stat(final_stat)
 
-    def replace_authorized_file(self, path: str, content: bytes) -> dict:
+    @_serialized_write
+    def replace_authorized_file(
+        self, path: str, content: bytes, *, expected_hash: str | None = None, expected_identity: str | None = None
+    ) -> dict:
         """在同一目录内完整写入并原子替换普通文件。"""
         base, parts = self._resolve_path(path)
         if not parts:
@@ -210,6 +233,31 @@ class Workspace:
                 if not stat.S_ISREG(target_stat.st_mode):
                     raise PermissionError("only regular files can be replaced")
 
+            def check_content():
+                """在原目录描述符下核对正文及文件身份，拒绝覆盖预览后的改动。"""
+                try:
+                    current_fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+                except FileNotFoundError as exc:
+                    raise FileExistsError("预览后的蓝图已删除或更名") from exc
+                try:
+                    current_stat = os.fstat(current_fd)
+                    if not stat.S_ISREG(current_stat.st_mode):
+                        raise PermissionError("only regular files can be replaced")
+                    digest = hashlib.sha256()
+                    while chunk := os.read(current_fd, 65536):
+                        digest.update(chunk)
+                    identity = f"{current_stat.st_dev}:{current_stat.st_ino}:{current_stat.st_mtime_ns}"
+                    if (
+                        (expected_identity is not None and identity != expected_identity)
+                        or digest.hexdigest() != expected_hash
+                        or (target_stat is not None and current_stat.st_ino != target_stat.st_ino)
+                    ):
+                        raise FileExistsError("预览后的蓝图已修改")
+                finally:
+                    os.close(current_fd)
+
+            if expected_hash is not None:
+                check_content()
             target_fd = os.open(
                 temp_name,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -221,6 +269,8 @@ class Workspace:
             final_stat = os.fstat(target_fd)
             os.close(target_fd)
             target_fd = None
+            if expected_hash is not None:
+                check_content()
             os.rename(temp_name, parts[-1], src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             os.fsync(parent_fd)
             return self._metadata_from_stat(final_stat)
@@ -233,6 +283,7 @@ class Workspace:
                 pass
             os.close(parent_fd)
 
+    @_serialized_write
     def create_authorized_file(self, path: str, content: bytes) -> dict:
         """在 no-follow 目录边界内原子独占创建文件。"""
         base, parts = self._resolve_path(path)
@@ -271,6 +322,7 @@ class Workspace:
                 pass
             os.close(parent_fd)
 
+    @_serialized_write
     def move_authorized_file(self, source_path: str, target_path: str, *, root: str) -> dict:
         """在同一 Workdir 内原子移动普通文件，拒绝覆盖已有目标。"""
         self._require_within(source_path, root, allow_root=False)
@@ -317,6 +369,7 @@ class Workspace:
             raise PermissionError("only regular files and directories are allowed")
         return self._metadata_from_stat(item_stat)
 
+    @_serialized_write
     def upload_authorized_file_from_path(
         self,
         path: str,
@@ -370,6 +423,7 @@ class Workspace:
                 pass
             os.close(parent_fd)
 
+    @_serialized_write
     def create_authorized_directory(self, parent_path: str, name: str, *, root: str) -> dict:
         """在 Workdir 内创建一个单层目录。"""
         if not name or name in {".", ".."} or "/" in name or "\\" in name:
@@ -384,6 +438,7 @@ class Workspace:
             os.close(parent_fd)
         return self._metadata_from_stat(item_stat)
 
+    @_serialized_write
     def delete_authorized_file(self, path: str, *, root: str) -> None:
         """在受限目录内删除普通文件，拒绝目录、链接与特殊文件。"""
         self._require_within(path, root, allow_root=False)
@@ -398,6 +453,7 @@ class Workspace:
         finally:
             os.close(parent_fd)
 
+    @_serialized_write
     def delete_authorized_path(self, path: str, *, root: str, unlink_symlinks: bool = False) -> None:
         """递归删除 Workdir 内的真实文件或目录，不允许删除根。"""
         self._require_within(path, root, allow_root=False)
@@ -444,6 +500,7 @@ class Workspace:
             "is_dir": is_dir,
             "size": 0 if is_dir else item_stat.st_size,
             "modified_at": item_stat.st_mtime,
+            "identity": f"{item_stat.st_dev}:{item_stat.st_ino}:{item_stat.st_mtime_ns}",
         }
 
     @staticmethod

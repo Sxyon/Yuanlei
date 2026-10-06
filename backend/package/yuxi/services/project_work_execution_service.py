@@ -25,6 +25,7 @@ from yuxi.storage.postgres.models_business import (
     AgentRun,
     AgentRunRequest,
     Message,
+    Project,
     ProjectWorkComment,
     ProjectWorkExecution,
     ProjectWorkTask,
@@ -116,8 +117,13 @@ async def _snapshot_work_model(db: AsyncSession, binding) -> str:
 
 
 async def update_work_queue_config(
-    *, db: AsyncSession, user: User, project_id: str, agent_slug: str,
-    auto_accept_work: bool, work_default_model_spec: str | None,
+    *,
+    db: AsyncSession,
+    user: User,
+    project_id: str,
+    agent_slug: str,
+    auto_accept_work: bool,
+    work_default_model_spec: str | None,
 ) -> dict:
     """更新当前项目数字员工的任务接收策略。"""
     project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
@@ -189,9 +195,7 @@ async def assign_task(
     return result
 
 
-async def accept_task(
-    *, db: AsyncSession, user: User, project_id: str, agent_slug: str, execution_id: str
-) -> dict:
+async def accept_task(*, db: AsyncSession, user: User, project_id: str, agent_slug: str, execution_id: str) -> dict:
     """接受分配并使其进入智能体 FIFO 队列。"""
     project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
     if project is None:
@@ -222,9 +226,7 @@ async def accept_task(
     return result
 
 
-async def cancel_assignment(
-    *, db: AsyncSession, user: User, project_id: str, task_id: str, execution_id: str
-) -> dict:
+async def cancel_assignment(*, db: AsyncSession, user: User, project_id: str, task_id: str, execution_id: str) -> dict:
     """撤回尚未派发的任务分配并释放任务槽位。"""
     project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
     if project is None:
@@ -266,17 +268,23 @@ async def get_agent_workbench(*, db: AsyncSession, user: User, project_id: str, 
         project_id=project_id, uid=str(user.uid), agent_slug=agent_slug
     )
     task_ids = {row.task_id for row in rows}
-    tasks = {
-        task.id: task
-        for task in (await db.scalars(select(ProjectWorkTask).where(ProjectWorkTask.id.in_(task_ids)))).all()
-    } if task_ids else {}
+    tasks = (
+        {
+            task.id: task
+            for task in (await db.scalars(select(ProjectWorkTask).where(ProjectWorkTask.id.in_(task_ids)))).all()
+        }
+        if task_ids
+        else {}
+    )
     entries = [_execution_data(row, tasks.get(row.task_id)) for row in rows]
     return {
         "project_id": project_id,
         "agent_slug": agent_slug,
         "auto_accept_work": binding.auto_accept_work,
         "work_default_model_spec": binding.work_default_model_spec,
-        "current": next((item for item in entries if item["status"] in {"dispatching", "submitted", "interrupted"}), None),
+        "current": next(
+            (item for item in entries if item["status"] in {"dispatching", "submitted", "interrupted"}), None
+        ),
         "pending_acceptance": [item for item in entries if item["status"] == "pending_acceptance"],
         "queued": list(reversed([item for item in entries if item["status"] == "queued"])),
         "recent": [item for item in entries if item["status"] in {"completed", "failed", "cancelled"}][:20],
@@ -328,13 +336,21 @@ async def dispatch_execution(execution_id: str) -> None:
                         source="project_work",
                         channel="worker",
                         external_id=row.id,
-                        metadata={"project_work_task_id": row.task_id, "project_work_execution_id": row.id,
-                                  "source_topic_id": row.source_topic_id, "source_decision_id": row.source_decision_id,
-                                  "source_decision_revision": row.source_decision_revision},
+                        metadata={
+                            "project_work_task_id": row.task_id,
+                            "project_work_execution_id": row.id,
+                            "source_topic_id": row.source_topic_id,
+                            "source_decision_id": row.source_decision_id,
+                            "source_decision_revision": row.source_decision_revision,
+                        },
                     ),
-                    request_metadata={"project_work_task_id": row.task_id, "project_work_execution_id": row.id,
-                                  "source_topic_id": row.source_topic_id, "source_decision_id": row.source_decision_id,
-                                  "source_decision_revision": row.source_decision_revision},
+                    request_metadata={
+                        "project_work_task_id": row.task_id,
+                        "project_work_execution_id": row.id,
+                        "source_topic_id": row.source_topic_id,
+                        "source_decision_id": row.source_decision_id,
+                        "source_decision_revision": row.source_decision_revision,
+                    },
                     model_spec=row.model_spec,
                     create_conversation=True,
                     conversation_title=f"{task.number} · {task.title}",
@@ -368,10 +384,19 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
     changed = 0
     for execution_id in execution_ids:
         async with pg_manager.get_async_session_context() as db:
+            candidate = await db.get(ProjectWorkExecution, execution_id)
+            if candidate is None:
+                continue
+            # 结果与完成入口使用相同的项目→工作→执行锁顺序。
+            project = await db.scalar(select(Project).where(Project.id == candidate.project_id).with_for_update())
+            await db.scalar(select(ProjectWorkTask).where(ProjectWorkTask.id == candidate.task_id).with_for_update())
             row = await db.scalar(
-                select(ProjectWorkExecution).where(ProjectWorkExecution.id == execution_id).with_for_update()
+                select(ProjectWorkExecution)
+                .where(ProjectWorkExecution.id == execution_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
             )
-            if row is None:
+            if row is None or project is None:
                 continue
             if row.status == "dispatching":
                 if row.updated_at > utc_now_naive() - timedelta(seconds=30):
@@ -391,9 +416,7 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
                 else await AgentRunRepository(db).get_run_by_request_id(row.request_id)
             )
             if run is None:
-                request = await db.scalar(
-                    select(AgentRunRequest).where(AgentRunRequest.request_id == row.request_id)
-                )
+                request = await db.scalar(select(AgentRunRequest).where(AgentRunRequest.request_id == row.request_id))
                 if request is not None and request.status in {"failed", "rejected", "cancelled"}:
                     row.status = "cancelled" if request.status == "cancelled" else "failed"
                     row.error_message = request.error_message
@@ -447,24 +470,48 @@ async def reconcile_project_work_executions(*, limit: int = 100) -> int:
                             Message.role == "assistant",
                         )
                     )
-                    if output is None:
+                    if output is None or not (output.content or "").strip():
                         row.status = "failed"
                         row.error_message = "执行已完成，但未找到本次 Run 的输出消息"
                     else:
+                        from yuxi.services.project_work_result_service import import_execution_result
+
+                        from yuxi.agents.backends.paths import workdir_scope_from_runtime_path
+
+                        paths = await ProjectWorkRepository(
+                            db, project_id=project.id, uid=str(project.uid)
+                        ).run_artifact_paths(run.id)
+                        evidence = []
+                        for path in paths:
+                            try:
+                                scoped = workdir_scope_from_runtime_path(project.workdir_path, path)
+                            except ValueError:
+                                continue
+                            evidence.append({"kind": "file", "value": scoped})
+                        await import_execution_result(
+                            db=db,
+                            project=project,
+                            source=row,
+                            summary=output.content,
+                            output_fact={"run_id": run.id, "output_message_id": output.id, "artifacts": paths},
+                            evidence=evidence,
+                        )
                         existing = await db.scalar(
                             select(ProjectWorkComment.id).where(ProjectWorkComment.source_run_id == run.id)
                         )
                         if existing is None:
-                            db.add(ProjectWorkComment(
-                                id=str(uuid.uuid4()),
-                                task_id=row.task_id,
-                                issue_id=None,
-                                source_run_id=run.id,
-                                content=f"智能体 {row.agent_slug} 执行结论：\n\n{output.content[:100_000]}",
-                                author_uid=row.uid,
-                                author_name=row.agent_slug,
-                                created_at=utc_now_naive(),
-                            ))
+                            db.add(
+                                ProjectWorkComment(
+                                    id=str(uuid.uuid4()),
+                                    task_id=row.task_id,
+                                    issue_id=None,
+                                    source_run_id=run.id,
+                                    content=f"智能体 {row.agent_slug} 执行结论：\n\n{output.content[:100_000]}",
+                                    author_uid=row.uid,
+                                    author_name=row.agent_slug,
+                                    created_at=utc_now_naive(),
+                                )
+                            )
             else:
                 row.status = "submitted"
             if row.status == "failed":

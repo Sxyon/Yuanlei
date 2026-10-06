@@ -972,3 +972,63 @@ async def test_delegation_tool_locks_project_before_run():
             finally:
                 await holder.rollback()
                 assert await asyncio.wait_for(pending, 5) == 'project-owner'
+
+
+@pytest.mark.parametrize("late_error", [False, True])
+async def test_collection_owner_and_automatic_result_are_preserved(late_error):
+    """真实双事务中迟到回收不能替换新结果或清除新租约。"""
+    import asyncio
+    from yuxi.storage.postgres.models_business import ProjectWorkResult
+
+    async with _scoped_database("pytest_result_collection") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).add_delegation(
+                operation_id="result-operation", project_id="project-owner", executor_key="codex",
+                task="当次任务", request_json={"metadata": {}}, initiator_run_id=None, created_by="uid-owner")
+            row.work_task_id = "project-owner-work"
+            row.dispatch_state = "dispatched"
+            row.context_snapshot = {"items": [{"kind": "requirements", "revision": 1,
+                                              "acceptance_criteria": "当次条件", "description": "当次描述"}]}
+            await db.commit()
+        started, released = asyncio.Event(), asyncio.Event()
+
+        class DelayedExecutor(_StubExecutor):
+            """在远端请求期间暂停，留出真实租约接管窗口。"""
+            async def collect(self, handle):
+                started.set()
+                await released.wait()
+                if late_error:
+                    raise DelegationError("旧请求失败", error_code="late_error")
+                return DelegationResult(summary="旧请求输出", remote_status="completed")
+
+        async with sessions() as old_db, sessions() as new_db:
+            pending = asyncio.create_task(DelegationService(old_db, executors=[DelayedExecutor("codex")]).collect(
+                operation_id="result-operation", project_id="project-owner"))
+            await asyncio.wait_for(started.wait(), 10)
+            new_service = DelegationService(new_db, executors=[_StubExecutor("codex", result=DelegationResult(
+                summary="新回收输出", text="新回收正文", remote_status="completed"))])
+            with pytest.raises(DelegationError) as busy:
+                await new_service.collect(operation_id="result-operation", project_id="project-owner")
+            assert busy.value.error_code == "delegation_collecting"
+            await new_db.rollback()
+            from datetime import timedelta
+            from yuxi.utils.datetime_utils import utc_now_naive
+            await new_db.execute(text("UPDATE channel_delegations SET lease_expires_at=:expired "
+                                      "WHERE operation_id='result-operation'"),
+                                 {"expired": utc_now_naive() - timedelta(minutes=1)})
+            await new_db.commit()
+            collected = await new_service.collect(operation_id="result-operation", project_id="project-owner")
+            assert collected["dispatch_state"] == "reclaimed"
+            released.set()
+            with pytest.raises(DelegationError):
+                await pending
+            again = await new_service.collect(operation_id="result-operation", project_id="project-owner")
+            assert again["result"]["summary"] == "新回收输出"
+        async with sessions() as db:
+            result = (await db.scalars(select(ProjectWorkResult))).one()
+            assert result.summary == "新回收正文" and result.status == "pending"
+            assert result.criteria_snapshot == "当次条件" and result.criteria_revision == 1
+            assert result.source_output["operation_id"] == "result-operation"
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="result-operation")
+            assert row.dispatch_state == "reclaimed" and row.result_summary == "新回收输出"

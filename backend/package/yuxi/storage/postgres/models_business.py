@@ -1182,7 +1182,7 @@ PROJECT_WORK_EXECUTING_STATUSES = ("dispatching", "submitted", "interrupted")
 
 
 class ProjectWorkResult(Base):
-    """人工提交的业务结果与不可变验收依据。"""
+    """人工及同次执行的业务结果与不可变验收依据。"""
 
     __tablename__ = "project_work_results"
     __table_args__ = (
@@ -1202,6 +1202,15 @@ class ProjectWorkResult(Base):
             name="fk_work_result_delegation",
         ),
         UniqueConstraint("task_id", "request_id", name="uq_work_result_request"),
+        UniqueConstraint("id", "project_id", name="uq_work_result_project"),
+        CheckConstraint("origin_kind IN ('manual', 'automatic')", name="ck_work_result_origin"),
+        CheckConstraint(
+            "origin_kind <> 'automatic' OR source_execution_id IS NOT NULL OR source_delegation_id IS NOT NULL",
+                        name="ck_auto_result_source"),
+        Index("uq_auto_result_execution", "source_execution_id", unique=True,
+              postgresql_where=text("origin_kind = 'automatic' AND source_execution_id IS NOT NULL")),
+        Index("uq_auto_result_delegation", "source_delegation_id", unique=True,
+              postgresql_where=text("origin_kind = 'automatic' AND source_delegation_id IS NOT NULL")),
         CheckConstraint("status IN ('pending', 'accepted', 'not_accepted')", name="ck_work_result_status"),
         CheckConstraint("source_execution_id IS NULL OR source_delegation_id IS NULL", name="ck_work_result_source"),
         CheckConstraint("criteria_revision >= 1 AND version >= 1", name="ck_work_result_versions"),
@@ -1218,8 +1227,11 @@ class ProjectWorkResult(Base):
     unresolved = Column(Text, nullable=False, default="")
     source_execution_id = Column(String(64), nullable=True)
     source_delegation_id = Column(String(64), nullable=True)
-    criteria_snapshot = Column(Text, nullable=False)
-    criteria_revision = Column(Integer, nullable=False)
+    criteria_snapshot = Column(Text, nullable=True)
+    criteria_revision = Column(Integer, nullable=True)
+    origin_kind = Column(String(16), nullable=False, default="manual", server_default="manual")
+    source_output = Column(JSON_VALUE, nullable=True)
+    requirements_snapshot = Column(JSON_VALUE, nullable=True)
     status = Column(String(16), nullable=False, default="pending")
     version = Column(Integer, nullable=False, default=1)
     submitted_by = Column(String(64), nullable=False)
@@ -1228,6 +1240,30 @@ class ProjectWorkResult(Base):
     reviewed_by = Column(String(64), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     review_complete = Column(Boolean, nullable=False, default=False)
+
+
+class ProjectWorkResultTopicFeedback(Base):
+    """个人确认的结果议题反馈关系及幂等意图。"""
+
+    __tablename__ = "project_work_result_topic_feedback"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["result_id", "project_id"], ["project_work_results.id", "project_work_results.project_id"]
+        ),
+        ForeignKeyConstraint(["topic_id", "project_id"], ["governance_topics.id", "governance_topics.project_id"]),
+        UniqueConstraint("result_id", "request_id", name="uq_result_topic_feedback_request"),
+    )
+    id = Column(String(64), primary_key=True)
+    project_id = Column(String(64), nullable=False)
+    result_id = Column(String(64), nullable=False)
+    topic_id = Column(String(64), nullable=False)
+    comment_id = Column(String(64), ForeignKey("governance_topic_comments.id"), nullable=False, unique=True)
+    topic_revision = Column(Integer, nullable=False)
+    result_version = Column(Integer, nullable=False)
+    request_id = Column(String(64), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class ProjectWorkExecution(Base):

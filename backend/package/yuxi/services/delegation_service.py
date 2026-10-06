@@ -14,6 +14,7 @@ from dataclasses import replace
 from datetime import timedelta
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.delegation.contracts import (
@@ -30,7 +31,7 @@ from yuxi.repositories.channel_delegation_repository import ChannelDelegationRep
 from yuxi.repositories.governance_repository import GovernanceRepository
 from yuxi.repositories.project_agent_repository import ProjectAgentRepository
 from yuxi.repositories.project_repository import ProjectRepository
-from yuxi.storage.postgres.models_business import ChannelDelegation, User
+from yuxi.storage.postgres.models_business import ChannelDelegation, Project, ProjectWorkTask, User
 from yuxi.utils import logger
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
@@ -244,8 +245,10 @@ class DelegationService:
         if execution_id:
             source = await self.db.get(ProjectWorkExecution, execution_id)
             if (
-                source is None or source.task_id != work.id
-                or source.project_id != request.project_id or source.uid != str(uid)
+                source is None
+                or source.task_id != work.id
+                or source.project_id != request.project_id
+                or source.uid != str(uid)
             ):
                 raise HTTPException(409, detail="当次执行与正式工作不一致")
         from yuxi.services.project_work_context_service import assemble_context
@@ -260,7 +263,10 @@ class DelegationService:
             if user is None:
                 raise HTTPException(403, detail="当前用户不可用")
             snapshot = await assemble_context(
-                db=self.db, user=user, project=project, task=work,
+                db=self.db,
+                user=user,
+                project=project,
+                task=work,
                 **(request.metadata.get("context") or {}),
             )
         request = replace(request, task=request.task + "\n\n本次正式工作资料：\n" + snapshot["input_text"])
@@ -350,21 +356,51 @@ class DelegationService:
             raise DelegationError(f"当前状态不可回收: {row.dispatch_state}", error_code="delegation_state_invalid")
         executor = self._require_executor(row.executor_key)
         now = utc_now_naive()
+        if row.dispatch_state == "collecting" and row.lease_expires_at and row.lease_expires_at > now:
+            raise DelegationError("结果正在回收，请稍后重试", error_code="delegation_collecting")
         self._claim(row, now=now, state="collecting")
+        owner_token = row.owner_token
         await self.db.commit()
         await self.db.refresh(row)
         try:
             result = await executor.collect(self._handle(row))
         except DelegationError:
-            row.dispatch_state = "dispatched"
-            self._release(row)
-            await self.db.commit()
+            current = await self.db.scalar(
+                select(ChannelDelegation)
+                .where(ChannelDelegation.operation_id == operation_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current and current.dispatch_state == "collecting" and current.owner_token == owner_token:
+                current.dispatch_state = "dispatched"
+                self._release(current)
+                await self.db.commit()
+            else:
+                await self.db.rollback()
             raise
+        project = await self.db.scalar(select(Project).where(Project.id == row.project_id).with_for_update())
+        if row.work_task_id:
+            await self.db.scalar(
+                select(ProjectWorkTask).where(ProjectWorkTask.id == row.work_task_id).with_for_update()
+            )
+        row = await self.db.scalar(
+            select(ChannelDelegation)
+            .where(ChannelDelegation.operation_id == operation_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if row.dispatch_state != "collecting" or row.owner_token != owner_token:
+            await self.db.rollback()
+            raise DelegationError("回收租约已变更，请重试", error_code="delegation_owner_changed")
         artifact_path = None
         if result.text and workdir is not None:
             artifact_path = self._materialize(workdir, row.operation_id, result.text)
         row.result_summary = result.summary
-        row.result_json = {"artifacts": [dict(item) for item in result.artifacts], "usage": dict(result.usage)}
+        row.result_json = {
+            "text": result.text,
+            "artifacts": [dict(item) for item in result.artifacts],
+            "usage": dict(result.usage),
+        }
         row.artifact_path = artifact_path
         if result.remote_status:
             row.remote_status = result.remote_status
@@ -373,6 +409,37 @@ class DelegationService:
         row.owner_token = None
         row.lease_expires_at = None
         row.error_code = result.error_code
+        if (
+            project is not None
+            and row.work_task_id
+            and result.remote_status == ("done" if row.executor_key == "multica" else "completed")
+            and not result.error_code
+        ):
+            from yuxi.services.project_work_result_service import import_execution_result
+
+            summary = (result.text or result.summary or "").strip()
+            if summary:
+                evidence = [
+                    {"kind": "url", "value": item["url"]}
+                    for item in result.artifacts
+                    if item.get("kind") == "url" and item.get("url")
+                ]
+                if artifact_path and workdir is not None:
+                    evidence.append({"kind": "file", "value": "/" + artifact_path})
+                await import_execution_result(
+                    db=self.db,
+                    project=project,
+                    source=row,
+                    summary=summary,
+                    evidence=evidence,
+                    output_fact={
+                        "operation_id": row.operation_id,
+                        "session_id": row.session_id,
+                        "turn_id": row.turn_id,
+                        "external_ref": row.external_ref,
+                        "artifacts": [dict(item) for item in result.artifacts],
+                    },
+                )
         await self.db.commit()
         await self.db.refresh(row)
         return _serialize(row, capabilities=executor.capabilities())

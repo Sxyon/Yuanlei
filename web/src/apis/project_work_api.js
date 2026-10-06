@@ -2,6 +2,9 @@ import { apiGet, apiPost, apiPut, apiRequest } from './base'
 
 /** 独立项目工作任务。 */
 export const projectWorkApi = {
+  topicFeedback: (projectId, taskId, resultId, payload) => apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/topic-feedback`, payload),
+  blueprintPreview: (projectId, taskId, resultId, name) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/blueprint-preview?name=${encodeURIComponent(name)}`),
+  blueprintFeedback: (projectId, taskId, resultId, payload) => apiPut(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/blueprint-feedback`, payload),
   updateRequirements: (projectId, taskId, payload) => apiPut(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/requirements`, payload),
   submitResult: (projectId, taskId, payload) => apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results`, payload),
   reviewResult: (projectId, taskId, resultId, payload) => apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/review`, payload),

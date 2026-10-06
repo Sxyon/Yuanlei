@@ -4,7 +4,7 @@ from datetime import date
 from urllib.parse import quote
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services import project_work_service as work
 from yuxi.services import project_work_result_service as results
+from yuxi.services import project_work_feedback_service as feedback
 from yuxi.services.project_task_git_outcome_service import inspect_task_git_outcomes
 from yuxi.storage.postgres.models_business import User
 
@@ -152,6 +153,80 @@ async def review_result(
     return await results.review_result(
         db=db, user=user, project_id=project_id, task_id=task_id, result_id=result_id, **payload.model_dump()
     )
+
+
+class ResultTopicFeedback(BaseModel):
+    """个人确认的同项目议题反馈。"""
+
+    model_config = ConfigDict(extra="forbid")
+    topic_id: str = Field(min_length=1, max_length=64)
+    content: str = Field(min_length=1, max_length=100_000)
+    discussion_type: Literal["discussion", "correction"]
+    request_id: str = Field(min_length=1, max_length=64)
+    expected_result_version: int = Field(ge=1)
+    expected_topic_revision: int = Field(ge=1)
+
+
+class ResultBlueprintSave(BaseModel):
+    """预览后的蓝图正文与并发依据。"""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=255)
+    content: str = Field(max_length=256_000)
+    expected_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_identity: str = Field(min_length=1, max_length=128)
+    expected_result_version: int = Field(ge=1)
+
+
+@project_work.post("/projects/{project_id}/work/tasks/{task_id}/results/{result_id}/topic-feedback")
+async def topic_feedback(
+    project_id: str,
+    task_id: str,
+    result_id: str,
+    payload: ResultTopicFeedback,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """确认议题反馈，评论和关联共同提交。"""
+    return await feedback.topic_feedback(
+        db=db, user=user, project_id=project_id, task_id=task_id, result_id=result_id, **payload.model_dump()
+    )
+
+
+@project_work.get("/projects/{project_id}/work/tasks/{task_id}/results/{result_id}/blueprint-preview")
+async def blueprint_feedback_preview(
+    project_id: str,
+    task_id: str,
+    result_id: str,
+    name: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """生成蓝图复盘预览，不写文件。"""
+    try:
+        return await feedback.preview_blueprint(
+            db=db, user=user, project_id=project_id, task_id=task_id, result_id=result_id, name=name
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@project_work.put("/projects/{project_id}/work/tasks/{task_id}/results/{result_id}/blueprint-feedback")
+async def blueprint_feedback_save(
+    project_id: str,
+    task_id: str,
+    result_id: str,
+    payload: ResultBlueprintSave,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保存确认过的复盘正文，变化时拒绝覆盖。"""
+    try:
+        return await feedback.save_blueprint(
+            db=db, user=user, project_id=project_id, task_id=task_id, result_id=result_id, **payload.model_dump()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 class WorkIssueCreate(BaseModel):

@@ -15,7 +15,7 @@ from yuxi.repositories.user_inbox_repository import UserInboxRepository
 from yuxi.services import project_work_service as work
 from yuxi.services.project_task_git_outcome_service import inspect_task_git_outcomes
 from yuxi.storage.minio import StorageError, get_minio_client
-from yuxi.storage.postgres.models_business import ProjectWorkResult
+from yuxi.storage.postgres.models_business import ProjectWorkResult, ProjectWorkExecution
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 from yuxi.workspace.workdir import Workdir
 
@@ -86,6 +86,18 @@ async def list_result_data(*, db, user, project, task) -> list[dict]:
                 "source_execution_id": row.source_execution_id,
                 "source_delegation_id": row.source_delegation_id,
                 "criteria_snapshot": row.criteria_snapshot,
+                "criteria_recorded": row.criteria_snapshot is not None,
+                "origin_kind": row.origin_kind,
+                "source_output": row.source_output,
+                "requirements_snapshot": row.requirements_snapshot,
+                "topic_feedbacks": [
+                    {
+                        "topic_id": feedback.topic_id,
+                        "comment_id": feedback.comment_id,
+                        "topic_revision": feedback.topic_revision,
+                    }
+                    for feedback in await repo.result_feedbacks(row.id)
+                ],
                 "criteria_revision": row.criteria_revision,
                 "criteria_changed": row.criteria_revision != task.criteria_revision,
                 "status": row.status,
@@ -151,7 +163,13 @@ async def complete_pending(*, db, user, task) -> None:
     await require_idle(db, task.id)
     repo = ProjectWorkRepository(db, project_id=task.project_id, uid=str(user.uid))
     results = await repo.results(task.id)
-    current = [row for row in results if row.status == "accepted" and row.criteria_revision == task.criteria_revision]
+    current = [
+        row
+        for row in results
+        if row.status == "accepted"
+        and row.criteria_snapshot is not None
+        and row.criteria_revision == task.criteria_revision
+    ]
     if not current:
         conflict("请先按当前要求提交并接受结果，再完成工作", "work_acceptance_required")
     project = await work.require_project(db, user, task.project_id)
@@ -237,7 +255,8 @@ async def submit_result(
                 "evidence": checked,
             },
         )
-    row = ProjectWorkResult(
+    row = await append_result(
+        db=db,
         id=str(uuid.uuid4()),
         project_id=project_id,
         task_id=task.id,
@@ -255,8 +274,6 @@ async def submit_result(
         version=1,
         review_complete=False,
     )
-    db.add(row)
-    await db.flush()
     if complete:
         row.status = "accepted"
         row.version = 2
@@ -285,6 +302,8 @@ async def review_result(
     git_outcomes_confirmed: bool = False,
 ) -> dict:
     """首次人工验收固化意见，已验收结果仅允许相同意图重放。"""
+    if status == "not_accepted" and not comment.strip():
+        raise HTTPException(status_code=422, detail="未接受结果请填写原因")
     if status not in {"accepted", "not_accepted"} or (complete and status != "accepted"):
         raise HTTPException(status_code=422, detail="未接受结果不能完成工作")
     if complete:
@@ -306,6 +325,8 @@ async def review_result(
     if row.version != expected_version or task.criteria_revision != expected_revision:
         conflict("结果或验收条件已修改，请核对最新版本；本次意见保留")
     if status == "accepted":
+        if row.criteria_snapshot is None:
+            conflict("本次执行未记录可核对的验收条件，请补充人工结果；不会推断旧依据")
         if row.criteria_revision != task.criteria_revision:
             conflict("结果按旧条件提交，请按当前要求提交新结果")
         checked = await evidence_data(repo=repo, project=project, evidence=row.evidence or [])
@@ -320,3 +341,54 @@ async def review_result(
         await complete_pending(db=db, user=user, task=task)
     await db.commit()
     return await work.get_task(db=db, user=user, project_id=project.id, task_id=task.id)
+
+
+async def append_result(*, db, **values):
+    """仅追加并刷新结果，提交由人工用例或执行终态 Owner 完成。"""
+    row = ProjectWorkResult(**values)
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def import_execution_result(*, db, project, source, summary, output_fact, evidence):
+    """在已锁定的项目及工作事务中导入当次输出，不读取当前条件。"""
+    repo = ProjectWorkRepository(db, project_id=project.id, uid=str(project.uid))
+    execution_id = source.id if isinstance(source, ProjectWorkExecution) else None
+    delegation_id = None if execution_id else source.id
+    task_id = source.task_id if execution_id else source.work_task_id
+    if not task_id:
+        return None
+    existing = await repo.automatic_result(execution_id=execution_id, delegation_id=delegation_id)
+    if existing:
+        return existing
+    snapshot = source.context_snapshot or {}
+    requirements = next((item for item in snapshot.get("items", []) if item.get("kind") == "requirements"), {})
+    criteria = requirements.get("acceptance_criteria")
+    revision = requirements.get("revision")
+    checked = await evidence_data(
+        repo=repo, project=project, evidence=[{**item, "task_id": task_id} for item in evidence]
+    )
+    identity = f"automatic:{'execution' if execution_id else 'delegation'}:{source.id}"
+    return await append_result(
+        db=db,
+        id=str(uuid.uuid5(uuid.NAMESPACE_URL, identity)),
+        project_id=project.id,
+        task_id=task_id,
+        request_id=str(uuid.uuid5(uuid.NAMESPACE_OID, identity)),
+        request_hash=hashlib.sha256(identity.encode()).hexdigest(),
+        summary=summary.strip()[:100_000],
+        unresolved="",
+        evidence=checked,
+        source_execution_id=execution_id,
+        source_delegation_id=delegation_id,
+        criteria_snapshot=criteria,
+        criteria_revision=revision,
+        origin_kind="automatic",
+        source_output=output_fact,
+        requirements_snapshot=requirements or None,
+        submitted_by=str(project.uid),
+        status="pending",
+        version=1,
+        review_complete=False,
+    )

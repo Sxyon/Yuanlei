@@ -92,6 +92,9 @@
         >
       </header>
       <p v-if="event.reason">{{ event.reason }}</p>
+      <p v-if="event.details?.result_id">
+        <router-link :to="`/projects/${projectId}/work/tasks/${event.details.work_task_id}#work-result-${event.details.result_id}`">查看来源工作结果</router-link>
+      </p>
       <p v-if="event.details?.execution_hint">
         {{
           event.details.execution_hint === 'pause_recommended'

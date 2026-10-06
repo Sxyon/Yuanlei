@@ -1387,6 +1387,7 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             detail = await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)
             assert detail.status_code == 200, detail.text
             assert not detail.json()["comments"]
+            assert not detail.json()["results"]
             conn = await asyncpg.connect(postgres_dsn())
             try:
                 row = await conn.fetchrow(
@@ -1440,6 +1441,30 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         assert result.json()["output"] == EXPECTED_OUTPUT
         detail = await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)
         assert detail.status_code == 200, detail.text
+        automatic = [row for row in detail.json()["results"] if row["origin_kind"] == "automatic"]
+        assert len(automatic) == 1
+        business_result = automatic[0]
+        assert business_result["status"] == "pending" and detail.json()["status"] == "todo"
+        assert business_result["source_execution_id"] == execution_id
+        assert business_result["source_output"]["run_id"] == run_id
+        assert business_result["criteria_snapshot"] == "P06原验收条件"
+        blocked = await e2e_client.post(
+            f"{root}/tasks/{task_id}/results/{business_result['id']}/review", headers=e2e_headers,
+            json={"status": "accepted", "expected_version": 1, "expected_revision": 3, "complete": True},
+        )
+        assert blocked.status_code == 409, blocked.text
+        rejected = await e2e_client.post(
+            f"{root}/tasks/{task_id}/results/{business_result['id']}/review", headers=e2e_headers,
+            json={"status": "not_accepted", "comment": "按新条件补充交付依据", "expected_version": 1,
+                  "expected_revision": 3},
+        )
+        assert rejected.status_code == 200, rejected.text
+        next_preview = await e2e_client.post(
+            f"{root}/tasks/{task_id}/context/preview", headers=e2e_headers,
+            json={"selection": {"results": [business_result["id"]]}},
+        )
+        assert next_preview.status_code == 200, next_preview.text
+        assert "按新条件补充交付依据" in next_preview.json()["input_text"]
         comments = detail.json()["comments"]
         assert [item["content"] for item in comments if EXPECTED_OUTPUT in item["content"]] == [
             f"智能体 {agent_slug} 执行结论：\n\n{EXPECTED_OUTPUT}"
@@ -1485,6 +1510,60 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
                 ) == 0
         finally:
             await conn.close()
+        if scenario == "complete" and not auto_accept:
+            second = await e2e_client.post(assignment_path, headers=e2e_headers, json={
+                "agent_slug": agent_slug, "context": {"selection": next_preview.json()["selection"],
+                    "expected_fingerprint": next_preview.json()["fingerprint"]}})
+            assert second.status_code == 200, second.text
+            execution_id = second.json()["id"]
+            accepted = await e2e_client.post(
+                f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
+                headers=e2e_headers)
+            assert accepted.status_code == 200, accepted.text
+            execution = await wait_execution_status({"completed", "failed", "cancelled"})
+            execution_status = execution["status"]
+            assert execution_status == "completed", execution
+            run_id, thread_id = execution["current_run_id"], execution["thread_id"]
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                assert "按新条件补充交付依据" in await conn.fetchval(
+                    "SELECT m.content FROM agent_runs r JOIN messages m ON m.id=r.input_message_id WHERE r.id=$1", run_id)
+                assert await conn.fetchval("SELECT count(*) FROM project_work_results WHERE task_id=$1", task_id) == 2
+            finally:
+                await conn.close()
+            detail = (await e2e_client.get(f"{root}/tasks/{task_id}", headers=e2e_headers)).json()
+            latest = next(row for row in detail["results"] if row["source_execution_id"] == execution_id)
+            assert latest["criteria_snapshot"] == "P06新验收条件" and latest["status"] == "pending"
+            review_path = f"{root}/tasks/{task_id}/results/{latest['id']}/review"
+            payload = {"status": "accepted", "comment": "按当前条件核对通过", "expected_version": 1,
+                       "expected_revision": 3, "complete": True}
+            completed = await e2e_client.post(review_path, headers=e2e_headers, json=payload)
+            assert completed.status_code == 200, completed.text
+            assert completed.json()["status"] == "done"
+            assert (await e2e_client.post(review_path, headers=e2e_headers, json=payload)).status_code == 200
+            topic = await e2e_client.post(f"{governance_root}/topics", headers=e2e_headers,
+                                         json={"title": "执行反馈", "source_channel": "project"})
+            assert topic.status_code == 200, topic.text
+            feedback_payload = {"topic_id": topic.json()["id"], "content": "新条件交付已验收，保留复盘",
+                "discussion_type": "discussion", "request_id": str(uuid.uuid4()),
+                "expected_result_version": 2, "expected_topic_revision": 1}
+            feedback_path = f"{root}/tasks/{task_id}/results/{latest['id']}/topic-feedback"
+            assert (await e2e_client.post(feedback_path, headers=e2e_headers, json=feedback_payload)).status_code == 200
+            blueprint_path = f"{root}/tasks/{task_id}/results/{latest['id']}"
+            recap = (await e2e_client.get(blueprint_path + "/blueprint-preview", headers=e2e_headers,
+                                        params={"name": "改名后的依据.md"})).json()
+            saved = await e2e_client.put(blueprint_path + "/blueprint-feedback", headers=e2e_headers, json={
+                "name": recap["name"], "content": recap["content"], "expected_hash": recap["content_hash"],
+                "expected_identity": recap["file_identity"], "expected_result_version": 2})
+            assert saved.status_code == 200, saved.text
+            actual = await e2e_client.get(f"/api/projects/{project_id}/blueprint/改名后的依据.md", headers=e2e_headers)
+            assert actual.json()["content"] == recap["content"]
+            conn = await asyncpg.connect(postgres_dsn())
+            try:
+                assert await conn.fetchval("SELECT count(*) FROM user_inbox_items WHERE kind='task_completed' AND source_id=$1", task_id) == 1
+                assert await conn.fetchval("SELECT count(*) FROM project_work_result_topic_feedback WHERE result_id=$1", latest["id"]) == 1
+            finally:
+                await conn.close()
     finally:
         if execution_id and assignment_path and execution_status not in {"completed", "failed", "cancelled"}:
             cleanup_deadline = asyncio.get_running_loop().time() + 90

@@ -22,6 +22,9 @@ from yuxi.storage.postgres.models_business import (
     ProjectWorkReference,
     ProjectWorkTask,
     ProjectWorkResult,
+    ProjectWorkResultTopicFeedback,
+    Message,
+    ToolCall,
     ProjectWorkExecution,
     ChannelDelegation,
 )
@@ -342,6 +345,41 @@ class ProjectWorkRepository:
             .order_by(ProjectWorkResult.created_at.desc(), ProjectWorkResult.id.desc())
         )
         return list(rows)
+
+    async def run_artifact_paths(self, run_id):
+        """只读取该 Run 成功展示产物的调用输入，不读取线程当前状态。"""
+        calls = await self.db.scalars(
+            select(ToolCall)
+            .join(Message, Message.id == ToolCall.message_id)
+            .where(Message.run_id == run_id, ToolCall.tool_name == "present_artifacts", ToolCall.status == "success")
+        )
+        return list(
+            dict.fromkeys(
+                path for call in calls for path in (call.tool_input or {}).get("filepaths", []) if isinstance(path, str)
+            )
+        )
+
+    async def result_feedbacks(self, result_id, *, request_id=None):
+        """读取本项目结果的议题反馈及幂等记录。"""
+        query = select(ProjectWorkResultTopicFeedback).where(
+            ProjectWorkResultTopicFeedback.project_id == self.project_id,
+            ProjectWorkResultTopicFeedback.result_id == result_id,
+        )
+        if request_id is not None:
+            query = query.where(ProjectWorkResultTopicFeedback.request_id == request_id)
+        return list((await self.db.scalars(query.order_by(ProjectWorkResultTopicFeedback.created_at.desc()))).all())
+
+    async def automatic_result(self, *, execution_id=None, delegation_id=None):
+        """按真实执行来源查找唯一自动结果，不与人工补充混用。"""
+        query = select(ProjectWorkResult).where(
+            ProjectWorkResult.project_id == self.project_id, ProjectWorkResult.origin_kind == "automatic"
+        )
+        query = (
+            query.where(ProjectWorkResult.source_execution_id == execution_id)
+            if execution_id
+            else query.where(ProjectWorkResult.source_delegation_id == delegation_id)
+        )
+        return await self.db.scalar(query)
 
     async def result(
         self, task_id: str, *, result_id: str | None = None, request_id: str | None = None, lock: bool = False

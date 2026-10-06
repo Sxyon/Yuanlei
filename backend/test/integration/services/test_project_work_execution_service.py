@@ -208,6 +208,20 @@ async def test_assignment_acceptance_and_agent_fifo(monkeypatch):
             assert await connection.scalar(text(
                 "SELECT status FROM project_work_executions WHERE id = :id"
             ), {"id": first["id"]}) == "completed"
+            result = (await connection.execute(text(
+                "SELECT status, origin_kind, summary, source_output, criteria_snapshot FROM project_work_results "
+                "WHERE source_execution_id = :id"
+            ), {"id": first["id"]})).one()
+            assert result.status == "pending" and result.origin_kind == "automatic"
+            assert result.summary == "Only this run result"
+            assert result.source_output["run_id"] == "queue-run"
+            assert result.criteria_snapshot is not None
+            assert await connection.scalar(text(
+                "SELECT count(*) FROM project_work_results WHERE source_execution_id = :id"
+            ), {"id": first["id"]}) == 1
+            assert await connection.scalar(text(
+                "SELECT status FROM project_work_tasks WHERE id = 'queue-task-1'"
+            )) == "todo"
             assert await connection.scalar(text(
                 "SELECT count(*) FROM project_work_comments WHERE source_run_id = 'queue-run' "
                 "AND content LIKE '%Only this run result%'"

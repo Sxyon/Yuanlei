@@ -281,3 +281,83 @@ def test_search_tree_entry_budget_limits_actual_directory_iteration(tmp_path: Pa
     )
 
     assert examined == 7
+
+
+def test_replace_checks_preview_content_again_after_temp_write(tmp_path, monkeypatch):
+    """保存期间外部改动被拒绝，保留外部正文且清理临时文件。"""
+    import hashlib
+
+    root = tmp_path / "workspace"
+    target = root / "projects" / "11111111-1111-4111-8111-111111111111" / "blueprint.md"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"original")
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: root)
+    original_write = Workspace._write_all
+
+    def external_edit(fd, content):
+        """模拟临时文件写完后另一个编辑者保存。"""
+        original_write(fd, content)
+        target.write_bytes(b"external")
+
+    monkeypatch.setattr(Workspace, "_write_all", staticmethod(external_edit))
+    with pytest.raises(FileExistsError):
+        Workspace("user").replace_authorized_file(
+            "/projects/11111111-1111-4111-8111-111111111111/blueprint.md", b"mine",
+            expected_hash=hashlib.sha256(b"original").hexdigest())
+    assert target.read_bytes() == b"external"
+    assert not list(target.parent.glob(".yuxi-replace-*"))
+
+
+def test_workspace_writes_coordinate_across_processes(tmp_path, monkeypatch):
+    """共用物理目录的晚到受控写入等待保存完成，不在校验和替换间穿插。"""
+    import hashlib
+    import subprocess
+    import sys
+
+    root = tmp_path / "workspace"
+    target = root / "projects" / "11111111-1111-4111-8111-111111111111" / "blueprint.md"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"original")
+    monkeypatch.setattr(workspace_filesystem_module, "user_workspace_dir", lambda _uid: root)
+    original_write = Workspace._write_all
+    processes = []
+
+    def start_competing_writer(fd, content):
+        """在核对与替换间启动独立受控写入进程。"""
+        program = """import sys
+from pathlib import Path
+import os, fcntl
+from yuxi.workspace.filesystem import Workspace
+workspace = Workspace('another-project')
+workspace._workspace_root = Path(sys.argv[1])
+lock_fd = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY)
+try:
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise AssertionError('owning write did not hold the physical workspace lock')
+finally:
+    os.close(lock_fd)
+print('blocked', flush=True)
+workspace.write_authorized_file('/projects/11111111-1111-4111-8111-111111111111/blueprint.md', b'external')
+"""
+        process = subprocess.Popen([sys.executable, '-c', program, str(root)], stdout=subprocess.PIPE, text=True)
+        processes.append(process)
+        assert process.stdout.readline().strip() == 'blocked'
+        assert process.poll() is None
+        original_write(fd, content)
+
+    monkeypatch.setattr(Workspace, "_write_all", staticmethod(start_competing_writer))
+    try:
+        Workspace("user").replace_authorized_file(
+            "/projects/11111111-1111-4111-8111-111111111111/blueprint.md", b"mine",
+            expected_hash=hashlib.sha256(b"original").hexdigest())
+        assert processes[0].wait(5) == 0
+        assert target.read_bytes() == b"external"
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.wait()

@@ -111,7 +111,7 @@ class ChannelDelegationRepository:
         """按稳定 operation_id 读取委派，可选行锁。"""
         statement = select(ChannelDelegation).where(ChannelDelegation.operation_id == str(operation_id))
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(populate_existing=True)
         return await self.db.scalar(statement)
 
     async def list_for_project(self, *, project_id: str) -> list[ChannelDelegation]:

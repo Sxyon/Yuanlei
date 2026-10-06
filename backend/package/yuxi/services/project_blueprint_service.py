@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import re
 import uuid
 import errno
@@ -218,6 +220,8 @@ def _read_blueprint_file(workdir: Workdir, path: str, name: str) -> dict[str, An
     return {
         "name": name,
         "content": content,
+        "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "file_identity": metadata["identity"],
         "size": int(metadata["size"]),
         "modified_at": float(metadata["modified_at"]),
     }
@@ -250,6 +254,8 @@ async def create_project_blueprint_view(
     return {
         "name": normalized_name,
         "content": content,
+        "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "file_identity": metadata["identity"],
         "size": int(metadata["size"]),
         "modified_at": float(metadata["modified_at"]),
     }
@@ -262,6 +268,8 @@ async def put_project_blueprint_view(
     content: str,
     db: AsyncSession,
     user: User,
+    expected_hash: str | None = None,
+    expected_identity: str | None = None,
 ) -> dict[str, Any]:
     """创建或整体替换蓝图文档；目录按需建立，文件以原子替换写入。"""
     normalized_name = validate_blueprint_name(name)
@@ -271,12 +279,19 @@ async def put_project_blueprint_view(
     _ensure_blueprint_directory(workdir)
     path = f"/{BLUEPRINT_DIRECTORY}/{normalized_name}"
     try:
-        metadata = workdir.replace_file(path, encoded)
+        metadata = workdir.replace_file(path, encoded, expected_hash=expected_hash, expected_identity=expected_identity)
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "blueprint_changed", "message": "蓝图已修改、删除或更名，请刷新比较；本次草稿保留"},
+        ) from exc
     except PermissionError as exc:
         raise _blueprint_directory_conflict(path) from exc
     return {
         "name": normalized_name,
         "content": content,
+        "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "file_identity": metadata["identity"],
         "size": int(metadata["size"]),
         "modified_at": float(metadata["modified_at"]),
     }
