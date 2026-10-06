@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 33
+YUANLEI_SCHEMA_VERSION = 34
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1674,6 +1674,13 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v33_to_v34(self) -> None:
+        """增加当次业务快照，旧执行不推断资料。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for table in ("project_work_executions", "channel_delegations"):
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS context_snapshot JSONB"))
 
     async def upgrade_yuanlei_schema_v32_to_v33(self) -> None:
         """增加验收条件与最小结果记录，保留旧完成事实。"""

@@ -173,9 +173,10 @@ async def test_project_governance_http_creation_and_local_delegation_guard() -> 
             assert topic.status_code == 200, topic.text
             reviewed = await client.post(
                 f"/api/projects/project-owner/governance/topics/{topic.json()['id']}/review",
-                json={"approve": True},
+                json={"approve": True, "review_note": "纳入研讨"},
             )
-            assert reviewed.json()["status"] == "canonical"
+            assert reviewed.status_code == 200, reviewed.text
+            assert reviewed.json()["admission_status"] == "canonical"
             decision = await client.post(
                 "/api/projects/project-owner/governance/decisions",
                 json={"title": "采用本地方案", "conclusion": "先完成单项目", "topic_id": topic.json()["id"]},
@@ -191,10 +192,10 @@ async def test_project_governance_http_creation_and_local_delegation_guard() -> 
                 json={"executor_key": "codex"},
             )
             assert blocked.status_code == 409, blocked.text
-            assert blocked.json()["detail"]["code"] == "task_not_ready"
+            assert blocked.json()["detail"]["code"] == "formal_work_required"
             generic = await client.post(
                 "/api/projects/project-owner/delegations",
                 json={"executor_key": "codex", "task": "不能绕过任务"},
             )
             assert generic.status_code == 422, generic.text
-            assert generic.json()["detail"]["code"] == "task_required"
+            assert any(error["loc"][-1] == "work_task_id" for error in generic.json()["detail"])

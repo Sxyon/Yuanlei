@@ -17,6 +17,7 @@ from yuxi.agents.toolkits.buildin.project_run_scope import resolve_project_run_s
 from yuxi.agents.toolkits.registry import tool
 from yuxi.delegation.contracts import DelegationError, DelegationRequest
 from yuxi.services.delegation_service import DelegationService
+from yuxi.repositories.project_work_execution_repository import ProjectWorkExecutionRepository
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import AgentRun
 from yuxi.workspace.workdir import Workdir
@@ -132,13 +133,22 @@ async def delegation_dispatch(
         service = DelegationService.build_default(db)
         run = await db.get(AgentRun, str(run_id))
         origin = run.origin_metadata or {} if run is not None else {}
-        current_work = origin.get("project_work_task_id")
+        execution = (
+            await ProjectWorkExecutionRepository(db).context_for_thread(
+                thread_id=run.conversation_thread_id, project_id=project_id, uid=str(user.uid)
+            )
+            if run is not None
+            else None
+        )
+        current_work = execution.task_id if execution else origin.get("project_work_task_id")
         if current_work and work_task_id and work_task_id != current_work:
             raise ValueError("不能把当次正式工作委派到另一项工作")
         metadata = await _sandbox_metadata(db, runtime, str(run_id))
         metadata["work_task_id"] = current_work or work_task_id
         if current_work:
-            metadata["project_work_execution_id"] = origin.get("project_work_execution_id")
+            metadata["project_work_execution_id"] = (
+                execution.id if execution else origin.get("project_work_execution_id")
+            )
         request = DelegationRequest(
             operation_id="",
             project_id=project_id,

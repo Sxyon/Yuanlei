@@ -256,7 +256,7 @@ async def test_task_knowledge_selection_uses_persisted_root_thread(monkeypatch, 
     run = SimpleNamespace(id="child", run_type="subagent", created_by_run_id="root") if child else root
     lookup = AsyncMock(return_value=SimpleNamespace(knowledge_ids=["selected"]))
     parents = AsyncMock(return_value=root)
-    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(task_for_thread=lookup))
+    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(task_for_thread=lookup, context_for_thread=AsyncMock(return_value=None)))
     monkeypatch.setattr(service, "AgentRunRepository", lambda db: SimpleNamespace(get_run_for_user=parents))
     assert await service.load_task_knowledge_selection(db=object(), uid="user", project_id="project", run=run) == [
         "selected"
@@ -280,7 +280,29 @@ async def test_task_knowledge_selection_rejects_invalid_parent(monkeypatch, fail
     monkeypatch.setattr(
         service, "AgentRunRepository", lambda db: SimpleNamespace(get_run_for_user=AsyncMock(return_value=parent))
     )
-    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(task_for_thread=lookup))
+    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(task_for_thread=lookup, context_for_thread=AsyncMock(return_value=None)))
     with pytest.raises(PermissionError if failure == "foreign_parent" else ValueError):
         await service.load_task_knowledge_selection(db=object(), uid="user", project_id="project", run=run)
     lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("visible,linked", [({"frozen"}, {"frozen"}), (set(), {"frozen"}), ({"frozen"}, set())])
+async def test_frozen_knowledge_is_not_silently_removed(monkeypatch, visible, linked):
+    """固化知识库保持选取，撤权及取消关联显式拒绝运行。"""
+    from unittest.mock import AsyncMock
+
+    snapshot = {"knowledge_ids": ["frozen"]}
+    monkeypatch.setattr(service, "ProjectWorkExecutionRepository", lambda db: SimpleNamespace(
+        task_for_thread=AsyncMock(return_value=SimpleNamespace(knowledge_ids=["new"])),
+        context_for_thread=AsyncMock(return_value=SimpleNamespace(context_snapshot=snapshot))))
+    monkeypatch.setattr(service, "UserRepository", lambda: SimpleNamespace(get_by_uid_with_db=AsyncMock(return_value=object())))
+    monkeypatch.setattr(service, "ProjectSettingsRepository", lambda db: SimpleNamespace(
+        knowledge=AsyncMock(return_value=([], visible)), linked_ids=AsyncMock(return_value=list(linked))))
+    run = SimpleNamespace(id="r", run_type="chat", conversation_thread_id="thread")
+    if visible and linked:
+        assert await service.load_task_knowledge_selection(db=object(), uid="u", project_id="p", run=run) == ["frozen"]
+    else:
+        with pytest.raises(PermissionError, match="撤权"):
+            await service.load_task_knowledge_selection(db=object(), uid="u", project_id="p", run=run)
+    assert snapshot == {"knowledge_ids": ["frozen"]}

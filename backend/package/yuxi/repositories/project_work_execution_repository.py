@@ -37,6 +37,13 @@ class ProjectWorkExecutionRepository:
             )
         )
 
+    async def context_for_thread(self, *, thread_id: str, project_id: str, uid: str):
+        """读取当次执行快照，当前工作变化不会改变知识库选取。"""
+        return await self.db.scalar(select(ProjectWorkExecution).where(
+            ProjectWorkExecution.thread_id == thread_id, ProjectWorkExecution.project_id == project_id,
+            ProjectWorkExecution.uid == uid,
+        ))
+
     async def create(
         self, *, task_id: str, project_id: str, uid: str, agent_slug: str, prompt: str
     ) -> ProjectWorkExecution:

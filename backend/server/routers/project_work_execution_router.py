@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services import project_work_execution_service as work
+from yuxi.services.project_work_context_service import ContextInput, preview_context, history_context
 from yuxi.storage.postgres.models_business import User
 
 project_work_executions = APIRouter(tags=["project-work-executions"])
@@ -16,6 +17,7 @@ class TaskAssignment(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     agent_slug: str = Field(min_length=1, max_length=80)
+    context: ContextInput | None = None
 
 
 class WorkQueueConfig(BaseModel):
@@ -36,7 +38,8 @@ async def assign_task(
 ):
     """把任务分配给项目数字员工。"""
     return await work.assign_task(
-        db=db, user=user, project_id=project_id, task_id=task_id, agent_slug=payload.agent_slug
+        db=db, user=user, project_id=project_id, task_id=task_id, agent_slug=payload.agent_slug,
+        context=payload.context.model_dump() if payload.context else None
     )
 
 
@@ -101,4 +104,37 @@ async def accept_task(
     """接受一条任务分配并加入数字员工 FIFO。"""
     return await work.accept_task(
         db=db, user=user, project_id=project_id, agent_slug=agent_slug, execution_id=execution_id
+    )
+
+
+@project_work_executions.post("/projects/{project_id}/work/tasks/{task_id}/context/preview")
+async def preview_work_context(
+    project_id: str,
+    task_id: str,
+    payload: ContextInput,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """预览明确选取的当次资料。"""
+    return await preview_context(
+        db=db, user=user, project_id=project_id, task_id=task_id, selection=payload.selection.model_dump()
+    )
+
+
+@project_work_executions.get("/projects/{project_id}/work/tasks/{task_id}/context/{kind}/{record_id}")
+async def get_work_context(
+    project_id: str,
+    task_id: str,
+    kind: str,
+    record_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """查看尝试或委派保存的业务输入。"""
+    from fastapi import HTTPException
+
+    if kind not in {"execution", "delegation"}:
+        raise HTTPException(422, detail="资料类型无效")
+    return await history_context(
+        db=db, user=user, project_id=project_id, task_id=task_id, kind=kind, record_id=record_id
     )

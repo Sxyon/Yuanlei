@@ -155,7 +155,8 @@
           <p class="work-task-muted">执行前选择；已有执行记录后保持工作区身份，避免历史成果被重新归属。</p>
         </section>
         <p v-if="!task.acceptance_criteria" class="work-task-muted">尚未填写验收条件，派发前请核对工作要求。</p>
-        <WorkDelegationsPanel :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
+        <WorkContextDrawer ref="contextDrawer" :project-id="String(route.params.project_id)" :task="task" @context="executionContext = $event" />
+        <WorkDelegationsPanel :context="executionContext" @history="(id) => contextDrawer?.showHistory('delegation', id)" :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
         <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
@@ -177,6 +178,7 @@
                 <span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span>
               </span>
               <span class="work-execution-actions">
+                <a-button type="link" @click="contextDrawer?.showHistory('execution', item.id)">查看当次资料</a-button>
                 <RouterLink v-if="item.thread_id && ['submitted', 'interrupted'].includes(item.status)" :to="{ name: 'AgentCompWithThreadId', params: { thread_id: item.thread_id } }">进入执行会话</RouterLink>
                 <RouterLink :to="{ name: 'ProjectAgentWorkbenchView', params: { project_id: route.params.project_id, agent_slug: item.agent_slug } }">查看工作台</RouterLink>
                 <a-button v-if="retryableStatuses.includes(item.status)" type="link" :loading="saving" @click="retryExecution(item)">重新执行</a-button>
@@ -263,6 +265,7 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import WorkDelegationsPanel from '@/components/project/WorkDelegationsPanel.vue'
+import WorkContextDrawer from '@/components/project/WorkContextDrawer.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import WorkSourceFields from '@/components/project/WorkSourceFields.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -274,6 +277,7 @@ import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 
 const route = useRoute()
 const router = useRouter()
+const contextDrawer = ref(null), executionContext = ref(null)
 const task = ref(null)
 const loading = ref(false)
 const saving = ref(false)
@@ -610,10 +614,11 @@ function saveInspection() {
 }
 
 function assignExecution() {
+  if (executionContext.value && !executionContext.value.expected_fingerprint) { actionError.value = '资料选择已变化，请重新预览后执行'; return }
   const projectId = route.params.project_id
   const taskId = route.params.task_id
   const agentSlug = selectedExecutor.value
-  return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, agentSlug), '任务分配失败')
+  return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, agentSlug, executionContext.value), '任务分配失败')
 }
 
 function acceptExecution(item) {
@@ -631,9 +636,10 @@ function cancelExecution(item) {
 }
 
 function retryExecution(item) {
+  if (executionContext.value && !executionContext.value.expected_fingerprint) { actionError.value = '资料选择已变化，请重新预览后执行'; return }
   const projectId = route.params.project_id
   const taskId = route.params.task_id
-  return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, item.agent_slug), '重新执行失败')
+  return runAction(() => projectWorkExecutionApi.assign(projectId, taskId, item.agent_slug, executionContext.value), '重新执行失败')
 }
 
 function createIssue() {
@@ -709,6 +715,7 @@ async function addComment() {
 }
 
 watch([() => route.params.project_id, () => route.params.task_id], () => {
+  executionContext.value = null;
   gitCompletionOpen.value = false
   gitResourceSettingsOpen.value = false
   gitCompletion.value = null

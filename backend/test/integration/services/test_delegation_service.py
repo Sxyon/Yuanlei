@@ -334,7 +334,8 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
                 project_id="project-owner", task_id=task_id, executor_key="codex", user=user
             )
             assert view["work_task_id"] == task_id
-            assert view["task"] == "交付功能\n\n写完并验证"
+            assert view["task"].startswith("交付功能\n\n写完并验证")
+            assert "验收条件：" in view["task"] and view["context_recorded"]
             assert (await service.list_delegations(project_id="project-owner"))[0]["work_task_id"] == task_id
 
 
@@ -894,7 +895,15 @@ async def test_delegation_tool_preserves_attempt_source_and_rejects_other_work(m
             await operate_governance_decision(project_id="project-owner", decision_id=source['id'], action='approve', expected_revision=1, reason='批准', db=db, user=user)
             db.add(ProjectWorkTask(id="work", project_id="project-owner", number="T-GEN-000001", title="正式工作", created_by="uid-owner"))
             await db.flush()
-            db.add(ProjectWorkExecution(id="attempt", task_id="work", project_id="project-owner", uid="uid-owner", agent_slug="main", status="submitted", prompt="当次固定输入", request_id="work-request", thread_id="work-thread", source_decision_id=source['id'], source_decision_revision=2))
+            from yuxi.services.project_work_context_service import assemble_context
+            from yuxi.storage.postgres.models_business import Project
+            work = await db.get(ProjectWorkTask, "work")
+            work.source_decision_id = source['id']
+            work.source_decision_revision = 2
+            snapshot = await assemble_context(db=db, user=user, project=await db.get(Project, "project-owner"), task=work)
+            work.source_decision_id = None
+            work.source_decision_revision = None
+            db.add(ProjectWorkExecution(id="attempt", task_id="work", project_id="project-owner", uid="uid-owner", agent_slug="main", status="submitted", context_snapshot=snapshot, prompt="当次固定输入", request_id="work-request", thread_id="work-thread", source_decision_id=source['id'], source_decision_revision=2))
             run = await db.get(AgentRun, 'run-1')
             run.origin_metadata = {"project_work_task_id": "work", "project_work_execution_id": "attempt"}
             await db.commit()
@@ -907,14 +916,29 @@ async def test_delegation_tool_preserves_attempt_source_and_rejects_other_work(m
         assert result['work_task_id'] == 'work' and result['source_decision_id'] == source['id'] and result['source_decision_revision'] == 2
         async with sessions() as db:
             row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id=result['operation_id'])
-            assert row.task == '固定子任务' and row.work_task_id == 'work'
+            assert row.task.startswith('固定子任务\n\n') and row.work_task_id == 'work'
+            assert row.context_snapshot == snapshot and snapshot['input_text'] in row.task
             assert row.request_json['metadata']['source_decision_id'] == source['id']
             assert (await db.get(ProjectWorkTask, 'work')).source_decision_id is None
-            run = await db.get(AgentRun, 'run-1'); run.origin_metadata = {}; await db.commit()
+            run = await db.get(AgentRun, 'run-1')
+            run.origin_metadata = {}
+            attempt = await db.get(ProjectWorkExecution, 'attempt')
+            attempt.thread_id = 'thread-1'
+            work = await db.get(ProjectWorkTask, 'work')
+            work.acceptance_criteria = '续聊前已经改变条件'
+            await db.commit()
+        continued = json.loads(await delegation_tools.delegation_dispatch.coroutine(executor_key="multica", task="续聊子任务", runtime=runtime))
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id=continued['operation_id'])
+            assert row.context_snapshot == snapshot
+            assert snapshot['input_text'] in row.task and '续聊前已经改变条件' not in row.task
+            attempt = await db.get(ProjectWorkExecution, 'attempt')
+            attempt.thread_id = 'work-thread'
+            await db.commit()
         missing = json.loads(await delegation_tools.delegation_dispatch.coroutine(executor_key="multica", task="没有工作", runtime=runtime))
         assert missing['error_code'] == 'formal_work_required'
         async with sessions() as db:
-            assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 1
+            assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 2
 
 
 async def test_delegation_tool_locks_project_before_run():

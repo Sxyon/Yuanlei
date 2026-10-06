@@ -1255,9 +1255,25 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             json={"auto_accept_work": auto_accept, "work_default_model_spec": MODEL_SPEC},
         )
         assert queue_config.status_code == 200, queue_config.text
+        criteria = await e2e_client.put(
+            f"{root}/tasks/{task_id}/requirements", headers=e2e_headers,
+            json={"expected_revision": 1, "acceptance_criteria": "P06原验收条件"},
+        )
+        assert criteria.status_code == 200, criteria.text
+        blueprint = await e2e_client.post(
+            f"/api/projects/{project_id}/blueprint", headers=e2e_headers,
+            json={"name": "执行依据.md", "content": "# P06原蓝图"},
+        )
+        assert blueprint.status_code == 201, blueprint.text
+        preview = await e2e_client.post(
+            f"{root}/tasks/{task_id}/context/preview", headers=e2e_headers,
+            json={"selection": {"blueprints": ["执行依据.md"]}},
+        )
+        assert preview.status_code == 200, preview.text
+        frozen = preview.json()
         assignment_path = f"{root}/tasks/{task_id}/executions"
         assigned = await e2e_client.post(
-            assignment_path, headers=e2e_headers, json={"agent_slug": agent_slug},
+            assignment_path, headers=e2e_headers, json={"agent_slug": agent_slug, "context": {"selection": frozen["selection"], "expected_fingerprint": frozen["fingerprint"]}},
         )
         assert assigned.status_code == 200, assigned.text
         execution_id = str(assigned.json()["id"])
@@ -1272,6 +1288,16 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         )
         assert source_changed.status_code == 200, source_changed.text
         assert source_changed.json()["source_decision_id"] is None
+        changed = await e2e_client.put(
+            f"{root}/tasks/{task_id}/requirements", headers=e2e_headers,
+            json={"expected_revision": 2, "acceptance_criteria": "P06新验收条件"},
+        )
+        assert changed.status_code == 200, changed.text
+        renamed = await e2e_client.post(
+            f"/api/projects/{project_id}/blueprint/执行依据.md/rename", headers=e2e_headers,
+            json={"name": "改名后的依据.md"},
+        )
+        assert renamed.status_code == 200, renamed.text
         if not auto_accept:
             accepted = await e2e_client.post(
                 f"/api/projects/{project_id}/agents/{agent_slug}/workbench/{execution_id}/accept",
@@ -1305,6 +1331,20 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
         execution_status = execution["status"]
         run_id = execution["current_run_id"] or run_id
         thread_id = execution["thread_id"] or thread_id
+        conn = await asyncpg.connect(postgres_dsn())
+        try:
+            fact = await conn.fetchrow(
+                "SELECT e.context_snapshot,e.prompt,m.content FROM project_work_executions e "
+                "JOIN agent_runs r ON r.id=$2 JOIN messages m ON m.id=r.input_message_id WHERE e.id=$1",
+                execution_id, run_id,
+            )
+            saved = json.loads(fact["context_snapshot"]) if isinstance(fact["context_snapshot"], str) else fact["context_snapshot"]
+            assert saved["fingerprint"] == frozen["fingerprint"]
+            assert saved["input_text"] in fact["prompt"] and saved["input_text"] in fact["content"]
+            assert "P06原验收条件" in fact["content"] and "P06新验收条件" not in fact["content"]
+            assert next(item for item in saved["items"] if item["kind"] == "blueprint")["original_text"] == "# P06原蓝图"
+        finally:
+            await conn.close()
         if scenario == "resume":
             assert execution_status == "interrupted", execution
             parent_run_id = run_id

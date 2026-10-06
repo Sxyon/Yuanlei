@@ -19,6 +19,7 @@ from yuxi.delegation.multica import build_multica_client_from_env
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.services.channel_sync_service import ChannelSyncService
 from yuxi.services.delegation_service import DelegationService
+from yuxi.services.project_work_context_service import ContextInput
 from yuxi.storage.postgres.models_business import User
 from yuxi.workspace.workdir import Workdir
 
@@ -35,6 +36,7 @@ class DelegationCreate(BaseModel):
     task: str = Field(..., min_length=1)
     initiator_run_id: str | None = Field(None, max_length=64)
     budget: dict[str, Any] | None = None
+    context: ContextInput | None = None
 
 
 class ProjectTaskDelegationCreate(BaseModel):
@@ -43,6 +45,7 @@ class ProjectTaskDelegationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     executor_key: str = Field(..., pattern="^(codex|opencode)$")
     agent_slug: str | None = Field(None, max_length=80)
+    context: ContextInput | None = None
 
 
 async def _require_project(*, project_id: str, db: AsyncSession, user: User):
@@ -88,7 +91,10 @@ async def create_delegation(
         task=payload.task,
         initiator_run_id=payload.initiator_run_id,
         budget=payload.budget or {},
-        metadata={"work_task_id": payload.work_task_id},
+        metadata={
+            "work_task_id": payload.work_task_id,
+            "context": payload.context.model_dump() if payload.context else {},
+        },
     )
     try:
         return await service.dispatch(executor_key=payload.executor_key, request=request, uid=str(current_user.uid))
@@ -128,6 +134,7 @@ async def delegate_work_task(
             task_id=task_id,
             executor_key=payload.executor_key,
             agent_slug=payload.agent_slug,
+            context=payload.context.model_dump() if payload.context else None,
             user=user,
         )
     except DelegationError as exc:

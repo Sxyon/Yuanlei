@@ -63,6 +63,7 @@
           @click="collect(item)"
           >回收结果</a-button
         >
+        <a-button size="small" @click="emit('history', item.operation_id)">查看当次资料</a-button>
         <p v-if="item.error_code">{{ item.error_code }}</p>
         <p v-if="item.result?.summary">{{ item.result.summary }}</p>
         <p v-if="item.artifact_path">产物：{{ item.artifact_path }}</p>
@@ -82,8 +83,10 @@ const props = defineProps({
   title: String,
   description: String,
   ended: Boolean,
+  context: { type: Object, default: null },
   agents: { type: Array, default: () => [] }
 })
+const emit = defineEmits(['history'])
 const items = ref([]),
   agentSlug = ref(),
   executor = ref('codex'),
@@ -142,19 +145,23 @@ async function act(action) {
     if (project === props.projectId && task === props.taskId) busy.value = false
   }
 }
-const dispatch = () =>
-  act(() =>
+const dispatch = () => {
+  if (props.context && !props.context.expected_fingerprint) { error.value = '资料选择已变化，请重新预览后执行'; return }
+  return act(() =>
     executor.value === 'multica'
       ? governanceBoardApi.createDelegation(props.projectId, {
           executor_key: 'multica',
           work_task_id: props.taskId,
+          ...(props.context ? { context: props.context } : {}),
           task: [props.title, props.description].filter(Boolean).join('\n\n')
         })
       : projectWorkApi.delegateTask(props.projectId, props.taskId, {
           executor_key: executor.value,
-          agent_slug: agentSlug.value
+          agent_slug: agentSlug.value,
+          ...(props.context ? { context: props.context } : {})
         })
   )
+}
 const refresh = (item) =>
   act(() => governanceBoardApi.getDelegation(props.projectId, item.operation_id))
 const collect = (item) =>

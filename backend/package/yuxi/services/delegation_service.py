@@ -44,6 +44,7 @@ def _serialize(row: ChannelDelegation, *, capabilities: dict[str, bool] | None =
     result_json = row.result_json or {}
     return {
         "operation_id": row.operation_id,
+        "context_recorded": row.context_snapshot is not None,
         "project_id": row.project_id,
         "executor_key": row.executor_key,
         "task": row.task,
@@ -143,7 +144,14 @@ class DelegationService:
         )
 
     async def dispatch_work_task(
-        self, *, project_id: str, task_id: str, executor_key: str, user: User, agent_slug: str | None = None
+        self,
+        *,
+        project_id: str,
+        task_id: str,
+        executor_key: str,
+        user: User,
+        agent_slug: str | None = None,
+        context: dict | None = None,
     ) -> dict:
         """从正式工作校验执行者与当前来源，委派到项目专属沙盒。"""
         from yuxi.agents.backends.sandbox.provider import SandboxScope
@@ -199,6 +207,7 @@ class DelegationService:
                     "workdir_relative_path": project.workdir_path,
                     "agent_config": agent_config,
                     "work_task_id": task.id,
+                    "context": context or {},
                 },
             ),
             uid=uid,
@@ -234,8 +243,27 @@ class DelegationService:
         execution_id = request.metadata.get("project_work_execution_id")
         if execution_id:
             source = await self.db.get(ProjectWorkExecution, execution_id)
-            if source is None or source.task_id != work.id or source.project_id != request.project_id:
+            if (
+                source is None or source.task_id != work.id
+                or source.project_id != request.project_id or source.uid != str(uid)
+            ):
                 raise HTTPException(409, detail="当次执行与正式工作不一致")
+        from yuxi.services.project_work_context_service import assemble_context
+        from yuxi.repositories.project_work_context_repository import ProjectWorkContextRepository
+
+        if execution_id:
+            snapshot = source.context_snapshot
+            if snapshot is None:
+                raise HTTPException(409, detail="原执行未记录业务资料；请从正式工作新建执行，不推断旧依据")
+        else:
+            user = await ProjectWorkContextRepository(self.db, project.id).user(str(uid))
+            if user is None:
+                raise HTTPException(403, detail="当前用户不可用")
+            snapshot = await assemble_context(
+                db=self.db, user=user, project=project, task=work,
+                **(request.metadata.get("context") or {}),
+            )
+        request = replace(request, task=request.task + "\n\n本次正式工作资料：\n" + snapshot["input_text"])
         request = replace(
             request,
             metadata={
@@ -265,6 +293,7 @@ class DelegationService:
             created_by=uid,
             now=now,
         )
+        row.context_snapshot = snapshot
         self._claim(row, now=now)
         await self.db.commit()
         await self.db.refresh(row)

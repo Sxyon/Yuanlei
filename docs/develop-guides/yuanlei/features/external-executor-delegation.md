@@ -32,6 +32,8 @@
 
 - 建议旧新建委派入口返回正式工作提示；旧委派的完成、租约收敛、回收与历史读取保留。v30→v31 的旧委派工作和来源字段为空，不迁移旧 Run、不伪造历史。新增引用参与议题和决策删除保护。
 
+委派创建事务在 ChannelDelegation 固化业务资料与实际任务正文；投递恢复读取原载荷。同正式执行会话的允许根工具调用按持久 thread 定位原尝试，继承资料；子智能体外部委派仍被拒绝。普通对话显式选择正式工作时产生新的委派资料。直接编码及渠道委派不制造 AgentRun 或执行尝试。
+
 ## 与 Yuxi 的边界
 
 上游 Yuxi 拥有 Run、Conversation、队列、执行、事件链路与用户自建定时任务；元垒不在这些域新增语义。元垒新增的是委派编排用例、统一执行器接口与适配器、Multica 拉取式入向归一与出向桥接、渠道加密凭据、只读委派读模型与 Agent 工具面，以及 yuanlei 域的 `channel_delegations`、`channel_sync_cursors` 表与幂等迁移。上游文件只做最小 diff，执行基底能力（沙盒会话、Channel 入口、治理事实、Workdir 安全写入）复用既有实现。
@@ -64,6 +66,9 @@
 当上游拥有等价的外部执行器委派接口与渠道桥接，并能表达 proposed→审核→canonical、外部不反向写、投递意图持久化与核对、结果绑定发起 Run 与 Workdir 边界产物时，可删除本实现。删除前需要新的 Decision 说明 `channel_delegations`、`channel_sync_cursors` 既有数据的迁移与消费侧替换路径。
 
 ## 决策与证据
+
+- Decision：[本次执行资料预览与不可变业务快照](../decisions/implemented/2026-10-06-work-context-snapshots.md)。
+
 
 - Decision：[工作建议纳入正式工作与执行归属](../decisions/implemented/2026-10-05-work-suggestion-admission.md)。
 

@@ -1234,6 +1234,7 @@ class ProjectWorkExecution(Base):
     """任务分配与一次 Agent 执行尝试的持久队列事实。"""
 
     __tablename__ = "project_work_executions"
+    context_snapshot = Column(JSON_VALUE, nullable=True, comment="本次业务资料与实际注入文本，旧记录为空")
     __table_args__ = (
         UniqueConstraint("id", "task_id", "project_id", name="uq_work_execution_result_source"),
         ForeignKeyConstraint(
@@ -1719,6 +1720,7 @@ class ChannelDelegation(Base):
     """
 
     __tablename__ = "channel_delegations"
+    context_snapshot = Column(JSON_VALUE, nullable=True, comment="本次业务资料与实际注入文本，旧记录为空")
     __table_args__ = (
         UniqueConstraint("id", "work_task_id", "project_id", name="uq_delegation_result_source"),
         ForeignKeyConstraint(

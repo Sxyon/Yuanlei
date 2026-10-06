@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.buildin import AgentBackendNotFoundError, get_agent_backend
 from yuxi.agents.context import filter_declared_config, normalize_agent_context_config
 from yuxi.repositories.agent_run_repository import AgentRunRepository
+from yuxi.repositories.user_repository import UserRepository
 from yuxi.repositories.agent_repository import (
     AgentRepository,
     is_builtin_agent,
@@ -67,6 +68,21 @@ async def load_task_knowledge_selection(*, db, uid, project_id, run) -> list[str
     task = await ProjectWorkExecutionRepository(db).task_for_thread(
         thread_id=run.conversation_thread_id, project_id=project_id, uid=uid
     )
+    execution = await ProjectWorkExecutionRepository(db).context_for_thread(
+        thread_id=run.conversation_thread_id, project_id=project_id, uid=uid
+    )
+    if execution and execution.context_snapshot:
+        selected = list(execution.context_snapshot.get("knowledge_ids") or [])
+        if selected:
+            user = await UserRepository().get_by_uid_with_db(db, uid)
+            if user is None:
+                raise PermissionError("当前用户不可用")
+            settings = ProjectSettingsRepository(db)
+            _, visible = await settings.knowledge(user)
+            linked = set(await settings.linked_ids(project_id))
+            if user is None or not set(selected) <= visible & linked:
+                raise PermissionError("本次执行固化的知识库已缺失、撤权或取消项目关联；请核对资料并新建执行")
+        return selected
     return list(task.knowledge_ids or []) if task else []
 
 
