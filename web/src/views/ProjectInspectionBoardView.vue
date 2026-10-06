@@ -91,16 +91,9 @@
                 displayBlueprintName(doc.name)
               }}</a-select-option>
             </a-select>
-            <a-input
-              v-model:value="newBlueprintName"
-              aria-label="新蓝图名称"
-              placeholder="新蓝图名称，例如 API设计方案"
-              style="max-width: 240px"
-              @pressEnter="createBlueprint"
-            />
-            <a-button :disabled="busy || loading" @click="createBlueprint">新建蓝图</a-button>
+            <a-button :disabled="busy || loading" @click="openCreateBlueprint">新建蓝图</a-button>
           </div>
-          <p class="hint">支持中文、大小写英文、数字和常用标点，名称中不含空格。</p>
+          <a-alert v-if="sharedBlueprintDirectory" type="info" show-icon message="这些项目共用目录，蓝图文件可能共享。修改、重命名和归档会作用于同一份文件。" class="blueprint-shared-hint" />
           <a-textarea
             v-model:value="blueprintContent"
             :rows="9"
@@ -180,6 +173,22 @@
           </div>
         </section>
 
+        <a-modal v-model:open="createBlueprintOpen" title="新建蓝图" :width="760" :mask-closable="false" :confirm-loading="busy" :ok-button-props="{ disabled: busy }" :cancel-button-props="{ disabled: busy }" ok-text="创建蓝图" cancel-text="取消" @ok="createBlueprint">
+          <a-form layout="vertical">
+            <a-form-item label="蓝图名称" required>
+              <a-input v-model:value="newBlueprintName" aria-label="新蓝图名称" placeholder="例如 API设计方案" :disabled="busy" />
+              <p class="hint">名称不含空格；支持中文、英文、数字和常用标点。</p>
+            </a-form-item>
+            <a-form-item label="起草模板">
+              <a-select :value="newBlueprintTemplate" :options="blueprintTemplates" :disabled="busy" @change="changeBlueprintTemplate" />
+              <p class="hint">模板是可编辑的 Markdown 正文，可按需要增删内容。</p>
+            </a-form-item>
+            <a-form-item label="蓝图正文">
+              <a-textarea v-model:value="newBlueprintContent" aria-label="新蓝图正文" :rows="12" :disabled="busy" placeholder="输入项目目标、范围与计划" />
+            </a-form-item>
+          </a-form>
+          <a-alert v-if="createBlueprintError" type="error" show-icon :message="createBlueprintError" />
+        </a-modal>
         <a-modal
           v-model:open="renameBlueprintOpen"
           title="重命名蓝图"
@@ -657,6 +666,7 @@
 </template>
 
 <script setup>
+import { blueprintTemplates, blueprintTemplateContent } from '@/utils/blueprintTemplates'
 import TopicHistoryPanel from '@/components/project/TopicHistoryPanel.vue'
 import DecisionHistoryPanel from '@/components/project/DecisionHistoryPanel.vue'
 import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'
@@ -689,6 +699,14 @@ const board = ref({ project: null, governance: null, execution: null })
 const blueprints = ref([])
 const blueprintName = ref('')
 const newBlueprintName = ref('')
+const createBlueprintOpen = ref(false)
+const createBlueprintError = ref('')
+const newBlueprintTemplate = ref('blank')
+const newBlueprintContent = ref('')
+const newBlueprintBaseline = ref('')
+const blueprintProjectType = ref('unspecified')
+const sharedBlueprintDirectory = ref(false)
+let newBlueprintInitialized = false
 const blueprintActionError = ref('')
 const blueprintContent = ref('')
 const loadedBlueprintName = ref('')
@@ -957,6 +975,8 @@ async function load() {
       archivedBlueprints.value = archiveResult.value.documents || []
     if (docsResult.status === 'fulfilled') {
       blueprints.value = docsResult.value.documents || []
+      blueprintProjectType.value = docsResult.value.project_type || 'unspecified'
+      sharedBlueprintDirectory.value = Boolean(docsResult.value.shared_workdir)
       if (!blueprintName.value && blueprints.value.length)
         blueprintName.value = blueprints.value[0].name
       if (blueprintName.value && blueprintContent.value === savedBlueprintContent.value) {
@@ -997,32 +1017,70 @@ async function act(operation, errorTarget = actionError) {
   }
 }
 
-function createBlueprint() {
+/** 新建使用独立草稿，已有编辑先保存，取消不写文件。 */
+function openCreateBlueprint() {
   if (loadedBlueprintName.value && blueprintContent.value !== savedBlueprintContent.value) {
     blueprintActionError.value = '蓝图有未保存的修改，请先保存后新建文档'
     return
   }
-  const raw = newBlueprintName.value.trim()
-  const name = normalizeBlueprintName(raw)
+  if (!newBlueprintInitialized) {
+    newBlueprintTemplate.value = blueprintProjectType.value === 'unspecified' ? 'blank' : blueprintProjectType.value
+    newBlueprintContent.value = blueprintTemplateContent(newBlueprintTemplate.value)
+    newBlueprintBaseline.value = newBlueprintContent.value
+    newBlueprintInitialized = true
+  }
+  createBlueprintError.value = ''
+  createBlueprintOpen.value = true
+}
+
+/** 覆盖已编辑正文前确认，取消保持原模板与草稿。 */
+function changeBlueprintTemplate(type) {
+  if (type === newBlueprintTemplate.value) return
+  const project = projectId.value
+  const apply = () => {
+    if (project !== projectId.value || !createBlueprintOpen.value) return
+    newBlueprintTemplate.value = type
+    newBlueprintContent.value = blueprintTemplateContent(type)
+    newBlueprintBaseline.value = newBlueprintContent.value
+  }
+  if (newBlueprintContent.value !== newBlueprintBaseline.value) {
+    Modal.confirm({ title: '替换蓝图草稿？', content: '切换模板会替换当前正文。取消可保留已编辑内容。', okText: '替换正文', cancelText: '保留草稿', onOk: apply })
+  } else apply()
+}
+
+/** 独占创建并回读正文，失败保留弹窗输入。 */
+async function createBlueprint() {
+  if (busy.value) return
+  if (loadedBlueprintName.value && blueprintContent.value !== savedBlueprintContent.value) {
+    createBlueprintError.value = '当前蓝图有未保存修改，请先保存'
+    return
+  }
+  const name = normalizeBlueprintName(newBlueprintName.value.trim())
   if (!name) {
-    blueprintActionError.value =
-      '名称需以中文、英文或数字开头，可含常用标点，不含空格且不超过 120 字；中文较多时请适当缩短'
+    createBlueprintError.value = '名称需以中文、英文或数字开头，可含常用标点，不含空格且不超过 120 字；中文较多时请适当缩短'
     return
   }
-  if (blueprints.value.some((doc) => doc.name === name)) {
-    blueprintActionError.value = '蓝图已存在，请从列表选择并编辑'
-    return
-  }
-  act(async () => {
-    const content = `# ${displayBlueprintName(name)}\n`
-    const created = await api.createBlueprint(projectId.value, name, content)
+  const project = projectId.value
+  busy.value = true
+  createBlueprintError.value = ''
+  try {
+    const created = await api.createBlueprint(project, name, newBlueprintContent.value)
+    if (project !== projectId.value) return
     blueprintReadSeq += 1
     blueprintName.value = created.name
     loadedBlueprintName.value = created.name
     blueprintContent.value = created.content
     savedBlueprintContent.value = created.content
+    createBlueprintOpen.value = false
+    newBlueprintInitialized = false
     newBlueprintName.value = ''
-  }, blueprintActionError)
+    newBlueprintContent.value = ''
+    await load()
+  } catch (error) {
+    if (project === projectId.value) createBlueprintError.value = describeBoardError(error)
+  } finally {
+    busy.value = false
+  }
 }
 const saveBlueprint = () =>
   act(async () => {
@@ -1239,6 +1297,14 @@ const collectDelegation = (item) =>
   act(() => api.collectDelegation(projectId.value, item.operation_id))
 
 watch(projectId, () => {
+  createBlueprintOpen.value = false
+  createBlueprintError.value = ''
+  newBlueprintName.value = ''
+  newBlueprintContent.value = ''
+  newBlueprintBaseline.value = ''
+  newBlueprintInitialized = false
+  blueprintProjectType.value = 'unspecified'
+  sharedBlueprintDirectory.value = false
   renameBlueprintOpen.value = false
   deleteBlueprintOpen.value = false
   blueprintReadSeq += 1
@@ -1313,6 +1379,7 @@ onUnmounted(() => clearInterval(delegationPoll))
 </script>
 
 <style scoped lang="less">
+.blueprint-shared-hint { margin: 10px 0; }
 .inspection-page {
   display: flex;
   flex-direction: column;

@@ -18,6 +18,8 @@
 - 只有当前用户 active、selectable 的 Project 可以读取与写入蓝图；其他用户、隐式或已删除项目统一返回 404。
 - 正文按 UTF-8 编码，单文档上限 256 KiB；超限与非 UTF-8 内容以结构化错误拒绝。
 - 文档以原子替换写入，同一路径的并发写遵循真实 POSIX 结果；目录内容天然可进 Git、可 diff。
+- 新建弹窗提供空白、长期经营、阶段交付模板；项目用途推荐默认项，正文仍是可编辑 Markdown。已有正文不套模板；修改过的新草稿切换模板前确认，取消和创建失败保留草稿。同项目取消后重开弹窗仍保留输入。
+- 列表按服务端已规范化 Workdir 绑定判断当前用户 active/selectable 项目是否共用目录，只返回提示。蓝图共用同一份文件字节，修改、重命名与归档作用于同一份文件，不复制目录或改归属。其他用户、隐式和已删除项目不参与提示。
 - 新建文档独占同名文件，不覆盖已有正文；归档把整份当前文档移入同一 Workdir 的 `archive/` 子目录，当前列表只含未归档文档，归档可按原名与时间回读。归档不逐次保存编辑版本。
 - 当前蓝图可重命名，文件移动拒绝覆盖同名文件，正文保持不变；页面保留未保存编辑。归档保留当时名称。当前与归档蓝图可确认后永久删除普通文件，不进入回收站或归档，拒绝删除目录、符号链接和特殊文件。聊天、议题和决策不联动修改，由蓝图负责人维护；旧页面整体保存仍可重新创建删除或改名后的旧文件。
 - 项目数字员工的运行时 Workdir 指向所属 Project 的同一目录，蓝图路径在其工作范围之内。
@@ -59,3 +61,5 @@ Yuxi 继续拥有 Project、Conversation、AgentRun、Workdir 的 no-follow 文�
 - 纯逻辑与路由契约单测：`backend/test/unit/services/test_project_blueprint_service.py`、`backend/test/unit/routers/test_project_blueprint_router.py`。
 
 - Decision：[项目蓝图重命名与永久删除](../decisions/implemented/2026-10-04-blueprint-rename-delete.md)。
+
+- Decision：[项目类型筛选与蓝图目标模板](../decisions/implemented/2026-10-06-project-types-blueprint-templates.md)。完整蓝图内容执行快照与更名后的历史回读由后续 P06 建设，当前路径引用不承诺稳定文档身份。

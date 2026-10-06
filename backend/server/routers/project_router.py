@@ -95,6 +95,9 @@ class ProjectSettingsUpdate(BaseModel):
     owner_type: Literal["none", "member", "agent"]
     owner_id: str | None = Field(default=None, min_length=1, max_length=80)
     description: str = Field(default="", max_length=255)
+    project_type: Literal["unspecified", "ongoing", "delivery"] = "unspecified"
+    category: str | None = Field(default=None, max_length=50)
+    tags: list[str] = Field(default_factory=list, max_length=20)
     start_date: date | None = None
     due_date: date | None = None
 

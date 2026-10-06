@@ -253,6 +253,7 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
         upgrade_yuanlei_schema_v28_to_v29=lambda: _record(calls, "upgrade_yuanlei_v28_v29"),
         upgrade_yuanlei_schema_v29_to_v30=lambda: _record(calls, "upgrade_yuanlei_v29_v30"),
         upgrade_yuanlei_schema_v30_to_v31=lambda: _record(calls, "upgrade_yuanlei_v30_v31"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "upgrade_yuanlei_v31_v32"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -356,6 +357,7 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
         upgrade_yuanlei_schema_v28_to_v29=lambda: _record(calls, "upgrade_yuanlei_v28_v29"),
         upgrade_yuanlei_schema_v29_to_v30=lambda: _record(calls, "upgrade_yuanlei_v29_v30"),
         upgrade_yuanlei_schema_v30_to_v31=lambda: _record(calls, "upgrade_yuanlei_v30_v31"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "upgrade_yuanlei_v31_v32"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -467,6 +469,7 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
         upgrade_yuanlei_schema_v28_to_v29=lambda: _record(calls, "upgrade_yuanlei_v28_v29"),
         upgrade_yuanlei_schema_v29_to_v30=lambda: _record(calls, "upgrade_yuanlei_v29_v30"),
         upgrade_yuanlei_schema_v30_to_v31=lambda: _record(calls, "upgrade_yuanlei_v30_v31"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "upgrade_yuanlei_v31_v32"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -577,6 +580,7 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
         upgrade_yuanlei_schema_v28_to_v29=lambda: _record(calls, "upgrade_yuanlei_v28_v29"),
         upgrade_yuanlei_schema_v29_to_v30=lambda: _record(calls, "upgrade_yuanlei_v29_v30"),
         upgrade_yuanlei_schema_v30_to_v31=lambda: _record(calls, "upgrade_yuanlei_v30_v31"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "upgrade_yuanlei_v31_v32"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -686,6 +690,7 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
         upgrade_yuanlei_schema_v28_to_v29=lambda: _record(calls, "upgrade_yuanlei_v28_v29"),
         upgrade_yuanlei_schema_v29_to_v30=lambda: _record(calls, "upgrade_yuanlei_v29_v30"),
         upgrade_yuanlei_schema_v30_to_v31=lambda: _record(calls, "upgrade_yuanlei_v30_v31"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "upgrade_yuanlei_v31_v32"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -776,6 +781,7 @@ async def test_yuanlei_v20_is_upgraded_to_inbox_occurrences(monkeypatch):
         upgrade_yuanlei_schema_v28_to_v29=lambda: _record(calls, "upgrade_yuanlei_v28_v29"),
         upgrade_yuanlei_schema_v29_to_v30=lambda: _record(calls, "upgrade_yuanlei_v29_v30"),
         upgrade_yuanlei_schema_v30_to_v31=lambda: _record(calls, "upgrade_yuanlei_v30_v31"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "upgrade_yuanlei_v31_v32"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -1025,3 +1031,39 @@ async def _record(calls: list[object], value: str) -> None:
 
 async def _async_value(value):
     return value
+
+
+@pytest.mark.asyncio
+async def test_yuanlei_v31_only_adds_project_attributes_before_version_record(monkeypatch):
+    """当前旧版只执行属性迁移，成功后才记录 v32。"""
+    calls = []
+
+    @asynccontextmanager
+    async def session_context():
+        yield _Session()
+
+    manager = SimpleNamespace(
+        initialize=lambda: None,
+        schema_migration_lock=lambda: _async_context(calls, "schema_lock"),
+        create_schema_version_table=lambda: _record(calls, "versions"),
+        get_schema_versions=lambda: _async_value({
+            "business": storage_migration.BUSINESS_SCHEMA_VERSION,
+            "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION, "yuanlei": 31}),
+        record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
+        ensure_runtime_scope_width=lambda: _record(calls, "runtime_width"),
+        upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "project_attributes"),
+        get_async_session_context=session_context,
+        close=lambda: _record(calls, "close"),
+    )
+    monkeypatch.setattr(storage_migration, "pg_manager", manager)
+    monkeypatch.setattr(storage_migration, "read_v071_workdir_plan", lambda db: _async_value(V071WorkdirMigrationPlan(False, (), ())))
+    monkeypatch.setattr(storage_migration, "_legacy_skill_roots_exist", lambda: False)
+    monkeypatch.setattr(storage_migration, "_legacy_system_config_exists", lambda: False)
+    monkeypatch.setattr(storage_migration, "runtime_storage_requires_quiescence", lambda: False)
+    monkeypatch.setattr(storage_migration, "_converge_database_state", lambda **kwargs: _record(calls, "converge"))
+    monkeypatch.setattr(storage_migration, "migrate_shared_skills", lambda db: _record(calls, "skills"))
+    monkeypatch.setattr(storage_migration, "mark_v071_skills_migrated", lambda: None)
+    monkeypatch.setattr(storage_migration, "migrate_runtime_storage_identity", lambda: None)
+    await storage_migration.main()
+    assert calls.index("project_attributes") < calls.index("version:yuanlei:32")
+    assert calls.count("project_attributes") == 1

@@ -30,3 +30,17 @@ test('历史项目时间按分钟到年份显示相对时间', () => {
   assert.equal(formatRelativeTime('2024-08-22T12:00:00Z', now), '2年前')
   assert.equal(formatRelativeTime('invalid', now), '')
 })
+
+
+test('项目类型分类标签组合筛选，缺设置旧项目默认未指定且清除显示全部', () => {
+  const projects = [
+    { id: 'legacy', name: '旧项目' },
+    { id: 'ongoing', name: '经营', project_type: 'ongoing', category: '业务', tags: ['收入', '复盘'] },
+    { id: 'delivery', name: '交付', project_type: 'delivery', category: '业务', tags: ['复盘'] }
+  ]
+  assert.deepEqual(filterProjects(projects, '', { type: 'unspecified' }).map(p => p.id), ['legacy'])
+  assert.deepEqual(filterProjects(projects, '', { category: '业务', tag: '收入' }).map(p => p.id), ['ongoing'])
+  assert.deepEqual(filterProjects(projects, '', { type: 'delivery', category: '业务', tag: '收入' }), [])
+  assert.equal(filterProjects(projects, '', {}), projects)
+  assert.deepEqual(projects[0], { id: 'legacy', name: '旧项目' })
+})

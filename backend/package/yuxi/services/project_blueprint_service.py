@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
 from yuxi.storage.postgres.models_business import Project, User
 from yuxi.workspace.errors import FileTransferLimitError
 from yuxi.workspace.paths import ensure_bound_user_workdir
@@ -168,9 +169,12 @@ async def list_project_blueprint_view(
             }
         )
     documents.sort(key=lambda document: document["name"])
+    settings = await ProjectSettingsRepository(db).get(project.id)
     return {
         "project_id": project.id,
         "directory": BLUEPRINT_DIRECTORY,
+        "project_type": settings.project_type if settings else "unspecified",
+        "shared_workdir": await ProjectRepository(db).has_shared_workdir(project),
         "documents": documents,
     }
 

@@ -9,6 +9,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.exc import IntegrityError
 
 from server.routers.agent_router import agent_router
 from server.routers.project_router import projects
@@ -101,6 +102,9 @@ async def test_defaults_and_atomic_settings_persistence(settings_api):
         "owner_type": "member",
         "owner_id": user.uid,
         "description": "",
+        "project_type": "unspecified",
+        "category": None,
+        "tags": [],
         "start_date": None,
         "due_date": None,
     }
@@ -428,3 +432,113 @@ async def test_task_knowledge_selection_requires_link_and_access(settings_api):
     await manager.upgrade_yuanlei_schema_v26_to_v27()
     async with factory() as db:
         assert (await db.get(ProjectWorkTask, task_id)).knowledge_ids == ["task-readable"]
+
+
+async def test_project_attributes_list_and_legacy_defaults_preserve_resources(settings_api):
+    """设置用途后回读旧项目与资源，属性不扩展可见性。"""
+    client, factory, _, _, user, project_id = settings_api
+    legacy_id = str(uuid.uuid4())
+    async with factory() as db:
+        db.add(Project(id=legacy_id, uid=user.uid, name="无设置旧项目", selection_status="selectable",
+                       directory_mode="managed", workdir_path=f"projects/{legacy_id}"))
+        db.add(User(uid="outside", username="outside", password_hash="test", role="user", is_deleted=0))
+        await db.flush()
+        db.add(Project(id="outside", uid="outside", name="不可访问", selection_status="selectable",
+                       directory_mode="managed", workdir_path="projects/outside"))
+        db.add(KnowledgeBase(kb_id="kept", name="保留资源", kb_type="milvus", created_by=user.uid,
+                            share_config={"version": 2, "read_scope": None, "manage_scope": None}))
+        await db.commit()
+    assert (await client.put(f"/api/projects/{project_id}/knowledge-links", json={"kb_ids": ["kept"]})).status_code == 200
+    values = (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"]
+    saved = await client.put(f"/api/projects/{project_id}/settings", json={"name": "长期经营", **values,
+        "project_type": "ongoing", "category": "  经营  ", "tags": [" 收入 ", "收入", "", "复盘"]})
+    assert saved.status_code == 200, saved.text
+    readback = (await client.get(f"/api/projects/{project_id}/settings")).json()
+    assert readback["settings"] == saved.json()["settings"]
+    assert readback["settings"]["category"] == "经营" and readback["settings"]["tags"] == ["收入", "复盘"]
+    assert readback["settings"]["owner_id"] == user.uid
+    assert readback["settings"]["start_date"] is None and readback["settings"]["due_date"] is None
+    assert readback["knowledge_links"] == [{"kb_id": "kept", "name": "保留资源", "accessible": True}]
+    projects = {row["id"]: row for row in (await client.get("/api/projects")).json()}
+    assert set(projects) == {project_id, legacy_id}
+    assert projects[project_id]["project_type"] == "ongoing" and projects[project_id]["tags"] == ["收入", "复盘"]
+    assert projects[legacy_id]["project_type"] == "unspecified"
+    assert projects[legacy_id]["category"] is None and projects[legacy_id]["tags"] == []
+    async with factory() as db:
+        assert await db.get(ProjectSettings, legacy_id) is None
+        assert (await db.get(ProjectSettings, project_id)).tags == ["收入", "复盘"]
+    renamed = await client.put(f"/api/projects/{project_id}", json={"name": "经营更名"})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["project_type"] == "ongoing" and renamed.json()["category"] == "经营"
+    assert renamed.json()["tags"] == ["收入", "复盘"]
+    assert (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"] == readback["settings"]
+    for changes in [{"project_type": "enterprise"}, {"tags": ["长" * 31]}, {"tags": [str(i) for i in range(21)]}, {"category": "长" * 51}]:
+        rejected = await client.put(f"/api/projects/{project_id}/settings", json={"name": "不能保存", **values, **changes})
+        assert rejected.status_code == 422, rejected.text
+    async with factory() as db:
+        assert (await db.get(Project, project_id)).name == "经营更名"
+        assert (await db.get(ProjectSettings, project_id)).project_type == "ongoing"
+
+
+async def test_v31_to_v32_migration_retains_old_values_and_reenters(settings_api):
+    """在旧列形态上执行实际迁移，不推断项目类型。"""
+    client, factory, manager, _, user, project_id = settings_api
+    values = (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"]
+    saved = await client.put(f"/api/projects/{project_id}/settings", json={"name": "阶段交付旧名", **values,
+        "work_status": "in_progress", "description": "旧内容", "start_date": "2026-10-01", "due_date": "2026-10-20"})
+    assert saved.status_code == 200, saved.text
+    async with manager.async_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE project_settings DROP COLUMN project_type, DROP COLUMN category, DROP COLUMN tags"))
+    await manager.upgrade_yuanlei_schema_v31_to_v32()
+    await manager.upgrade_yuanlei_schema_v31_to_v32()
+    async with factory() as db:
+        settings = await db.get(ProjectSettings, project_id)
+        assert settings.project_type == "unspecified" and settings.category is None and settings.tags == []
+        assert settings.owner_id == user.uid and settings.work_status == "in_progress"
+        assert settings.description == "旧内容" and settings.due_date.isoformat() == "2026-10-20"
+        assert (await db.get(Project, project_id)).name == "阶段交付旧名"
+    async with manager.async_engine.begin() as conn:
+        with pytest.raises(IntegrityError, match="ck_project_settings_type"):
+            await conn.execute(text("UPDATE project_settings SET project_type='enterprise'"))
+
+
+async def test_shared_blueprint_hint_uses_visible_directory_binding(settings_api, monkeypatch, tmp_path):
+    """真实 HTTP 比较目录绑定，排除其他用户、隐式及删除项目。"""
+    from server.routers.project_blueprint_router import project_blueprints
+
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    client, factory, _, app, user, project_id = settings_api
+    app.include_router(project_blueprints, prefix="/api")
+    async with factory() as db:
+        db.add(User(uid="private-owner", username="private-owner", password_hash="test", role="user", is_deleted=0))
+        await db.flush()
+        for id_, uid, selection, status in [
+            ("private-peer", "private-owner", "selectable", "active"),
+            ("implicit-peer", user.uid, "implicit", "active"),
+            ("deleted-peer", user.uid, "selectable", "deleted"),
+        ]:
+            db.add(Project(id=id_, uid=uid, name=id_, selection_status=selection, status=status,
+                           directory_mode="managed", workdir_path=f"projects/{project_id}"))
+        await db.commit()
+    base = f"/api/projects/{project_id}/blueprint"
+    first = await client.get(base)
+    assert first.status_code == 200, first.text
+    assert first.json()["shared_workdir"] is False and first.json()["project_type"] == "unspecified"
+    async with factory() as db:
+        db.add(Project(id="visible-peer", uid=user.uid, name="共用项目", selection_status="selectable",
+                       directory_mode="linked", workdir_path=f"projects/{project_id}"))
+        await db.commit()
+    shared = (await client.get(base)).json()
+    assert shared["shared_workdir"] is True and shared["documents"] == []
+    assert "visible-peer" not in str(shared) and "private-peer" not in str(shared)
+    response = await client.post(base, json={"name": "原蓝图.md", "content": "# 原文件\n"})
+    assert response.status_code == 201, response.text
+    peer_base = "/api/projects/visible-peer/blueprint"
+    original = (await client.get(f"{peer_base}/原蓝图.md")).json()
+    assert original["content"] == "# 原文件\n"
+    collision = await client.post(peer_base, json={"name": "原蓝图.md", "content": "不能覆盖"})
+    assert collision.status_code == 409, collision.text
+    assert (await client.get(f"{base}/原蓝图.md")).json()["content"] == "# 原文件\n"
+    async with factory() as db:
+        for id_ in [project_id, "visible-peer"]:
+            assert (await db.get(Project, id_)).workdir_path == f"projects/{project_id}"

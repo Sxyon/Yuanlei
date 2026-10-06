@@ -113,3 +113,22 @@ test('负责人单一选择框区分同名成员与智能体，并允许解除�
   assert.equal(state().draft.owner_type, 'none')
   assert.equal(state().draft.owner_id, null)
 })
+
+
+test('长期项目无日期可保存属性，失败保留类型分类标签与原资源草稿', async (t) => {
+  t.mock.method(api, 'getSettings', async id => ({ ...result(id), settings: { ...result(id).settings, project_type: 'unspecified', category: null, tags: [] } }))
+  const save = t.mock.method(api, 'saveSettings', async () => { throw new Error('保存失败') })
+  const state = mount(t, reactive({ open: true, project: { id: 'first' } }))
+  await settle()
+  Object.assign(state().draft, { project_type: 'ongoing', category: '经营', tags: ['收入'], description: '原描述' })
+  state().selectedKnowledge = ['原资源']
+  await state().save()
+  assert.equal(save.mock.calls[0].arguments[1].start_date, null)
+  assert.equal(save.mock.calls[0].arguments[1].due_date, null)
+  assert.equal(save.mock.calls[0].arguments[1].owner_id, 'creator')
+  assert.equal(state().draft.project_type, 'ongoing')
+  assert.equal(state().draft.category, '经营')
+  assert.deepEqual(state().draft.tags, ['收入'])
+  assert.deepEqual(state().selectedKnowledge, ['原资源'])
+  assert.match(state().error, /保存失败/)
+})

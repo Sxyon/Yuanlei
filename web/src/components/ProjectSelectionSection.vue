@@ -24,6 +24,10 @@
             />
           </label>
 
+          <ProjectFilters v-model="projectFilters" :projects="projects" />
+          <p v-if="currentProject && !filteredProjects.some(p => p.id === currentProject.id)" class="project-empty">
+            当前项目：{{ currentProject.name }}（不在筛选结果中，选择保持不变）
+          </p>
           <div class="project-option-list" aria-label="选择项目">
             <div v-if="loadingProjects" class="project-loading">
               <a-spin />
@@ -65,7 +69,8 @@
               </button>
 
               <div v-if="!filteredProjects.length" class="project-empty">
-                {{ projectQuery ? '没有匹配的项目' : '暂无已有项目' }}
+                {{ projectQuery || Object.values(projectFilters).some(Boolean) ? '没有匹配的项目' : '暂无已有项目' }}
+                <button v-if="projectQuery || Object.values(projectFilters).some(Boolean)" type="button" @click="projectQuery = ''; projectFilters = {}">清除筛选</button>
               </div>
             </template>
           </div>
@@ -174,6 +179,7 @@
 </template>
 
 <script setup>
+import ProjectFilters from './ProjectFilters.vue'
 import ActionDropdown from '@/components/common/ActionDropdown.vue'
 import ActionTrigger from '@/components/common/ActionTrigger.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -215,6 +221,7 @@ const { projects, isLoading: loadingProjects, error: projectsError } = storeToRe
 
 const dropdownOpen = ref(false)
 const projectQuery = ref('')
+const projectFilters = ref({})
 const projectSearchInput = ref(null)
 const historySearchInput = ref(null)
 const dropdownView = ref('projects')
@@ -254,7 +261,7 @@ const currentProjectHint = computed(() => {
   if (currentProject.value?.directory_mode === 'linked') return '个人空间已有目录'
   return '系统管理目录'
 })
-const filteredProjects = computed(() => filterProjects(projects.value, projectQuery.value))
+const filteredProjects = computed(() => filterProjects(projects.value, projectQuery.value, projectFilters.value))
 
 const selectProject = (projectId) => {
   emit('update:modelValue', projectId)

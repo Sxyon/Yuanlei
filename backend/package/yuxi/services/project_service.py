@@ -9,7 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
 from yuxi.repositories.project_repository import ProjectRepository
+from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
 from yuxi.services.run_queue_service import enqueue_project_git_operation
+from yuxi.services.project_settings_service import project_attribute_summary
 from yuxi.storage.postgres.models_business import Project
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.workspace.paths import allocate_default_user_workdir_path, normalize_workdir_path
@@ -154,7 +156,8 @@ async def create_project_view(
 async def list_projects_view(*, uid: str, db) -> list[dict]:
     """列出当前用户可选择的 Project。"""
     projects = await ProjectRepository(db).list_selectable_for_user(str(uid))
-    return [project.to_dict() for project in projects]
+    settings = await ProjectSettingsRepository(db).list_for_projects([project.id for project in projects])
+    return [{**project.to_dict(), **project_attribute_summary(settings.get(project.id))} for project in projects]
 
 
 async def rename_project_view(*, uid: str, project_id: str, name: str, db) -> dict:
@@ -169,7 +172,8 @@ async def rename_project_view(*, uid: str, project_id: str, name: str, db) -> di
     project.updated_at = utc_now_naive()
     await db.commit()
     await db.refresh(project)
-    return project.to_dict()
+    settings = await ProjectSettingsRepository(db).get(project_id)
+    return {**project.to_dict(), **project_attribute_summary(settings)}
 
 
 async def delete_project_view(*, uid: str, project_id: str, db) -> dict:

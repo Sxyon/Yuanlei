@@ -35,6 +35,9 @@ class _Db:
     async def scalar(self, _statement):
         return None
 
+    async def get(self, _model, _id):
+        return None
+
 
 async def test_linked_project_accepts_existing_nested_directory(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("yuxi.workspace.paths.get_user_data_dir", lambda: tmp_path)
@@ -283,7 +286,7 @@ async def test_rename_project_updates_only_active_selectable_project(monkeypatch
         db=db,
     )
 
-    assert result == {"id": "project-1", "name": "New name"}
+    assert result == {"id": "project-1", "name": "New name", "project_type": "unspecified", "category": None, "tags": []}
     assert db.commits == 1
 
 

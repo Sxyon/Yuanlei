@@ -495,6 +495,7 @@ provide('settingsModal', {
           v-if="!sidebarCollapsed"
           class="sidebar-conversations"
           :current-chat-id="activeConversationThreadId"
+          :current-project-id="String(route.params.project_id || route.query.project_id || '')"
           :chats-list="threads"
           :projects="projects"
           :projects-loading="projectsLoading && !projectsStore.hasLoaded"

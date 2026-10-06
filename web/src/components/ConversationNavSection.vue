@@ -27,8 +27,13 @@
                 <button type="button" @click="$emit('retry-projects')">重试</button>
               </div>
               <template v-else>
+                <ProjectFilters v-model="projectFilters" :projects="projects" />
+                <p v-if="filteredCurrentProject" class="list-state">当前项目：{{ filteredCurrentProject.name }}（不在筛选结果中）</p>
+                <div v-if="!filteredProjectGroups.length" class="list-state">
+                  没有匹配的项目<button type="button" @click="projectFilters = {}">清除筛选</button>
+                </div>
                 <section
-                  v-for="group in projectGroups"
+                  v-for="group in filteredProjectGroups"
                   :key="group.project.id"
                   class="project-group"
                 >
@@ -197,6 +202,8 @@
 </template>
 
 <script setup>
+import ProjectFilters from './ProjectFilters.vue'
+import { filterProjects } from '@/utils/projectSelection'
 import { computed, h, ref } from 'vue'
 import { Modal } from 'ant-design-vue'
 import {
@@ -217,6 +224,7 @@ import { buildProjectConversationGroups } from '@/utils/projectConversationGroup
 
 const props = defineProps({
   currentChatId: { type: String, default: null },
+  currentProjectId: { type: String, default: '' },
   chatsList: { type: Array, default: () => [] },
   projects: { type: Array, default: () => [] },
   projectsLoading: { type: Boolean, default: false },
@@ -263,6 +271,13 @@ const projectGroups = computed(() =>
     }
   })
 )
+const projectFilters = ref({})
+const filteredProjectIds = computed(() => new Set(filterProjects(props.projects, '', projectFilters.value).map(p => p.id)))
+const filteredProjectGroups = computed(() => projectGroups.value.filter(group => filteredProjectIds.value.has(group.project.id)))
+const filteredCurrentProject = computed(() => {
+  const id = props.currentProjectId || props.chatsList.find(chat => (chat.thread_id || chat.id) === props.currentChatId)?.project_id
+  return props.projects.find(p => p.id === id && !filteredProjectIds.value.has(id))
+})
 const otherConversations = computed(() => groupedNavigation.value.otherConversations)
 
 /** 展开当前项目的下一批对话。 */

@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 31
+YUANLEI_SCHEMA_VERSION = 32
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -120,6 +120,10 @@ PROJECT_SETTINGS_SCHEMA_STATEMENTS = (
         owner_type VARCHAR(16) NOT NULL,
         owner_id VARCHAR(80),
         description VARCHAR(255) NOT NULL DEFAULT '',
+        project_type VARCHAR(20) NOT NULL DEFAULT 'unspecified',
+        category VARCHAR(50),
+        tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        CONSTRAINT ck_project_settings_type CHECK (project_type IN ('unspecified','ongoing','delivery')),
         start_date DATE,
         due_date DATE,
         CONSTRAINT ck_project_settings_status
@@ -1669,6 +1673,22 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v31_to_v32(self) -> None:
+        """增加项目用途属性，旧项目保持未指定且不推断历史。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in (
+                "ALTER TABLE project_settings ADD COLUMN IF NOT EXISTS project_type "
+                "VARCHAR(20) NOT NULL DEFAULT 'unspecified'",
+                "ALTER TABLE project_settings ADD COLUMN IF NOT EXISTS category VARCHAR(50)",
+                "ALTER TABLE project_settings ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb",
+                "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_project_settings_type' "
+                "AND conrelid='project_settings'::regclass) THEN ALTER TABLE project_settings "
+                "ADD CONSTRAINT ck_project_settings_type CHECK (project_type IN ('unspecified','ongoing','delivery')); "
+                "END IF; END $$",
+            ):
                 await conn.execute(text(statement))
 
     async def upgrade_yuanlei_schema_v30_to_v31(self) -> None:

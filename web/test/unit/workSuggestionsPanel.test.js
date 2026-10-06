@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { createServer } from 'vite'
 let vite, Panel, api, workApi
 before(async () => {
+  globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: Panel } = await vite.ssrLoadModule(
     '/src/components/project/WorkSuggestionsPanel.vue'
@@ -15,6 +16,7 @@ before(async () => {
 })
 after(async () => {
   await vite?.close()
+  delete globalThis.localStorage
 })
 const renderer = createRenderer({
   createElement: () => ({}),

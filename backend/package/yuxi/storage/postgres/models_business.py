@@ -147,6 +147,7 @@ class ProjectSettings(Base):
 
     __tablename__ = "project_settings"
     __table_args__ = (
+        CheckConstraint("project_type IN ('unspecified', 'ongoing', 'delivery')", name="ck_project_settings_type"),
         CheckConstraint(
             "work_status IN ('planned', 'in_progress', 'paused', 'completed', 'cancelled')",
             name="ck_project_settings_status",
@@ -168,6 +169,9 @@ class ProjectSettings(Base):
     owner_type = Column(String(16), nullable=False, default="member")
     owner_id = Column(String(80), nullable=True)
     description = Column(String(255), nullable=False, default="", server_default="")
+    project_type = Column(String(20), nullable=False, default="unspecified", server_default="unspecified")
+    category = Column(String(50), nullable=True)
+    tags = Column(JSON_VALUE, nullable=False, default=list, server_default="[]")
     start_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
 
@@ -179,6 +183,9 @@ class ProjectSettings(Base):
             "owner_type": self.owner_type,
             "owner_id": self.owner_id,
             "description": self.description,
+            "project_type": self.project_type,
+            "category": self.category,
+            "tags": self.tags,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "due_date": self.due_date.isoformat() if self.due_date else None,
         }

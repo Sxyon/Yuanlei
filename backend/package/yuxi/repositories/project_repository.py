@@ -80,6 +80,18 @@ class ProjectRepository:
         )
         return list(result.scalars().all())
 
+    async def has_shared_workdir(self, project: Project) -> bool:
+        """按已规范化目录判断可见项目是否共用，不公开项目身份。"""
+        return await self.db.scalar(
+            select(Project.id).where(
+                Project.uid == project.uid,
+                Project.id != project.id,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+                Project.workdir_path == project.workdir_path,
+            ).limit(1)
+        ) is not None
+
     async def list_selectable_workdir_paths_for_user(self, uid: str) -> list[str]:
         """列出用户已选择 Project 的去重 Workdir 路径。"""
         result = await self.db.execute(

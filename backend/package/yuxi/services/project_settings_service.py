@@ -12,6 +12,15 @@ from yuxi.storage.postgres.models_business import ProjectSettings
 from yuxi.utils.datetime_utils import utc_now_naive
 
 
+def project_attribute_summary(settings: ProjectSettings | None) -> dict:
+    """序列化项目筛选属性，缺设置的旧项目保持未指定。"""
+    return {
+        "project_type": settings.project_type if settings else "unspecified",
+        "category": settings.category if settings else None,
+        "tags": settings.tags if settings else [],
+    }
+
+
 def validate_project_settings(values: dict) -> None:
     """校验管理属性与日历日期，不触发执行状态转换。"""
     if values["work_status"] not in {"planned", "in_progress", "paused", "completed", "cancelled"}:
@@ -24,6 +33,15 @@ def validate_project_settings(values: dict) -> None:
         raise HTTPException(422, "负责人类型与身份不一致")
     if len(values["description"]) > 255:
         raise HTTPException(422, "项目描述最多 255 字符")
+    if values.get("project_type", "unspecified") not in {"unspecified", "ongoing", "delivery"}:
+        raise HTTPException(422, "项目类型非法")
+    category = (values.get("category") or "").strip() or None
+    if category and len(category) > 50:
+        raise HTTPException(422, "分类最多 50 字符")
+    tags = list(dict.fromkeys(tag.strip() for tag in values.get("tags", []) if tag.strip()))
+    if len(tags) > 20 or any(len(tag) > 30 for tag in tags):
+        raise HTTPException(422, "标签最多 20 个，每个最多 30 字符")
+    values.update(project_type=values.get("project_type", "unspecified"), category=category, tags=tags)
     start: date | None = values["start_date"]
     due: date | None = values["due_date"]
     if start and due and start > due:
@@ -46,6 +64,9 @@ async def get_project_settings(*, user, project_id: str, db) -> dict:
             "owner_type": "member",
             "owner_id": project.uid,
             "description": "",
+            "project_type": "unspecified",
+            "category": None,
+            "tags": [],
             "start_date": None,
             "due_date": None,
         }
@@ -57,7 +78,7 @@ async def get_project_settings(*, user, project_id: str, db) -> dict:
         for kb_id in await repository.linked_ids(project_id)
     ]
     return {
-        "project": project.to_dict(),
+        "project": {**project.to_dict(), **project_attribute_summary(settings)},
         "settings": values,
         "members": await repository.members(),
         "agents": await repository.agents(project_id),

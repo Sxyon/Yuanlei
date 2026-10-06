@@ -12,10 +12,22 @@ export const fillProjectNameFromFolder = (projectName, folderName) => {
   return folder.slice(0, PROJECT_NAME_MAX_LENGTH)
 }
 
-export const filterProjects = (projects, query = '') => {
+export const projectTypes = [
+  { value: 'unspecified', label: '未指定' },
+  { value: 'ongoing', label: '长期经营' },
+  { value: 'delivery', label: '阶段交付' }
+]
+
+/** 在可访问项目集合中组合筛选，空条件保留全部旧项目。 */
+export const filterProjects = (projects, query = '', filters = {}) => {
   const keyword = String(query).trim().toLocaleLowerCase()
-  if (!keyword) return projects
-  return projects.filter((project) => project.name.toLocaleLowerCase().includes(keyword))
+  if (!keyword && !filters.type && !filters.category && !filters.tag) return projects
+  return projects.filter((project) =>
+    (!keyword || (project.name || '').toLocaleLowerCase().includes(keyword)) &&
+    (!filters.type || (project.project_type || 'unspecified') === filters.type) &&
+    (!filters.category || project.category === filters.category) &&
+    (!filters.tag || (project.tags || []).includes(filters.tag))
+  )
 }
 
 export const formatRelativeTime = (value, now = Date.now()) => {

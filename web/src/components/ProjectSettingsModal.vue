@@ -52,7 +52,7 @@
                 <a-form-item label="开始日期">
                   <a-date-picker v-model:value="draft.start_date" value-format="YYYY-MM-DD" />
                 </a-form-item>
-                <a-form-item label="截止日期">
+                <a-form-item :label="draft.project_type === 'delivery' ? '交付日期' : '截止日期'">
                   <a-date-picker v-model:value="draft.due_date" value-format="YYYY-MM-DD" />
                 </a-form-item>
                 <p class="settings-help">负责人仅记录责任归属；项目状态不限制任务执行。</p>
@@ -65,6 +65,16 @@
                 </a-form-item>
                 <a-form-item label="项目描述">
                   <a-textarea v-model:value="draft.description" :maxlength="255" show-count :rows="5" />
+                </a-form-item>
+                <a-form-item label="项目类型">
+                  <a-select v-model:value="draft.project_type" :options="projectTypes" />
+                </a-form-item>
+                <a-form-item label="分类（可选）">
+                  <a-input v-model:value="draft.category" :maxlength="50" placeholder="例如产品、运营" />
+                </a-form-item>
+                <a-form-item label="标签（可选）">
+                  <a-select v-model:value="draft.tags" mode="tags" :token-separators="[',', '，']" placeholder="输入标签后按回车" />
+                  <p class="settings-help">最多 20 个标签，每个最多 30 字符；分类和标签只用于整理与筛选。</p>
                 </a-form-item>
               </a-form>
             </section>
@@ -98,6 +108,7 @@ import { projectApi } from '@/apis/project_api'
 import ProjectGitSettingsModal from './ProjectGitSettingsModal.vue'
 import FallbackAvatar from './common/FallbackAvatar.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
+import { projectTypes } from '@/utils/projectSelection'
 
 const props = defineProps({ open: Boolean, project: { type: Object, default: null } })
 const emit = defineEmits(['update:open', 'saved'])
@@ -149,7 +160,7 @@ const load = async () => {
     const result = await projectApi.getSettings(projectId)
     if (version !== loadVersion) return
     data.value = result
-    Object.assign(draft, result.settings, { name: result.project.name })
+    Object.assign(draft, { project_type: 'unspecified', category: null, tags: [] }, result.settings, { name: result.project.name })
     selectedKnowledge.value = result.knowledge_links.map((item) => item.kb_id)
   } catch (err) {
     if (version === loadVersion) error.value = err.message || '项目设置加载失败'

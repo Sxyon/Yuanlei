@@ -18,6 +18,11 @@ class ProjectSettingsRepository:
         """读取项目管理属性。"""
         return await self.db.get(ProjectSettings, project_id)
 
+    async def list_for_projects(self, project_ids: list[str]) -> dict[str, ProjectSettings]:
+        """批量读取已通过可见性校验的项目设置。"""
+        rows = await self.db.scalars(select(ProjectSettings).where(ProjectSettings.project_id.in_(project_ids)))
+        return {row.project_id: row for row in rows}
+
     async def members(self) -> list[dict]:
         """仅公开负责人选择所需的成员身份，不返回账号敏感字段。"""
         rows = await self.db.execute(

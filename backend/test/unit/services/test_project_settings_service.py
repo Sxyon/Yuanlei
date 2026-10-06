@@ -28,6 +28,10 @@ def settings(**changes):
     "changes, message",
     [
         ({"work_status": "active"}, "项目状态非法"),
+        ({"project_type": "unknown"}, "项目类型非法"),
+        ({"category": "长" * 51}, "分类最多 50 字符"),
+        ({"tags": ["长" * 31]}, "标签最多 20 个，每个最多 30 字符"),
+        ({"tags": [str(i) for i in range(21)]}, "标签最多 20 个，每个最多 30 字符"),
         ({"priority": "unknown"}, "优先级非法"),
         ({"owner_type": "unknown"}, "负责人类型非法"),
         ({"owner_type": "none"}, "负责人类型与身份不一致"),
@@ -56,3 +60,10 @@ def test_invalid_settings_rejected_for_specific_reason(changes, message):
 )
 def test_valid_calendar_and_management_values(changes):
     validate_project_settings(settings(**changes))
+
+
+def test_project_attributes_normalize_without_changing_calendar():
+    values = settings(project_type="ongoing", category="   ", tags=[" 成长 ", "成长", "", "复盘"])
+    validate_project_settings(values)
+    assert values["category"] is None and values["tags"] == ["成长", "复盘"]
+    assert values["start_date"] is None and values["due_date"] is None

@@ -41,7 +41,7 @@ Owner：backend/package/yuxi/services/governance_service.py
 - `docker compose exec api uv run --group test pytest test/unit -m "not slow"`：2787 通过、63 跳过。Schema 精确外键集合显式补入四项新增约束；相关 Schema 单测 31 通过。`python3 -m unittest scripts.test_verify_engineering_contracts`：70 通过。
 - 真实页面验证缺项目编号时保留输入、同弹窗补编号后新建跳转、关联已有工作保留原主要来源、需复核未确认拒绝和确认后纳入、已纳入链接、工作详情建议反向定位、刷新回读；450px 控件换行及浅深主题截图保存在会话产物。主题、尺寸与侧栏已恢复。
 
-- `pnpm --dir web run test:unit`：477 通过；最后将投递/回收状态与执行终态分开展示后，两个新面板相关 unit 5 通过。Web lint、build 与 docs build 通过，工程信任检查和 `git diff --check` 通过。
+- 原本机 `pnpm --dir web run test:unit` 的 477 项通过没有覆盖标准容器的模块加载环境。2026-10-06 在 Node 24.20.0 Web 容器复现两份新面板缺 localStorage mock 的加载失败；测试沿用已有工作页面的 before 初始化与 after 清理，产品逻辑和断言保持不变。`docker compose exec -T web node --test --test-concurrency=1 test/unit/workSuggestionsPanel.test.js test/unit/workDelegationsPanel.test.js`：5 通过；随后标准容器 `pnpm run lint:check`、`pnpm run test:unit`（477 通过、0 失败）、`pnpm run build` 通过。docs build、工程信任检查和 `git diff --check` 的原验收结果继续保留。
 - 全包 `ruff check package` 仍有 19 项既有问题，逐项核对失败源行均存在于基线 HEAD，本次新增行没有失败；`ruff format package --check` 仍受既有格式差异阻断。未为 P03 顺手格式化无关模块。
 
 ## 消费者与未验证范围

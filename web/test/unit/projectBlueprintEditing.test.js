@@ -4,7 +4,7 @@ import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, ssrContextKey } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createServer } from 'vite'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { createPinia, setActivePinia } from 'pinia'
 
 let vite, View, api, agentApi
@@ -171,4 +171,110 @@ test('议题保存冲突在编辑区提示并保留标题正文和原因', async
   assert.equal(state.editingTopicSummary, '我的未保存正文')
   assert.equal(state.editingTopicReason, '我的修改原因')
   assert.match(state.topicEditError, /草稿已保留.*复制正文/)
+})
+
+
+test('新建按项目类型推荐模板，模板可编辑且不覆盖已有正文', async (t) => {
+  const state = await mountWorkbench(t)
+  t.mock.method(api, 'listBlueprints', async () => ({ documents: [{ name: 'plan.md' }], project_type: 'ongoing', shared_workdir: true }))
+  await state.load()
+  state.openCreateBlueprint()
+  assert.equal(state.newBlueprintTemplate, 'ongoing')
+  for (const heading of ['预期结果', '衡量方式', '时间与复盘', '约束', '当前重点']) assert.match(state.newBlueprintContent, new RegExp(heading))
+  assert.equal(state.blueprintContent, '磁盘正文')
+  assert.equal(state.sharedBlueprintDirectory, true)
+  state.newBlueprintContent += '我自己的补充'
+  let confirmation
+  t.mock.method(Modal, 'confirm', options => { confirmation = options })
+  state.changeBlueprintTemplate('delivery')
+  assert.equal(state.newBlueprintTemplate, 'ongoing')
+  assert.match(state.newBlueprintContent, /我自己的补充/)
+  state.createBlueprintOpen = false
+  state.openCreateBlueprint()
+  assert.match(state.newBlueprintContent, /我自己的补充/)
+  confirmation.onOk()
+  assert.equal(state.newBlueprintTemplate, 'delivery')
+  assert.match(state.newBlueprintContent, /计划交付时间/)
+  assert.equal(state.blueprintContent, '磁盘正文')
+})
+
+test('新建取消不写文件，同名失败保留输入与旧蓝图，成功采用回读正文', async (t) => {
+  const state = await mountWorkbench(t)
+  const create = t.mock.method(api, 'createBlueprint', async () => { throw new Error('同名蓝图已存在') })
+  state.openCreateBlueprint()
+  state.newBlueprintName = 'plan'
+  state.newBlueprintContent = '新的可复制草稿'
+  state.createBlueprintOpen = false
+  assert.equal(create.mock.callCount(), 0)
+  state.openCreateBlueprint()
+  await state.createBlueprint()
+  assert.equal(state.newBlueprintName, 'plan')
+  assert.equal(state.newBlueprintContent, '新的可复制草稿')
+  assert.equal(state.createBlueprintOpen, true)
+  assert.match(state.createBlueprintError, /同名/)
+  assert.equal(state.blueprintContent, '磁盘正文')
+  state.newBlueprintName = '新蓝图'
+  create.mock.mockImplementation(async (_id, name, content) => ({ name, content }))
+  t.mock.method(api, 'listBlueprints', async () => ({ documents: [{ name: 'plan.md' }, { name: '新蓝图.md' }] }))
+  t.mock.method(api, 'getBlueprint', async () => ({ name: '新蓝图.md', content: '新的可复制草稿' }))
+  await state.createBlueprint()
+  assert.deepEqual(create.mock.calls[1].arguments, ['p', '新蓝图.md', '新的可复制草稿'])
+  assert.equal(state.createBlueprintOpen, false)
+  assert.equal(state.loadedBlueprintName, '新蓝图.md')
+  assert.equal(state.savedBlueprintContent, '新的可复制草稿')
+})
+
+test('旧蓝图未保存编辑阻止新建，模板不清空旧编辑草稿', async t => {
+  const state = await mountWorkbench(t)
+  state.blueprintContent = '旧文档未保存内容'
+  state.openCreateBlueprint()
+  assert.equal(state.createBlueprintOpen, false)
+  assert.equal(state.blueprintContent, '旧文档未保存内容')
+  assert.match(state.blueprintActionError, /先保存/)
+})
+
+
+for (const failed of [false, true]) {
+  test(`新建蓝图${failed ? '失败' : '成功'}响应迟到时不污染另一项目草稿`, async t => {
+    const state = await mountWorkbench(t)
+    let finish, fail
+    t.mock.method(api, 'createBlueprint', () => new Promise((resolve, reject) => { finish = resolve; fail = reject }))
+    state.openCreateBlueprint()
+    state.newBlueprintName = '原项目新蓝图'
+    state.newBlueprintContent = '原项目请求'
+    const creating = state.createBlueprint()
+    await state.router.push('/projects/second/inspection')
+    await settle()
+    state.openCreateBlueprint()
+    state.newBlueprintName = '新项目草稿'
+    state.newBlueprintContent = '新项目正文'
+    if (failed) fail(new Error('原项目创建失败'))
+    else finish({ name: '原项目新蓝图.md', content: '原项目正文' })
+    await creating
+    assert.equal(state.newBlueprintName, '新项目草稿')
+    assert.equal(state.newBlueprintContent, '新项目正文')
+    assert.equal(state.createBlueprintError, '')
+    assert.equal(state.createBlueprintOpen, true)
+    assert.notEqual(state.blueprintContent, '原项目正文')
+  })
+}
+
+test('关闭或切项目后旧模板确认不清空草稿', async t => {
+  const state = await mountWorkbench(t)
+  let confirmation
+  t.mock.method(Modal, 'confirm', options => { confirmation = options })
+  state.openCreateBlueprint()
+  state.newBlueprintContent = '保留草稿'
+  state.changeBlueprintTemplate('delivery')
+  state.createBlueprintOpen = false
+  confirmation.onOk()
+  assert.equal(state.newBlueprintContent, '保留草稿')
+  state.openCreateBlueprint()
+  state.changeBlueprintTemplate('ongoing')
+  await state.router.push('/projects/second/inspection')
+  await settle()
+  state.openCreateBlueprint()
+  state.newBlueprintContent = '另一项目草稿'
+  confirmation.onOk()
+  assert.equal(state.newBlueprintContent, '另一项目草稿')
 })
