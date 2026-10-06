@@ -128,7 +128,8 @@
         <WorkSourceFields v-model:topic-id="topicId" v-model:decision-id="decisionId"
           v-model:review-confirmed="reviewConfirmed" :topics="topics" :decisions="decisions" :disabled="saving" />
         <p v-if="selectedTopicMissingCode" class="tasks-hint">所选议题尚未配置缩写，任务编号需要它。<a @click.prevent="openTopicCodes">前往配置议题编号</a></p>
-        <label>任务详情<a-textarea v-model:value="description" :rows="4" placeholder="写明目标、交付物和验收条件" /></label>
+        <label>任务详情<a-textarea v-model:value="description" :rows="4" placeholder="写明工作目标与交付范围" /></label>
+        <label>验收条件（可选，Markdown）<a-textarea v-model:value="acceptanceCriteria" aria-label="新工作验收条件" :rows="3" :maxlength="100000" placeholder="如何判断工作完成；可稍后完善" /></label>
         <div class="form-pair">
           <label>计划开始 <input v-model="startDate" type="date" /></label>
           <label>计划结束 <input v-model="dueDate" type="date" /></label>
@@ -221,6 +222,7 @@ const scheduleOpen = ref(false)
 const scheduledTask = ref(null)
 const title = ref('')
 const description = ref('')
+const acceptanceCriteria = ref('')
 const startDate = ref('')
 const dueDate = ref('')
 const parentId = ref(undefined)
@@ -368,7 +370,7 @@ async function createTask() {
       if (project !== projectId.value) return
     }
     const created = await projectWorkApi.createTask(project, {
-      title: title.value.trim(), description: description.value.trim() || null,
+      title: title.value.trim(), description: description.value.trim() || null, acceptance_criteria: acceptanceCriteria.value,
       topic_id: topicId.value || null,
       source_decision_id: decisionId.value || null, review_confirmed: reviewConfirmed.value,
       parent_id: parentId.value || null, primary_owner_agent_slug: ownerSlug.value || null,
@@ -378,6 +380,7 @@ async function createTask() {
     createOpen.value = false
     title.value = ''
     description.value = ''
+    acceptanceCriteria.value = ''
     startDate.value = ''
     dueDate.value = ''
     topicId.value = undefined
@@ -475,6 +478,7 @@ watch(projectId, () => {
   scheduleOpen.value = false
   title.value = ''
   description.value = ''
+  acceptanceCriteria.value = ''
   startDate.value = ''
   dueDate.value = ''
   parentId.value = undefined

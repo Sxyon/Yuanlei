@@ -14,7 +14,7 @@ from yuxi.workspace.git_paths import resolve_project_git_host_paths
 from yuxi.workspace.git_resource_paths import open_resource_checkout, resource_metadata_path
 
 
-async def inspect_task_git_outcomes(*, db, uid: str, project_id: str, task_id: str):
+async def inspect_task_git_outcomes(*, db, uid: str, project_id: str, task_id: str, commit: bool = True):
     """检查任务共享作用域的内容、远端同步、合并与占用情况。"""
     store = ProjectGitRepositoryStore(db)
     await store.acquire_user_runtime_lock(uid)
@@ -110,7 +110,8 @@ async def inspect_task_git_outcomes(*, db, uid: str, project_id: str, task_id: s
         except (httpx.HTTPError, ValueError, HTTPException):
             row["errors"].append("无法确认 Gitea 同步与合并状态，请检查连接后刷新")
         values.append(row)
-    await db.commit()
+    if commit:
+        await db.commit()
     return {
         "scope_key": scope,
         "resources": values,

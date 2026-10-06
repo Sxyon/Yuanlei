@@ -275,6 +275,8 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         assert detail.status_code == 200, detail.text
         assert [item["content"] for item in detail.json()["comments"]] == ["Verified outcome"]
 
+        result = await test_client.post(f"{root}/tasks/{task_id}/results", headers=headers, json={"request_id": "verified", "summary": "Verified outcome", "expected_revision": 1, "complete": True})
+        assert result.status_code == 200, result.text
         completed = await test_client.patch(f"{root}/tasks/{task_id}", headers=headers, json={"status": "done"})
         assert completed.status_code == 200, completed.text
         unread = await test_client.get("/api/inbox?folder=unread", headers=headers)
@@ -338,6 +340,7 @@ async def test_project_work_http_lifecycle_and_cross_project_guards(test_client)
         assert (await test_client.get(f"{root}/code", headers=headers)).status_code == 404
     finally:
         async with engine.begin() as db:
+            await db.execute(text("DELETE FROM project_work_results WHERE project_id IN (:main, :other)"), {"main": project_id, "other": other_id})
             await db.execute(text("DELETE FROM user_inbox_items WHERE uid = :uid"), {"uid": uid})
             await db.execute(
                 text("DELETE FROM projects WHERE id IN (:first, :second)"),

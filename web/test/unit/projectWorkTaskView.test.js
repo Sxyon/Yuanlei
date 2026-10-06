@@ -21,7 +21,7 @@ after(async () => {
 })
 
 const renderer = createRenderer({
-  createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
+  createElement: (tag) => ({ tagName: tag.toUpperCase(), value: '', options: [], getRootNode: () => ({ activeElement: null }), addEventListener() {}, setAttribute() {}, removeAttribute() {} }), createText: () => ({}), createComment: () => ({}),
   insert() {}, remove() {}, setText() {}, setElementText() {}, patchProp() {},
   parentNode: () => null, nextSibling: () => null
 })
@@ -352,7 +352,7 @@ test('完成任务先提示未处理 Git 成果，人工选择保留后才保存
   assert.equal(state().gitCompletionOpen, true)
   assert.deepEqual(state().gitCompletion.resources[0].issues, ['uncommitted'])
   await state().confirmTaskCompletion()
-  assert.deepEqual(update.mock.calls[0].arguments, ['project', 'a', { status: 'done' }])
+  assert.deepEqual(update.mock.calls[0].arguments, ['project', 'a', { status: 'done', git_outcomes_confirmed: true }])
   assert.equal(state().gitCompletionOpen, false)
 })
 
@@ -445,4 +445,43 @@ test('来源调整冲突保留所选来源及预期版本，旧执行定位不�
   assert.equal(update.mock.calls[0].arguments[2].expected_decision_revision, 2)
   assert.equal(state.executions[0].source_decision_id, 'old')
   assert.equal(state.task.source_decision_id, 'old')
+})
+
+test('真实详情模板刷新不卸载结果面板，失败及Git预检查保留同工作草稿', async t => {
+  const { readFile } = await import('node:fs/promises')
+  const Vue = await import('vue/dist/vue.cjs.js')
+  const source = await readFile(new URL('../../src/views/ProjectWorkTaskView.vue', import.meta.url), 'utf8')
+  const template = source.slice(source.indexOf('<template>') + 10, source.lastIndexOf('</template>', source.indexOf('<script')))
+  const renderTemplate = Vue.compile(template)
+  const { default: Panel } = await vite.ssrLoadModule('/src/components/project/WorkResultsPanel.vue')
+  let child, mounts = 0, page
+  const previousRender = Panel.render
+  Panel.render = function () { child = getCurrentInstance(); return h('div') }
+  t.after(() => { Panel.render = previousRender })
+  const originalSetup = Panel.setup
+  t.mock.method(Panel, 'setup', function (...args) { mounts += 1; return originalSetup(...args) })
+  let release
+  t.mock.method(projectWorkApi, 'getTask', async (_project, id) => ({ id, status: 'todo', criteria_revision: 1, acceptance_criteria: '条件', issues: [], comments: [], references: [], attachments: [], results: [] }))
+  t.mock.method(projectWorkApi, 'listDelegations', async () => ({ delegations: [] }))
+  t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
+  t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/work/tasks/:task_id', component: View }] })
+  await router.push('/projects/project/work/tasks/a'); await router.isReady()
+  const Component = { ...View, components: { WorkResultsPanel: Panel }, render() { page = getCurrentInstance(); return renderTemplate.call(this, page.setupState, []) } }
+  const app = renderer.createApp(Component); app.use(router); app.provide(ssrContextKey, { modules: new Set() }); app.mount({})
+  t.after(() => app.unmount()); await settle()
+  assert.ok(child); assert.equal(mounts, 1)
+  child.setupState.summary = '未提交摘要'; child.setupState.criteria = '未保存条件'; child.setupState.comments = { r: '验收意见' }
+  t.mock.method(projectWorkApi, 'getTask', () => new Promise(resolve => { release = resolve }))
+  const refreshing = page.setupState.load(); await settle()
+  assert.equal(mounts, 1); assert.equal(child.setupState.summary, '未提交摘要')
+  release({ id: 'a', status: 'todo', criteria_revision: 2, acceptance_criteria: '其他页面条件', issues: [], comments: [], references: [], attachments: [], results: [] })
+  await refreshing; await settle()
+  assert.equal(mounts, 1); assert.equal(child.setupState.criteria, '未保存条件'); assert.equal(child.setupState.revision, 1)
+  t.mock.method(projectWorkApi, 'getTask', async () => { throw new Error('刷新失败') })
+  await page.setupState.load(); await settle()
+  assert.equal(mounts, 1); assert.equal(child.setupState.comments.r, '验收意见')
+  t.mock.method(projectWorkApi, 'getGitOutcomes', async () => ({ requires_attention: true, resources: [] }))
+  await page.setupState.completeWithGitCheck(() => {}); await settle()
+  assert.equal(mounts, 1); assert.equal(child.setupState.summary, '未提交摘要')
 })

@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 32
+YUANLEI_SCHEMA_VERSION = 33
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1674,6 +1674,34 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v32_to_v33(self) -> None:
+        """增加验收条件与最小结果记录，保留旧完成事实。"""
+        from yuxi.storage.postgres.models_business import ProjectWorkResult
+
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS acceptance_criteria TEXT NOT NULL DEFAULT ''"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE project_work_tasks ADD COLUMN IF NOT EXISTS criteria_revision INTEGER NOT NULL DEFAULT 1"
+                )
+            )
+            for table, columns, name in (
+                ("project_work_executions", "id, task_id, project_id", "uq_work_execution_result_source"),
+                ("channel_delegations", "id, work_task_id, project_id", "uq_delegation_result_source"),
+            ):
+                await conn.execute(
+                    text(
+                        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='{name}' AND conrelid='{table}'::regclass) "
+                        f"THEN ALTER TABLE {table} ADD CONSTRAINT {name} UNIQUE ({columns}); END IF; END $$"
+                    )
+                )
+            await conn.run_sync(lambda sync: ProjectWorkResult.__table__.create(sync, checkfirst=True))
 
     async def upgrade_yuanlei_schema_v31_to_v32(self) -> None:
         """增加项目用途属性，旧项目保持未指定且不推断历史。"""

@@ -4,17 +4,21 @@
       <template #actions><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
     </PageHeader>
     <main class="work-task-content">
-      <a-spin v-if="loading" class="work-task-state" />
-      <a-alert v-else-if="error" type="error" show-icon :message="error">
+      <a-spin v-if="loading && !task" class="work-task-state" />
+      <a-alert v-else-if="error && !task" type="error" show-icon :message="error">
         <template #action><a-button size="small" @click="load">重试</a-button></template>
       </a-alert>
       <template v-else-if="task">
+        <p v-if="loading" class="work-task-muted">正在刷新工作详情，输入仍保留。</p>
+        <a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button @click="load">重试</a-button></template></a-alert>
         <div class="work-task-heading">
           <span class="work-task-number">{{ task.number }}</span>
           <h1>{{ task.title }}</h1>
           <span class="work-task-status">{{ statusLabel(task.status) }}</span>
         </div>
-        <p class="work-task-description">{{ task.description || '暂无详情' }}</p>
+        <section class="work-task-section">
+          <WorkResultsPanel :project-id="String(route.params.project_id)" :task="task" :executions="executions" @refresh="load" @complete="completeWithGitCheck" />
+        </section>
         <p v-if="task.parent_id" class="work-task-parent">
           父任务：<RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: task.parent_id } }">查看父任务</RouterLink>
         </p>
@@ -150,6 +154,7 @@
           </div>
           <p class="work-task-muted">执行前选择；已有执行记录后保持工作区身份，避免历史成果被重新归属。</p>
         </section>
+        <p v-if="!task.acceptance_criteria" class="work-task-muted">尚未填写验收条件，派发前请核对工作要求。</p>
         <WorkDelegationsPanel :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
         <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
@@ -163,7 +168,7 @@
           <p class="work-task-muted">“重新执行”只针对失败或已取消的尝试，会创建新的执行意图并绑定新的 Run，旧尝试保留可追踪。</p>
           <p v-if="!executions.length" class="work-task-muted">暂无执行记录</p>
           <ul v-else>
-            <li v-for="item in executions" :key="item.id">
+            <li v-for="item in executions" :id="`work-execution-${item.id}`" :key="item.id">
               <span class="work-execution-main">
                 {{ agentName(item.agent_slug) }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}
                 <span v-if="item.source_decision_id"> · 当次来源：<RouterLink class="work-task-link" :to="inspectionLink({ decision_id: item.source_decision_id })">决策版本 {{ item.source_decision_revision }}</RouterLink></span>
@@ -264,6 +269,7 @@ import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceStatusLabel } from '@/utils/governanceBoard'
 import { governanceBoardApi } from '@/apis/governance_board_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
+import WorkResultsPanel from '@/components/project/WorkResultsPanel.vue'
 import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 
 const route = useRoute()
@@ -277,6 +283,7 @@ const draft = ref('')
 const selectedGitWorkspaceMode = ref('inherit')
 const agents = ref([])
 const executions = ref([])
+const pendingCompletion = ref(null)
 const selectedExecutor = ref(undefined)
 const selectedStatus = ref('todo')
 const selectedKnowledges = ref([])
@@ -420,36 +427,44 @@ async function runAction(action, fallback, errorTarget = actionError) {
   }
 }
 
+function completeWithGitCheck(action) {
+  const version = loadVersion
+  const projectId = route.params.project_id
+  const taskId = route.params.task_id
+  return runAction(async () => {
+    let result
+    try {
+      result = await projectWorkApi.getGitOutcomes(projectId, taskId)
+    } catch (failure) {
+      result = { requires_attention: true, resources: [], errors: [failure?.message || '无法确认 Git 成果，请检查后明确选择保留成果'] }
+    }
+    if (version !== loadVersion || projectId !== route.params.project_id || taskId !== route.params.task_id) return
+    if (result.requires_attention) {
+      pendingCompletion.value = action
+      gitCompletion.value = result
+      gitCompletionOpen.value = true
+      return
+    }
+    await action(false)
+  }, '完成操作失败')
+}
+
 function updateStatus() {
   const projectId = route.params.project_id
   const taskId = route.params.task_id
   const status = selectedStatus.value
-  return runAction(async () => {
-    if (status === 'done') {
-      let result
-      try {
-        result = await projectWorkApi.getGitOutcomes(projectId, taskId)
-      } catch (failure) {
-        result = { requires_attention: true, resources: [], errors: [failure?.message || '无法确认 Git 成果状态，请处理后重试，或明确选择保留成果并完成任务'] }
-      }
-      if (projectId !== route.params.project_id || taskId !== route.params.task_id) return
-      if (result.requires_attention) {
-        gitCompletion.value = result
-        gitCompletionOpen.value = true
-        return
-      }
-    }
-    await projectWorkApi.updateTask(projectId, taskId, { status })
-  }, '状态保存失败')
+  if (status === 'done') return completeWithGitCheck((confirmed) => projectWorkApi.updateTask(projectId, taskId, { status, git_outcomes_confirmed: confirmed }))
+  return runAction(() => projectWorkApi.updateTask(projectId, taskId, { status }), '状态保存失败')
 }
 
 function confirmTaskCompletion() {
-  const projectId = route.params.project_id
-  const taskId = route.params.task_id
+  const action = pendingCompletion.value
+  if (!action) return
   return runAction(async () => {
-    await projectWorkApi.updateTask(projectId, taskId, { status: 'done' })
-    if (projectId === route.params.project_id && taskId === route.params.task_id) gitCompletionOpen.value = false
-  }, '状态保存失败')
+    await action(true)
+    gitCompletionOpen.value = false
+    pendingCompletion.value = null
+  }, '完成操作失败')
 }
 
 function saveKnowledges() {
@@ -717,6 +732,7 @@ watch([() => route.params.project_id, () => route.params.task_id], () => {
   selectedStart.value = ''
   selectedDue.value = ''
   executions.value = []
+  pendingCompletion.value = null
   draft.value = ''
   actionError.value = ''
   load()

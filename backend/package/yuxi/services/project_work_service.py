@@ -18,7 +18,6 @@ from yuxi.repositories.project_work_execution_repository import ProjectWorkExecu
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_work_inspection_repository import ProjectWorkInspectionRepository
 from yuxi.repositories.project_work_repository import ProjectWorkRepository
-from yuxi.repositories.user_inbox_repository import UserInboxRepository
 from yuxi.services.project_work_inspection_service import (
     MAX_INSPECTION_INTERVAL_MINUTES,
     MIN_INSPECTION_INTERVAL_MINUTES,
@@ -88,7 +87,7 @@ def _text(value: str, *, limit: int, label: str) -> str:
     return normalized
 
 
-async def _project(db: AsyncSession, user: User, project_id: str):
+async def require_project(db: AsyncSession, user: User, project_id: str):
     """限定在当前用户的可管理项目内。"""
     row = await ProjectRepository(db).get_active_selectable_for_user(project_id, str(user.uid))
     if row is None:
@@ -96,7 +95,7 @@ async def _project(db: AsyncSession, user: User, project_id: str):
     return row
 
 
-async def _writable_project(db: AsyncSession, user: User, project_id: str):
+async def writable_project(db: AsyncSession, user: User, project_id: str):
     """锁定当前用户可写项目，避免软删除与状态变更交错。"""
     row = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
     if row is None:
@@ -104,7 +103,9 @@ async def _writable_project(db: AsyncSession, user: User, project_id: str):
     return row
 
 
-async def _task(db: AsyncSession, user: User, project_id: str, task_id: str, *, lock: bool = False) -> ProjectWorkTask:
+async def require_task(
+    db: AsyncSession, user: User, project_id: str, task_id: str, *, lock: bool = False
+) -> ProjectWorkTask:
     """读取当前项目任务，跨项目视为不存在。"""
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_task(task_id, lock=lock)
     if row is None or row.project_id != project_id:
@@ -122,7 +123,7 @@ async def _issue(
     return row
 
 
-def _task_data(row: ProjectWorkTask) -> dict:
+def task_data(row: ProjectWorkTask) -> dict:
     """序列化任务当前事实。"""
     return {
         "id": row.id,
@@ -134,6 +135,8 @@ def _task_data(row: ProjectWorkTask) -> dict:
         "number": row.number,
         "title": row.title,
         "description": row.description,
+        "acceptance_criteria": row.acceptance_criteria or "",
+        "criteria_revision": row.criteria_revision or 1,
         "status": row.status,
         "start_date": row.start_date.isoformat() if row.start_date else None,
         "due_date": row.due_date.isoformat() if row.due_date else None,
@@ -243,7 +246,7 @@ async def configure_project_code(*, db: AsyncSession, user: User, project_id: st
 
 async def get_project_code(*, db: AsyncSession, user: User, project_id: str) -> dict:
     """读取当前项目已固化的缩写。"""
-    await _project(db, user, project_id)
+    await require_project(db, user, project_id)
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_project_code(project_id)
     return {"project_id": project_id, "code": row.code if row else None}
 
@@ -253,7 +256,7 @@ async def configure_topic_code(*, db: AsyncSession, user: User, project_id: str,
     normalized = _code(code)
     if normalized == "GEN":
         raise HTTPException(status_code=422, detail="GEN 保留给无议题任务")
-    await _writable_project(db, user, project_id)
+    await writable_project(db, user, project_id)
     topic = await GovernanceRepository(db).get_topic_for_update(topic_id=topic_id)
     if topic is None or topic.project_id != project_id or topic.archived_at is not None:
         raise HTTPException(status_code=404, detail="议题不存在")
@@ -278,7 +281,7 @@ async def configure_topic_code(*, db: AsyncSession, user: User, project_id: str,
 
 async def list_topics(*, db: AsyncSession, user: User, project_id: str) -> list[dict]:
     """列出当前项目议题及其已固化缩写，供建任务时选择。"""
-    await _project(db, user, project_id)
+    await require_project(db, user, project_id)
     topics = await GovernanceRepository(db).list_topics(project_id=project_id)
     codes = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).list_topic_codes()
     return [
@@ -297,7 +300,7 @@ async def create_task(*, db: AsyncSession, **values) -> dict:
     """独立创建正式工作并提交，编号与来源写入复用原子过程。"""
     row = await create_task_pending(db=db, **values)
     await db.commit()
-    return _task_data(row)
+    return task_data(row)
 
 
 async def create_task_pending(
@@ -314,16 +317,17 @@ async def create_task_pending(
     due_date: date | None = None,
     source_decision_id: str | None = None,
     review_confirmed: bool = False,
+    acceptance_criteria: str = "",
 ) -> ProjectWorkTask:
     """在项目缩写行锁内分配唯一编号并创建任务。"""
     normalized_title = _text(title, limit=512, label="标题")
     if start_date and due_date and start_date > due_date:
         raise HTTPException(status_code=422, detail="计划结束日期不能早于开始日期")
-    await _writable_project(db, user, project_id)
+    await writable_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
     await repo.validate_source(topic_id=topic_id, decision_id=source_decision_id, review_confirmed=review_confirmed)
     if parent_id is not None:
-        await _task(db, user, project_id, parent_id)
+        await require_task(db, user, project_id, parent_id)
     topic_code = "GEN"
     if topic_id is not None:
         topic = await GovernanceRepository(db).get_topic_for_update(topic_id=topic_id)
@@ -360,21 +364,22 @@ async def create_task_pending(
         source_decision_id=source_decision_id,
         review_confirmed=review_confirmed,
     )
+    row.acceptance_criteria = acceptance_criteria
     return row
 
 
 async def list_tasks(*, db: AsyncSession, user: User, project_id: str) -> list[dict]:
     """列出当前项目的工作任务。"""
-    await _project(db, user, project_id)
+    await require_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
-    return [_task_data(row) for row in await repo.list_tasks(project_id)]
+    return [task_data(row) for row in await repo.list_tasks(project_id)]
 
 
 async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: str) -> dict:
     """读取任务详情和对应讨论。"""
-    await _project(db, user, project_id)
+    await require_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
-    task = await _task(db, user, project_id, task_id)
+    task = await require_task(db, user, project_id, task_id)
     issues = await repo.list_issues(task.id)
     comments = await repo.list_comments(task_id=task.id)
     references = await repo.list_references(task.id)
@@ -385,8 +390,14 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     settings = ProjectSettingsRepository(db)
     linked = set(await settings.linked_ids(project_id))
     candidates, _ = await settings.knowledge(user) if linked else ([], set())
+    from yuxi.services.project_work_result_service import list_result_data
+
+    results = await list_result_data(db=db, user=user, project=await require_project(db, user, project_id), task=task)
     return {
-        **_task_data(task),
+        "results": results,
+        "acceptance_current": any(r["status"] == "accepted" and not r["criteria_changed"] for r in results),
+        "legacy_completion": task.status == "done" and not any(r["status"] == "accepted" for r in results),
+        **task_data(task),
         "source": await repo.source_detail(
             topic_id=task.topic_id, decision_id=task.source_decision_id, revision=task.source_decision_revision
         ),
@@ -416,9 +427,9 @@ async def update_source(
     expected_topic_id: str | None, expected_decision_id: str | None, expected_decision_revision: int | None,
 ) -> dict:
     """调整工作当前来源，原编号和旧执行输入保持不变。"""
-    await _writable_project(db, user, project_id)
+    await writable_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
-    task = await _task(db, user, project_id, task_id)
+    task = await require_task(db, user, project_id, task_id)
     if (task.topic_id, task.source_decision_id, task.source_decision_revision) != (
         expected_topic_id, expected_decision_id, expected_decision_revision
     ):
@@ -427,7 +438,7 @@ async def update_source(
         revision = await repo.validate_source(
             topic_id=topic_id, decision_id=source_decision_id, review_confirmed=review_confirmed
         )
-        task = await _task(db, user, project_id, task_id, lock=True)
+        task = await require_task(db, user, project_id, task_id, lock=True)
         task.topic_id = topic_id
         task.source_decision_id = source_decision_id
         task.source_decision_revision = revision
@@ -455,8 +466,8 @@ async def add_reference(*, db: AsyncSession, user: User, project_id: str, task_i
         valid = False
     if not valid:
         raise HTTPException(status_code=422, detail="引用 URL 须为不含凭据的 HTTP(S) 地址")
-    await _writable_project(db, user, project_id)
-    await _task(db, user, project_id, task_id)
+    await writable_project(db, user, project_id)
+    await require_task(db, user, project_id, task_id)
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).add_reference(
         task_id=task_id, title=normalized_title, url=str(parsed), created_by=str(user.uid)
     )
@@ -466,7 +477,7 @@ async def add_reference(*, db: AsyncSession, user: User, project_id: str, task_i
 
 async def remove_reference(*, db: AsyncSession, user: User, project_id: str, task_id: str, reference_id: str) -> dict:
     """从当前项目任务移除网页引用。"""
-    await _writable_project(db, user, project_id)
+    await writable_project(db, user, project_id)
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_reference(reference_id)
     if row is None or row.task_id != task_id:
         raise HTTPException(status_code=404, detail="任务引用不存在")
@@ -483,8 +494,8 @@ def _safe_file_name(file_name: str | None) -> str:
 
 async def add_attachment(*, db: AsyncSession, user: User, project_id: str, task_id: str, file: UploadFile) -> dict:
     """在项目归属边界内校验并存储任务文件附件。"""
-    await _writable_project(db, user, project_id)
-    await _task(db, user, project_id, task_id)
+    await writable_project(db, user, project_id)
+    await require_task(db, user, project_id, task_id)
     file_name = _safe_file_name(file.filename)
     if Path(file_name).suffix.lower() not in ATTACHMENT_ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=422, detail="不支持该文件类型")
@@ -525,7 +536,7 @@ async def add_attachment(*, db: AsyncSession, user: User, project_id: str, task_
 
 async def remove_attachment(*, db: AsyncSession, user: User, project_id: str, task_id: str, attachment_id: str) -> dict:
     """移除当前项目任务的文件附件及其对象。"""
-    await _writable_project(db, user, project_id)
+    await writable_project(db, user, project_id)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
     row = await repo.get_attachment(attachment_id)
     if row is None or row.task_id != task_id:
@@ -541,7 +552,7 @@ async def get_attachment_for_download(
     *, db: AsyncSession, user: User, project_id: str, task_id: str, attachment_id: str
 ) -> tuple[bytes, ProjectWorkAttachment]:
     """在项目归属边界内读取附件内容，供下载响应装配。"""
-    await _project(db, user, project_id)
+    await require_project(db, user, project_id)
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_attachment(attachment_id)
     if row is None or row.task_id != task_id:
         raise HTTPException(status_code=404, detail="任务附件不存在")
@@ -580,10 +591,21 @@ async def update_task(
     inspection_enabled: bool | None = None,
     inspection_interval_minutes: int | None = None,
     update_inspection: bool = False,
+    git_outcomes_confirmed: bool = False,
 ) -> dict:
     """修改任务状态、转移第一负责人或调整周期巡检配置。"""
-    await _writable_project(db, user, project_id)
-    task = await _task(db, user, project_id, task_id, lock=True)
+    from yuxi.services.project_work_result_service import prepare_completion, complete_pending, require_idle
+
+    if status == "done":
+        from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
+
+        await ProjectGitRepositoryStore(db).acquire_user_runtime_lock(str(user.uid))
+    await writable_project(db, user, project_id)
+    task = await require_task(db, user, project_id, task_id, lock=True)
+    if status == "done" and task.status != "done":
+        await prepare_completion(
+            db=db, user=user, project_id=project_id, task_id=task_id, confirmed=git_outcomes_confirmed
+        )
     if knowledge_ids is not None:
         from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
 
@@ -612,18 +634,12 @@ async def update_task(
     if status is not None:
         if status not in TASK_STATUSES:
             raise HTTPException(status_code=422, detail="任务状态无效")
-        if status in {"done", "cancelled"} and await ProjectWorkExecutionRepository(db).has_active_task_work(task.id):
-            raise HTTPException(status_code=409, detail="任务仍有待接受或执行中的智能体工作")
+        if status == "cancelled":
+            await require_idle(db, task.id)
         if status == "done" and task.status != "done":
-            await UserInboxRepository(db).record_occurrence(
-                uid=task.created_by,
-                kind="task_completed",
-                source_id=task.id,
-                project_id=project_id,
-                title=f"任务已完成：{task.title}",
-                summary=task.number,
-            )
-        task.status = status
+            await complete_pending(db=db, user=user, task=task)
+        else:
+            task.status = status
     if update_owner:
         if primary_owner_agent_slug is not None:
             binding = await ProjectAgentRepository(db).get_for_update(project_id, primary_owner_agent_slug)
@@ -644,7 +660,7 @@ async def update_task(
         _apply_inspection_config(task, enabled=inspection_enabled, interval_minutes=inspection_interval_minutes)
     task.updated_at = utc_now_naive()
     await db.commit()
-    return _task_data(task)
+    return task_data(task)
 
 
 def _apply_inspection_config(task: ProjectWorkTask, *, enabled: bool | None, interval_minutes: int | None) -> None:
@@ -674,8 +690,8 @@ async def create_issue(
 ) -> dict:
     """在任务行锁内分配问题单序号。"""
     normalized_title = _text(title, limit=512, label="标题")
-    await _writable_project(db, user, project_id)
-    task = await _task(db, user, project_id, task_id, lock=True)
+    await writable_project(db, user, project_id)
+    task = await require_task(db, user, project_id, task_id, lock=True)
     repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
     sequence = await repo.next_issue_sequence(task.id)
     issue = await repo.add_issue(
@@ -691,8 +707,8 @@ async def create_issue(
 
 async def get_issue(*, db: AsyncSession, user: User, project_id: str, task_id: str, issue_id: str) -> dict:
     """读取问题单及讨论。"""
-    await _project(db, user, project_id)
-    task = await _task(db, user, project_id, task_id)
+    await require_project(db, user, project_id)
+    task = await require_task(db, user, project_id, task_id)
     issue = await _issue(db, user, project_id, task.id, issue_id)
     comments = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).list_comments(
         issue_id=issue.id
@@ -706,8 +722,8 @@ async def update_issue(
     """修改当前任务内问题单状态。"""
     if status not in ISSUE_STATUSES:
         raise HTTPException(status_code=422, detail="Issue 状态无效")
-    await _writable_project(db, user, project_id)
-    task = await _task(db, user, project_id, task_id)
+    await writable_project(db, user, project_id)
+    task = await require_task(db, user, project_id, task_id)
     issue = await _issue(db, user, project_id, task.id, issue_id, lock=True)
     issue.status = status
     issue.updated_at = utc_now_naive()
@@ -726,8 +742,8 @@ async def add_comment(
 ) -> dict:
     """在已授权任务或问题单上追加讨论。"""
     normalized = _text(content, limit=100_000, label="评论")
-    await _project(db, user, project_id)
-    task = await _task(db, user, project_id, task_id)
+    await require_project(db, user, project_id)
+    task = await require_task(db, user, project_id, task_id)
     if issue_id is not None:
         await _issue(db, user, project_id, task.id, issue_id)
     row = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).add_comment(

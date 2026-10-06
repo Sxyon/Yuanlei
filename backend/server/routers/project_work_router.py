@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi.services import project_work_service as work
+from yuxi.services import project_work_result_service as results
 from yuxi.services.project_task_git_outcome_service import inspect_task_git_outcomes
 from yuxi.storage.postgres.models_business import User
 
@@ -30,6 +31,7 @@ class WorkTaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=512)
     description: str | None = None
+    acceptance_criteria: str = Field(default="", max_length=100_000)
     topic_id: str | None = Field(default=None, max_length=64)
     source_decision_id: str | None = Field(default=None, max_length=64)
     review_confirmed: bool = False
@@ -58,11 +60,98 @@ class WorkTaskUpdate(BaseModel):
     git_workspace_mode: Literal["inherit", "isolated"] | None = None
     knowledge_ids: list[str] | None = Field(default=None, max_length=100)
     status: str | None = None
+    git_outcomes_confirmed: bool = False
     primary_owner_agent_slug: str | None = Field(default=None, max_length=80)
     start_date: date | None = None
     due_date: date | None = None
     inspection_enabled: bool | None = None
     inspection_interval_minutes: int | None = Field(default=None, ge=1, le=7 * 24 * 60)
+
+
+class WorkRequirementsUpdate(BaseModel):
+    """验收要求保存与修订冲突校验。"""
+
+    model_config = ConfigDict(extra="forbid")
+    description: str | None = Field(default=None, max_length=100_000)
+    acceptance_criteria: str = Field(max_length=100_000)
+    expected_revision: int = Field(ge=1)
+
+
+class WorkEvidence(BaseModel):
+    """当前工作附件、Workdir 文件或网页引用。"""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["attachment", "file", "url"]
+    value: str = Field(min_length=1, max_length=2048)
+    title: str = Field(default="", max_length=512)
+
+
+class WorkResultCreate(BaseModel):
+    """人工结果提交，独立于 AgentRun。"""
+
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=64)
+    summary: str = Field(min_length=1, max_length=100_000)
+    unresolved: str = Field(default="", max_length=100_000)
+    evidence: list[WorkEvidence] = Field(default_factory=list, max_length=20)
+    source_execution_id: str | None = Field(default=None, max_length=64)
+    source_delegation_id: str | None = Field(default=None, max_length=64)
+    expected_revision: int = Field(ge=1)
+    complete: bool = False
+    git_outcomes_confirmed: bool = False
+
+
+class WorkResultReview(BaseModel):
+    """结果首次验收及可选完成。"""
+
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["accepted", "not_accepted"]
+    comment: str = Field(default="", max_length=100_000)
+    expected_version: int = Field(ge=1)
+    expected_revision: int = Field(ge=1)
+    complete: bool = False
+    git_outcomes_confirmed: bool = False
+
+
+@project_work.put("/projects/{project_id}/work/tasks/{task_id}/requirements")
+async def update_requirements(
+    project_id: str,
+    task_id: str,
+    payload: WorkRequirementsUpdate,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保存当前要求，保留历史验收快照。"""
+    return await results.update_requirements(
+        db=db, user=user, project_id=project_id, task_id=task_id, **payload.model_dump()
+    )
+
+
+@project_work.post("/projects/{project_id}/work/tasks/{task_id}/results")
+async def submit_result(
+    project_id: str,
+    task_id: str,
+    payload: WorkResultCreate,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """提交人工业务结果或原子提交并完成。"""
+    return await results.submit_result(db=db, user=user, project_id=project_id, task_id=task_id, **payload.model_dump())
+
+
+@project_work.post("/projects/{project_id}/work/tasks/{task_id}/results/{result_id}/review")
+async def review_result(
+    project_id: str,
+    task_id: str,
+    result_id: str,
+    payload: WorkResultReview,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """明确接受或未接受业务结果。"""
+    return await results.review_result(
+        db=db, user=user, project_id=project_id, task_id=task_id, result_id=result_id, **payload.model_dump()
+    )
 
 
 class WorkIssueCreate(BaseModel):

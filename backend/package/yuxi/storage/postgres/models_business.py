@@ -1161,6 +1161,8 @@ class ProjectWorkTask(Base):
     number = Column(String(48), nullable=False)
     title = Column(String(512), nullable=False)
     description = Column(Text, nullable=True)
+    acceptance_criteria = Column(Text, nullable=False, default="", server_default="")
+    criteria_revision = Column(Integer, nullable=False, default=1, server_default="1")
     status = Column(String(16), nullable=False, default="todo")
     start_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
@@ -1179,11 +1181,61 @@ PROJECT_WORK_ACTIVE_STATUSES = ("pending_acceptance", "queued", "dispatching", "
 PROJECT_WORK_EXECUTING_STATUSES = ("dispatching", "submitted", "interrupted")
 
 
+class ProjectWorkResult(Base):
+    """人工提交的业务结果与不可变验收依据。"""
+
+    __tablename__ = "project_work_results"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_work_result_task_project",
+        ),
+        ForeignKeyConstraint(
+            ["source_execution_id", "task_id", "project_id"],
+            ["project_work_executions.id", "project_work_executions.task_id", "project_work_executions.project_id"],
+            name="fk_work_result_execution",
+        ),
+        ForeignKeyConstraint(
+            ["source_delegation_id", "task_id", "project_id"],
+            ["channel_delegations.id", "channel_delegations.work_task_id", "channel_delegations.project_id"],
+            name="fk_work_result_delegation",
+        ),
+        UniqueConstraint("task_id", "request_id", name="uq_work_result_request"),
+        CheckConstraint("status IN ('pending', 'accepted', 'not_accepted')", name="ck_work_result_status"),
+        CheckConstraint("source_execution_id IS NULL OR source_delegation_id IS NULL", name="ck_work_result_source"),
+        CheckConstraint("criteria_revision >= 1 AND version >= 1", name="ck_work_result_versions"),
+        Index("ix_work_results_task_created", "task_id", "created_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    project_id = Column(String(64), nullable=False)
+    task_id = Column(String(64), nullable=False)
+    request_id = Column(String(64), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    summary = Column(Text, nullable=False)
+    evidence = Column(JSON_VALUE, nullable=False, default=list)
+    unresolved = Column(Text, nullable=False, default="")
+    source_execution_id = Column(String(64), nullable=True)
+    source_delegation_id = Column(String(64), nullable=True)
+    criteria_snapshot = Column(Text, nullable=False)
+    criteria_revision = Column(Integer, nullable=False)
+    status = Column(String(16), nullable=False, default="pending")
+    version = Column(Integer, nullable=False, default=1)
+    submitted_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    review_comment = Column(Text, nullable=True)
+    reviewed_by = Column(String(64), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    review_complete = Column(Boolean, nullable=False, default=False)
+
+
 class ProjectWorkExecution(Base):
     """任务分配与一次 Agent 执行尝试的持久队列事实。"""
 
     __tablename__ = "project_work_executions"
     __table_args__ = (
+        UniqueConstraint("id", "task_id", "project_id", name="uq_work_execution_result_source"),
         ForeignKeyConstraint(
             ["source_decision_id", "project_id"],
             ["governance_decisions.id", "governance_decisions.project_id"],
@@ -1668,6 +1720,7 @@ class ChannelDelegation(Base):
 
     __tablename__ = "channel_delegations"
     __table_args__ = (
+        UniqueConstraint("id", "work_task_id", "project_id", name="uq_delegation_result_source"),
         ForeignKeyConstraint(
             ["work_task_id", "project_id"],
             ["project_work_tasks.id", "project_work_tasks.project_id"],

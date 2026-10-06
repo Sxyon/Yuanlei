@@ -8,10 +8,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yuxi.storage.postgres.models_business import ChannelDelegation, ChannelSyncCursor
+from yuxi.storage.postgres.models_business import ChannelDelegation, ChannelSyncCursor, CodingSessionTurn
 from yuxi.utils.datetime_utils import utc_now_naive
 
 
@@ -57,6 +57,50 @@ class ChannelDelegationRepository:
         self.db.add(row)
         await self.db.flush()
         return row
+
+    async def lock_task_delegations(self, task_id: str) -> None:
+        """完成持有既有委派锁，避免终态投影在检查后进入回收。"""
+        await self.db.scalars(
+            select(ChannelDelegation.id)
+            .where(ChannelDelegation.work_task_id == task_id)
+            .order_by(ChannelDelegation.id)
+            .with_for_update()
+        )
+
+    async def has_active_task_work(self, task_id: str) -> bool:
+        """投递和回收中始终活跃，已投递按执行器真实终态判断。"""
+        coding_terminal = ("completed", "failed", "cancelled")
+        external_terminal = ("done", "cancelled")
+        active = await self.db.scalar(
+            select(ChannelDelegation.id)
+            .outerjoin(CodingSessionTurn, CodingSessionTurn.id == ChannelDelegation.turn_id)
+            .where(
+                ChannelDelegation.work_task_id == task_id,
+                or_(
+                    CodingSessionTurn.status.notin_(coding_terminal),
+                    ChannelDelegation.dispatch_state.in_(("pending", "collecting")),
+                    (ChannelDelegation.dispatch_state.in_(("dispatched", "reclaimed")))
+                    & or_(
+                        (ChannelDelegation.executor_key == "multica")
+                        & or_(
+                            ChannelDelegation.remote_status.is_(None),
+                            ChannelDelegation.remote_status.notin_(external_terminal),
+                        ),
+                        (ChannelDelegation.executor_key != "multica")
+                        & or_(
+                            CodingSessionTurn.status.notin_(coding_terminal),
+                            CodingSessionTurn.id.is_(None)
+                            & or_(
+                                ChannelDelegation.remote_status.is_(None),
+                                ChannelDelegation.remote_status.notin_(coding_terminal),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            .limit(1)
+        )
+        return active is not None
 
     async def get_by_operation_id(
         self,

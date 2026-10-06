@@ -21,6 +21,9 @@ from yuxi.storage.postgres.models_business import (
     ProjectWorkIssue,
     ProjectWorkReference,
     ProjectWorkTask,
+    ProjectWorkResult,
+    ProjectWorkExecution,
+    ChannelDelegation,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -299,6 +302,70 @@ class ProjectWorkRepository:
         self.db.add(row)
         await self.db.flush()
         return row
+
+    async def validate_result_source(
+        self, *, task_id: str, execution_id: str | None, delegation_id: str | None
+    ) -> None:
+        """执行来源只能引用当前工作，组合外键提供最终保护。"""
+        from fastapi import HTTPException
+
+        if execution_id and delegation_id:
+            raise HTTPException(status_code=422, detail="结果只能选择一个执行来源")
+        for model, value, task_column in (
+            (ProjectWorkExecution, execution_id, ProjectWorkExecution.task_id),
+            (ChannelDelegation, delegation_id, ChannelDelegation.work_task_id),
+        ):
+            if (
+                value
+                and await self.db.scalar(
+                    select(model.id).where(
+                        model.id == value, task_column == task_id, model.project_id == self.project_id
+                    )
+                )
+                is None
+            ):
+                raise HTTPException(status_code=404, detail="执行来源不属于当前工作")
+
+    async def results(self, task_id: str) -> list[ProjectWorkResult]:
+        """读取当前可见任务的倒序业务结果。"""
+        rows = await self.db.scalars(
+            select(ProjectWorkResult)
+            .join(ProjectWorkTask, ProjectWorkTask.id == ProjectWorkResult.task_id)
+            .join(Project, Project.id == ProjectWorkResult.project_id)
+            .where(
+                ProjectWorkResult.task_id == task_id,
+                ProjectWorkResult.project_id == self.project_id,
+                Project.uid == self.uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+            )
+            .order_by(ProjectWorkResult.created_at.desc(), ProjectWorkResult.id.desc())
+        )
+        return list(rows)
+
+    async def result(
+        self, task_id: str, *, result_id: str | None = None, request_id: str | None = None, lock: bool = False
+    ) -> ProjectWorkResult | None:
+        """按任务读取提交或幂等意图，验收可锁定结果。"""
+        query = (
+            select(ProjectWorkResult)
+            .join(Project, Project.id == ProjectWorkResult.project_id)
+            .where(
+                ProjectWorkResult.task_id == task_id,
+                ProjectWorkResult.project_id == self.project_id,
+                Project.uid == self.uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+            )
+        )
+        query = (
+            query.where(ProjectWorkResult.id == result_id)
+            if result_id
+            else query.where(ProjectWorkResult.request_id == request_id)
+        )
+        return await self.db.scalar(
+            query.with_for_update(of=ProjectWorkResult).execution_options(populate_existing=True) if lock else query
+        )
 
     async def get_task(self, task_id: str, *, lock: bool = False) -> ProjectWorkTask | None:
         """读取任务；变更或分配问题单序号时锁定。"""

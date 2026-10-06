@@ -152,7 +152,7 @@ async def assign_task(
 
     auto_accept = bool(binding.auto_accept_work)
     model_spec = await _snapshot_work_model(db, binding) if auto_accept else None
-    prompt = f"请执行项目任务 {task.number}：{task.title}\n\n{task.description or ''}\n\n完成后汇报结论、产物及未解决的问题。"
+    prompt = f"请执行项目任务 {task.number}：{task.title}\n\n{task.description or ''}\n\n验收条件：\n{task.acceptance_criteria or '未填写，请先核对工作要求'}\n\n完成后汇报结论、产物及未解决的问题。"
     try:
         row = await ProjectWorkExecutionRepository(db).create(
             task_id=task.id,
