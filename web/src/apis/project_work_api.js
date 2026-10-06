@@ -2,6 +2,8 @@ import { apiGet, apiPost, apiPut, apiRequest } from './base'
 
 /** 独立项目工作任务。 */
 export const projectWorkApi = {
+  listDelegations: (projectId) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/delegations`),
+  delegateTask: (projectId, taskId, payload) => apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/delegations`, payload),
   listTasks: (projectId) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks`),
   getCode: (projectId) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/code`),
   configureCode: (projectId, code) =>

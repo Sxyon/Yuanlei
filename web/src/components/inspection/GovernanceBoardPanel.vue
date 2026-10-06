@@ -108,7 +108,7 @@ const runStatuses = computed(() => runStatusEntries(props.board?.execution?.run_
 // 待决策队列直接按读视图给出的 pending_* 分组，前端不再自行筛选状态。
 const pendingGroups = computed(() => [
   { key: 'topics', label: '待纳入议题', items: governance.value.pending_topics || [] },
-  { key: 'tasks', label: '待审核任务', items: governance.value.pending_tasks || [] },
+  { key: 'tasks', label: '待处理工作建议', items: governance.value.pending_tasks || [] },
   { key: 'decisions', label: '待决策', items: governance.value.pending_decisions || [] }
 ])
 

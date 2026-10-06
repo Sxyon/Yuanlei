@@ -293,7 +293,14 @@ async def list_topics(*, db: AsyncSession, user: User, project_id: str) -> list[
     ]
 
 
-async def create_task(
+async def create_task(*, db: AsyncSession, **values) -> dict:
+    """独立创建正式工作并提交，编号与来源写入复用原子过程。"""
+    row = await create_task_pending(db=db, **values)
+    await db.commit()
+    return _task_data(row)
+
+
+async def create_task_pending(
     *,
     db: AsyncSession,
     user: User,
@@ -307,7 +314,7 @@ async def create_task(
     due_date: date | None = None,
     source_decision_id: str | None = None,
     review_confirmed: bool = False,
-) -> dict:
+) -> ProjectWorkTask:
     """在项目缩写行锁内分配唯一编号并创建任务。"""
     normalized_title = _text(title, limit=512, label="标题")
     if start_date and due_date and start_date > due_date:
@@ -353,8 +360,7 @@ async def create_task(
         source_decision_id=source_decision_id,
         review_confirmed=review_confirmed,
     )
-    await db.commit()
-    return _task_data(row)
+    return row
 
 
 async def list_tasks(*, db: AsyncSession, user: User, project_id: str) -> list[dict]:
@@ -381,8 +387,20 @@ async def get_task(*, db: AsyncSession, user: User, project_id: str, task_id: st
     candidates, _ = await settings.knowledge(user) if linked else ([], set())
     return {
         **_task_data(task),
-        "source": await repo.source_detail(topic_id=task.topic_id, decision_id=task.source_decision_id,
-                                           revision=task.source_decision_revision),
+        "source": await repo.source_detail(
+            topic_id=task.topic_id, decision_id=task.source_decision_id, revision=task.source_decision_revision
+        ),
+        "suggestions": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "topic_id": item.topic_id,
+                "decision_id": item.decision_id,
+                "source_channel": item.source_channel,
+                "source_url": item.source_url,
+            }
+            for item in await GovernanceRepository(db).work_suggestions(task.id)
+        ],
         "knowledge_candidates": [item for item in candidates if item["kb_id"] in linked],
         "issues": [_issue_data(row, task.number) for row in issues],
         "comments": [_comment_data(row) for row in comments],

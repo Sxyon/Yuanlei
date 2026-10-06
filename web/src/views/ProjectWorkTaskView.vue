@@ -22,6 +22,9 @@
         <section class="work-task-section">
           <h2>工作来源 <a-button size="small" @click="editSource">调整来源</a-button></h2>
           <p v-if="!task.source?.topic && !task.source?.decision" class="work-task-muted">独立工作，未关联议题或决策。</p>
+          <p v-for="suggestion in task.suggestions || []" :key="suggestion.id">工作建议：<RouterLink class="work-task-link" :to="inspectionLink({ task_id: suggestion.id })">{{ suggestion.title }}</RouterLink>
+            <RouterLink v-if="suggestion.decision_id" class="work-task-link" :to="inspectionLink({ decision_id: suggestion.decision_id })">建议来源决策</RouterLink>
+          </p>
           <p v-if="task.source?.topic">来源议题：<RouterLink class="work-task-link" :to="inspectionLink({ topic_id: task.topic_id })">{{ task.source.topic.title }}</RouterLink>
             {{ task.source.topic.archived ? ' · 已归档' : '' }}</p>
           <template v-if="task.source?.decision">
@@ -147,6 +150,7 @@
           </div>
           <p class="work-task-muted">执行前选择；已有执行记录后保持工作区身份，避免历史成果被重新归属。</p>
         </section>
+        <WorkDelegationsPanel :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
         <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
@@ -253,6 +257,7 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
+import WorkDelegationsPanel from '@/components/project/WorkDelegationsPanel.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import WorkSourceFields from '@/components/project/WorkSourceFields.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'

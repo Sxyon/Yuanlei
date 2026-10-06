@@ -24,11 +24,13 @@
 - 渠道凭据 fail-closed、明文不进 DB/API/日志/事件；Multica MVP 用实例级全局环境变量（`YUANLEI_MULTICA_BASE_URL` / `YUANLEI_MULTICA_TOKEN` / `YUANLEI_MULTICA_WORKSPACE_ID` 必填，`YUANLEI_MULTICA_PROJECT_ID` 可选），升级到按 Project 的凭据（依据 `channel_delegations.project_id` 与 `channel_sync_cursors(channel, project_id)`，非按用户）属后续决策；远端结果写入 Workdir 由 `Workdir` 安全写入 Owner 执行，路径按现有边界校验。
 - 入向同步完成时核对游标的当前 owner 与租约；失去租约的旧执行者不能覆盖新游标。Multica 列表未提供快照游标，远端在 `offset` 翻页期间删除或重排工作项仍有遗漏风险；关键历史导入需另行核对来源总量与外部标识。
 - 无 Multica 凭据时 Multica 适配器不注册，治理、Channel、Run 与 coding 路径独立可用。
-- 单项目的人用 HTTP 本地入口从已审核且已指派项目数字员工的任务发起。服务端重验项目数字员工的当前可见与管理权限，并按用户、项目、Agent 绑定与 Workdir 派生专属沙盒范围，通用 HTTP 委派入口不接受无范围的 codex/opencode 请求。委派请求快照保留来源任务 ID，读视图可关联同一任务的多次尝试。既有 Agent Run 内工具仍可按其运行授权范围执行独立编码委派。
+- 单项目的人用 HTTP 本地入口从正式工作发起，由用户选择或沿用第一负责人对应的项目数字员工。服务端重验项目数字员工的当前可见与管理权限，并按用户、项目、Agent 绑定与 Workdir 派生专属沙盒范围，通用 HTTP 委派入口不接受无范围的 codex/opencode 请求。委派请求快照保留正式工作及当次议题、决策修订，读视图可关联同一工作的多次委派。Agent Run 内工具沿用当次正式工作尝试来源；普通项目运行必须明确选择正式工作，不能绕过纳入直接执行建议。工具锁项目先于 Run。
 - 人工委派的执行器须属于该项目数字员工当前启用的编码执行器；无效选择在创建委派意图前拒绝。单项目工作台展示委派状态和对应编码会话的终态或错误，执行中的委派定期刷新状态。
 - 通过模型供应商引用凭据时，OpenCode 按供应商协议选择 SDK 适配器；Anthropic 协议使用 `@ai-sdk/anthropic`，其他协议使用 `@ai-sdk/openai-compatible`。模型供应商配置的 Base URL 仍由供应商配置拥有。
 - 本地编码 turn 超时或以非零退出码结束时，turn 与 session 收敛为失败并保存可读的固定超时或退出码诊断；未知 CLI 输出不作为错误文本持久化。会话详情和编码会话工具展示已保存的 turn 错误；不自动重跑可能已产生副作用的命令，用户可显式发起新委派。
 - 本地编码会话/turn 与委派句柄同事务提交后再发布队列；编码 pending turn 的既有恢复流程处理提交后投递失败。首次沙盒创建前刷新用户 Skill 投影，避免缺目录导致 provisioner 拒绝。
+
+- 建议旧新建委派入口返回正式工作提示；旧委派的完成、租约收敛、回收与历史读取保留。v30→v31 的旧委派工作和来源字段为空，不迁移旧 Run、不伪造历史。新增引用参与议题和决策删除保护。
 
 ## 与 Yuxi 的边界
 
@@ -62,6 +64,8 @@
 当上游拥有等价的外部执行器委派接口与渠道桥接，并能表达 proposed→审核→canonical、外部不反向写、投递意图持久化与核对、结果绑定发起 Run 与 Workdir 边界产物时，可删除本实现。删除前需要新的 Decision 说明 `channel_delegations`、`channel_sync_cursors` 既有数据的迁移与消费侧替换路径。
 
 ## 决策与证据
+
+- Decision：[工作建议纳入正式工作与执行归属](../decisions/implemented/2026-10-05-work-suggestion-admission.md)。
 
 - Decision：[外部执行器委派抽象与 Multica 桥接](../decisions/implemented/2026-09-25-external-executor-delegation-multica-bridge.md)。
 - Decision：[编码超时错误与页面离开请求](../decisions/implemented/2026-09-29-coding-timeout-and-route-departure-errors.md)。

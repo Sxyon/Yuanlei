@@ -149,6 +149,10 @@ export const governanceBoardApi = {
     return apiPost(`${projectPath(projectId)}/governance/tasks`, payload)
   },
 
+  admitTask(projectId, taskId, payload) {
+    return apiPost(`${projectPath(projectId)}/governance/tasks/${encodeURIComponent(taskId)}/admit`, payload)
+  },
+
   reviewTask(projectId, taskId, approve) {
     return apiPost(
       `${projectPath(projectId)}/governance/tasks/${encodeURIComponent(taskId)}/review`,
@@ -156,17 +160,12 @@ export const governanceBoardApi = {
     )
   },
 
-  listDelegations(projectId) {
-    return apiGet(`${projectPath(projectId)}/delegations`)
+  createDelegation(projectId, payload) {
+    return apiPost(`${projectPath(projectId)}/delegations`, payload)
   },
 
-  delegateTask(projectId, taskId, executorKey) {
-    return apiPost(
-      `${projectPath(projectId)}/governance/tasks/${encodeURIComponent(taskId)}/delegations`,
-      {
-        executor_key: executorKey
-      }
-    )
+  listDelegations(projectId) {
+    return apiGet(`${projectPath(projectId)}/delegations`)
   },
 
   getDelegation(projectId, operationId) {

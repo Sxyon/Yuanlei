@@ -31,7 +31,7 @@ from yuxi.repositories.channel_delegation_repository import ChannelDelegationRep
 from yuxi.services.channel_sync_service import ChannelSyncService
 from yuxi.services.delegation_service import DelegationService
 from yuxi.services.governance_service import create_governance_topic
-from yuxi.services.governance_service import create_governance_task, review_governance_task
+from yuxi.services.governance_service import create_governance_task, admit_governance_task
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import (
     AgentRun,
@@ -109,6 +109,7 @@ async def _seed_scope(engine, *, uid: str = "uid-owner", project_id: str = "proj
             ),
             {"project_id": project_id, "uid": uid, "workdir": f"projects/{project_id}"},
         )
+        await connection.execute(text("INSERT INTO project_work_tasks(id,project_id,number,title,status,created_by,created_at,updated_at) VALUES (:id,:p,'TEST-GEN-000001','正式工作','todo',:uid,NOW(),NOW())"), {"id": project_id + "-work", "p": project_id, "uid": uid})
 
 
 async def _load_user(session, uid: str = "uid-owner") -> User:
@@ -235,14 +236,10 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
                 )
             assert pending.value.status_code == 409
 
-            await review_governance_task(
-                project_id="project-owner",
-                task_id=task["id"],
-                approve=True,
-                review_note=None,
-                db=db,
-                user=user,
-            )
+            admitted = await admit_governance_task(project_id="project-owner", task_id=task["id"], mode="link", work_task_id="project-owner-work", db=db, user=user)
+            await db.execute(text("UPDATE project_work_tasks SET title='交付功能', description='写完并验证', primary_owner_agent_slug='project-worker' WHERE id='project-owner-work'"))
+            await db.commit()
+            task_id = admitted["work"]["id"]
             await db.execute(
                 text(
                     "UPDATE agents SET share_config = "
@@ -253,8 +250,8 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
             )
             await db.commit()
             with pytest.raises(HTTPException) as revoked:
-                await service.dispatch_project_task(
-                    project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+                await service.dispatch_work_task(
+                    project_id="project-owner", task_id=task_id, executor_key="codex", user=user
                 )
             assert revoked.value.status_code == 403
             assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 0
@@ -282,8 +279,8 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
             db.expire_all()
             await db.refresh(user)
             with pytest.raises(HTTPException) as invisible:
-                await service.dispatch_project_task(
-                    project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+                await service.dispatch_work_task(
+                    project_id="project-owner", task_id=task_id, executor_key="codex", user=user
                 )
             assert invisible.value.status_code == 409
             assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 0
@@ -307,8 +304,8 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
             db.expire_all()
             await db.refresh(user)
             with pytest.raises(HTTPException) as disabled_executor:
-                await service.dispatch_project_task(
-                    project_id="project-owner", task_id=task["id"], executor_key="opencode", user=user
+                await service.dispatch_work_task(
+                    project_id="project-owner", task_id=task_id, executor_key="opencode", user=user
                 )
             assert disabled_executor.value.status_code == 422
             assert disabled_executor.value.detail["code"] == "executor_not_enabled"
@@ -321,8 +318,8 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
             db.expire_all()
             await db.refresh(user)
             with pytest.raises(HTTPException) as empty_executors:
-                await service.dispatch_project_task(
-                    project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+                await service.dispatch_work_task(
+                    project_id="project-owner", task_id=task_id, executor_key="codex", user=user
                 )
             assert empty_executors.value.status_code == 422
             assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 0
@@ -333,12 +330,12 @@ async def test_project_task_delegation_requires_review_and_keeps_task_link() -> 
             await db.commit()
             db.expire_all()
             await db.refresh(user)
-            view = await service.dispatch_project_task(
-                project_id="project-owner", task_id=task["id"], executor_key="codex", user=user
+            view = await service.dispatch_work_task(
+                project_id="project-owner", task_id=task_id, executor_key="codex", user=user
             )
-            assert view["governance_task_id"] == task["id"]
+            assert view["work_task_id"] == task_id
             assert view["task"] == "交付功能\n\n写完并验证"
-            assert (await service.list_delegations(project_id="project-owner"))[0]["governance_task_id"] == task["id"]
+            assert (await service.list_delegations(project_id="project-owner"))[0]["work_task_id"] == task_id
 
 
 async def test_failed_dispatch_rolls_back_partial_executor_writes() -> None:
@@ -363,7 +360,7 @@ async def test_failed_dispatch_rolls_back_partial_executor_writes() -> None:
             with pytest.raises(DelegationError):
                 await service.dispatch(
                     executor_key="codex",
-                    request=DelegationRequest(operation_id="", project_id="project-owner", task="只留下意图"),
+                    request=DelegationRequest(operation_id="", project_id="project-owner", task="只留下意图", metadata={"work_task_id": "project-owner-work"}),
                     uid="uid-owner",
                 )
             assert await db.scalar(text("SELECT COUNT(*) FROM channel_sync_cursors")) == 0
@@ -420,7 +417,7 @@ async def test_dispatch_persists_intent_unified_view_and_executor_unavailable() 
 
             view = await service.dispatch(
                 executor_key="opencode",
-                request=DelegationRequest(operation_id="", project_id="project-owner", task="做一件事"),
+                request=DelegationRequest(operation_id="", project_id="project-owner", task="做一件事", metadata={"work_task_id": "project-owner-work"}),
                 uid="uid-owner",
             )
             assert view["dispatch_state"] == "dispatched"
@@ -432,7 +429,7 @@ async def test_dispatch_persists_intent_unified_view_and_executor_unavailable() 
             with pytest.raises(DelegationError) as failed:
                 await service.dispatch(
                     executor_key="codex",
-                    request=DelegationRequest(operation_id="", project_id="project-owner", task="失败任务"),
+                    request=DelegationRequest(operation_id="", project_id="project-owner", task="失败任务", metadata={"work_task_id": "project-owner-work"}),
                     uid="uid-owner",
                 )
             assert failed.value.error_code == "stub_failed"
@@ -445,7 +442,7 @@ async def test_dispatch_persists_intent_unified_view_and_executor_unavailable() 
             with pytest.raises(ExecutorUnavailableError) as unavailable:
                 await service.dispatch(
                     executor_key="missing",
-                    request=DelegationRequest(operation_id="", project_id="project-owner", task="x"),
+                    request=DelegationRequest(operation_id="", project_id="project-owner", task="x", metadata={"work_task_id": "project-owner-work"}),
                     uid="uid-owner",
                 )
             assert unavailable.value.error_code == "executor_unavailable"
@@ -461,7 +458,7 @@ async def test_multica_search_before_create_adopts_lost_response() -> None:
             service = DelegationService(db, executors=[MulticaExecutor(client)])
             view = await service.dispatch(
                 executor_key="multica",
-                request=DelegationRequest(operation_id="", project_id="project-owner", task="委派远端"),
+                request=DelegationRequest(operation_id="", project_id="project-owner", task="委派远端", metadata={"work_task_id": "project-owner-work"}),
                 uid="uid-owner",
             )
             assert client.create_calls == 1
@@ -496,7 +493,7 @@ async def test_local_state_and_remote_projection_stay_separate() -> None:
             service = DelegationService(db, executors=[MulticaExecutor(client)])
             view = await service.dispatch(
                 executor_key="multica",
-                request=DelegationRequest(operation_id="", project_id="project-owner", task="远端任务"),
+                request=DelegationRequest(operation_id="", project_id="project-owner", task="远端任务", metadata={"work_task_id": "project-owner-work"}),
                 uid="uid-owner",
             )
             client.issues[0] = MulticaIssue(
@@ -525,7 +522,7 @@ async def test_collect_materializes_inside_workdir_boundary() -> None:
                 )
                 view = await service.dispatch(
                     executor_key="opencode",
-                    request=DelegationRequest(operation_id="", project_id="project-owner", task="任务"),
+                    request=DelegationRequest(operation_id="", project_id="project-owner", task="任务", metadata={"work_task_id": "project-owner-work"}),
                     uid=uid,
                 )
                 workdir = Workdir.open_existing(uid, "projects/project-owner")
@@ -551,7 +548,7 @@ async def test_converge_resets_interrupted_collecting_row() -> None:
             service = DelegationService(db, executors=[_StubExecutor("opencode")])
             view = await service.dispatch(
                 executor_key="opencode",
-                request=DelegationRequest(operation_id="", project_id="project-owner", task="任务"),
+                request=DelegationRequest(operation_id="", project_id="project-owner", task="任务", metadata={"work_task_id": "project-owner-work"}),
                 uid="uid-owner",
             )
             row = await ChannelDelegationRepository(db).get_by_operation_id(
@@ -835,3 +832,119 @@ async def test_multica_inbound_sync_fails_closed_on_malformed_cursor() -> None:
             assert await db.scalar(select(func.count()).select_from(GovernanceTopic)) == 0
             retained = await service.get_cursor(project_id="project-owner")
             assert retained is not None and retained["cursor"] == malformed
+
+async def test_new_delegation_requires_work_and_preserves_old_collect_path():
+    """新委派必须归属正式工作，旧无归属委派仍能回收而不伪造工作完成。"""
+    async with _scoped_database("pytest_delegation_legacy") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            service = DelegationService(db, executors=[_StubExecutor("codex")])
+            with pytest.raises(HTTPException) as missing:
+                await service.dispatch(executor_key="codex", uid="uid-owner",
+                    request=DelegationRequest(operation_id="", project_id="project-owner", task="旁路"))
+            assert missing.value.detail["code"] == "formal_work_required"
+            assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 0
+            old = await ChannelDelegationRepository(db).add_delegation(operation_id="old-delegation",
+                project_id="project-owner", executor_key="codex", task="历史执行",
+                request_json={"metadata": {}}, initiator_run_id=None, created_by="uid-owner")
+            old.dispatch_state = "dispatched"
+            old.external_ref = "old-reference"
+            await db.commit()
+            result = await service.collect(operation_id="old-delegation", project_id="project-owner")
+            assert result["dispatch_state"] == "reclaimed" and result["work_task_id"] is None
+            await db.refresh(old)
+            assert old.result_summary == "done" and old.work_task_id is None
+            assert await db.scalar(text("SELECT status FROM project_work_tasks WHERE id='project-owner-work'")) == "todo"
+
+
+async def test_v30_to_v31_migration_keeps_legacy_delegations_empty_and_is_reentrant():
+    """真实旧结构升级不推断映射或执行依据，重复迁移保持既有定位。"""
+    async with _scoped_database("pytest_admission_migration") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with manager.async_engine.begin() as conn:
+            await conn.execute(text("DROP TABLE work_suggestion_admissions"))
+            for col in ('work_task_id', 'source_topic_id', 'source_decision_id', 'source_decision_revision'):
+                await conn.execute(text(f"ALTER TABLE channel_delegations DROP COLUMN {col} CASCADE"))
+            await conn.execute(text("ALTER TABLE governance_tasks DROP CONSTRAINT uq_governance_tasks_id_project"))
+            await conn.execute(text("INSERT INTO channel_delegations(id,operation_id,project_id,executor_key,task,request_json,dispatch_state,attempts,result_json,created_at,updated_at) VALUES('old','old','project-owner','codex','旧输入','{}','dispatched',1,'{}',NOW(),NOW())"))
+        await manager.upgrade_yuanlei_schema_v30_to_v31()
+        async with manager.async_engine.begin() as conn:
+            row = (await conn.execute(text("SELECT task,work_task_id,source_decision_id FROM channel_delegations WHERE id='old'"))).one()
+            assert tuple(row) == ('旧输入', None, None)
+            assert await conn.scalar(text("SELECT count(*) FROM work_suggestion_admissions")) == 0
+            await conn.execute(text("UPDATE channel_delegations SET work_task_id='project-owner-work' WHERE id='old'"))
+        await manager.upgrade_yuanlei_schema_v30_to_v31()
+        async with manager.async_engine.connect() as conn:
+            assert await conn.scalar(text("SELECT work_task_id FROM channel_delegations WHERE id='old'")) == 'project-owner-work'
+
+async def test_delegation_tool_preserves_attempt_source_and_rejects_other_work(monkeypatch):
+    """真实工具调用保留当次定位，当前来源变化不重写委派输入。"""
+    from types import SimpleNamespace
+    from test.integration.services.test_project_dashboard_tool import _seed_run
+    from yuxi.agents.toolkits.buildin import delegation_tools
+    from yuxi.services.governance_service import create_governance_decision, operate_governance_decision
+    from yuxi.storage.postgres.models_business import ProjectWorkTask, ProjectWorkExecution
+
+    async with _scoped_database("pytest_delegation_tool") as (manager, sessions):
+        manager.AsyncSession = sessions
+        await _seed_run(sessions, uid="uid-owner", project_id="project-owner", thread_id="thread-1", run_id="run-1")
+        async with sessions() as db:
+            user = await _load_user(db)
+            source = await create_governance_decision(project_id="project-owner", title="旧依据", conclusion="原要求", rationale=None, topic_id=None, db=db, user=user)
+            await operate_governance_decision(project_id="project-owner", decision_id=source['id'], action='approve', expected_revision=1, reason='批准', db=db, user=user)
+            db.add(ProjectWorkTask(id="work", project_id="project-owner", number="T-GEN-000001", title="正式工作", created_by="uid-owner"))
+            await db.flush()
+            db.add(ProjectWorkExecution(id="attempt", task_id="work", project_id="project-owner", uid="uid-owner", agent_slug="main", status="submitted", prompt="当次固定输入", request_id="work-request", thread_id="work-thread", source_decision_id=source['id'], source_decision_revision=2))
+            run = await db.get(AgentRun, 'run-1')
+            run.origin_metadata = {"project_work_task_id": "work", "project_work_execution_id": "attempt"}
+            await db.commit()
+        monkeypatch.setattr(delegation_tools, 'pg_manager', manager)
+        monkeypatch.setattr(DelegationService, 'build_default', classmethod(lambda cls, db, **kwargs: cls(db, executors=[_StubExecutor('multica')])))
+        runtime = SimpleNamespace(context=SimpleNamespace(uid="uid-owner", run_id="run-1", worker_id="worker-current", thread_id="thread-1"))
+        denied = json.loads(await delegation_tools.delegation_dispatch.coroutine(executor_key="multica", task="错误归属", work_task_id="other", runtime=runtime))
+        assert denied['error_code'] == 'invalid_request'
+        result = json.loads(await delegation_tools.delegation_dispatch.coroutine(executor_key="multica", task="固定子任务", runtime=runtime))
+        assert result['work_task_id'] == 'work' and result['source_decision_id'] == source['id'] and result['source_decision_revision'] == 2
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id=result['operation_id'])
+            assert row.task == '固定子任务' and row.work_task_id == 'work'
+            assert row.request_json['metadata']['source_decision_id'] == source['id']
+            assert (await db.get(ProjectWorkTask, 'work')).source_decision_id is None
+            run = await db.get(AgentRun, 'run-1'); run.origin_metadata = {}; await db.commit()
+        missing = json.loads(await delegation_tools.delegation_dispatch.coroutine(executor_key="multica", task="没有工作", runtime=runtime))
+        assert missing['error_code'] == 'formal_work_required'
+        async with sessions() as db:
+            assert await db.scalar(select(func.count()).select_from(ChannelDelegation)) == 1
+
+
+async def test_delegation_tool_locks_project_before_run():
+    """项目被占用时工具未抢占 Run 行，避免 HTTP 外键与工具死锁。"""
+    import asyncio
+    from test.integration.services.test_project_dashboard_tool import _seed_run
+    from yuxi.agents.toolkits.buildin.project_run_scope import resolve_project_run_scope
+
+    async with _scoped_database("pytest_delegation_lock") as (manager, sessions):
+        await _seed_run(sessions, uid="uid-owner", project_id="project-owner", thread_id="thread-1", run_id="run-1")
+        async with manager.async_engine.connect() as holder, manager.async_engine.connect() as observer:
+            await holder.begin()
+            holder_pid = await holder.scalar(text('SELECT pg_backend_pid()'))
+            await holder.execute(text("SELECT id FROM projects WHERE id='project-owner' FOR UPDATE"))
+            async def operation():
+                async with sessions() as db:
+                    result = await resolve_project_run_scope(db=db, run_id='run-1', uid='uid-owner', worker_id='worker-current', lock_project_first=True)
+                    await db.commit()
+                    return result[0]
+            pending = asyncio.create_task(operation())
+            try:
+                for _ in range(100):
+                    await observer.commit()
+                    waiting = await observer.scalar(text("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND :pid=ANY(pg_blocking_pids(pid))"), {'pid': holder_pid})
+                    if waiting: break
+                    await asyncio.sleep(.02)
+                assert waiting, '工具必须正在等待该项目锁'
+                # 恢复旧 Run→Project 顺序，这个 NOWAIT 会因 Run 已被占用而失败。
+                await observer.execute(text("SELECT id FROM agent_runs WHERE id='run-1' FOR UPDATE NOWAIT"))
+                await observer.rollback()
+            finally:
+                await holder.rollback()
+                assert await asyncio.wait_for(pending, 5) == 'project-owner'

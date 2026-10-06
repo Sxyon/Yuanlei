@@ -74,7 +74,7 @@
         </p>
         <p v-if="detail.references.length">已有引用：{{ detail.references.join('、') }}</p>
         <p v-for="task in detail.tasks" :key="task.id">
-          已关联治理任务：<router-link :to="{ query: { ...$route.query, task_id: task.id } }">{{
+          已关联工作建议：<router-link :to="{ query: { ...$route.query, task_id: task.id } }">{{
             task.title
           }}</router-link>
           · {{ governanceStatusLabel(task.status) }}

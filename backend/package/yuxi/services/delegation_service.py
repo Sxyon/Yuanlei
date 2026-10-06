@@ -48,6 +48,10 @@ def _serialize(row: ChannelDelegation, *, capabilities: dict[str, bool] | None =
         "executor_key": row.executor_key,
         "task": row.task,
         "governance_task_id": (row.request_json or {}).get("governance_task_id"),
+        "work_task_id": row.work_task_id,
+        "source_topic_id": row.source_topic_id,
+        "source_decision_id": row.source_decision_id,
+        "source_decision_revision": row.source_decision_revision,
         "initiator_run_id": row.initiator_run_id,
         "session_id": row.session_id,
         "turn_id": row.turn_id,
@@ -123,26 +127,47 @@ class DelegationService:
         return executor
 
     async def dispatch_project_task(self, *, project_id: str, task_id: str, executor_key: str, user: User) -> dict:
-        """校验项目、已审核任务及数字员工绑定后，委派到项目专属沙盒。"""
+        """旧建议入口只提示纳入，既有委派继续查询和回收。"""
+        project = await ProjectRepository(self.db).get_active_selectable_for_user(project_id, str(user.uid))
+        task = await GovernanceRepository(self.db).get_task(task_id=task_id)
+        if project is None or task is None or task.project_id != project_id:
+            raise HTTPException(404, detail="工作建议不存在")
+        mapping = await GovernanceRepository(self.db).admission(task_id)
+        raise HTTPException(
+            409,
+            detail={
+                "code": "formal_work_required",
+                "message": "请纳入正式工作后从工作详情发起执行",
+                "work_task_id": mapping[0].work_task_id if mapping else None,
+            },
+        )
+
+    async def dispatch_work_task(
+        self, *, project_id: str, task_id: str, executor_key: str, user: User, agent_slug: str | None = None
+    ) -> dict:
+        """从正式工作校验执行者与当前来源，委派到项目专属沙盒。"""
         from yuxi.agents.backends.sandbox.provider import SandboxScope
         from yuxi.repositories.agent_repository import AgentRepository, user_can_manage_agent
 
         if executor_key not in SANDBOX_EXECUTOR_KEYS:
             raise HTTPException(status_code=422, detail={"code": "invalid_executor", "message": "仅支持本地编码执行器"})
-        project = await ProjectRepository(self.db).get_active_selectable_for_user(project_id, str(user.uid))
+        project = await ProjectRepository(self.db).lock_active_selectable_for_user(project_id, str(user.uid))
         if project is None:
             raise HTTPException(status_code=404, detail="Project 不存在")
-        task = await GovernanceRepository(self.db).get_task(task_id=task_id)
+        from yuxi.repositories.project_work_repository import ProjectWorkRepository
+
+        task = await ProjectWorkRepository(self.db, project_id=project_id, uid=str(user.uid)).get_task(
+            task_id, lock=True
+        )
         if task is None or task.project_id != project.id:
             raise HTTPException(status_code=404, detail="任务不存在")
-        if task.status != "canonical" or not task.assignee_agent_slug:
+        agent_slug = agent_slug or task.primary_owner_agent_slug
+        if task.status in {"done", "cancelled"} or not agent_slug:
             raise HTTPException(
-                status_code=409, detail={"code": "task_not_ready", "message": "任务需先审核并指派项目数字员工"}
+                status_code=409, detail={"code": "task_not_ready", "message": "请为未结束的正式工作选择项目数字员工"}
             )
-        binding = await ProjectAgentRepository(self.db).get(project.id, task.assignee_agent_slug)
-        agent = await AgentRepository(self.db).get_visible_by_slug(
-            slug=task.assignee_agent_slug, user=user, kind="main"
-        )
+        binding = await ProjectAgentRepository(self.db).get(project.id, agent_slug)
+        agent = await AgentRepository(self.db).get_visible_by_slug(slug=agent_slug, user=user, kind="main")
         if binding is None or agent is None:
             raise HTTPException(status_code=409, detail={"code": "agent_unbound", "message": "项目数字员工绑定已失效"})
         if not user_can_manage_agent(user, agent):
@@ -173,7 +198,7 @@ class DelegationService:
                     "runtime_scope_id": scope.cache_key,
                     "workdir_relative_path": project.workdir_path,
                     "agent_config": agent_config,
-                    "governance_task_id": task.id,
+                    "work_task_id": task.id,
                 },
             ),
             uid=uid,
@@ -187,6 +212,40 @@ class DelegationService:
         uid: str | None = None,
     ) -> dict:
         """先持久化投递意图，再调用执行器；成功后写入句柄与远端引用。"""
+        if uid is None:
+            raise HTTPException(403, detail="新委派需要当前用户和正式工作归属")
+        from yuxi.repositories.project_work_repository import ProjectWorkRepository
+        from yuxi.storage.postgres.models_business import ProjectWorkExecution
+
+        project = await ProjectRepository(self.db).lock_active_selectable_for_user(request.project_id, str(uid))
+        if project is None:
+            raise HTTPException(404, detail="项目不存在")
+        work_id = request.metadata.get("work_task_id")
+        if not work_id:
+            raise HTTPException(409, detail={"code": "formal_work_required", "message": "请选择正式工作后发起委派"})
+        work = await ProjectWorkRepository(self.db, project_id=request.project_id, uid=str(uid)).get_task(
+            work_id, lock=True
+        )
+        if work is None:
+            raise HTTPException(404, detail="正式工作不存在")
+        if work.status in {"done", "cancelled"}:
+            raise HTTPException(409, detail={"code": "work_ended", "message": "正式工作已结束"})
+        source = work
+        execution_id = request.metadata.get("project_work_execution_id")
+        if execution_id:
+            source = await self.db.get(ProjectWorkExecution, execution_id)
+            if source is None or source.task_id != work.id or source.project_id != request.project_id:
+                raise HTTPException(409, detail="当次执行与正式工作不一致")
+        request = replace(
+            request,
+            metadata={
+                **request.metadata,
+                "work_task_id": work.id,
+                "source_topic_id": source.source_topic_id if execution_id else work.topic_id,
+                "source_decision_id": source.source_decision_id,
+                "source_decision_revision": source.source_decision_revision,
+            },
+        )
         executor = self._require_executor(executor_key)
         operation_id = str(request.operation_id or uuid.uuid4().hex)
         request = replace(request, operation_id=operation_id)

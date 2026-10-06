@@ -22,6 +22,7 @@ from yuxi.services.governance_service import (
     create_governance_topic,
     list_governance_topic_comments,
     review_governance_task,
+    admit_governance_task,
     review_governance_topic,
     update_governance_topic,
     get_governance_topic,
@@ -128,6 +129,20 @@ class GovernanceDecisionErratumCreate(BaseModel):
     reason: str = Field(..., min_length=1, max_length=100_000)
     meaning_unchanged: bool
     expected_revision: int = Field(..., ge=1)
+
+
+class SuggestionAdmission(BaseModel):
+    """个人确认建议纳入的创建或关联输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["create", "link"]
+    work_task_id: str | None = Field(None, max_length=64)
+    title: str | None = Field(None, max_length=512)
+    description: str | None = None
+    topic_id: str | None = Field(None, max_length=64)
+    source_decision_id: str | None = Field(None, max_length=64)
+    review_confirmed: bool = False
+    review_note: str | None = None
 
 
 class GovernanceTaskCreate(BaseModel):
@@ -315,6 +330,20 @@ async def review_topic(
         review_note=payload.review_note,
         db=db,
         user=current_user,
+    )
+
+
+@governance.post("/projects/{project_id}/governance/tasks/{task_id}/admit")
+async def admit_task(
+    project_id: str,
+    task_id: str,
+    payload: SuggestionAdmission,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """审核建议并原子纳入正式工作。"""
+    return await admit_governance_task(
+        db=db, user=user, project_id=project_id, task_id=task_id, **payload.model_dump(exclude_unset=True)
     )
 
 

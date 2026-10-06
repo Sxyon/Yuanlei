@@ -38,7 +38,12 @@ async def _run_delegation_operation(
             raise ValueError("当前运行缺少 Project 上下文")
         async with pg_manager.get_async_session_context() as db:
             project_id, user = await resolve_project_run_scope(
-                db=db, run_id=run_id, uid=uid, worker_id=worker_id, resource_label="外部执行器委派"
+                db=db,
+                run_id=run_id,
+                uid=uid,
+                worker_id=worker_id,
+                resource_label="外部执行器委派",
+                lock_project_first=True,
             )
             return json.dumps(
                 await operation(db=db, project_id=project_id, user=user, runtime=runtime, run_id=run_id),
@@ -114,15 +119,26 @@ async def delegation_dispatch(
     task: str,
     context_refs_json: str | None = None,
     budget_json: str | None = None,
+    work_task_id: str | None = None,
     runtime: ToolRuntime = None,
 ) -> str:
-    """把任务委派给已注册的外部执行器（opencode/codex/multica）并返回统一委派视图。
+    """把正式工作委派给已注册的外部执行器（opencode/codex/multica）并返回统一委派视图。
+    正式工作执行内自动沿用当次工作；普通对话须提供当前项目的 work_task_id。
 
     同一接口委派、同一路径回收；沙盒执行器在专属沙盒内排队被委派的那一轮。
     """
 
     async def operation(*, db, project_id, user, run_id, runtime):
         service = DelegationService.build_default(db)
+        run = await db.get(AgentRun, str(run_id))
+        origin = run.origin_metadata or {} if run is not None else {}
+        current_work = origin.get("project_work_task_id")
+        if current_work and work_task_id and work_task_id != current_work:
+            raise ValueError("不能把当次正式工作委派到另一项工作")
+        metadata = await _sandbox_metadata(db, runtime, str(run_id))
+        metadata["work_task_id"] = current_work or work_task_id
+        if current_work:
+            metadata["project_work_execution_id"] = origin.get("project_work_execution_id")
         request = DelegationRequest(
             operation_id="",
             project_id=project_id,
@@ -130,7 +146,7 @@ async def delegation_dispatch(
             initiator_run_id=str(run_id),
             context_refs=_parse_json_list(context_refs_json, "context_refs_json"),
             budget=_parse_json_object(budget_json, "budget_json"),
-            metadata=await _sandbox_metadata(db, runtime, str(run_id)),
+            metadata=metadata,
         )
         return await service.dispatch(executor_key=executor_key, request=request, uid=str(user.uid))
 

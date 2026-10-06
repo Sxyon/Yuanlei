@@ -411,15 +411,13 @@ async def test_task_source_normalization_and_assignee_boundary() -> None:
                 )
             assert duplicate.value.detail["code"] == "duplicate_source"
 
-            reviewed = await review_governance_task(
-                project_id="project-owner",
-                task_id=task["id"],
-                approve=True,
-                review_note=None,
-                db=session,
-                user=user,
-            )
-            assert reviewed["status"] == "canonical"
+            with pytest.raises(HTTPException) as approval:
+                await review_governance_task(project_id="project-owner", task_id=task["id"], approve=True,
+                                             review_note=None, db=session, user=user)
+            assert approval.value.detail["code"] == "admission_required"
+            reviewed = await review_governance_task(project_id="project-owner", task_id=task["id"], approve=False,
+                                                    review_note="保留来源", db=session, user=user)
+            assert reviewed["status"] == "rejected"
             assert reviewed["review"]["owner_uid"] == "uid-owner"
 
             tasks = await list_governance_tasks(project_id="project-owner", db=session, user=user)
@@ -848,7 +846,7 @@ async def test_decision_v28_migration_preserves_original_approval_and_is_reentra
         await _seed_project(manager.async_engine, project_id="project-owner", uid="uid-owner")
         async with manager.async_engine.begin() as conn:
             for table in ("governance_decision_errata", "governance_decision_events", "governance_decision_revisions"):
-                await conn.execute(text(f"DROP TABLE {table}"))
+                await conn.execute(text(f"DROP TABLE {table} CASCADE"))
             for name in (
                 "ck_governance_decisions_status",
                 "ck_governance_decisions_decision_shape",

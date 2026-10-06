@@ -1238,12 +1238,17 @@ async def test_project_work_assignment_reaches_worker_result_and_task_comment(
             json={"action": "approve", "expected_revision": 1, "reason": "批准确定性验证依据"},
         )
         assert approved_source.status_code == 200, approved_source.text
-        created = await e2e_client.post(
-            f"{root}/tasks", headers=e2e_headers,
-            json={"title": f"Verify worker {EXPECTED_OUTPUT}", "source_decision_id": source_id},
+        suggestion = await e2e_client.post(
+            f"{governance_root}/tasks", headers=e2e_headers,
+            json={"title": f"Verify worker {EXPECTED_OUTPUT}", "decision_id": source_id},
         )
-        assert created.status_code == 200, created.text
-        task_id = str(created.json()["id"])
+        assert suggestion.status_code == 200, suggestion.text
+        admitted = await e2e_client.post(
+            f"{governance_root}/tasks/{suggestion.json()['id']}/admit", headers=e2e_headers,
+            json={"mode": "create"},
+        )
+        assert admitted.status_code == 200, admitted.text
+        task_id = str(admitted.json()["work"]["id"])
         config_path = f"/api/projects/{project_id}/agents/{agent_slug}/workbench/config"
         queue_config = await e2e_client.put(
             config_path, headers=e2e_headers,

@@ -38,7 +38,7 @@
           <div>
             <p class="workbench-kicker">PROJECT WORKBENCH</p>
             <h1>{{ board.project?.name || '项目工作台' }}</h1>
-            <p>维护蓝图，审核议题和任务，发起执行并查看汇报。</p>
+            <p>维护蓝图，研讨议题，将工作建议纳入正式工作并查看汇报。</p>
           </div>
           <div class="workbench-links">
             <RouterLink :to="{ name: 'ProjectWorkTasksView', params: { project_id: projectId } }"
@@ -531,12 +531,12 @@
           <div class="section-heading">
             <span class="section-index">03</span>
             <div>
-              <h2>治理审核任务与本地执行</h2>
-              <p>这里处理治理审核任务；长期工作任务请前往项目工作任务管理。</p>
+              <h2>工作建议与历史执行</h2>
+              <p>建议纳入正式工作后执行，旧执行记录继续保留。</p>
             </div>
           </div>
           <div class="form-row">
-            <a-input v-model:value="taskTitle" placeholder="任务标题" /><a-select
+            <a-input v-model:value="taskTitle" placeholder="工作建议标题" /><a-select
               v-model:value="taskAgentSlug"
               allow-clear
               placeholder="项目数字员工"
@@ -574,13 +574,14 @@
                 >{{ decision.title }}</a-select-option
               ></a-select
             ><a-button :disabled="!taskTitle.trim() || busy" @click="createTask"
-              >创建待审核任务</a-button
+              >创建工作建议</a-button
             >
           </div>
+          <WorkSuggestionsPanel :project-id="projectId" :suggestions="board.governance?.tasks || []" :topics="allTopics" :decisions="board.governance?.decisions || []" @reject="task => reviewTask(task, false)" @admitted="load" />
           <ul class="workbench-list">
             <li
-              v-for="task in board.governance?.tasks || []"
-              :id="`task-${task.id}`"
+              v-for="task in (board.governance?.tasks || []).filter(item => taskDelegations(item.id).length)"
+              :id="`legacy-execution-${task.id}`"
               :key="task.id"
               :class="{ 'selected-governance-item': route.query.task_id === task.id }"
             >
@@ -589,44 +590,7 @@
                 governanceStatusLabel(task.status)
               }}</a-tag
               ><span>{{ task.assignee_agent_slug || '未指派' }}</span>
-              <a-button
-                v-if="task.status === 'proposed'"
-                size="small"
-                :disabled="busy"
-                @click="reviewTask(task, true)"
-                >通过</a-button
-              >
-              <a-button
-                v-if="task.status === 'proposed'"
-                size="small"
-                :disabled="busy"
-                @click="reviewTask(task, false)"
-                >拒绝</a-button
-              >
-              <template v-if="task.status === 'canonical' && task.assignee_agent_slug">
-                <a-select
-                  :value="selectedExecutorFor(task)"
-                  style="width: 120px"
-                  :disabled="!configuredExecutors(task).length"
-                  placeholder="未启用"
-                  @change="(value) => (executorSelection[task.id] = value)"
-                  ><a-select-option
-                    v-for="key in configuredExecutors(task)"
-                    :key="key"
-                    :value="key"
-                    >{{ key === 'codex' ? 'Codex' : 'OpenCode' }}</a-select-option
-                  ></a-select
-                >
-                <a-button
-                  size="small"
-                  :disabled="busy || !configuredExecutors(task).length"
-                  @click="delegateTask(task)"
-                  >委派执行</a-button
-                >
-                <span v-if="!configuredExecutors(task).length" class="workbench-muted"
-                  >请先在数字员工设置中启用执行器</span
-                >
-              </template>
+              <span>历史执行记录</span>
               <ul v-if="taskDelegations(task.id).length" class="delegation-list">
                 <li v-for="item in taskDelegations(task.id)" :key="item.operation_id">
                   {{ item.executor_key }} · {{ delegationStatusLabel(item) }}
@@ -699,6 +663,7 @@ import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
+import WorkSuggestionsPanel from '@/components/project/WorkSuggestionsPanel.vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import { MessagesSquare, Ellipsis, Pencil, Archive, Trash2 } from '@lucide/vue'
 import { codingSessionApi } from '@/apis/coding_session_api'
@@ -766,12 +731,11 @@ const taskDescription = ref('')
 const taskTopicId = ref(undefined)
 const taskDecisionId = ref(undefined)
 const taskAgentSlug = ref(undefined)
-const executorSelection = ref({})
 const sessionDetails = ref({})
 const sectionLinks = [
   { id: 'blueprint', label: '项目蓝图' },
   { id: 'topics', label: '议题与决策' },
-  { id: 'tasks', label: '任务与执行' },
+  { id: 'tasks', label: '工作建议' },
   { id: 'reports', label: '督查与汇报' }
 ]
 const jumpTo = (id) =>
@@ -796,22 +760,6 @@ const selectedTopic = computed(() =>
 )
 const taskDelegations = (taskId) =>
   delegations.value.filter((item) => item.governance_task_id === taskId)
-const configuredExecutors = (task) => {
-  const agent = agents.value.find((item) => item.slug === task.assignee_agent_slug)
-  const coding = {
-    ...(agent?.config_json?.coding || {}),
-    ...(agent?.config_overrides?.coding || {})
-  }
-  return Array.isArray(coding.executors)
-    ? coding.executors.filter((key) => ['codex', 'opencode'].includes(key))
-    : []
-}
-const selectedExecutorFor = (task) => {
-  const enabled = configuredExecutors(task)
-  return enabled.includes(executorSelection.value[task.id])
-    ? executorSelection.value[task.id]
-    : enabled[0]
-}
 const delegationStatusLabel = (item) =>
   ({
     queued: '等待派发',
@@ -1256,8 +1204,7 @@ const createTask = () =>
     taskTopicId.value = undefined
   })
 const reviewTask = (task, approve) => act(() => api.reviewTask(projectId.value, task.id, approve))
-const delegateTask = (task) =>
-  act(() => api.delegateTask(projectId.value, task.id, selectedExecutorFor(task)))
+
 async function showSession(item) {
   try {
     const detail = await codingSessionApi.detail(item.session_id)

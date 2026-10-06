@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 30
+YUANLEI_SCHEMA_VERSION = 31
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1670,6 +1670,63 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v30_to_v31(self) -> None:
+        """增加建议纳入映射与委派来源，旧执行保持空关联。"""
+        from yuxi.storage.postgres.models_business import WorkSuggestionAdmission
+
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            constraints = [("governance_tasks", "uq_governance_tasks_id_project", "UNIQUE (id, project_id)")]
+            for column, kind in (
+                ("work_task_id", "VARCHAR(64)"),
+                ("source_topic_id", "VARCHAR(64)"),
+                ("source_decision_id", "VARCHAR(64)"),
+                ("source_decision_revision", "INTEGER"),
+            ):
+                await conn.execute(text(f"ALTER TABLE channel_delegations ADD COLUMN IF NOT EXISTS {column} {kind}"))
+            for name, clause in (
+                (
+                    "fk_delegation_work_project",
+                    "FOREIGN KEY (work_task_id, project_id) REFERENCES project_work_tasks(id, project_id)",
+                ),
+                (
+                    "fk_delegation_topic_project",
+                    "FOREIGN KEY (source_topic_id, project_id) REFERENCES governance_topics(id, project_id)",
+                ),
+                (
+                    "fk_delegation_decision_project",
+                    "FOREIGN KEY (source_decision_id, project_id) REFERENCES governance_decisions(id, project_id)",
+                ),
+                (
+                    "fk_delegation_decision_revision",
+                    "FOREIGN KEY (source_decision_id, source_decision_revision) "
+                    "REFERENCES governance_decision_revisions(decision_id, number)",
+                ),
+                (
+                    "ck_delegation_source_shape",
+                    "CHECK ((source_decision_id IS NULL AND source_decision_revision IS NULL) "
+                    "OR (source_decision_id IS NOT NULL AND source_decision_revision IS NOT NULL))",
+                ),
+            ):
+                constraints.append(("channel_delegations", name, clause))
+            for table, name, clause in constraints:
+                await conn.execute(
+                    text(
+                        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='{name}' "
+                        f"AND conrelid='{table}'::regclass) THEN ALTER TABLE {table} "
+                        f"ADD CONSTRAINT {name} {clause}; END IF; END $$"
+                    )
+                )
+            await conn.run_sync(lambda sync: WorkSuggestionAdmission.__table__.create(sync, checkfirst=True))
+            await conn.execute(
+                text(
+                    "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_admission_project' "
+                    "AND conrelid='work_suggestion_admissions'::regclass) THEN ALTER TABLE work_suggestion_admissions "
+                    "ADD CONSTRAINT fk_admission_project FOREIGN KEY (project_id) REFERENCES projects(id) "
+                    "ON DELETE CASCADE; END IF; END $$"
+                )
+            )
 
     async def upgrade_yuanlei_schema_v29_to_v30(self) -> None:
         """增加正式工作与执行尝试的可空来源定位，不推断旧数据。"""

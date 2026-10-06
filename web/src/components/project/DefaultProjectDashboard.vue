@@ -16,7 +16,7 @@
         <span>待纳入议题</span><strong>{{ governance.pending_topics?.length || 0 }}</strong>
       </div>
       <div class="stat">
-        <span>待审核任务</span><strong>{{ governance.pending_tasks?.length || 0 }}</strong>
+        <span>待处理工作建议</span><strong>{{ governance.pending_tasks?.length || 0 }}</strong>
       </div>
       <div class="stat">
         <span>近期阻塞记录</span><strong>{{ execution.blocked_runs?.length || 0 }}</strong>

@@ -30,6 +30,7 @@ class DelegationCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    work_task_id: str = Field(..., min_length=1, max_length=64)
     executor_key: str = Field(..., max_length=32)
     task: str = Field(..., min_length=1)
     initiator_run_id: str | None = Field(None, max_length=64)
@@ -41,6 +42,7 @@ class ProjectTaskDelegationCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     executor_key: str = Field(..., pattern="^(codex|opencode)$")
+    agent_slug: str | None = Field(None, max_length=80)
 
 
 async def _require_project(*, project_id: str, db: AsyncSession, user: User):
@@ -72,7 +74,7 @@ async def create_delegation(
     if payload.executor_key in {"codex", "opencode"}:
         raise HTTPException(
             status_code=422,
-            detail={"code": "task_required", "message": "本地执行请从已审核的项目任务发起"},
+            detail={"code": "task_required", "message": "本地执行请从正式工作发起"},
         )
     service = DelegationService.build_default(db)
     if payload.executor_key not in service.registered_keys():
@@ -86,6 +88,7 @@ async def create_delegation(
         task=payload.task,
         initiator_run_id=payload.initiator_run_id,
         budget=payload.budget or {},
+        metadata={"work_task_id": payload.work_task_id},
     )
     try:
         return await service.dispatch(executor_key=payload.executor_key, request=request, uid=str(current_user.uid))
@@ -105,6 +108,27 @@ async def delegate_project_task(
     try:
         return await DelegationService.build_default(db).dispatch_project_task(
             project_id=project_id, task_id=task_id, executor_key=payload.executor_key, user=current_user
+        )
+    except DelegationError as exc:
+        raise _delegation_http_error(exc) from exc
+
+
+@delegations.post("/projects/{project_id}/work/tasks/{task_id}/delegations")
+async def delegate_work_task(
+    project_id: str,
+    task_id: str,
+    payload: ProjectTaskDelegationCreate,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保留编码执行能力，由正式工作发起。"""
+    try:
+        return await DelegationService.build_default(db).dispatch_work_task(
+            project_id=project_id,
+            task_id=task_id,
+            executor_key=payload.executor_key,
+            agent_slug=payload.agent_slug,
+            user=user,
         )
     except DelegationError as exc:
         raise _delegation_http_error(exc) from exc

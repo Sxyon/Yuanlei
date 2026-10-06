@@ -1530,6 +1530,7 @@ class GovernanceTask(Base):
 
     __tablename__ = "governance_tasks"
     __table_args__ = (
+        UniqueConstraint("id", "project_id", name="uq_governance_tasks_id_project"),
         CheckConstraint(_GOVERNANCE_STATUS_SQL, name="ck_governance_tasks_status"),
         CheckConstraint(_GOVERNANCE_SOURCE_CHANNEL_SQL, name="ck_governance_tasks_source_channel"),
         CheckConstraint(_GOVERNANCE_SOURCE_SHAPE_SQL, name="ck_governance_tasks_source_shape"),
@@ -1623,6 +1624,34 @@ CHANNEL_DELEGATION_EXECUTORS = ("opencode", "codex", "multica")
 CHANNEL_SYNC_CHANNELS = ("multica",)
 
 
+class WorkSuggestionAdmission(Base):
+    """工作建议与正式工作的同项目唯一纳入记录。"""
+
+    __tablename__ = "work_suggestion_admissions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["suggestion_id", "project_id"],
+            ["governance_tasks.id", "governance_tasks.project_id"],
+            name="fk_admission_suggestion_project",
+        ),
+        ForeignKeyConstraint(
+            ["work_task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_admission_work_project",
+        ),
+        CheckConstraint("mode IN ('create', 'link')", name="ck_admission_mode"),
+    )
+    suggestion_id = Column(String(64), primary_key=True)
+    project_id = Column(
+        String(64), ForeignKey("projects.id", ondelete="CASCADE", name="fk_admission_project"), nullable=False
+    )
+    work_task_id = Column(String(64), nullable=False)
+    mode = Column(String(16), nullable=False)
+    created_by = Column(String(64), nullable=False)
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
+
+
 class ChannelDelegation(Base):
     """外部执行器委派事实：本地投递/回收状态与远端只读投影分离（yuanlei 域）。
 
@@ -1632,6 +1661,31 @@ class ChannelDelegation(Base):
 
     __tablename__ = "channel_delegations"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["work_task_id", "project_id"],
+            ["project_work_tasks.id", "project_work_tasks.project_id"],
+            name="fk_delegation_work_project",
+        ),
+        ForeignKeyConstraint(
+            ["source_topic_id", "project_id"],
+            ["governance_topics.id", "governance_topics.project_id"],
+            name="fk_delegation_topic_project",
+        ),
+        ForeignKeyConstraint(
+            ["source_decision_id", "project_id"],
+            ["governance_decisions.id", "governance_decisions.project_id"],
+            name="fk_delegation_decision_project",
+        ),
+        ForeignKeyConstraint(
+            ["source_decision_id", "source_decision_revision"],
+            ["governance_decision_revisions.decision_id", "governance_decision_revisions.number"],
+            name="fk_delegation_decision_revision",
+        ),
+        CheckConstraint(
+            "(source_decision_id IS NULL AND source_decision_revision IS NULL) "
+            "OR (source_decision_id IS NOT NULL AND source_decision_revision IS NOT NULL)",
+            name="ck_delegation_source_shape",
+        ),
         CheckConstraint(
             "dispatch_state IN ('pending', 'dispatched', 'collecting', 'reclaimed', 'failed')",
             name="ck_channel_delegations_dispatch_state",
@@ -1653,6 +1707,10 @@ class ChannelDelegation(Base):
         nullable=False,
         comment="所属 Project ID",
     )
+    work_task_id = Column(String(64), nullable=True)
+    source_topic_id = Column(String(64), nullable=True)
+    source_decision_id = Column(String(64), nullable=True)
+    source_decision_revision = Column(Integer, nullable=True)
     initiator_run_id = Column(
         String(64),
         ForeignKey("agent_runs.id", ondelete="SET NULL", name="fk_channel_delegations_initiator_run_id"),

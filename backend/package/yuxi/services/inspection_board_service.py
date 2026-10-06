@@ -83,7 +83,7 @@ async def _build_project_board(*, project: Project, db: AsyncSession, user: User
             "reports": reports,
             "pending_topics": [t for t in topics if t["admission_status"] == "proposed"],
             "open_topics": [t for t in topics if t["progress"] == "open"],
-            "pending_tasks": _pending(tasks),
+            "pending_tasks": [row for row in tasks if row["status"] in {"proposed", "canonical"} and not row["work"]],
             "pending_decisions": [row for row in decisions if row["status"] == "draft"],
         },
         "execution": {

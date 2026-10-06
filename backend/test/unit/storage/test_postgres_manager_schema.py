@@ -407,6 +407,10 @@ def test_channel_delegation_schema_owns_state_and_operation_boundaries():
     assert foreign_keys == {
         "fk_channel_delegations_project_id",
         "fk_channel_delegations_initiator_run_id",
+        "fk_delegation_work_project",
+        "fk_delegation_topic_project",
+        "fk_delegation_decision_project",
+        "fk_delegation_decision_revision",
     }
     assert "uq_channel_delegations_operation_id" in {index.name for index in delegations.indexes}
     assert "ix_channel_delegations_state_lease" in {index.name for index in delegations.indexes}

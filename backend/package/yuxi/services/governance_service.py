@@ -27,6 +27,7 @@ from yuxi.storage.postgres.models_business import (
 )
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
+_UNSET = object()
 MAX_TITLE_LENGTH = 512
 MAX_TOPIC_TEXT_LENGTH = 100_000
 
@@ -593,7 +594,109 @@ async def list_governance_tasks(
     """读取当前用户项目下的任务列表。"""
     project = await _require_project(project_id=project_id, db=db, user=user)
     rows = await GovernanceRepository(db).list_tasks(project_id=project.id)
-    return [_serialize_task(row) for row in rows]
+    result = []
+    repo = GovernanceRepository(db)
+    for row in rows:
+        item = _serialize_task(row)
+        mapping = await repo.admission(row.id)
+        item["work"] = _admitted_work(mapping) if mapping else None
+        result.append(item)
+    return result
+
+
+def _admitted_work(mapping) -> dict:
+    """提供映射及正式工作跳转事实。"""
+    admission, work = mapping
+    return {
+        "id": work.id,
+        "number": work.number,
+        "title": work.title,
+        "mode": admission.mode,
+        "created_by": admission.created_by,
+        "created_at": format_utc_datetime(admission.created_at),
+        "reason": admission.reason,
+    }
+
+
+async def admit_governance_task(
+    *,
+    db: AsyncSession,
+    user: User,
+    project_id: str,
+    task_id: str,
+    mode: str,
+    work_task_id: str | None = None,
+    review_note: str | None = None,
+    title: str | None = None,
+    description: str | None = _UNSET,
+    topic_id: str | None = _UNSET,
+    source_decision_id: str | None = _UNSET,
+    review_confirmed: bool = False,
+) -> dict:
+    """在一次事务中审核建议并创建或关联正式工作。"""
+    from yuxi.services.project_work_service import create_task_pending
+    from yuxi.repositories.project_work_repository import ProjectWorkRepository
+
+    project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
+    if project is None:
+        raise HTTPException(404, detail="项目不存在")
+    repo = GovernanceRepository(db)
+    suggestion = await repo.get_task_for_update(task_id=task_id)
+    if suggestion is None or suggestion.project_id != project_id:
+        raise HTTPException(404, detail="工作建议不存在")
+    mapping = await repo.admission(task_id)
+    if mapping:
+        if mode != mapping[0].mode or (mode == "link" and work_task_id != mapping[0].work_task_id):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "suggestion_already_admitted",
+                    "message": "建议已纳入其他正式工作，请打开原工作",
+                    "work": _admitted_work(mapping),
+                },
+            )
+        return {"suggestion_id": task_id, "work": _admitted_work(mapping)}
+    if suggestion.status not in {"proposed", "canonical"}:
+        raise HTTPException(409, detail={"code": "suggestion_rejected", "message": "被拒绝的建议不能纳入"})
+    if mode == "create":
+        description = suggestion.description if description is _UNSET else description
+        topic_id = suggestion.topic_id if topic_id is _UNSET else topic_id
+        source_decision_id = suggestion.decision_id if source_decision_id is _UNSET else source_decision_id
+        work = await create_task_pending(
+            db=db,
+            user=user,
+            project_id=project_id,
+            title=title or suggestion.title,
+            description=description,
+            topic_id=topic_id,
+            source_decision_id=source_decision_id,
+            review_confirmed=review_confirmed,
+            parent_id=None,
+            primary_owner_agent_slug=suggestion.assignee_agent_slug,
+        )
+    elif mode == "link" and work_task_id:
+        work = await ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid)).get_task(
+            work_task_id, lock=True
+        )
+        if work is None:
+            raise HTTPException(404, detail="所选正式工作不属于当前项目")
+    else:
+        raise HTTPException(422, detail="请选择新建工作或关联当前项目已有工作")
+    if suggestion.status == "proposed":
+        suggestion.status = "canonical"
+        suggestion.review_owner_uid = str(user.uid)
+        suggestion.reviewed_at = utc_now_naive()
+        suggestion.review_note = review_note
+    await repo.add_admission(
+        suggestion_id=task_id,
+        work_task_id=work.id,
+        project_id=project_id,
+        mode=mode,
+        uid=str(user.uid),
+        reason=review_note,
+    )
+    await db.commit()
+    return {"suggestion_id": task_id, "work": _admitted_work(await repo.admission(task_id))}
 
 
 async def review_governance_task(
@@ -606,7 +709,11 @@ async def review_governance_task(
     user: User,
 ) -> dict[str, Any]:
     """审核 proposed 任务：写入审核责任人后落为 canonical 或 rejected。"""
-    project = await _require_project(project_id=project_id, db=db, user=user)
+    if approve:
+        raise HTTPException(409, detail={"code": "admission_required", "message": "请通过纳入为工作完成审核"})
+    project = await ProjectRepository(db).lock_active_selectable_for_user(project_id, str(user.uid))
+    if project is None:
+        raise HTTPException(404, detail="项目不存在")
     repo = GovernanceRepository(db)
     row = await repo.get_task_for_update(task_id=task_id)
     if row is None or row.project_id != project.id:

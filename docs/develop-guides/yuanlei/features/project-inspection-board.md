@@ -16,7 +16,7 @@
 - 议题/任务/决策状态只有唯一事实源：治理四表；督查板读视图直接读来源，不建立可独立漂移的镜像。
 - 执行事实归属上游 `agent_runs` 与 `conversations`；督查板只读，不终结、不改写 Run 状态。
 - 汇报写入 `governance_reports`，只引用 `source_run_id` 与 `artifact_path`，不保存 Run 终态。
-- 待纳入议题读取 admission_status=proposed，待审核任务读取 status=proposed，待决策读取 status=draft；`blockers` 指 failed/interrupted 的执行记录。议题进度独立读取，不从纳入资格推断。单项目决策详情区分草案、有效批准与折叠历史，保留勘误、同项目目标和倒序局部时间线。
+- 待纳入议题读取 admission_status=proposed，待处理工作建议读取未纳入的 proposed 或历史 canonical，待决策读取 status=draft；`blockers` 指 failed/interrupted 的执行记录。议题进度独立读取，不从纳入资格推断。单项目决策详情区分草案、有效批准与折叠历史，保留勘误、同项目目标和倒序局部时间线。
 - Agent 工具只在带 Project 的运行中重建授权并校验当前 worker lease；子智能体拒绝。
 - 跨项目视图只覆盖当前用户 active、selectable 的 Project。
 - 督查面板只消费 board 读视图：跨项目入口消费 `GET /governance/board`，单项目工作台消费 `GET /projects/{id}/governance/board`；治理与执行操作由单项目工作台通过各自 API 完成，后端拥有最终状态。Dashboard 的关系图直接派生议题、决策和任务外键，节点选中后展示详情并跳转到工作台对应记录。
@@ -51,6 +51,8 @@
 当上游拥有等价的督查聚合读模型，并能保证读视图不成为第二状态 Owner、汇报不复制 Run 终态时，可删除本读模型、Agent 工具与只读展示面。删除前需要新的 Decision 说明 Dashboard/Taskboard 消费侧的替换路径与既有汇报记录的处理。
 
 ## 决策与证据
+
+- [工作建议纳入正式工作与执行归属](../decisions/implemented/2026-10-05-work-suggestion-admission.md)
 
 - Decision：[元垒督查板](../decisions/implemented/2026-09-25-yuanlei-inspection-board.md)。
 - Decision：[项目议题讨论、决策入口与关系图](../decisions/implemented/2026-09-27-project-governance-discussion-and-graph.md)。

@@ -23,6 +23,8 @@ from yuxi.storage.postgres.models_business import (
     GovernanceTopicEvent,
     ProjectWorkTask,
     ProjectWorkExecution,
+    WorkSuggestionAdmission,
+    ChannelDelegation,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
@@ -221,6 +223,10 @@ class GovernanceRepository:
             ProjectWorkExecution.source_topic_id == topic_id
         ).limit(1)):
             references.append("正式工作历史执行依据")
+        if await self.db.scalar(
+            select(ChannelDelegation.id).where(ChannelDelegation.source_topic_id == topic_id).limit(1)
+        ):
+            references.append("正式工作历史委派依据")
         return references
 
     async def add_task(
@@ -264,6 +270,43 @@ class GovernanceRepository:
             created_by=operator,
             created_at=timestamp,
             updated_at=timestamp,
+        )
+        self.db.add(row)
+        await self.db.flush()
+        return row
+
+    async def work_suggestions(self, work_task_id: str):
+        """读取正式工作承接的全部建议与来源，保留不同建议依据。"""
+        return list(
+            await self.db.scalars(
+                select(GovernanceTask)
+                .join(WorkSuggestionAdmission, WorkSuggestionAdmission.suggestion_id == GovernanceTask.id)
+                .where(WorkSuggestionAdmission.work_task_id == work_task_id)
+                .order_by(WorkSuggestionAdmission.created_at.desc())
+            )
+        )
+
+    async def admission(self, suggestion_id: str):
+        """读取建议的唯一正式工作及稳定编号。"""
+        return (
+            await self.db.execute(
+                select(WorkSuggestionAdmission, ProjectWorkTask)
+                .join(ProjectWorkTask, ProjectWorkTask.id == WorkSuggestionAdmission.work_task_id)
+                .where(WorkSuggestionAdmission.suggestion_id == suggestion_id)
+            )
+        ).first()
+
+    async def add_admission(
+        self, *, suggestion_id: str, work_task_id: str, project_id: str, mode: str, uid: str, reason: str | None
+    ):
+        """追加唯一映射，组合外键兜底同项目。"""
+        row = WorkSuggestionAdmission(
+            suggestion_id=suggestion_id,
+            work_task_id=work_task_id,
+            project_id=project_id,
+            mode=mode,
+            created_by=uid,
+            reason=reason,
         )
         self.db.add(row)
         await self.db.flush()
@@ -387,7 +430,7 @@ class GovernanceRepository:
             .limit(1)
         ):
             refs.append("补充或替代决策")
-        for model in (ProjectWorkTask, ProjectWorkExecution):
+        for model in (ProjectWorkTask, ProjectWorkExecution, ChannelDelegation):
             if await self.db.scalar(select(model.id).where(model.source_decision_id == decision_id).limit(1)):
                 refs.append("正式工作及其历史执行依据")
                 break

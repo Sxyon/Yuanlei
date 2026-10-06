@@ -10,7 +10,7 @@ from yuxi.utils.datetime_utils import utc_now_naive
 
 
 async def resolve_project_run_scope(
-    *, db, run_id: str, uid: str, worker_id: str, resource_label: str = "项目"
+    *, db, run_id: str, uid: str, worker_id: str, resource_label: str = "项目", lock_project_first: bool = False
 ) -> tuple[str, User]:
     """用 Run、Conversation、Project 的关联重建当前调用的授权范围。"""
     statement = (
@@ -26,8 +26,14 @@ async def resolve_project_run_scope(
             Project.status == "active",
             Project.selection_status == "selectable",
         )
-        .with_for_update(of=AgentRun)
     )
+    if lock_project_first:
+        # 新委派与 HTTP 的项目锁先于 Run；随后重验完整授权及 lease。
+        project_id = await db.scalar(statement.with_only_columns(Project.id))
+        if project_id is None:
+            raise ValueError(f"当前运行无权访问{resource_label}")
+        await db.execute(select(Project).where(Project.id == project_id).with_for_update())
+    statement = statement.with_for_update(of=AgentRun)
     result = (await db.execute(statement)).one_or_none()
     if result is None:
         raise ValueError(f"当前运行无权访问{resource_label}")
