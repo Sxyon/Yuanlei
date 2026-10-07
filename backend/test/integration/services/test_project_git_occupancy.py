@@ -264,6 +264,7 @@ async def test_parent_scope_change_is_blocked_by_shared_child_history_only(sessi
     async with sessions() as db:
         store = ProjectGitRepositoryStore(db)
         assert await store.task_tree_has_git_history(task_id="root", project_id="project", uid="owner") is True
+        assert await store.task_tree_has_git_history(task_id="root", project_id="project", uid="other") is False
 
 
 async def test_user_has_nonterminal_runs_excludes_terminal_interrupted_run(sessions):
@@ -298,4 +299,3 @@ async def test_user_has_nonterminal_runs_excludes_terminal_interrupted_run(sessi
         )
         await db.commit()
         assert await store.user_has_nonterminal_runs("owner") is True
-        assert await store.task_tree_has_git_history(task_id="root", project_id="project", uid="other") is False

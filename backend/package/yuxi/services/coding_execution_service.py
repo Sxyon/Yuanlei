@@ -78,6 +78,8 @@ async def effective_coding_agent_config_snapshot(
     project_id: str,
 ) -> dict:
     """在排队事务内读取并冻结项目生效配置，恢复时不再追随 live override。"""
+    if (agent_config or {}).get("_coding_effective_snapshot"):
+        return coding_agent_config_snapshot(agent_config)
     binding = await ProjectAgentRepository(db).get(str(project_id), str(agent_slug))
     overrides = binding.config_overrides if binding is not None else None
     return coding_agent_config_snapshot(agent_config, overrides)

@@ -65,6 +65,10 @@
 
 当上游拥有等价的外部执行器委派接口与渠道桥接，并能表达 proposed→审核→canonical、外部不反向写、投递意图持久化与核对、结果绑定发起 Run 与 Workdir 边界产物时，可删除本实现。删除前需要新的 Decision 说明 `channel_delegations`、`channel_sync_cursors` 既有数据的迁移与消费侧替换路径。
 
+## 冻结策略与投递拒绝
+
+委派恢复、适配器预检和编码会话持久化共同遵循已冻结的运行配置。创建句柄前明确的沙盒策略拒绝收敛为 failed，不能长期阻塞正式工作完成；未知投递错误仍保留恢复语义，回滚后的迟到错误不能覆盖新 Owner。决策与真实 PostgreSQL 反例见[策略拒绝的委派终态](../decisions/implemented/2026-10-07-delegation-frozen-policy-failure.md)。
+
 ## 结果交付与反馈
 
 成功终态的委派回收在所属事务生成唯一待验收结果，保留 operation/turn 与当次条件。租约接管后旧回收者不能改写新结果或释放新租约；不制造 AgentRun 或自动完成工作。语义与证据见[决策记录](../decisions/implemented/2026-10-06-execution-result-feedback.md)。

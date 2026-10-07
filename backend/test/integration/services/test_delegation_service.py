@@ -1032,3 +1032,189 @@ async def test_collection_owner_and_automatic_result_are_preserved(late_error):
             assert result.source_output["operation_id"] == "result-operation"
             row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="result-operation")
             assert row.dispatch_state == "reclaimed" and row.result_summary == "新回收输出"
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+async def test_unsupported_frozen_sandbox_policy_is_terminal(recovery):
+    """真实适配器拒绝未启用专属沙盒的请求，失败记录不阻塞完成。"""
+    from yuxi.agents.backends.sandbox import SandboxScope
+    from yuxi.delegation.sandbox import SandboxCodingExecutor
+    from yuxi.storage.postgres.models_business import Agent, ProjectAgent
+
+    metadata = {
+        "uid": "uid-owner",
+        "runtime_scope_id": SandboxScope.agent_project(
+            uid="uid-owner", agent_slug="agent", project_id="project-owner"
+        ).cache_key,
+        "workdir_relative_path": "projects/project-owner",
+        "agent_config": {"_coding_effective_snapshot": True, "sandbox": {"mode": "shared"}},
+        "work_task_id": "project-owner-work",
+    }
+
+    async with _scoped_database("pytest_delegation_policy") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            db.add(Agent(slug="agent", backend_id="ChatbotAgent", name="合成执行者", share_config={}))
+            await db.flush()
+            db.add(
+                ProjectAgent(
+                    id="binding",
+                    project_id="project-owner",
+                    agent_slug="agent",
+                    config_overrides={"sandbox": {"mode": "dedicated", "lifecycle": "persistent"}},
+                )
+            )
+            await db.commit()
+            service = DelegationService(db, executors=[SandboxCodingExecutor(db, executor_key="codex")])
+            if recovery:
+                row = ChannelDelegation(
+                    id="policy-row",
+                    operation_id="policy-operation",
+                    project_id="project-owner",
+                    work_task_id="project-owner-work",
+                    executor_key="codex",
+                    task="合成工作",
+                    request_json={"task": "合成工作", "metadata": metadata},
+                    dispatch_state="pending",
+                    attempts=1,
+                    result_json={},
+                    created_at=utc_now_naive(),
+                    updated_at=utc_now_naive(),
+                )
+                db.add(row)
+                await db.commit()
+                assert (await service.converge())["failed"] == 1
+            else:
+                with pytest.raises(DelegationError, match="专属沙盒"):
+                    await service.dispatch(
+                        executor_key="codex",
+                        uid="uid-owner",
+                        request=DelegationRequest(
+                            operation_id="", project_id="project-owner", task="合成工作", metadata=metadata
+                        ),
+                    )
+            row = (await db.scalars(select(ChannelDelegation))).one()
+            assert row.dispatch_state == "failed"
+            assert row.error_code == "sandbox_policy_unsupported"
+            assert row.owner_token is None and row.lease_expires_at is None
+            assert not await ChannelDelegationRepository(db).has_active_task_work("project-owner-work")
+            assert (await service.converge())["failed"] == 0
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+@pytest.mark.parametrize("new_state", ["pending", "dispatched"])
+async def test_dispatch_failure_preserves_new_owner_after_rollback(monkeypatch, recovery, new_state):
+    """失败事务回滚后，旧执行者不能覆盖新租约或已提交句柄。"""
+    async with _scoped_database("pytest_delegation_error_race") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+
+            class RejectingExecutor(_StubExecutor):
+                """拒绝本次投递，使错误路径回滚。"""
+
+                async def dispatch(self, request):
+                    raise DelegationError("策略拒绝", error_code="sandbox_policy_unsupported")
+
+            if recovery:
+                db.add(
+                    ChannelDelegation(
+                        id="race-row",
+                        operation_id="race-operation",
+                        project_id="project-owner",
+                        work_task_id="project-owner-work",
+                        executor_key="codex",
+                        task="工作",
+                        request_json={},
+                        dispatch_state="pending",
+                        attempts=1,
+                        result_json={},
+                    )
+                )
+                await db.commit()
+            original_rollback = db.rollback
+
+            async def rollback_and_advance():
+                """在释放锁后插入另一事务已提交的事实。"""
+                await original_rollback()
+                async with sessions() as newer:
+                    row = (await newer.scalars(select(ChannelDelegation).with_for_update())).one()
+                    row.dispatch_state = new_state
+                    row.owner_token = "new-owner"
+                    row.lease_expires_at = utc_now_naive() + timedelta(minutes=5)
+                    row.external_ref = "new-handle" if new_state == "dispatched" else None
+                    await newer.commit()
+
+            monkeypatch.setattr(db, "rollback", rollback_and_advance)
+            service = DelegationService(db, executors=[RejectingExecutor("codex")])
+            if recovery:
+                await service.converge()
+            else:
+                with pytest.raises(DelegationError):
+                    await service.dispatch(
+                        executor_key="codex",
+                        uid="uid-owner",
+                        request=DelegationRequest(
+                            operation_id="",
+                            project_id="project-owner",
+                            task="工作",
+                            metadata={"work_task_id": "project-owner-work"},
+                        ),
+                    )
+            row = (await db.scalars(select(ChannelDelegation))).one()
+            assert row.dispatch_state == new_state and row.owner_token == "new-owner"
+            assert row.error_code is None and row.lease_expires_at is not None
+            assert row.external_ref == ("new-handle" if new_state == "dispatched" else None)
+            monkeypatch.setattr(db, "rollback", original_rollback)
+
+
+async def test_dispatch_preserves_frozen_policy_in_session(monkeypatch):
+    """真实适配器持久化当次冻结配置，不再合并当前项目覆盖。"""
+    from yuxi.agents.backends.sandbox import SandboxScope
+    from yuxi.agents.skills import service as skills
+    from yuxi.delegation.sandbox import SandboxCodingExecutor
+    from yuxi.services.coding_execution_service import CodingExecutionService
+    from yuxi.storage.postgres.models_business import Agent, CodingSession, ProjectAgent
+
+    async def prepared(*args, **kwargs):
+        """隔离真实环境准备，测试持久化输入链。"""
+        return None
+
+    monkeypatch.setattr(skills, "refresh_user_skill_projection_async", prepared)
+    monkeypatch.setattr(CodingExecutionService, "prepare", prepared)
+    frozen = {
+        "_coding_effective_snapshot": True,
+        "sandbox": {"mode": "dedicated", "lifecycle": "persistent"},
+        "coding": {"executor": "codex"},
+    }
+    async with _scoped_database("pytest_frozen_session") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            db.add(Agent(slug="agent", backend_id="ChatbotAgent", name="合成执行者", share_config={}))
+            await db.flush()
+            db.add(
+                ProjectAgent(
+                    id="binding",
+                    project_id="project-owner",
+                    agent_slug="agent",
+                    config_overrides={"sandbox": {"mode": "shared"}, "coding": {"executor": "opencode"}},
+                )
+            )
+            await db.commit()
+            handle = await SandboxCodingExecutor(db, executor_key="codex").dispatch(
+                DelegationRequest(
+                    operation_id="frozen",
+                    project_id="project-owner",
+                    task="当次合成正文",
+                    metadata={
+                        "uid": "uid-owner",
+                        "runtime_scope_id": SandboxScope.agent_project(
+                            uid="uid-owner", agent_slug="agent", project_id="project-owner"
+                        ).cache_key,
+                        "workdir_relative_path": "projects/project-owner",
+                        "agent_config": frozen,
+                    },
+                )
+            )
+            await db.commit()
+            session = await db.get(CodingSession, handle.session_id)
+            assert session.policy_json["agent_config"] == frozen

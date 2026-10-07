@@ -474,19 +474,28 @@ class DelegationService:
         return counts
 
     async def _converge_pending(self, row: ChannelDelegation, *, now, counts: dict[str, int]) -> ChannelDelegation:
+        owner_token = row.owner_token
         executor = self._executors.get(row.executor_key)
         if executor is None:
             self._release(row)
             return row
         try:
             handle = await executor.dispatch(self._request_from_row(row))
-        except Exception:
+        except Exception as exc:
             operation_id = row.operation_id
             await self.db.rollback()
             row = await self.repo.get_by_operation_id(operation_id=operation_id, for_update=True)
             if row is None:
                 raise DelegationNotFoundError(f"委派操作不存在: {operation_id}")
-            row.error_code = "executor_dispatch_failed"
+            if row.dispatch_state != "pending" or row.owner_token != owner_token:
+                return row
+            row.error_code = (
+                "sandbox_policy_unsupported"
+                if isinstance(exc, DelegationError) and exc.error_code == "sandbox_policy_unsupported"
+                else "executor_dispatch_failed"
+            )
+            if row.error_code == "sandbox_policy_unsupported":
+                row.dispatch_state = "failed"
             row.last_error_at = now
             self._release(row)
             counts["failed"] += 1
@@ -525,11 +534,16 @@ class DelegationService:
 
     async def _record_error(self, row: ChannelDelegation, error_code: str, *, now) -> None:
         operation_id = row.operation_id
+        owner_token = row.owner_token
         await self.db.rollback()
         pending = await self.repo.get_by_operation_id(operation_id=operation_id, for_update=True)
         if pending is None:
             raise DelegationNotFoundError(f"委派操作不存在: {operation_id}")
+        if pending.dispatch_state != "pending" or pending.owner_token != owner_token:
+            return
         pending.error_code = error_code
+        if error_code == "sandbox_policy_unsupported":
+            pending.dispatch_state = "failed"
         pending.last_error_at = now
         self._release(pending)
         await self.db.commit()

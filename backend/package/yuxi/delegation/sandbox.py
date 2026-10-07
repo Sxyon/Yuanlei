@@ -81,7 +81,7 @@ class SandboxCodingExecutor:
             db=self.db,
             agent_config=agent_config,
             agent_slug=service.scope.agent_slug or "",
-            project_id=service.scope.project_id or "",
+            project_id=None if (agent_config or {}).get("_coding_effective_snapshot") else service.scope.project_id,
         )
         if not policy.is_dedicated or policy.lifecycle not in {"persistent", "resident"}:
             raise DelegationError(
