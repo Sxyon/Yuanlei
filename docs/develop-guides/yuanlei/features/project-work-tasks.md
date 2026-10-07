@@ -62,10 +62,11 @@
 
 ## 结果交付与反馈
 
-同次成功执行或委派回收生成唯一待验收结果，要求取自当次快照，缺少结构化旧条件明确为依据不足。个人验收及完成沿用工作结果 Owner；选择历史结果进入新尝试时包含验收意见。议题反馈确认后追加评论与修订关系，不自动重开。蓝图复盘预览可编辑，变化时保留草稿并展示新原文供合并；受控文件操作按物理 Workspace 跨进程协调，任意非协作外部写入的竞争限制见[决策记录](../decisions/implemented/2026-10-06-execution-result-feedback.md)。
+同次成功执行或委派回收生成唯一待验收结果，要求取自当次快照，缺少结构化旧条件明确为依据不足。文件交付协议要求写入并核对后用 present_artifacts 登记，回收仅采用当次 Run 成功展示记录。结果卡片提示未登记文件，当前可访问的项目文件跳转现有工作区预览；路径读取保持受控，不能作为当次字节永久保存证明。个人验收及完成沿用工作结果 Owner；选择历史结果进入新尝试时包含验收意见。议题反馈确认后追加评论与修订关系，不自动重开。蓝图复盘预览可编辑，变化时保留草稿并展示新原文供合并；受控文件操作按物理 Workspace 跨进程协调，任意非协作外部写入的竞争限制见[决策记录](../decisions/implemented/2026-10-06-execution-result-feedback.md)。
 
 ## 决策与证据
 
+- [正式工作文件交付登记与查看](../decisions/implemented/2026-10-08-work-file-delivery-registration.md)
 - [议题历史目标进入执行资料](../decisions/implemented/2026-10-07-topic-context-outcomes.md)
 - [本次执行资料预览与不可变业务快照](../decisions/implemented/2026-10-06-work-context-snapshots.md)
 

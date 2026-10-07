@@ -636,3 +636,19 @@ async def test_topic_selected_outcome_conditions_freeze_and_budget(monkeypatch):
                 await assemble_context(db=db, user=user, project=project, task=task, selection={"topic_revision": 4})
             assert error.value.status_code == 422 and "不会截断目标" in error.value.detail
             await db.rollback()
+
+
+async def test_result_file_preview_locator_requires_accessible_project_file():
+    """可访问项目文件可定位预览；缺失和越界文件不产生入口。"""
+    from yuxi.services.project_work_result_service import evidence_data
+    from yuxi.repositories.project_work_repository import ProjectWorkRepository
+
+    async with context_database() as (_, sessions, user, project, workdir):
+        workdir.replace_file("/proof.md", b"actual delivery")
+        async with sessions() as db:
+            repo = ProjectWorkRepository(db, project_id=project.id, uid=user.uid)
+            evidence = [{"kind": "file", "value": value} for value in ("/proof.md", "/missing.md", "/../foreign.md")]
+            rows = await evidence_data(repo=repo, project=project, evidence=evidence)
+            assert rows[0]["workspace_path"] == "/" + project.workdir_path + "/proof.md"
+            assert rows[0]["availability"] == "available"
+            assert all(row["availability"] == "unavailable" and row["workspace_path"] is None for row in rows[1:])

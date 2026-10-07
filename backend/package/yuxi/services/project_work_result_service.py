@@ -31,6 +31,7 @@ async def evidence_data(*, repo, project, evidence: list[dict]) -> list[dict]:
     for item in evidence:
         kind, value = item["kind"], item["value"].strip()
         state, message = "available", "可访问，内容仍需人工核对"
+        workspace_path = None
         try:
             if kind == "url":
                 url = TypeAdapter(AnyHttpUrl).validate_python(value)
@@ -47,7 +48,9 @@ async def evidence_data(*, repo, project, evidence: list[dict]) -> list[dict]:
                         bucket_name=client.KB_BUCKETS["documents"], object_name=attachment.object_name
                     )
             elif kind == "file":
-                Workdir.open_existing(repo.uid, project.workdir_path).read_file_prefix(value, 1)
+                workdir = Workdir.open_existing(repo.uid, project.workdir_path)
+                workdir.read_file_prefix(value, 1)
+                workspace_path = workdir.resolve_path(value)
             else:
                 raise ValueError("unknown evidence kind")
         except (ValidationError, ValueError):
@@ -65,6 +68,7 @@ async def evidence_data(*, repo, project, evidence: list[dict]) -> list[dict]:
                 "submitted_availability": item.get("submitted_availability", item.get("availability", state)),
                 "availability": state,
                 "availability_message": message,
+                "workspace_path": workspace_path,
             }
         )
     return values

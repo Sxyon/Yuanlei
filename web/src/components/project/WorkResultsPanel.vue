@@ -41,8 +41,10 @@
       <pre>{{ result.summary }}</pre>
       <p v-if="result.unresolved">未解决事项：{{ result.unresolved }}</p>
       <details><summary>提交时验收条件{{ result.criteria_changed ? '（与当前要求不同）' : '' }}</summary><pre>{{ result.criteria_snapshot === null ? '旧执行未记录可核对条件，不能作为当前完成依据，请补充人工结果' : result.criteria_snapshot || '当时未填写条件' }}</pre></details>
+      <p v-if="!(result.evidence || []).some(item => ['file', 'attachment'].includes(item.kind))" class="muted">未登记文件交付物；纯文字事项仍可验收。</p>
       <ul><li v-for="(item, index) in result.evidence" :key="index">
         <a v-if="item.kind === 'url'" :href="item.value" target="_blank" rel="noopener noreferrer">{{ item.title || item.value }}</a>
+        <router-link v-else-if="item.kind === 'file' && item.workspace_path" :to="{ name: 'workspace', query: { open: item.workspace_path } }" target="_blank">查看文件：{{ item.title || item.value }}</router-link>
         <span v-else>{{ item.title || item.value }}</span> · {{ item.availability_message }}
       </li></ul>
       <p v-if="result.reviewed_at">{{ result.reviewed_by }} · {{ formatDateTime(result.reviewed_at) }} · {{ result.review_comment || '未填写意见' }}</p>
