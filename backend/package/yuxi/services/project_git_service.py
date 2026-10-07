@@ -896,8 +896,18 @@ async def _provision_repository(repository_id: str, generation: int) -> None:
         if superseded:
             # 外部 key 已创建但持久意图已变更；旧 job 必须自行撤销，避免与 delete job 交错后遗留权限。
             await provider.delete_deploy_key(repository_owner, repository_name, remote_key.id)
-    except Exception:
-        await _record_binding_failure(repository_id, generation, "provision_failed", "git_provision_failed")
+    except Exception as exc:
+        # 只透传守卫自身的受控文案，其余异常保持通用文案，避免把远端响应或路径写入可见错误。
+        from yuxi.services.project_git_resource_service import GIT_DIRECTORY_BUSY_DETAIL
+
+        blocked = isinstance(exc, HTTPException) and exc.status_code == 409 and exc.detail == GIT_DIRECTORY_BUSY_DETAIL
+        await _record_binding_failure(
+            repository_id,
+            generation,
+            "provision_failed",
+            "git_provision_blocked" if blocked else "git_provision_failed",
+            message=GIT_DIRECTORY_BUSY_DETAIL if blocked else None,
+        )
         raise
     finally:
         if bundle_path:
@@ -1409,8 +1419,10 @@ async def _require_authorized_root_run(run_id: str, uid: str, db):
     return run, conversation, project
 
 
-async def _record_binding_failure(repository_id: str, generation: int, status: str, code: str) -> None:
-    """在独立事务记录不含 secret 的仓库操作失败。"""
+async def _record_binding_failure(
+    repository_id: str, generation: int, status: str, code: str, *, message: str | None = None
+) -> None:
+    """在独立事务记录不含 secret 的仓库操作失败，仅接受调用方给定的受控文案。"""
     async with pg_manager.get_async_session_context() as db:
         from sqlalchemy import select
 
@@ -1420,7 +1432,7 @@ async def _record_binding_failure(repository_id: str, generation: int, status: s
         if binding and binding.operation_generation == generation:
             binding.status = status
             binding.last_error_code = code
-            binding.last_error_message = "Git repository operation failed"
+            binding.last_error_message = message or "Git repository operation failed"
             binding.updated_at = utc_now_naive()
             await db.commit()
 

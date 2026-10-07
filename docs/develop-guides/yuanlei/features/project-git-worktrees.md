@@ -15,6 +15,7 @@ Project 需要绑定多个远端仓库，并让同一根任务的 Root Agent 与
 - 只有显式分配的仓库进入 Run preflight；未选择仓库不 fetch、不创建 worktree，也不阻塞运行。
 - push 必须有可追溯的批准：受保护目标人工批准，任务分支及自动授权目标由服务端规则批准；批准后重新校验用户、Project、Run、仓库、scope、分支、clean 状态和 HEAD。
 - 数据库保存持久意图；远端 Git 和文件系统副作用通过幂等回读收敛。
+- 资源目录初始化只在用户没有执行中的 Run 时进行；interrupted 与 completed、failed、cancelled 同为终态，不阻塞初始化。
 
 ## 与 Yuxi 的边界
 
@@ -53,3 +54,5 @@ Project 需要绑定多个远端仓库，并让同一根任务的 Root Agent 与
 - `backend/test/unit/services/test_project_git_service.py`、`test_git_executor.py`、真实 PostgreSQL migration 和 `test_gitea_git_integration.py` 拥有主要证据；显式分配提案中的 assembled-path 证据仍以 Decision 当前结果为准。
 
 - [项目 Git 审批记录与占用队列](../decisions/proposed/2026-10-04-project-git-approval-history.md)
+
+- [Project Git 资源目录初始化守卫的终态判定](../decisions/implemented/2026-10-07-project-git-directory-guard-terminal-status.md)

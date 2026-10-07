@@ -568,3 +568,115 @@ async def test_prepare_failed_requires_explicit_retry_before_preflight(monkeypat
             runtime_scope_id="thread-1",
             worker_id="worker-1",
         )
+
+
+@pytest.mark.asyncio
+async def test_provision_surfaces_controlled_directory_busy_reason(monkeypatch, tmp_path):
+    """守卫拒绝时 provision 记录受控文案，而不是不可定位的通用失败。"""
+    from unittest.mock import AsyncMock
+
+    from yuxi.services.project_git_resource_service import GIT_DIRECTORY_BUSY_DETAIL
+
+    initial = SimpleNamespace(
+        id="repository-1",
+        operation_generation=1,
+        status="provisioning",
+        connection_id="connection-1",
+        uid="user-1",
+        project_id="project-1",
+        repository_owner="owner",
+        repository_name="repo",
+        deploy_private_credential_id="private-1",
+        deploy_public_key="ssh-ed25519 AAAA test",
+        deploy_public_key_fingerprint="SHA256:fingerprint",
+        directory_name="api-safe",
+        checkout_path="repo",
+        configured_base_branch="main",
+        allowed_base_branches=["main"],
+    )
+    connection = SimpleNamespace(
+        api_token_credential_id="token-1",
+        provider="gitea",
+        api_origin="https://gitea.example.invalid",
+        ssh_host="gitea.example.invalid",
+        ssh_port=22,
+        ssh_known_host_key="known-host",
+    )
+    project = SimpleNamespace(status="active", workdir_path="projects/project-1")
+
+    class Db:
+        async def scalar(self, _query):
+            return initial
+
+    class Context:
+        async def __aenter__(self):
+            return Db()
+
+        async def __aexit__(self, *_args):
+            return False
+
+    class Store:
+        def __init__(self, _db):
+            pass
+
+        async def get_connection(self, *args, **kwargs):
+            return connection
+
+        async def get_credential(self, credential_id, _uid):
+            return SimpleNamespace(id=credential_id)
+
+    class Projects:
+        def __init__(self, _db):
+            pass
+
+        async def get_for_user(self, *args, **kwargs):
+            return project
+
+    class CredentialOwner:
+        def decrypt(self, credential):
+            return f"plaintext-{credential.id}"
+
+    class Provider:
+        async def get_repository(self, owner, name):
+            return HostedRepository("remote-1", owner, name, "ssh://git@gitea/repo.git", "main")
+
+        async def get_branch(self, owner, name, branch):
+            return SimpleNamespace(name=branch, commit_sha="a" * 40)
+
+        async def list_deploy_keys(self, owner, name):
+            return []
+
+        async def create_deploy_key(self, owner, name, **kwargs):
+            return DeployKey("key-1", kwargs["title"], kwargs["public_key"], False)
+
+    bundle = tmp_path / "remote.bundle"
+    bundle.write_bytes(b"bundle")
+
+    class Executor:
+        async def fetch_remote_bundle(self, **kwargs):
+            return bundle
+
+    async def blocked_guard(*, db, uid):
+        raise HTTPException(status_code=409, detail=GIT_DIRECTORY_BUSY_DETAIL)
+
+    recorded = AsyncMock()
+    monkeypatch.setattr(service.pg_manager, "get_async_session_context", lambda: Context())
+    monkeypatch.setattr(service, "ProjectGitRepositoryStore", Store)
+    monkeypatch.setattr(service, "ProjectRepository", Projects)
+    monkeypatch.setattr(service, "GitCredentialOwner", CredentialOwner)
+    monkeypatch.setattr(service, "create_git_hosting_provider", lambda **kwargs: Provider())
+    monkeypatch.setattr(service, "GitExecutor", Executor)
+    monkeypatch.setattr(
+        service,
+        "resolve_project_git_host_paths",
+        lambda *args, **kwargs: (tmp_path / "repository.git", tmp_path / "worktree"),
+    )
+    monkeypatch.setattr(service, "_record_binding_failure", recorded)
+    monkeypatch.setattr("yuxi.services.project_git_resource_service.guard_git_directory_initialization", blocked_guard)
+
+    with pytest.raises(HTTPException):
+        await service._provision_repository("repository-1", 1)
+
+    recorded.assert_awaited_once_with(
+        "repository-1", 1, "provision_failed", "git_provision_blocked", message=GIT_DIRECTORY_BUSY_DETAIL
+    )

@@ -14,6 +14,7 @@ from yuxi.services.project_git_execution_service import reserve_git_resources_fo
 from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import (
+    AgentRun,
     GitConnection,
     GitCredential,
     Project,
@@ -263,4 +264,38 @@ async def test_parent_scope_change_is_blocked_by_shared_child_history_only(sessi
     async with sessions() as db:
         store = ProjectGitRepositoryStore(db)
         assert await store.task_tree_has_git_history(task_id="root", project_id="project", uid="owner") is True
+
+
+async def test_user_has_nonterminal_runs_excludes_terminal_interrupted_run(sessions):
+    """interrupted 属终态，不能永久阻止资源目录初始化。"""
+    async with sessions() as db:
+        for index, status in enumerate(("completed", "failed", "cancelled", "interrupted")):
+            db.add(
+                AgentRun(
+                    id=f"terminal-{status}",
+                    uid="owner",
+                    conversation_thread_id=f"thread-{index}",
+                    runtime_scope_id=f"scope-{index}",
+                    agent_slug="test",
+                    status=status,
+                    request_id=f"request-{index}",
+                )
+            )
+        await db.commit()
+        store = ProjectGitRepositoryStore(db)
+        assert await store.user_has_nonterminal_runs("owner") is False
+
+        db.add(
+            AgentRun(
+                id="active-running",
+                uid="owner",
+                conversation_thread_id="thread-active",
+                runtime_scope_id="thread-active",
+                agent_slug="test",
+                status="running",
+                request_id="request-active",
+            )
+        )
+        await db.commit()
+        assert await store.user_has_nonterminal_runs("owner") is True
         assert await store.task_tree_has_git_history(task_id="root", project_id="project", uid="other") is False

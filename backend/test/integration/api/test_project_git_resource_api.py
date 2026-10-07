@@ -208,6 +208,60 @@ async def test_failed_checkout_can_be_reviewed_and_restored_before_explicit_retr
         assert resource.status == "provision_failed" and resource.checkout_head_sha is None
 
 
+async def _seed_incomplete_checkout_with_run(sessions, repository_id, uid, status):
+    """把资源置为未检出，并在同一用户下写入一个指定状态的 Run。"""
+    from yuxi.storage.postgres.models_business import AgentRun
+
+    async with sessions() as db:
+        resource = await db.get(ProjectGitRepository, repository_id)
+        resource.status = "provision_failed"
+        resource.checkout_head_sha = None
+        resource.configured_base_branch = None
+        db.add(
+            AgentRun(
+                id=f"guard-{status}",
+                uid=uid,
+                conversation_thread_id=f"guard-{status}",
+                runtime_scope_id=f"guard-{status}",
+                agent_slug="test",
+                status=status,
+                request_id=f"guard-request-{status}",
+            )
+        )
+        await db.commit()
+
+
+async def test_interrupted_terminal_run_does_not_block_directory_guard(resource_api, monkeypatch):
+    client, sessions, _, user, repository_id, _, _, path = resource_api
+    await _seed_incomplete_checkout_with_run(sessions, repository_id, user.uid, "interrupted")
+    monkeypatch.setattr(
+        "yuxi.agents.backends.sandbox.get_sandbox_provider",
+        lambda: SimpleNamespace(revoke_user_git_runtimes=lambda _uid: None),
+    )
+    review = (await client.get(path + "/review")).json()
+    response = await client.post(
+        path + "/discard",
+        json={"expected_head": review["head_sha"], "expected_tree": review["tree_sha"]},
+    )
+    assert response.status_code == 200, response.text
+
+
+async def test_running_run_still_blocks_directory_guard(resource_api, monkeypatch):
+    client, sessions, _, user, repository_id, _, _, path = resource_api
+    await _seed_incomplete_checkout_with_run(sessions, repository_id, user.uid, "running")
+    monkeypatch.setattr(
+        "yuxi.agents.backends.sandbox.get_sandbox_provider",
+        lambda: SimpleNamespace(revoke_user_git_runtimes=lambda _uid: None),
+    )
+    review = (await client.get(path + "/review")).json()
+    response = await client.post(
+        path + "/discard",
+        json={"expected_head": review["head_sha"], "expected_tree": review["tree_sha"]},
+    )
+    assert response.status_code == 409
+    assert "运行" in response.json()["detail"]
+
+
 async def test_human_push_verifies_remote_head_without_force(resource_api, monkeypatch):
     client, sessions, _, _, repository_id, checkout, metadata, path = resource_api
     remote = metadata.parents[2] / "remote.git"

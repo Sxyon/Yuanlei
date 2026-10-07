@@ -8,6 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import (
+    AGENT_RUN_TERMINAL_STATUSES,
     AgentRun,
     AgentRunRequest,
     Conversation,
@@ -271,7 +272,7 @@ class ProjectGitRepositoryStore:
                 Conversation.project_id == project_id,
                 AgentRun.runtime_scope_id == runtime_scope_id,
                 AgentRun.uid == str(uid),
-                AgentRun.status.notin_(("completed", "failed", "cancelled", "interrupted")),
+                AgentRun.status.notin_(AGENT_RUN_TERMINAL_STATUSES),
             )
         )
         return bool(count)
@@ -291,7 +292,7 @@ class ProjectGitRepositoryStore:
             await self.db.scalar(
                 select(func.count())
                 .select_from(AgentRun)
-                .where(AgentRun.uid == uid, AgentRun.status.not_in(["completed", "failed", "cancelled"]))
+                .where(AgentRun.uid == uid, AgentRun.status.not_in(AGENT_RUN_TERMINAL_STATUSES))
             )
         )
 
@@ -410,7 +411,7 @@ class ProjectGitRepositoryStore:
             .where(
                 AgentRun.id.in_(select(tree.c.id)),
                 AgentRun.uid == uid,
-                AgentRun.status.notin_(("completed", "failed", "cancelled", "interrupted")),
+                AgentRun.status.notin_(AGENT_RUN_TERMINAL_STATUSES),
             )
             .limit(1)
         )

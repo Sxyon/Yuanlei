@@ -16,6 +16,8 @@ from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.workspace.git_paths import normalize_base_branch
 from yuxi.workspace.git_resource_paths import normalize_resource_path, open_resource_checkout, resource_metadata_path
 
+GIT_DIRECTORY_BUSY_DETAIL = "当前用户仍有运行或待审批运行，请结束后再初始化 Git 资源目录"
+
 
 async def guard_git_directory_initialization(*, db, uid: str):
     """新保护目录出现前阻止旧 RW 挂载存活，活动运行期间明确拒绝初始化。"""
@@ -24,7 +26,7 @@ async def guard_git_directory_initialization(*, db, uid: str):
     store = ProjectGitRepositoryStore(db)
     await store.acquire_user_runtime_lock(uid)
     if await store.user_has_nonterminal_runs(uid):
-        raise HTTPException(status_code=409, detail="当前用户仍有运行或待审批运行，请结束后再初始化 Git 资源目录")
+        raise HTTPException(status_code=409, detail=GIT_DIRECTORY_BUSY_DETAIL)
     await asyncio.to_thread(get_sandbox_provider().revoke_user_git_runtimes, uid)
 
 
