@@ -6,6 +6,8 @@ Owner：backend/package/yuxi/services/inspection_board_service.py
 日期：2026-09-25
 关联 Feature：[项目督查板](../../features/project-inspection-board.md)
 
+当前统计与正式工作/结果关系图由[正式工作与业务结果概览](2026-10-07-formal-work-overview.md)部分取代；本文保留其余工具、授权与历史决定。
+
 ## 问题
 
 督查与汇报需要一条「定时任务驱动项目数字员工，只读汇聚执行面事实并产出汇报，在 Dashboard/Taskboard 展示」的通道。Step 1 已有治理四表，Step 2 已有蓝图与决策生命周期，但缺少四样东西：把治理事实与上游 Run 事实聚合成一个读视图的用例；让项目数字员工只读汇总并写入汇报、打开议题的 Agent 工具；把事实暴露给 Dashboard/Taskboard 的读接口；以及把读视图真实呈现给人的受信任 Vue 展示面。若为展示另建镜像表、或让汇报复制/回写 Run 终态，就会出现第二个状态 Owner 与镜像漂移。上游 Yuxi 拥有 AgentRun、队列与用户自建定时任务，但没有任何督查聚合读模型。

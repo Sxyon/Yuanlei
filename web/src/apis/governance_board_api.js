@@ -8,6 +8,13 @@ export const governanceBoardApi = {
     return apiGet(`/api/projects/${encodeURIComponent(projectId)}/governance/board`)
   },
 
+  /** 读取与概览卡片同范围的分页列表。 */
+  getOverviewPage(projectId, section, offset = 0, limit = 20) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/overview?section=${encodeURIComponent(section)}&offset=${offset}&limit=${limit}`
+    )
+  },
+
   /** 跨项目读取当前用户可见的督查板只读视图。 */
   getCrossProjectBoard() {
     return apiGet('/api/governance/board')
@@ -150,7 +157,10 @@ export const governanceBoardApi = {
   },
 
   admitTask(projectId, taskId, payload) {
-    return apiPost(`${projectPath(projectId)}/governance/tasks/${encodeURIComponent(taskId)}/admit`, payload)
+    return apiPost(
+      `${projectPath(projectId)}/governance/tasks/${encodeURIComponent(taskId)}/admit`,
+      payload
+    )
   },
 
   reviewTask(projectId, taskId, approve) {

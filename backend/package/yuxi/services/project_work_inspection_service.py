@@ -55,16 +55,16 @@ async def process_inspection_run(run_id: str) -> None:
             display_name = await repo.get_agent_name(owner) or owner
             await repo.append_comment(
                 task_id=task.id,
-                content=f"自动巡检发现异常：{summary}",
+                content=f"系统规则巡检发现异常：{summary}",
                 author_uid=f"agent:{owner}"[:64],
-                author_name=f"{display_name} · 自动巡检",
+                author_name=f"{display_name} · 系统规则巡检",
             )
             await UserInboxRepository(db).record_occurrence(
                 uid=task.created_by,
                 kind=INSPECTION_KIND,
                 source_id=run.id,
                 project_id=task.project_id,
-                title=f"任务巡检提醒：{task.title}",
+                title=f"系统规则巡检提醒：{task.title}",
                 summary=summary,
             )
         run.finding = finding

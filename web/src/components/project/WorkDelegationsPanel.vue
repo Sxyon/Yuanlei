@@ -27,7 +27,7 @@
     <p v-if="loading">读取委派记录…</p>
     <p v-else-if="!items.length">暂无本工作的外部委派记录。</p>
     <ul>
-      <li v-for="item in items" :key="item.operation_id">
+      <li v-for="item in items" :id="`work-delegation-${item.id}`" :key="item.operation_id">
         {{ item.executor_key }} · {{ statusLabel(item.dispatch_state) }}
         <span v-if="item.remote_status && item.remote_status !== item.dispatch_state">
           · {{ statusLabel(item.remote_status) }}</span
@@ -72,13 +72,14 @@
   </section>
 </template>
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { formatDateTime } from '@/utils/time'
 import { RouterLink } from 'vue-router'
 import { projectWorkApi } from '@/apis/project_work_api'
 import { governanceBoardApi } from '@/apis/governance_board_api'
 const props = defineProps({
   projectId: String,
+  anchor: { type: String, default: '' },
   taskId: String,
   title: String,
   description: String,
@@ -177,6 +178,12 @@ watch(
   },
   { immediate: true }
 )
+/** 委派列表读取完成后定位对应委派。 */
+watch([items, loading, () => props.anchor], async () => {
+  if (loading.value || !props.anchor.startsWith('#work-delegation-')) return
+  await nextTick()
+  if (typeof document !== 'undefined') document.getElementById(props.anchor.slice(1))?.scrollIntoView?.({ block: 'center' })
+}, { flush: 'post' })
 </script>
 <style scoped>
 .delegation-controls {

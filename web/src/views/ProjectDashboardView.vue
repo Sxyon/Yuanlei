@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessageSquarePlus, RefreshCw } from '@lucide/vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
@@ -189,6 +189,11 @@ const openWorkbench = () => {
   router.push({ name: 'ProjectInspectionBoardComp', params: { project_id: projectId.value } })
 }
 
+let hasActivated = false
+onActivated(() => {
+  if (hasActivated) load()
+  hasActivated = true
+})
 watch(projectId, load)
 onMounted(() => {
   load()
@@ -247,5 +252,17 @@ onMounted(() => {
   margin: 6px 0 0;
   color: var(--gray-500);
   font-size: 12px;
+}
+
+@media (max-width: 680px) {
+  :deep(.page-header) {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+  }
+  :deep(.page-header-right) {
+    flex-wrap: wrap;
+  }
 }
 </style>

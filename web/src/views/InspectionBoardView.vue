@@ -72,8 +72,10 @@ const summaryCards = computed(() => {
     { key: 'projects', label: '项目', value: summary.projects ?? boards.value.length },
     { key: 'open_topics', label: '研讨中议题', value: summary.open_topics ?? 0 },
     { key: 'pending_tasks', label: '待处理工作建议', value: summary.pending_tasks ?? 0 },
-    { key: 'pending_decisions', label: '待决策', value: summary.pending_decisions ?? 0 },
-    { key: 'blockers', label: '阻塞项', value: summary.blockers ?? 0 }
+    { key: 'pending_decisions', label: '草稿决策', value: summary.pending_decisions ?? 0 },
+    { key: 'pending_results', label: '待验收结果', value: summary.pending_results ?? 0 },
+    { key: 'current_exceptions', label: '当前执行异常', value: summary.current_exceptions ?? 0 },
+    { key: 'blockers', label: '受阻正式工作', value: summary.blockers ?? 0 }
   ]
 })
 

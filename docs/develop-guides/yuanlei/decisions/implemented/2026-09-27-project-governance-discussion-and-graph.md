@@ -6,6 +6,8 @@ Owner：backend/package/yuxi/services/governance_service.py
 日期：2026-09-27
 关联 Feature：[项目治理域数据模型](../../features/project-governance.md)、[项目 Dashboard](../../features/project-dashboard.md)、[项目蓝图 Workdir 事实源](../../features/project-blueprint.md)
 
+当前统计与正式工作/结果关系图由[正式工作与业务结果概览](2026-10-07-formal-work-overview.md)部分取代；本文保留其余工具、授权与历史决定。
+
 ## 问题
 
 项目议题需要承载背景、方案和讨论，短文本列表无法支持长文编辑，也没有审核前修改提议的流程。议题、决策和任务的外键已表达业务关系，但 Dashboard 的列表不能呈现关系走向。蓝图文件名不接受中文。

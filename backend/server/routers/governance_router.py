@@ -33,6 +33,7 @@ from yuxi.services.governance_service import (
 from yuxi.services.inspection_board_service import (
     get_project_inspection_board,
     get_user_inspection_board,
+    list_project_overview,
 )
 from yuxi.storage.postgres.models_business import User
 
@@ -177,6 +178,20 @@ async def get_project_board(
 ):
     """读取单个 Project 的督查板只读视图；不可见项目 404。"""
     return await get_project_inspection_board(project_id=project_id, db=db, user=current_user)
+
+
+@governance.get("/projects/{project_id}/governance/overview")
+async def get_overview_page(
+    project_id: str,
+    section: Literal["pending", "work", "results", "exceptions", "historical_exceptions", "feedback"],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_required_user),
+) -> dict:
+    """读取与概览卡片同范围的分页事实。"""
+    return await list_project_overview(project_id=project_id, section=section, offset=offset,
+                                       limit=limit, db=db, user=current_user)
 
 
 @governance.get("/governance/board")

@@ -11,28 +11,64 @@
       /></RouterLink>
     </header>
 
-    <div class="overview-stats" aria-label="项目待办概览">
-      <div class="stat">
-        <span>待纳入议题</span><strong>{{ governance.pending_topics?.length || 0 }}</strong>
-      </div>
-      <div class="stat">
-        <span>待处理工作建议</span><strong>{{ governance.pending_tasks?.length || 0 }}</strong>
-      </div>
-      <div class="stat">
-        <span>近期阻塞记录</span><strong>{{ execution.blocked_runs?.length || 0 }}</strong>
-      </div>
-      <div class="stat">
-        <span>项目汇报</span><strong>{{ governance.reports?.length || 0 }}</strong>
-      </div>
+    <div class="overview-stats" aria-label="正式工作概览">
+      <section v-for="group in groups" :key="group.key" class="overview-card summary-group">
+        <div class="card-heading">
+          <h2>{{ group.title }}</h2>
+          <a-button type="link" @click="openList(group.key, group.title)">更多</a-button>
+        </div>
+        <p class="summary-count">{{ group.count }}</p>
+        <p class="item-meta">{{ group.note }}</p>
+        <ul v-if="group.items.length" class="item-list">
+          <li v-for="item in group.items" :key="item.id">
+            <RouterLink :to="item.url">{{ itemLabel(item) }}</RouterLink>
+            <p>{{ detailLabel(item) }}</p>
+          </li>
+        </ul>
+        <p v-else class="empty-copy">暂无{{ group.title }}记录。</p>
+      </section>
     </div>
+    <p class="item-meta">
+      统计日期 {{ overview.as_of_date }} · 截止日期按
+      {{ overview.timezone || 'UTC' }} 判断；受阻与逾期可交叉，已结束工作不计逾期。
+    </p>
+    <a-modal v-model:open="listOpen" :title="listTitle" :footer="null" @cancel="closeList">
+      <a-spin v-if="listLoading" />
+      <a-alert v-else-if="listError" type="error" show-icon :message="listError"
+        ><template #action
+          ><a-button @click="loadList(listOffset)">重试</a-button></template
+        ></a-alert
+      >
+      <template v-else>
+        <p>共 {{ listPage.total || 0 }} 条</p>
+        <ul class="item-list">
+          <li v-for="item in listPage.items || []" :key="item.id">
+            <RouterLink :to="item.url" @click="closeList">{{ itemLabel(item) }}</RouterLink>
+            <p>{{ detailLabel(item) }}</p>
+          </li>
+        </ul>
+        <p v-if="!listPage.items?.length" class="empty-copy">暂无记录。</p>
+        <a-pagination
+          :current="Math.floor(listOffset / 20) + 1"
+          :page-size="20"
+          :total="listPage.total || 0"
+          :show-size-changer="false"
+          @change="(page) => loadList((page - 1) * 20)"
+        />
+      </template>
+    </a-modal>
 
-    <ProjectGovernanceGraph :project-id="projectId" :governance="governance" />
+    <ProjectGovernanceGraph
+      :project-id="projectId"
+      :governance="governance"
+      :graph="board.graph || {}"
+    />
 
-    <section v-if="governance.decisions?.length" class="overview-card decision-summary">
+    <section v-if="effectiveDecisions.length" class="overview-card decision-summary">
       <div class="card-heading">
         <div>
           <p class="eyebrow">03 / DECISIONS</p>
-          <h2><ScrollText :size="18" /> 最近决策</h2>
+          <h2><ScrollText :size="18" /> 近期有效决策</h2>
         </div>
         <RouterLink :to="workbenchAnchor('decisions')"
           >查看全部 <ArrowUpRight :size="14"
@@ -40,12 +76,14 @@
       </div>
       <div class="decision-summary-list">
         <article
-          v-for="decision in latest(governance.decisions, 3)"
+          v-for="decision in latest(effectiveDecisions, 3)"
           :key="decision.id"
           class="decision-summary-item"
         >
           <header>
-            <strong>{{ decision.title }}</strong>
+            <RouterLink :to="workbenchRecord({ decision_id: decision.id })">{{
+              decision.title
+            }}</RouterLink>
             <span>{{ governanceStatusLabel(decision.status) }}</span>
           </header>
           <a-alert
@@ -115,38 +153,45 @@
       </section>
     </div>
 
-    <section class="overview-card execution-card">
+    <section class="overview-card">
       <div class="card-heading">
-        <div>
-          <p class="eyebrow">05 / EXECUTION</p>
-          <h2><Activity :size="18" /> 执行动态</h2>
-        </div>
-        <RouterLink :to="workbenchAnchor('tasks')">查看执行 <ArrowUpRight :size="14" /></RouterLink>
+        <h2>最近议题反馈</h2>
+        <a-button type="link" @click="openList('feedback', '议题反馈')">更多</a-button>
       </div>
-      <div v-if="runStatuses.length" class="run-statuses">
-        <span v-for="entry in runStatuses" :key="entry.status"
-          >{{ entry.label }} {{ entry.count }}</span
-        >
-      </div>
-      <ul v-if="execution.recent_runs?.length" class="run-list">
-        <li v-for="run in execution.recent_runs.slice(0, 5)" :key="run.id">
-          <strong>{{ run.agent_slug || '项目执行' }}</strong
-          ><span>{{ runStatusLabel(run.status) }}</span>
+      <ul class="item-list">
+        <li v-for="item in overview.feedback?.items || []" :key="item.id">
+          <RouterLink :to="item.url">{{ item.summary }}</RouterLink>
+          <p>
+            议题修订 {{ item.topic_revision }} · {{ item.created_at }} ·
+            <RouterLink :to="item.result_url">查看来源结果</RouterLink>
+          </p>
         </li>
       </ul>
-      <p v-else class="empty-copy">暂无执行记录。审核任务后可在工作台委派。</p>
+      <p v-if="!overview.feedback?.items?.length" class="empty-copy">
+        暂无议题反馈；蓝图复盘保留在正文中。
+      </p>
+      <a-button type="link" @click="openList('historical_exceptions', '历史执行异常')"
+        >历史执行异常（{{ overview.historical_exceptions?.total || 0 }}）</a-button
+      >
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { displayBlueprintName } from '@/utils/blueprintName'
-import { Activity, ArrowUpRight, BookOpen, ScrollText } from '@lucide/vue'
+import { formatDateTime } from '@/utils/time'
+import { ArrowUpRight, BookOpen, ScrollText } from '@lucide/vue'
 import ProjectGovernanceGraph from '@/components/project/ProjectGovernanceGraph.vue'
-import { governanceStatusLabel, runStatusEntries, runStatusLabel } from '@/utils/governanceBoard'
+import {
+  governanceStatusLabel,
+  overviewStatusLabel,
+  topicAdmissionLabel,
+  describeBoardError
+} from '@/utils/governanceBoard'
+import { governanceBoardApi } from '@/apis/governance_board_api'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -160,12 +205,100 @@ const props = defineProps({
 defineEmits(['select-blueprint'])
 
 const governance = computed(() => props.board.governance || {})
-const execution = computed(() => props.board.execution || {})
-const runStatuses = computed(() => runStatusEntries(execution.value.run_status_counts))
+const overview = computed(() => props.board.overview || {})
+const effectiveDecisions = computed(() =>
+  (governance.value.decisions || []).filter((item) => item.status === 'approved')
+)
+const groups = computed(() => {
+  const data = overview.value
+  const counts = data.pending?.counts || {}
+  const states = data.work?.status_counts || {}
+  return [
+    {
+      key: 'pending',
+      title: '待处理',
+      count: `${data.pending?.total || 0} 条`,
+      note: `议题 ${counts.pending_topics || 0} · 工作建议 ${counts.pending_tasks || 0} · 草稿决策 ${counts.pending_decisions || 0}`
+    },
+    {
+      key: 'work',
+      title: '工作进展',
+      count: `${data.work?.total || 0} 项工作`,
+      note: `待办 ${states.todo || 0} · 进行中 ${states.in_progress || 0} · 受阻 ${states.blocked || 0} · 已完成 ${states.done || 0} · 已取消 ${states.cancelled || 0} · 逾期 ${data.work?.overdue_count || 0}`
+    },
+    {
+      key: 'results',
+      title: '待验收',
+      count: `${data.results?.total || 0} 份结果，${data.results?.work_count || 0} 项工作`,
+      note: '执行成功与人工接受、工作完成分别记录。'
+    },
+    {
+      key: 'exceptions',
+      title: '执行异常',
+      count: `${data.exceptions?.total || 0} 条`,
+      note: '最新尝试失败或中断；历史异常单独保留，不代表业务受阻。'
+    }
+  ].map((group) => ({ ...group, items: data[group.key]?.items || [] }))
+})
+const itemLabel = (item) =>
+  `${item.kind ? ({ topic: '议题', suggestion: '工作建议', decision: '草稿决策', execution: '智能体尝试', delegation: '外部委派' }[item.kind] || item.kind) + ' · ' : ''}${item.number ? item.number + ' · ' : ''}${(item.kind ? item.title : item.summary) || item.title || item.summary || '议题反馈'}`
+const detailLabel = (item) =>
+  [
+    item.kind === 'topic' ? topicAdmissionLabel(item.admission_status) : overviewStatusLabel(
+      ['failed', 'interrupted'].includes(item.remote_status) ? item.remote_status : item.status
+    ),
+    item.remote_status && `本地${overviewStatusLabel(item.status)}`,
+    item.overdue && '逾期',
+    item.due_date && `截止 ${item.due_date}`,
+    item.criteria_revision != null && `要求修订 ${item.criteria_revision}`,
+    item.created_at && formatDateTime(item.created_at),
+    item.error_message || item.error_code
+  ]
+    .filter(Boolean)
+    .join(' · ')
+const listOpen = ref(false),
+  listTitle = ref(''),
+  listSection = ref(''),
+  listOffset = ref(0)
+const listLoading = ref(false),
+  listError = ref(''),
+  listPage = ref({ total: 0, items: [] })
+let listSeq = 0
+/** 分页读取沿用卡片口径，关闭或切换项目后忽略迟到响应。 */
+async function loadList(offset = 0) {
+  const seq = ++listSeq,
+    project = props.projectId,
+    section = listSection.value
+  listLoading.value = true
+  listError.value = ''
+  listOffset.value = offset
+  try {
+    const page = await governanceBoardApi.getOverviewPage(project, section, offset)
+    if (seq === listSeq && project === props.projectId && listOpen.value) listPage.value = page
+  } catch (error) {
+    if (seq === listSeq && project === props.projectId && listOpen.value)
+      listError.value = describeBoardError(error)
+  } finally {
+    if (seq === listSeq) listLoading.value = false
+  }
+}
+function openList(section, title) {
+  listSection.value = section
+  listTitle.value = title
+  listOpen.value = true
+  loadList()
+}
+function closeList() {
+  listOpen.value = false
+  listSeq += 1
+  listLoading.value = false
+}
+watch(() => props.projectId, closeList)
 const workbenchRoute = computed(() => ({
   name: 'ProjectInspectionBoardComp',
   params: { project_id: props.projectId }
 }))
+const workbenchRecord = (query) => ({ ...workbenchRoute.value, query })
 const workbenchAnchor = (anchor) => ({ ...workbenchRoute.value, hash: `#${anchor}` })
 /** 治理列表由后端按创建顺序返回，保留最新记录供概览回顾。 */
 const latest = (items, limit) => (items || []).slice(-limit).reverse()
@@ -245,9 +378,28 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
 .overview-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid var(--gray-150);
-  border-radius: 10px;
-  background: var(--gray-0);
+  gap: 12px;
+}
+.summary-count {
+  font-size: 20px;
+  color: var(--gray-1000);
+  font-weight: 600;
+  margin: 0;
+}
+.summary-group {
+  padding: 16px;
+}
+.item-list a,
+.item-list a:visited {
+  color: var(--main-color);
+  text-decoration: none;
+}
+.item-list a:hover {
+  text-decoration: underline;
+}
+.summary-group .item-list a {
+  display: block;
+  overflow-wrap: anywhere;
 }
 .stat {
   display: flex;
@@ -494,6 +646,9 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
   }
 }
 @media (max-width: 680px) {
+  .overview-stats {
+    grid-template-columns: 1fr;
+  }
   .overview-head {
     align-items: flex-start;
     flex-direction: column;

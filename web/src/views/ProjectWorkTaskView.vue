@@ -113,7 +113,7 @@
         </section>
 
         <section class="work-task-section">
-          <h2>第一负责人周期巡检</h2>
+          <h2>系统规则巡检</h2>
           <div class="work-task-controls">
             <label for="task-inspection">启用巡检</label>
             <a-switch id="task-inspection" v-model:checked="inspectionEnabled" :disabled="saving" />
@@ -121,7 +121,7 @@
             <a-input-number id="task-interval" v-model:value="inspectionInterval" :min="1" :max="10080" :disabled="saving" />
             <a-button :loading="saving" @click="saveInspection">保存巡检</a-button>
           </div>
-          <p class="work-task-muted">启用后由第一负责人按周期只读核查任务状态；发现异常时写入任务评论并通知创建人。进行中但没有待接受或运行中执行尝试会被判为异常。</p>
+          <p class="work-task-muted">启用后系统按周期规则只读核查任务状态，第一负责人作为跟进标识；发现异常时写入任务评论并通知创建人。进行中但没有待接受或运行中执行尝试会被判为异常。</p>
           <p v-if="inspectionError" class="work-task-error" role="alert">{{ inspectionError }}</p>
           <p v-if="!task.inspection_runs?.length" class="work-task-muted">暂无巡检记录</p>
           <ul v-else>
@@ -156,7 +156,7 @@
         </section>
         <p v-if="!task.acceptance_criteria" class="work-task-muted">尚未填写验收条件，派发前请核对工作要求。</p>
         <WorkContextDrawer ref="contextDrawer" :project-id="String(route.params.project_id)" :task="task" @context="executionContext = $event" />
-        <WorkDelegationsPanel :context="executionContext" @history="(id) => contextDrawer?.showHistory('delegation', id)" :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
+        <WorkDelegationsPanel :anchor="route.hash" :context="executionContext" @history="(id) => contextDrawer?.showHistory('delegation', id)" :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
         <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
@@ -260,7 +260,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
@@ -744,6 +744,12 @@ watch([() => route.params.project_id, () => route.params.task_id], () => {
   actionError.value = ''
   load()
 }, { immediate: true })
+/** 在异步详情渲染后定位业务结果或当次执行，避免只落到页首。 */
+watch([() => route.hash, task, executions, loading], async () => {
+  if (loading.value || !route.hash.startsWith('#work-')) return
+  await nextTick()
+  if (typeof document !== 'undefined') document.getElementById(route.hash.slice(1))?.scrollIntoView?.({ block: 'center' })
+}, { flush: 'post' })
 </script>
 
 <style scoped lang="less">

@@ -3,16 +3,18 @@
     <header class="relations-heading">
       <div>
         <p class="eyebrow">02 / GOVERNANCE MAP</p>
-        <h2><Workflow :size="18" /> 议题、决策与任务</h2>
-        <p>节点关系来自项目议题、决策和任务的实际关联。</p>
+        <h2><Workflow :size="18" /> 议题、决策、正式工作与结果</h2>
+        <p>
+          实线为当前来源及结果归属；虚线“反馈”为已确认的议题反馈。历史冻结依据由当次执行入口查看。
+        </p>
       </div>
       <RouterLink :to="workbenchRoute">打开项目工作台 <ArrowUpRight :size="14" /></RouterLink>
     </header>
 
     <p v-if="!nodes.length" class="graph-empty">
-      提出议题、记录决策或创建任务后，关系图会在这里展示。
+      提出议题、记录决策或创建正式工作后，关系图会在这里展示。
     </p>
-    <div v-else class="graph-scroll" role="group" aria-label="项目议题、决策和任务关系图">
+    <div v-else class="graph-scroll" role="group" aria-label="项目议题、决策、正式工作与业务结果关系图">
       <svg
         class="governance-graph"
         :viewBox="`0 0 ${graphWidth} ${graphHeight}`"
@@ -22,7 +24,7 @@
       >
         <title id="governance-graph-title">项目治理关系图</title>
         <desc id="governance-graph-description">
-          按议题、决策和任务分列显示，连线表示数据中已保存的关联。
+          按议题、决策、正式工作和结果分列显示，连线表示数据中已保存的关联。
         </desc>
         <defs>
           <marker
@@ -38,12 +40,13 @@
         </defs>
         <text v-for="column in columns" :key="column.key" class="column-label" :x="column.x" y="35">
           {{ column.title }}
-          <tspan>{{ column.nodes.length }}</tspan>
+          <tspan>{{ column.nodes.length }} / {{ column.total }}</tspan>
         </text>
         <path
           v-for="edge in edges"
           :key="edge.key"
           class="graph-edge"
+          :class="{ feedback: edge.label === '反馈' }"
           :d="edge.path"
           marker-end="url(#governance-arrow)"
         />
@@ -65,13 +68,13 @@
           :transform="`translate(${node.x} ${node.y})`"
           role="button"
           tabindex="0"
-          :aria-label="`${node.kindLabel}：${node.item.title}，${node.kind === 'topic' ? `${topicAdmissionLabel(node.item.admission_status)} · ${topicProgressLabel(node.item.progress)}` : governanceStatusLabel(node.item.status)}`"
+          :aria-label="`${node.kindLabel}：${nodeTitle(node)}，${node.kind === 'topic' ? `${topicAdmissionLabel(node.item.admission_status)} · ${topicProgressLabel(node.item.progress)}` : overviewStatusLabel(node.item.status)}`"
           :aria-pressed="selectedKey === node.key"
           @click="selectedKey = node.key"
           @keydown.enter.prevent="selectedKey = node.key"
           @keydown.space.prevent="selectedKey = node.key"
         >
-          <title>{{ node.kindLabel }}：{{ node.item.title }}</title>
+          <title>{{ node.kindLabel }}：{{ nodeTitle(node) }}</title>
           <rect class="node-card" :width="nodeWidth" :height="nodeHeight" rx="9" />
           <circle
             class="status-dot"
@@ -85,7 +88,7 @@
             {{
               node.kind === 'topic'
                 ? `${topicAdmissionLabel(node.item.admission_status)} · ${topicProgressLabel(node.item.progress)}`
-                : governanceStatusLabel(node.item.status)
+                : overviewStatusLabel(node.item.status)
             }}
           </text>
           <text
@@ -98,10 +101,21 @@
             {{ line }}
           </text>
         </g>
+        <text
+          v-for="edge in edges.filter((item) => item.label === '反馈')"
+          :key="`${edge.key}-label`"
+          class="column-empty"
+          :x="edge.labelX"
+          :y="edge.labelY"
+        >
+          反馈
+        </text>
       </svg>
     </div>
     <p v-if="hasMore" class="graph-note">
-      图中每类最多显示最近 {{ maxPerKind }} 条；工作台可查看全部记录。
+      每类最多 {{ maxPerKind }} 条；{{
+        omittedSummary
+      }}。未展示节点不画边，可通过下方来源或当次依据入口查看。
     </p>
     <div v-if="selectedNode" class="node-detail">
       <div class="node-detail-heading">
@@ -111,10 +125,10 @@
             {{
               selectedNode.kind === 'topic'
                 ? `${topicAdmissionLabel(selectedNode.item.admission_status)} · ${topicProgressLabel(selectedNode.item.progress)}`
-                : governanceStatusLabel(selectedNode.item.status)
+                : overviewStatusLabel(selectedNode.item.status)
             }}
           </p>
-          <h3>{{ selectedNode.item.title }}</h3>
+          <h3>{{ nodeTitle(selectedNode) }}</h3>
         </div>
         <a-button type="primary" @click="openSelectedInWorkbench">在工作台查看</a-button>
       </div>
@@ -128,6 +142,50 @@
         message="议题建议暂停原方案"
         description="仅为议题提示，不撤销决策或暂停任务或执行记录。"
       />
+      <p
+        v-if="selectedNode.kind === 'decision' && selectedNode.item.topic_id"
+        class="node-relations"
+      >
+        <RouterLink :to="recordLink({ topic_id: selectedNode.item.topic_id })"
+          >关联议题（可含归档或图外记录）</RouterLink
+        >
+      </p>
+      <p v-if="selectedNode.kind === 'work'" class="node-relations">
+        当前来源：
+        <RouterLink
+          v-if="selectedNode.item.topic_id"
+          :to="recordLink({ topic_id: selectedNode.item.topic_id })"
+          >议题（可含图外记录）</RouterLink
+        >
+        <RouterLink
+          v-if="selectedNode.item.source_decision_id"
+          :to="recordLink({ decision_id: selectedNode.item.source_decision_id })"
+          >决策修订 {{ selectedNode.item.source_decision_revision }} · 查看历史</RouterLink
+        >
+        <span v-if="!selectedNode.item.topic_id && !selectedNode.item.source_decision_id"
+          >独立工作</span
+        >
+      </p>
+      <p v-if="selectedNode.kind === 'result'" class="node-relations">
+        <RouterLink :to="selectedNode.item.url"
+          >来源工作 {{ selectedNode.item.number }} · 结果
+          {{ overviewStatusLabel(selectedNode.item.status) }}</RouterLink
+        >
+        <span>当次要求修订 {{ selectedNode.item.criteria_revision ?? '未知' }}</span>
+        <span v-if="selectedNode.item.frozen_decision_id"
+          >冻结决策修订 {{ selectedNode.item.frozen_decision_revision }}</span
+        >
+        <RouterLink v-if="selectedNode.item.history_url" :to="selectedNode.item.history_url"
+          >查看当次执行与历史依据</RouterLink
+        >
+        <span v-else>人工结果，无执行尝试</span>
+        <RouterLink
+          v-for="feedback in selectedFeedbacks"
+          :key="feedback.id"
+          :to="recordLink({ topic_id: feedback.topic_id })"
+          >反馈议题 · 修订 {{ feedback.topic_revision }}</RouterLink
+        >
+      </p>
       <MarkdownPreview v-if="selectedBody" :content="selectedBody" compact />
       <p v-else class="node-detail-empty">这条记录还没有补充说明。</p>
       <p v-if="selectedRelations.length" class="node-relations">
@@ -137,7 +195,7 @@
           type="button"
           @click="selectedKey = relation.key"
         >
-          {{ relation.kindLabel }} · {{ relation.item.title }}
+          {{ relation.kindLabel }} · {{ nodeTitle(relation) }}
         </button>
       </p>
     </div>
@@ -150,60 +208,84 @@ import { RouterLink, useRouter } from 'vue-router'
 import { ArrowUpRight, Workflow } from '@lucide/vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import {
-  governanceStatusLabel,
+  overviewStatusLabel,
   topicAdmissionLabel,
   topicProgressLabel
 } from '@/utils/governanceBoard'
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  governance: { type: Object, default: () => ({}) }
+  governance: { type: Object, default: () => ({}) },
+  graph: { type: Object, default: () => ({}) }
 })
 
 const router = useRouter()
 const maxPerKind = 10
-const graphWidth = 1040
-const nodeWidth = 292
+const graphWidth = 1360
+const nodeWidth = 282
 const nodeHeight = 78
-const columnX = { topic: 18, decision: 374, task: 730 }
+const columnX = { topic: 18, decision: 362, work: 706, result: 1050 }
 const workbenchRoute = computed(() => ({
   name: 'ProjectInspectionBoardComp',
   params: { project_id: props.projectId }
 }))
-const columns = computed(() => [
-  {
-    key: 'topic',
-    title: '议题',
-    x: columnX.topic,
-    nodes: latest(props.governance.topics, 'topic')
-  },
-  {
-    key: 'decision',
-    title: '决策',
-    x: columnX.decision,
-    nodes: latest(props.governance.decisions, 'decision')
-  },
-  {
-    key: 'task',
-    title: '任务',
-    x: columnX.task,
-    nodes: latest(props.governance.tasks, 'task')
-  }
-])
-
-function latest(items, kind) {
-  return (items || [])
-    .slice(-maxPerKind)
-    .reverse()
-    .map((item, index) => ({
-      key: `${kind}:${item.id}`,
-      kind,
-      kindLabel: { topic: '议题', decision: '决策', task: '任务' }[kind],
+const columns = computed(() =>
+  [
+    {
+      key: 'topic',
+      title: '议题',
+      items: [...(props.governance.topics || [])].reverse(),
+      total: (props.governance.topics || []).length
+    },
+    {
+      key: 'decision',
+      title: '决策',
+      items: [...(props.governance.decisions || [])].reverse(),
+      total: (props.governance.decisions || []).length
+    },
+    {
+      key: 'work',
+      title: '正式工作',
+      items: props.graph.work?.items || [],
+      total: props.graph.work?.total || 0
+    },
+    {
+      key: 'result',
+      title: '业务结果',
+      items: props.graph.results?.items || [],
+      total: props.graph.results?.total || 0
+    }
+  ].map((column) => ({
+    ...column,
+    x: columnX[column.key],
+    nodes: column.items.slice(0, maxPerKind).map((item, index) => ({
+      key: `${column.key}:${item.id}`,
+      kind: column.key,
+      kindLabel: column.title,
       item,
-      x: columnX[kind],
+      x: columnX[column.key],
       y: 57 + index * 96,
-      lines: wrapTitle(item.title)
+      lines: wrapTitle(
+        column.key === 'result'
+          ? item.summary
+          : `${item.number ? item.number + ' · ' : ''}${item.title || '未命名'}`
+      )
     }))
+  }))
+)
+const omittedSummary = computed(() =>
+  columns.value
+    .map((column) => `${column.title}遗漏 ${Math.max(0, column.total - column.nodes.length)} 条`)
+    .join(' · ')
+)
+const recordLink = (query) => ({ ...workbenchRoute.value, query })
+const selectedFeedbacks = computed(() =>
+  (props.graph.feedback || []).filter((item) => item.result_id === selectedNode.value?.item.id)
+)
+
+/** 结果用摘要识别，其他节点使用自身标题。 */
+function nodeTitle(node) {
+  return node.kind === 'result' ? node.item.summary : node.item.title
 }
 
 function wrapTitle(title) {
@@ -220,9 +302,7 @@ const graphHeight = computed(() =>
 const nodeMap = computed(() => new Map(nodes.value.map((node) => [node.key, node])))
 const selectedKey = ref('')
 const selectedNode = computed(() => nodeMap.value.get(selectedKey.value) || nodes.value[0] || null)
-const hasMore = computed(() =>
-  ['topics', 'decisions', 'tasks'].some((key) => (props.governance[key] || []).length > maxPerKind)
-)
+const hasMore = computed(() => columns.value.some((column) => column.total > column.nodes.length))
 const selectedBody = computed(() => {
   const item = selectedNode.value?.item
   if (!item) return ''
@@ -231,69 +311,52 @@ const selectedBody = computed(() => {
     return [item.conclusion, item.rationale && `\n\n---\n\n**决策理由**\n\n${item.rationale}`]
       .filter(Boolean)
       .join('')
-  return item.description || ''
+  return item.summary || item.description || ''
 })
 
 const edges = computed(() => {
   const result = []
-  const addEdge = (from, to) => {
-    const source = nodeMap.value.get(from)
-    const target = nodeMap.value.get(to)
+  const add = (from, to, label) => {
+    const source = nodeMap.value.get(from),
+      target = nodeMap.value.get(to)
     if (!source || !target) return
-    const startX = source.x + nodeWidth
-    const startY = source.y + nodeHeight / 2
-    const endX = target.x - 4
-    const endY = target.y + nodeHeight / 2
-    const curve = Math.max(36, (endX - startX) * 0.45)
+    const forward = target.x > source.x
+    const startX = source.x + (forward ? nodeWidth : 0),
+      endX = target.x + (forward ? 0 : nodeWidth)
+    const startY = source.y + nodeHeight / 2,
+      endY = target.y + nodeHeight / 2
+    const curve = forward ? 36 : -36
     result.push({
-      key: `${from}->${to}`,
-      path: `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`
+      key: `${from}->${to}:${label}`,
+      from,
+      to,
+      label,
+      path: `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`,
+      labelX: (startX + endX) / 2,
+      labelY: (startY + endY) / 2 - 8
     })
   }
-  for (const decision of props.governance.decisions || []) {
-    if (decision.topic_id) addEdge(`topic:${decision.topic_id}`, `decision:${decision.id}`)
+  for (const item of props.governance.decisions || [])
+    if (item.topic_id) add(`topic:${item.topic_id}`, `decision:${item.id}`, '议题关联')
+  for (const item of props.graph.work?.items || []) {
+    if (item.topic_id) add(`topic:${item.topic_id}`, `work:${item.id}`, '当前来源')
+    if (item.source_decision_id)
+      add(`decision:${item.source_decision_id}`, `work:${item.id}`, '当前来源')
   }
-  for (const task of props.governance.tasks || []) {
-    if (task.topic_id) addEdge(`topic:${task.topic_id}`, `task:${task.id}`)
-    if (task.decision_id) addEdge(`decision:${task.decision_id}`, `task:${task.id}`)
-  }
+  for (const item of props.graph.results?.items || [])
+    add(`work:${item.task_id}`, `result:${item.id}`, '结果归属')
+  for (const item of props.graph.feedback || [])
+    add(`result:${item.result_id}`, `topic:${item.topic_id}`, '反馈')
   return result
 })
-
 const selectedRelations = computed(() => {
-  const node = selectedNode.value
-  if (!node) return []
-  const item = node.item
-  if (node.kind === 'topic') {
-    const linkedDecisionIds = new Set(
-      nodes.value
-        .filter((candidate) => candidate.kind === 'decision' && candidate.item.topic_id === item.id)
-        .map((candidate) => candidate.item.id)
+  const key = selectedNode.value?.key
+  return nodes.value.filter((node) =>
+    edges.value.some(
+      (edge) =>
+        (edge.from === key && edge.to === node.key) || (edge.to === key && edge.from === node.key)
     )
-    return nodes.value.filter(
-      (candidate) =>
-        (candidate.kind === 'decision' && candidate.item.topic_id === item.id) ||
-        (candidate.kind === 'task' &&
-          (item.id === candidate.item.topic_id ||
-            linkedDecisionIds.has(candidate.item.decision_id)))
-    )
-  }
-  if (node.kind === 'decision') {
-    const topic = nodes.value.find(
-      (candidate) => candidate.kind === 'topic' && candidate.item.id === item.topic_id
-    )
-    const tasks = nodes.value.filter(
-      (candidate) => candidate.kind === 'task' && candidate.item.decision_id === item.id
-    )
-    return [...(topic ? [topic] : []), ...tasks]
-  }
-  const topic = nodes.value.find(
-    (candidate) => candidate.kind === 'topic' && candidate.item.id === item.topic_id
   )
-  const decision = nodes.value.find(
-    (candidate) => candidate.kind === 'decision' && candidate.item.id === item.decision_id
-  )
-  return [topic, decision].filter(Boolean)
 })
 
 function openSelectedInWorkbench() {
@@ -305,15 +368,9 @@ function openSelectedInWorkbench() {
     to.hash = '#decisions'
     to.query = { decision_id: node.item.id, topic_id: node.item.topic_id || undefined }
   }
-  if (node.kind === 'task') {
-    const decision = (props.governance.decisions || []).find(
-      (candidate) => candidate.id === node.item.decision_id
-    )
-    to.hash = '#tasks'
-    to.query = {
-      task_id: node.item.id,
-      topic_id: node.item.topic_id || decision?.topic_id || undefined
-    }
+  if (node.kind === 'work' || node.kind === 'result') {
+    router.push(node.item.url)
+    return
   }
   router.push(to)
 }
@@ -385,6 +442,7 @@ watch(
 .governance-graph {
   display: block;
   width: 100%;
+  min-width: 1000px;
   height: auto;
   overflow: visible;
 }
@@ -402,6 +460,13 @@ watch(
   fill: var(--gray-400);
   font-size: 13px;
   text-anchor: middle;
+}
+.graph-edge.feedback {
+  stroke-dasharray: 5 4;
+  stroke: var(--main-color);
+}
+.is-result .node-kind {
+  fill: var(--main-color);
 }
 .graph-edge {
   fill: none;
@@ -430,13 +495,13 @@ watch(
   fill: var(--main-30);
 }
 .is-topic .node-kind {
-  fill: #2563eb;
+  fill: var(--color-info-700);
 }
 .is-decision .node-kind {
-  fill: #7c3aed;
+  fill: var(--color-accent-700);
 }
-.is-task .node-kind {
-  fill: #0f766e;
+.is-work .node-kind {
+  fill: var(--color-success-700);
 }
 .node-kind {
   font-size: 11px;
@@ -448,15 +513,15 @@ watch(
   font-weight: 600;
 }
 .status-dot {
-  fill: #d97706;
+  fill: var(--color-warning-700);
 }
 .status-dot.status-canonical,
 .status-dot.status-approved {
-  fill: #059669;
+  fill: var(--color-success-700);
 }
 .status-dot.status-rejected,
 .status-dot.status-revoked {
-  fill: #dc2626;
+  fill: var(--color-error-700);
 }
 .status-dot.status-superseded {
   fill: var(--gray-500);

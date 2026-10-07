@@ -52,7 +52,7 @@
       </div>
 
       <div class="board-section">
-        <h3 class="board-section-title">阻塞项（{{ blockedRuns.length }}）</h3>
+        <h3 class="board-section-title">历史执行异常（最近 {{ blockedRuns.length }} 条）</h3>
         <ul v-if="blockedRuns.length" class="board-list">
           <li v-for="run in blockedRuns" :key="run.id" class="board-list-item">
             <div class="board-item-main">
@@ -68,7 +68,7 @@
             </div>
           </li>
         </ul>
-        <p v-else class="board-empty">无阻塞项</p>
+        <p v-else class="board-empty">暂无历史执行异常</p>
       </div>
     </div>
 

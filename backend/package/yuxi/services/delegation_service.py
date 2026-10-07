@@ -44,6 +44,7 @@ def _serialize(row: ChannelDelegation, *, capabilities: dict[str, bool] | None =
     """委派事实的统一读模型：同时呈现本地状态与远端只读投影。"""
     result_json = row.result_json or {}
     return {
+        "id": row.id,
         "operation_id": row.operation_id,
         "context_recorded": row.context_snapshot is not None,
         "project_id": row.project_id,

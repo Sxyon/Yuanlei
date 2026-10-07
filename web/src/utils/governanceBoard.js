@@ -93,3 +93,24 @@ export function topicAdmissionLabel(status) {
 export function topicProgressLabel(progress) {
   return { open: '研讨中', decided: '已形成决策', closed: '已关闭' }[progress] || progress
 }
+
+/** 正式工作、业务结果和执行异常的展示文案，不推断状态。 */
+export function overviewStatusLabel(status) {
+  return (
+    {
+      todo: '待办',
+      in_progress: '进行中',
+      blocked: '受阻',
+      done: '已完成',
+      cancelled: '已取消',
+      pending: '待验收',
+      accepted: '已接受',
+      not_accepted: '未接受',
+      dispatched: '已派发',
+      reclaimed: '已回收',
+      collecting: '回收中',
+      failed: '执行失败',
+      interrupted: '执行中断'
+    }[status] || governanceStatusLabel(status)
+  )
+}

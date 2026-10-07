@@ -95,7 +95,7 @@ async def test_inspection_tick_idempotent_recovers_and_does_not_duplicate(monkey
             assert await connection.scalar(text("SELECT count(*) FROM project_work_executions")) == 0
             assert await connection.scalar(text("SELECT count(*) FROM agent_runs")) == 0
             agent_name = await connection.scalar(text("SELECT author_name FROM project_work_comments LIMIT 1"))
-            assert "自动巡检" in agent_name
+            assert "系统规则巡检" in agent_name
 
         # worker 崩溃：遗留 claimed 运行由恢复流程收敛；结论未变化时不重复产出。
         async with scoped_engine.begin() as connection:
