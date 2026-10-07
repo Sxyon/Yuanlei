@@ -103,7 +103,13 @@ async def assemble_context(*, db, user, project, task, selection=None, expected_
                 kind="topic",
                 locator=task.topic_id,
                 revision=version.number if version else choices["topic_revision"],
-                text=f"{version.title}\n\n{version.summary or ''}" if version else "",
+                text=(
+                    f"议题修订 {version.number}\n\n标题：{version.title}\n\n正文：\n{version.summary or ''}"
+                    + (f"\n\n预期结果：\n{version.expected_outcome}" if version.expected_outcome else "")
+                    + (f"\n\n验证条件：\n{version.verification_conditions}" if version.verification_conditions else "")
+                )
+                if version
+                else "",
                 mode="direct" if version else "missing",
                 note="议题研讨资料，不替代正式决策" if topic else "议题缺失",
             )
@@ -210,6 +216,8 @@ async def assemble_context(*, db, user, project, task, selection=None, expected_
         if len(block) > remaining:
             if item["kind"] == "requirements":
                 raise HTTPException(422, detail="工作要求超过资料预算，请精简后执行；不会截断必需要求")
+            if item["kind"] == "topic":
+                raise HTTPException(422, detail="所选议题超过资料预算，请精简或明确摘录后执行；不会截断目标与验证条件")
             marker = "\n[资料受固定预算截断；其余内容未注入]"
             item.update(truncated=True, note=item["note"] + "；受固定预算截断")
             available = max(0, remaining - len(marker))

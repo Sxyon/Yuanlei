@@ -20,7 +20,7 @@
         <article v-for="(item, index) in snapshot.items" :key="index">
           <h3>{{ kindLabel(item.kind) }} · {{ item.locator }}</h3>
           <p>{{ modeLabel(item) }} · {{ item.note }}</p>
-          <p v-if="item.revision">修订 {{ item.revision }}</p>
+          <p v-if="item.revision">{{ item.kind === 'topic' ? '议题修订' : '修订' }} {{ item.revision }}</p>
           <details v-if="item.text"><summary>{{ item.truncated ? '查看资料原文（实际注入内容见下方）' : '查看本次文本' }}</summary><pre>{{ item.text }}</pre></details>
           <label v-if="!history && item.mode === 'direct' && item.kind !== 'requirements'">手动摘录（留空使用资料正文）<a-textarea v-model:value="selection.excerpts[`${item.kind}:${item.locator}`]" aria-label="资料手动摘录" /></label>
           <p v-if="item.hash">{{ item.hash_scope === 'prefix' ? '前缀' : '内容' }}哈希：{{ item.hash }}</p>

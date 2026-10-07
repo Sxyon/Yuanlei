@@ -555,3 +555,84 @@ async def test_legacy_automatic_result_cannot_infer_current_requirements():
             with pytest.raises(IntegrityError) as shape:
                 await db.flush()
             assert "ck_auto_result_source" in str(shape.value)
+async def test_topic_selected_outcome_conditions_freeze_and_budget(monkeypatch):
+    """选定历史目标仅在目标字段，冻结输入保留它且预算不足明确失败。"""
+    from fastapi import HTTPException
+    from yuxi.services.project_work_context_service import assemble_context, TEXT_BUDGET
+    from yuxi.storage.postgres.models_business import GovernanceTopic, GovernanceTopicRevision
+
+    async with context_database() as (manager, sessions, user, project, workdir):
+        async with sessions() as db:
+            topic = GovernanceTopic(
+                id="topic",
+                project_id="p",
+                title="当前标题",
+                summary="普通正文",
+                revision_number=2,
+                expected_outcome="当前目标",
+                verification_conditions="当前条件",
+                source_channel="project",
+                created_by=user.uid,
+            )
+            db.add(topic)
+            await db.flush()
+            db.add_all(
+                [
+                    GovernanceTopicRevision(
+                        topic_id="topic",
+                        number=1,
+                        title="旧标题",
+                        summary="普通正文",
+                        expected_outcome="独有旧目标甲",
+                        verification_conditions="独有旧条件乙",
+                    ),
+                    GovernanceTopicRevision(
+                        topic_id="topic",
+                        number=2,
+                        title="当前标题",
+                        summary="普通正文",
+                        expected_outcome="当前目标",
+                        verification_conditions="当前条件",
+                    ),
+                ]
+            )
+            task = await db.get(ProjectWorkTask, "t")
+            task.topic_id = "topic"
+            await db.commit()
+            selected = {"topic_revision": 1}
+            preview = await assemble_context(db=db, user=user, project=project, task=task, selection=selected)
+            assert "独有旧目标甲" in preview["input_text"] and "独有旧条件乙" in preview["input_text"]
+            assert "当前目标" not in preview["input_text"] and "当前条件" not in preview["input_text"]
+            monkeypatch.setattr(execution, "dispatch_agent_queue", async_zero)
+            created = await execution.assign_task(
+                db=db,
+                user=user,
+                project_id="p",
+                task_id="t",
+                agent_slug="agent",
+                context={"selection": selected, "expected_fingerprint": preview["fingerprint"]},
+            )
+            row = await db.get(ProjectWorkExecution, created["id"])
+            original = row.context_snapshot
+            assert preview["input_text"] == original["input_text"] and original["input_text"] in row.prompt
+            topic.revision_number = 3
+            topic.expected_outcome = None
+            topic.verification_conditions = None
+            db.add(GovernanceTopicRevision(topic_id="topic", number=3, title="新标题", summary="新正文"))
+            await db.flush()
+            empty = await assemble_context(
+                db=db, user=user, project=project, task=task, selection={"topic_revision": 3}
+            )
+            topic_item = next(i for i in empty["items"] if i["kind"] == "topic")
+            assert "预期结果" not in topic_item["text"] and "验证条件" not in topic_item["text"]
+            assert row.context_snapshot == original
+            db.add(
+                GovernanceTopicRevision(
+                    topic_id="topic", number=4, title="过长目标", expected_outcome="甲" * TEXT_BUDGET
+                )
+            )
+            await db.flush()
+            with pytest.raises(HTTPException) as error:
+                await assemble_context(db=db, user=user, project=project, task=task, selection={"topic_revision": 4})
+            assert error.value.status_code == 422 and "不会截断目标" in error.value.detail
+            await db.rollback()
