@@ -42,6 +42,13 @@ async def test_v32_to_v33_preserves_done_and_reenters():
         manager._initialized = True
         await manager.create_business_tables()
         async with engine.begin() as db:
+            # 当前模型包含 v35/v36 结果引用，先撤去后续结构再模拟 v32。
+            for table in (
+                "governance_topic_dispositions",
+                "governance_topic_confirmations",
+                "project_work_result_topic_feedback",
+            ):
+                await db.execute(text(f"DROP TABLE {table}"))
             await db.execute(text("DROP TABLE project_work_results"))
             await db.execute(
                 text("ALTER TABLE project_work_tasks DROP COLUMN acceptance_criteria, DROP COLUMN criteria_revision")
