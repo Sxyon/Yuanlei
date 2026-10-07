@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import (
@@ -21,6 +21,9 @@ from yuxi.storage.postgres.models_business import (
     GovernanceTopicComment,
     GovernanceTopicRevision,
     GovernanceTopicEvent,
+    GovernanceTopicDisposition,
+    GovernanceTopicConfirmation,
+    ProjectWorkResult,
     ProjectWorkTask,
     ProjectWorkResultTopicFeedback,
     ProjectWorkExecution,
@@ -121,12 +124,18 @@ class GovernanceRepository:
         now: datetime | None = None,
         discussion_type: str = "discussion",
         revision_number: int | None = None,
+        parent_comment_id: str | None = None,
+        operation_id: str | None = None,
+        intent_fingerprint: str | None = None,
     ) -> GovernanceTopicComment:
         """插入一条议题讨论回复并 flush。"""
         row = GovernanceTopicComment(
             id=str(uuid.uuid4()),
             topic_id=str(topic_id),
             content=content,
+            parent_comment_id=parent_comment_id,
+            operation_id=operation_id,
+            intent_fingerprint=intent_fingerprint,
             discussion_type=discussion_type,
             revision_number=revision_number,
             author_name=author_name,
@@ -156,6 +165,8 @@ class GovernanceRepository:
                 number=topic.revision_number,
                 title=topic.title,
                 summary=topic.summary,
+                expected_outcome=topic.expected_outcome,
+                verification_conditions=topic.verification_conditions,
                 reason=reason,
                 created_by=operator,
                 author_name=author_name,
@@ -234,7 +245,102 @@ class GovernanceRepository:
             .limit(1)
         ):
             references.append("工作结果反馈")
+        if await self.db.scalar(
+            select(GovernanceTopicDisposition.id)
+            .where(
+                or_(
+                    GovernanceTopicDisposition.topic_id == topic_id,
+                    GovernanceTopicDisposition.target_topic_id == topic_id,
+                )
+            )
+            .limit(1)
+        ):
+            references.append("讨论采纳处置及其去向")
+        if await self.db.scalar(
+            select(GovernanceTopicConfirmation.id).where(GovernanceTopicConfirmation.topic_id == topic_id).limit(1)
+        ):
+            references.append("实际结果确认")
         return references
+
+    async def find_topic_operation(self, model, topic_id: str, operation_id: str):
+        """读取已提交的同次操作，供用例重放原记录。"""
+        return await self.db.scalar(select(model).where(model.topic_id == topic_id, model.operation_id == operation_id))
+
+    async def get_topic_revision(self, topic_id: str, number: int):
+        """精确读取不可变议题修订。"""
+        return await self.db.get(GovernanceTopicRevision, (topic_id, number))
+
+    async def get_decision_revision(self, decision_id: str, number: int):
+        """精确读取不可变决策修订。"""
+        return await self.db.get(GovernanceDecisionRevision, (decision_id, number))
+
+    async def get_result_reference(self, result_id: str):
+        """读取用于冻结的业务结果，项目锁先由用例取得。"""
+        return await self.db.get(ProjectWorkResult, result_id)
+
+    async def get_topic_comment(self, topic_id: str, comment_id: str):
+        """仅返回当前议题中的讨论或回复。"""
+        return await self.db.scalar(
+            select(GovernanceTopicComment).where(
+                GovernanceTopicComment.topic_id == topic_id, GovernanceTopicComment.id == comment_id
+            )
+        )
+
+    async def comment_replies(self, topic_id: str, comment_id: str):
+        """读取原讨论的一层回复，按时间和ID正序。"""
+        return list(
+            await self.db.scalars(
+                select(GovernanceTopicComment)
+                .where(
+                    GovernanceTopicComment.topic_id == topic_id, GovernanceTopicComment.parent_comment_id == comment_id
+                )
+                .order_by(GovernanceTopicComment.created_at, GovernanceTopicComment.id)
+            )
+        )
+
+    async def comment_dispositions(self, comment_id: str):
+        """读取独立处置的全部追加版本，最新在前。"""
+        return list(
+            await self.db.scalars(
+                select(GovernanceTopicDisposition)
+                .where(GovernanceTopicDisposition.comment_id == comment_id)
+                .order_by(GovernanceTopicDisposition.version.desc())
+            )
+        )
+
+    async def topic_confirmations(self, topic_id: str):
+        """读取实际确认及更正历史，最新在前。"""
+        return list(
+            await self.db.scalars(
+                select(GovernanceTopicConfirmation)
+                .where(GovernanceTopicConfirmation.topic_id == topic_id)
+                .order_by(GovernanceTopicConfirmation.version.desc())
+            )
+        )
+
+    async def topic_reference_candidates(self, project_id: str):
+        """读取同项目可定位的真实修订、决策和业务结果。"""
+        revisions = (
+            (
+                await self.db.execute(
+                    select(GovernanceTopicRevision)
+                    .join(GovernanceTopic, GovernanceTopic.id == GovernanceTopicRevision.topic_id)
+                    .where(GovernanceTopic.project_id == project_id, GovernanceTopic.deleted_at.is_(None))
+                    .order_by(GovernanceTopicRevision.created_at.desc(), GovernanceTopicRevision.number.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        decisions = await self.list_decisions(project_id=project_id)
+        results = list(
+            await self.db.scalars(
+                select(ProjectWorkResult)
+                .where(ProjectWorkResult.project_id == project_id)
+                .order_by(ProjectWorkResult.created_at.desc())
+            )
+        )
+        return revisions, decisions, results
 
     async def add_task(
         self,
@@ -441,6 +547,10 @@ class GovernanceRepository:
             if await self.db.scalar(select(model.id).where(model.source_decision_id == decision_id).limit(1)):
                 refs.append("正式工作及其历史执行依据")
                 break
+        if await self.db.scalar(
+            select(GovernanceTopicDisposition.id).where(GovernanceTopicDisposition.decision_id == decision_id).limit(1)
+        ):
+            refs.append("议题采纳处置去向")
         return refs
 
     async def list_decision_errata(self, decision_id: str):

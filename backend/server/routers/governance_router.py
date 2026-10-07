@@ -29,6 +29,12 @@ from yuxi.services.governance_service import (
     get_governance_topic_timeline,
     list_governance_topics,
     operate_governance_topic,
+    get_topic_discussion,
+    get_topic_followup,
+    get_topic_revision,
+    get_decision_reference_revision,
+    record_topic_disposition,
+    record_topic_confirmation,
 )
 from yuxi.services.inspection_board_service import (
     get_project_inspection_board,
@@ -59,6 +65,8 @@ class GovernanceTopicUpdate(BaseModel):
 
     title: str = Field(..., max_length=512)
     summary: str | None = None
+    expected_outcome: str | None = Field(None, max_length=100_000)
+    verification_conditions: str | None = Field(None, max_length=100_000)
     expected_revision: int = Field(..., ge=1)
     reason: str = Field(..., min_length=1, max_length=100_000)
 
@@ -70,6 +78,49 @@ class GovernanceTopicCommentCreate(BaseModel):
 
     content: str = Field(..., max_length=100_000)
     discussion_type: Literal["discussion", "reconsideration", "correction"] = "discussion"
+    parent_comment_id: str | None = Field(None, min_length=1, max_length=64)
+    operation_id: str | None = Field(None, min_length=1, max_length=64)
+
+
+class TopicRecordReference(BaseModel):
+    """明确指向真实记录及版本的引用。"""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["revision", "decision", "result"]
+    id: str = Field(..., min_length=1, max_length=64)
+    version: int = Field(..., ge=1)
+
+
+class TopicDispositionCreate(BaseModel):
+    """追加独立于正文的采纳处置。"""
+
+    model_config = ConfigDict(extra="forbid")
+    operation_id: str = Field(..., min_length=1, max_length=64)
+    expected_version: int = Field(..., ge=0)
+    disposition: Literal["adopted", "partial", "rejected"]
+    explanation: str = Field(..., min_length=1, max_length=100_000)
+    reference: TopicRecordReference | None = None
+
+
+class TopicConfirmationEvidence(BaseModel):
+    """复用工作结果的可访问证据入口。"""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["url", "file", "attachment"]
+    value: str = Field(..., min_length=1, max_length=2048)
+
+
+class TopicConfirmationCreate(BaseModel):
+    """冻结当时条件并追加个人实际结果判断。"""
+
+    model_config = ConfigDict(extra="forbid")
+    operation_id: str = Field(..., min_length=1, max_length=64)
+    expected_version: int = Field(..., ge=0)
+    expected_revision: int = Field(..., ge=1)
+    action: Literal["confirm", "correct", "withdraw"]
+    explanation: str = Field(..., min_length=1, max_length=100_000)
+    reference: TopicRecordReference | None = None
+    evidence: list[TopicConfirmationEvidence] = Field(default_factory=list, max_length=20)
 
 
 class GovernanceTopicOperation(BaseModel):
@@ -190,8 +241,9 @@ async def get_overview_page(
     current_user: User = Depends(get_required_user),
 ) -> dict:
     """读取与概览卡片同范围的分页事实。"""
-    return await list_project_overview(project_id=project_id, section=section, offset=offset,
-                                       limit=limit, db=db, user=current_user)
+    return await list_project_overview(
+        project_id=project_id, section=section, offset=offset, limit=limit, db=db, user=current_user
+    )
 
 
 @governance.get("/governance/board")
@@ -289,6 +341,11 @@ async def update_topic(
         summary=payload.summary,
         expected_revision=payload.expected_revision,
         reason=payload.reason,
+        **{
+            key: getattr(payload, key)
+            for key in ("expected_outcome", "verification_conditions")
+            if key in payload.model_fields_set
+        },
         db=db,
         user=current_user,
     )
@@ -324,8 +381,78 @@ async def create_topic_comment(
         topic_id=topic_id,
         content=payload.content,
         discussion_type=payload.discussion_type,
+        parent_comment_id=payload.parent_comment_id,
+        operation_id=payload.operation_id,
         db=db,
         user=current_user,
+    )
+
+
+@governance.get("/projects/{project_id}/governance/topics/{topic_id}/comments/{comment_id}")
+async def topic_discussion_detail(
+    project_id: str,
+    topic_id: str,
+    comment_id: str,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """独立定位原讨论及其回复与处置。"""
+    return await get_topic_discussion(
+        project_id=project_id, topic_id=topic_id, comment_id=comment_id, db=db, user=current_user
+    )
+
+
+@governance.get("/projects/{project_id}/governance/topics/{topic_id}/revisions/{number}")
+async def topic_revision_detail(
+    project_id: str,
+    topic_id: str,
+    number: int,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """精确读取同议题历史修订。"""
+    return await get_topic_revision(project_id=project_id, topic_id=topic_id, number=number, db=db, user=current_user)
+
+
+@governance.get("/projects/{project_id}/governance/topics/{topic_id}/followup")
+async def topic_followup_detail(
+    project_id: str, topic_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)
+):
+    """读取实际确认历史和同项目引用候选。"""
+    return await get_topic_followup(project_id=project_id, topic_id=topic_id, db=db, user=current_user)
+
+
+@governance.post("/projects/{project_id}/governance/topics/{topic_id}/comments/{comment_id}/dispositions")
+async def topic_disposition_create(
+    project_id: str,
+    topic_id: str,
+    comment_id: str,
+    payload: TopicDispositionCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """追加处置版本，由用例提交历史。"""
+    return await record_topic_disposition(
+        project_id=project_id,
+        topic_id=topic_id,
+        comment_id=comment_id,
+        payload=payload.model_dump(),
+        db=db,
+        user=current_user,
+    )
+
+
+@governance.post("/projects/{project_id}/governance/topics/{topic_id}/confirmations")
+async def topic_confirmation_create(
+    project_id: str,
+    topic_id: str,
+    payload: TopicConfirmationCreate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """明确记录现实达成、更正或撤回，不改变工作和运行。"""
+    return await record_topic_confirmation(
+        project_id=project_id, topic_id=topic_id, payload=payload.model_dump(), db=db, user=current_user
     )
 
 
@@ -409,6 +536,20 @@ async def create_decision(
         target_decision_id=payload.target_decision_id,
         db=db,
         user=current_user,
+    )
+
+
+@governance.get("/projects/{project_id}/governance/decisions/{decision_id}/revisions/{number}")
+async def decision_reference_revision(
+    project_id: str,
+    decision_id: str,
+    number: int,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取去向链接指定的历史决策版本。"""
+    return await get_decision_reference_revision(
+        project_id=project_id, decision_id=decision_id, number=number, db=db, user=current_user
     )
 
 

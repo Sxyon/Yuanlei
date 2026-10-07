@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 import uuid
+import hashlib
+import json
+
 from typing import Any
 
 from fastapi import HTTPException
@@ -22,6 +25,9 @@ from yuxi.storage.postgres.models_business import (
     GovernanceReport,
     GovernanceTask,
     GovernanceTopic,
+    GovernanceTopicDisposition,
+    GovernanceTopicConfirmation,
+    GovernanceTopicComment,
     Project,
     User,
 )
@@ -122,6 +128,8 @@ def _serialize_topic(row: GovernanceTopic) -> dict[str, Any]:
         "project_id": row.project_id,
         "title": row.title,
         "summary": row.summary,
+        "expected_outcome": row.expected_outcome,
+        "verification_conditions": row.verification_conditions,
         "admission_status": row.status,
         "progress": row.progress,
         "execution_hint": row.execution_hint,
@@ -140,6 +148,7 @@ def _serialize_topic_comment(row: Any) -> dict[str, Any]:
     return {
         "id": row.id,
         "topic_id": row.topic_id,
+        "parent_comment_id": row.parent_comment_id,
         "content": row.content,
         "discussion_type": row.discussion_type,
         "revision_number": row.revision_number,
@@ -204,9 +213,14 @@ def _serialize_report(row: GovernanceReport) -> dict[str, Any]:
     }
 
 
-async def _require_project(*, project_id: str, db: AsyncSession, user: User) -> Project:
+async def _require_project(*, project_id: str, db: AsyncSession, user: User, lock: bool = False) -> Project:
     """只在当前用户可管理的 active selectable Project 上操作，否则 404。"""
-    project = await ProjectRepository(db).get_active_selectable_for_user(project_id, str(user.uid))
+    projects = ProjectRepository(db)
+    project = await (
+        projects.lock_active_selectable_for_user(project_id, str(user.uid))
+        if lock
+        else projects.get_active_selectable_for_user(project_id, str(user.uid))
+    )
     if project is None:
         raise HTTPException(status_code=404, detail="Project 不存在")
     return project
@@ -293,6 +307,8 @@ async def update_governance_topic(
     user: User,
     expected_revision: int,
     reason: str,
+    expected_outcome: str | None | object = _UNSET,
+    verification_conditions: str | None | object = _UNSET,
 ) -> dict[str, Any]:
     """在同一事务保存议题当前内容与修订，拒绝并发覆盖。"""
     project = await _require_project(project_id=project_id, db=db, user=user)
@@ -308,6 +324,10 @@ async def update_governance_topic(
     normalized_reason = _normalize_topic_reason(reason, required=True)
     row.title = normalize_title(title)
     row.summary = _normalize_topic_text(summary, required=False)
+    if expected_outcome is not _UNSET:
+        row.expected_outcome = _normalize_topic_text(expected_outcome, required=False)
+    if verification_conditions is not _UNSET:
+        row.verification_conditions = _normalize_topic_text(verification_conditions, required=False)
     row.revision_number += 1
     await repo.add_topic_revision(row, operator=str(user.uid), author_name=user.username, reason=normalized_reason)
     await repo.add_topic_event(
@@ -343,23 +363,53 @@ async def create_governance_topic_comment(
     db: AsyncSession,
     user: User,
     discussion_type: str = "discussion",
+    parent_comment_id: str | None = None,
+    operation_id: str | None = None,
 ) -> dict[str, Any]:
     """追加带意图与当前修订的讨论，不改变纳入及进度。"""
-    project = await _require_project(project_id=project_id, db=db, user=user)
+    project = await _require_project(project_id=project_id, db=db, user=user, lock=True)
     repo = GovernanceRepository(db)
     topic = await repo.get_topic_for_update(topic_id=topic_id)
     if topic is None or topic.project_id != project.id:
         raise HTTPException(status_code=404, detail="议题不存在")
-    row = await append_topic_discussion(repo=repo, topic=topic, user=user, content=content,
-                                        discussion_type=discussion_type)
+    row = await append_topic_discussion(
+        repo=repo,
+        topic=topic,
+        user=user,
+        content=content,
+        discussion_type=discussion_type,
+        parent_comment_id=parent_comment_id,
+        operation_id=operation_id,
+    )
     await db.commit()
     await db.refresh(row)
     return _serialize_topic_comment(row)
 
 
-async def append_topic_discussion(*, repo, topic, user, content, discussion_type, details=None):
+async def append_topic_discussion(
+    *, repo, topic, user, content, discussion_type, details=None, parent_comment_id=None, operation_id=None
+):
     """在调用方事务中追加讨论及时间线；不自行提交。"""
+    fingerprint = _topic_intent(
+        {
+            "content": content,
+            "discussion_type": discussion_type,
+            "parent_comment_id": parent_comment_id,
+            "details": details,
+        }
+    )
+    if operation_id:
+        existing = await repo.find_topic_operation(GovernanceTopicComment, topic.id, operation_id)
+        if existing:
+            _same_topic_intent(existing, fingerprint)
+            return existing
     _require_topic_writable(topic)
+    if parent_comment_id and not operation_id:
+        raise HTTPException(422, detail={"code": "reply_operation_required", "message": "回复须携带重试标识"})
+    if parent_comment_id:
+        parent = await repo.get_topic_comment(topic.id, parent_comment_id)
+        if parent is None or parent.parent_comment_id is not None:
+            raise HTTPException(422, detail={"code": "invalid_reply_parent", "message": "只能回复本议题的顶层讨论"})
     if discussion_type not in ("discussion", "reconsideration", "correction"):
         raise HTTPException(status_code=422, detail={"code": "invalid_discussion_type"})
     normalized_content = _normalize_topic_text(content, required=True)
@@ -370,14 +420,17 @@ async def append_topic_discussion(*, repo, topic, user, content, discussion_type
         revision_number=topic.revision_number,
         author_name=user.username,
         operator=str(user.uid),
+        parent_comment_id=parent_comment_id,
+        operation_id=operation_id,
+        intent_fingerprint=fingerprint if operation_id else None,
     )
     await repo.add_topic_event(
         topic,
-        kind="comment",
+        kind="reply" if parent_comment_id else "comment",
         operator=str(user.uid),
         author_name=user.username,
         comment_id=row.id,
-        details={"discussion_type": discussion_type, **(details or {})},
+        details={"discussion_type": discussion_type, "parent_comment_id": parent_comment_id, **(details or {})},
     )
     return row
 
@@ -437,10 +490,8 @@ async def operate_governance_topic(
     user: User,
 ) -> dict[str, Any]:
     """执行议题局部生命周期操作，不写入决策、任务或运行状态。"""
-    project = await _require_project(project_id=project_id, db=db, user=user)
+    project = await _require_project(project_id=project_id, db=db, user=user, lock=True)
     repo = GovernanceRepository(db)
-    if action == "decide":
-        await repo.lock_decision_project(project.id)
     topic = await repo.get_topic_for_update(topic_id=topic_id)
     if topic is None or topic.project_id != project.id:
         raise HTTPException(status_code=404, detail="议题不存在")
@@ -520,14 +571,325 @@ async def get_governance_topic_timeline(
                     "number": revision.number,
                     "title": revision.title,
                     "summary": revision.summary,
+                    "expected_outcome": revision.expected_outcome,
+                    "verification_conditions": revision.verification_conditions,
                     "origin": revision.origin,
                 }
                 if revision
                 else None,
-                "comment": _serialize_topic_comment(comment) if comment else None,
+                "comment": await _topic_discussion_data(GovernanceRepository(db), comment)
+                if comment and event.kind == "comment"
+                else None,
             }
         )
     return {"items": items, "next_before": items[-1]["sequence"] if len(rows) > limit else None}
+
+
+def _topic_intent(payload: dict) -> str:
+    """为同次重试校验原始意图，不将可变引用状态纳入指纹。"""
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def _same_topic_intent(row, fingerprint: str) -> None:
+    """同一操作标识只允许重放同一意图。"""
+    if row.intent_fingerprint != fingerprint:
+        raise HTTPException(
+            409, detail={"code": "operation_conflict", "message": "此请求标识已用于其他内容，请重新提交"}
+        )
+
+
+def _topic_record_data(row) -> dict:
+    """返回追加记录，包括冻结引用、条件和操作者。"""
+    data = {column.name: getattr(row, column.name) for column in row.__table__.columns}
+    data.pop("intent_fingerprint", None)
+    data["created_at"] = format_utc_datetime(row.created_at)
+    return data
+
+
+async def _topic_discussion_data(repo, comment) -> dict:
+    """原讨论独立装配回复与处置，不依赖时间线当前页。"""
+    return {
+        **_serialize_topic_comment(comment),
+        "replies": [_serialize_topic_comment(row) for row in await repo.comment_replies(comment.topic_id, comment.id)],
+        "dispositions": [_topic_record_data(row) for row in await repo.comment_dispositions(comment.id)],
+    }
+
+
+async def get_topic_discussion(*, project_id, topic_id, comment_id, db, user) -> dict:
+    """定位早期顶层讨论，归档仍可读。"""
+    await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    comment = await repo.get_topic_comment(topic_id, comment_id)
+    if comment is None or comment.parent_comment_id:
+        raise HTTPException(404, detail="顶层讨论不存在")
+    return await _topic_discussion_data(repo, comment)
+
+
+async def get_topic_revision(*, project_id, topic_id, number, db, user) -> dict:
+    """返回权限范围内的准确历史修订。"""
+    await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=user)
+    row = await GovernanceRepository(db).get_topic_revision(topic_id, number)
+    if row is None:
+        raise HTTPException(404, detail="历史修订不存在")
+    return _topic_record_data(row)
+
+
+async def get_decision_reference_revision(*, project_id, decision_id, number, db, user) -> dict:
+    """读取准确引用的决策旧版本，独立于当前历史分页。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    decision = await repo.get_decision(decision_id=decision_id)
+    if decision is None or decision.project_id != project.id:
+        raise HTTPException(404, detail="决策不存在")
+    row = await repo.get_decision_revision(decision_id, number)
+    if row is None:
+        raise HTTPException(404, detail="决策修订不存在")
+    return _topic_record_data(row)
+
+
+async def get_topic_followup(*, project_id, topic_id, db, user) -> dict:
+    """返回可选去向与实际确认历史，用同项目可见事实生成候选。"""
+    await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=user)
+    repo = GovernanceRepository(db)
+    revisions, decisions, results = await repo.topic_reference_candidates(project_id)
+    candidates = []
+    for row in revisions:
+        candidates.append(
+            {
+                "kind": "revision",
+                "id": row.topic_id,
+                "version": row.number,
+                "title": f"{row.title} · 议题修订{row.number}",
+                "href": f"/projects/{project_id}/inspection?topic_id={row.topic_id}&revision={row.number}",
+            }
+        )
+    for row in decisions:
+        candidates.append(
+            {
+                "kind": "decision",
+                "id": row.id,
+                "version": row.revision_number,
+                "title": row.title,
+                "status": row.status,
+                "href": (
+                    f"/projects/{project_id}/inspection?decision_id={row.id}&decision_revision={row.revision_number}"
+                ),
+            }
+        )
+    for row in results:
+        candidates.append(
+            {
+                "kind": "result",
+                "id": row.id,
+                "version": row.version,
+                "title": row.summary,
+                "status": row.status,
+                "href": f"/projects/{project_id}/work/tasks/{row.task_id}#work-result-{row.id}",
+            }
+        )
+    return {
+        "candidates": candidates,
+        "confirmations": [_topic_record_data(row) for row in await repo.topic_confirmations(topic_id)],
+    }
+
+
+async def _topic_reference(*, reference, project, repo, db) -> tuple[dict, dict]:
+    """校验同项目准确版本，冻结说明并返回真实外键。"""
+    if not reference:
+        return {}, {}
+    kind, record_id, version = reference["kind"], reference["id"], reference["version"]
+    keys = {}
+    if kind == "revision":
+        target = await repo.get_topic(topic_id=record_id)
+        revision = await repo.get_topic_revision(record_id, version)
+        if target is None or target.project_id != project.id or revision is None:
+            raise HTTPException(422, detail={"code": "invalid_reference", "message": "议题修订不存在或不属于当前项目"})
+        snapshot = {
+            "title": revision.title,
+            "summary": revision.summary,
+            "expected_outcome": revision.expected_outcome,
+            "verification_conditions": revision.verification_conditions,
+        }
+        keys = {"target_topic_id": record_id, "target_revision": version}
+        href = f"/projects/{project.id}/inspection?topic_id={record_id}&revision={version}"
+    elif kind == "decision":
+        target = await repo.get_decision(decision_id=record_id)
+        revision = await repo.get_decision_revision(record_id, version)
+        if target is None or target.project_id != project.id or revision is None:
+            raise HTTPException(422, detail={"code": "invalid_reference", "message": "决策版本不存在或不属于当前项目"})
+        snapshot = {**revision.snapshot, "current_status_at_recording": target.status}
+        keys = {"decision_id": record_id, "decision_revision": version}
+        href = f"/projects/{project.id}/inspection?decision_id={record_id}&decision_revision={version}"
+    elif kind == "result":
+        target = await repo.get_result_reference(record_id)
+        if target is None or target.project_id != project.id:
+            raise HTTPException(422, detail={"code": "invalid_reference", "message": "工作结果不存在或不属于当前项目"})
+        if target.version != version:
+            raise HTTPException(409, detail={"code": "reference_conflict", "message": "工作结果已变更，请重新选择依据"})
+        snapshot = {
+            "summary": target.summary,
+            "review_status": target.status,
+            "evidence": target.evidence,
+            "criteria_snapshot": target.criteria_snapshot,
+            "criteria_revision": target.criteria_revision,
+            "task_id": target.task_id,
+        }
+        keys = {"result_id": record_id}
+        href = f"/projects/{project.id}/work/tasks/{target.task_id}#work-result-{record_id}"
+    else:
+        raise HTTPException(422, detail={"code": "invalid_reference", "message": "引用类型无效"})
+    return keys, {**reference, "snapshot": snapshot, "href": href}
+
+
+async def record_topic_disposition(*, project_id, topic_id, comment_id, payload, db, user) -> dict:
+    """在项目及议题锁内追加处置和历史，版本冲突不覆盖旧记录。"""
+    project = await _require_project(project_id=project_id, db=db, user=user, lock=True)
+    repo = GovernanceRepository(db)
+    topic = await repo.get_topic_for_update(topic_id=topic_id)
+    if topic is None or topic.project_id != project.id:
+        raise HTTPException(404, detail="议题不存在")
+    fingerprint = _topic_intent({"comment_id": comment_id, **payload})
+    previous = await repo.find_topic_operation(GovernanceTopicDisposition, topic_id, payload["operation_id"])
+    if previous:
+        _same_topic_intent(previous, fingerprint)
+        return _topic_record_data(previous)
+    _require_topic_writable(topic)
+    comment = await repo.get_topic_comment(topic_id, comment_id)
+    if comment is None or comment.parent_comment_id:
+        raise HTTPException(422, detail={"code": "invalid_disposition_comment", "message": "只能处理本议题的顶层讨论"})
+    history = await repo.comment_dispositions(comment_id)
+    version = history[0].version if history else 0
+    if version != payload["expected_version"]:
+        raise HTTPException(
+            409, detail={"code": "disposition_conflict", "message": "讨论处置已变化，请重新读取；草稿可保留"}
+        )
+    if payload["disposition"] not in ("adopted", "partial", "rejected"):
+        raise HTTPException(422, detail="处置类型无效")
+    explanation = _normalize_topic_reason(payload["explanation"], required=True)
+    keys, reference = await _topic_reference(reference=payload.get("reference"), project=project, repo=repo, db=db)
+    row = GovernanceTopicDisposition(
+        id=str(uuid.uuid4()),
+        topic_id=topic_id,
+        comment_id=comment_id,
+        version=version + 1,
+        operation_id=payload["operation_id"],
+        intent_fingerprint=fingerprint,
+        disposition=payload["disposition"],
+        explanation=explanation,
+        revision_number=topic.revision_number,
+        reference_snapshot=reference or None,
+        author_name=user.username,
+        created_by=str(user.uid),
+        **keys,
+    )
+    db.add(row)
+    await db.flush()
+    await repo.add_topic_event(
+        topic,
+        kind="disposition",
+        operator=str(user.uid),
+        author_name=user.username,
+        details={
+            "comment_id": comment_id,
+            "disposition_id": row.id,
+            "version": row.version,
+            "disposition": row.disposition,
+            "explanation": explanation,
+            "reference": reference,
+        },
+    )
+    await db.commit()
+    return _topic_record_data(row)
+
+
+async def record_topic_confirmation(*, project_id, topic_id, payload, db, user) -> dict:
+    """人工确认现实结果，冻结当时条件与证据，不改其他Owner状态。"""
+    from yuxi.repositories.project_work_repository import ProjectWorkRepository
+    from yuxi.services.project_work_result_service import evidence_data
+
+    project = await _require_project(project_id=project_id, db=db, user=user, lock=True)
+    repo = GovernanceRepository(db)
+    topic = await repo.get_topic_for_update(topic_id=topic_id)
+    if topic is None or topic.project_id != project.id:
+        raise HTTPException(404, detail="议题不存在")
+    fingerprint = _topic_intent(payload)
+    previous = await repo.find_topic_operation(GovernanceTopicConfirmation, topic_id, payload["operation_id"])
+    if previous:
+        _same_topic_intent(previous, fingerprint)
+        return _topic_record_data(previous)
+    _require_topic_writable(topic)
+    history = await repo.topic_confirmations(topic_id)
+    version = history[0].version if history else 0
+    if version != payload["expected_version"] or topic.revision_number != payload["expected_revision"]:
+        raise HTTPException(
+            409, detail={"code": "confirmation_conflict", "message": "确认记录或议题条件已变化，请重新读取；草稿可保留"}
+        )
+    action = payload["action"]
+    if action not in ("confirm", "correct", "withdraw") or (action != "confirm" and not history):
+        raise HTTPException(422, detail={"code": "invalid_confirmation", "message": "更正或撤回需要已有确认"})
+    explanation = _normalize_topic_reason(payload["explanation"], required=True)
+    reference = payload.get("reference")
+    if reference and reference["kind"] != "result":
+        raise HTTPException(422, detail={"code": "invalid_reference", "message": "实际确认只能关联工作结果"})
+    keys, snapshot = await _topic_reference(reference=reference, project=project, repo=repo, db=db)
+    work_repo = ProjectWorkRepository(db, uid=str(user.uid), project_id=project.id)
+    evidence = payload.get("evidence", [])
+    if any(item["kind"] == "attachment" for item in evidence) and not reference:
+        raise HTTPException(422, detail={"code": "invalid_reference", "message": "附件依据需关联其所属工作结果"})
+    checked = await evidence_data(
+        repo=work_repo,
+        project=project,
+        evidence=[{**item, "task_id": snapshot.get("snapshot", {}).get("task_id")} for item in evidence],
+    )
+    if any(item["availability"] == "unavailable" for item in checked):
+        raise HTTPException(
+            422,
+            detail={"code": "topic_evidence_unavailable", "message": "依据无法访问，请检查引用", "evidence": checked},
+        )
+    if snapshot:
+        result_evidence = await evidence_data(
+            repo=work_repo,
+            project=project,
+            evidence=[
+                {**item, "task_id": snapshot["snapshot"]["task_id"]}
+                for item in snapshot["snapshot"].get("evidence", [])
+            ],
+        )
+        if any(item["availability"] == "unavailable" for item in result_evidence):
+            raise HTTPException(
+                422, detail={"code": "topic_evidence_unavailable", "message": "所选工作结果的依据无法访问"}
+            )
+        snapshot["snapshot"]["evidence"] = result_evidence
+    if action != "withdraw" and not checked and not snapshot:
+        raise HTTPException(422, detail={"code": "evidence_required", "message": "请选择工作结果或填写实际依据"})
+    row = GovernanceTopicConfirmation(
+        id=str(uuid.uuid4()),
+        topic_id=topic_id,
+        version=version + 1,
+        operation_id=payload["operation_id"],
+        intent_fingerprint=fingerprint,
+        action=action,
+        explanation=explanation,
+        revision_number=topic.revision_number,
+        expected_outcome=topic.expected_outcome,
+        verification_conditions=topic.verification_conditions,
+        reference_snapshot=snapshot or None,
+        evidence=checked,
+        author_name=user.username,
+        created_by=str(user.uid),
+        **keys,
+    )
+    db.add(row)
+    await db.flush()
+    await repo.add_topic_event(
+        topic,
+        kind="actual_confirmation",
+        operator=str(user.uid),
+        author_name=user.username,
+        details={"confirmation_id": row.id, "version": row.version, "action": action, "explanation": explanation},
+    )
+    await db.commit()
+    return _topic_record_data(row)
 
 
 async def create_governance_task(

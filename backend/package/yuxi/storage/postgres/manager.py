@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 35
+YUANLEI_SCHEMA_VERSION = 36
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1674,6 +1674,33 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v35_to_v36(self) -> None:
+        """增加回复、处置和实际确认；旧字段保持未知，不改历史正文。"""
+        from yuxi.storage.postgres.models_business import GovernanceTopicDisposition, GovernanceTopicConfirmation
+
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for table in ("governance_topics", "governance_topic_revisions"):
+                for column in ("expected_outcome", "verification_conditions"):
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} TEXT"))
+            for column in ("parent_comment_id", "operation_id", "intent_fingerprint"):
+                await conn.execute(text(
+                    f"ALTER TABLE governance_topic_comments ADD COLUMN IF NOT EXISTS {column} VARCHAR(64)"))
+            for name, definition in (
+                ("uq_topic_comment_scope", "UNIQUE(topic_id,id)"),
+                ("uq_topic_comment_operation", "UNIQUE(topic_id,operation_id)"),
+                ("fk_topic_reply_parent", "FOREIGN KEY(topic_id,parent_comment_id) "
+                 "REFERENCES governance_topic_comments(topic_id,id)"),
+            ):
+                await conn.execute(text(f"""DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='{name}'
+                        AND conrelid='governance_topic_comments'::regclass) THEN
+                        ALTER TABLE governance_topic_comments ADD CONSTRAINT {name} {definition};
+                    END IF;
+                END $$"""))
+            for model in (GovernanceTopicDisposition, GovernanceTopicConfirmation):
+                await conn.run_sync(lambda sync, model=model: model.__table__.create(sync, checkfirst=True))
 
     async def upgrade_yuanlei_schema_v34_to_v35(self) -> None:
         """增加自动交付来源与结果议题关系，旧结果保持人工来源。"""

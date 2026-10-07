@@ -107,10 +107,42 @@ export const governanceBoardApi = {
     )
   },
 
-  createTopicComment(projectId, topicId, content, discussionType = 'discussion') {
+  createTopicComment(projectId, topicId, content, discussionType = 'discussion', options = {}) {
     return apiPost(
       `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments`,
-      { content, discussion_type: discussionType }
+      { content, discussion_type: discussionType, ...options }
+    )
+  },
+
+  getTopicDiscussion(projectId, topicId, commentId) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments/${encodeURIComponent(commentId)}`
+    )
+  },
+
+  getTopicFollowup(projectId, topicId) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/followup`
+    )
+  },
+
+  recordTopicDisposition(projectId, topicId, commentId, payload) {
+    return apiPost(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments/${encodeURIComponent(commentId)}/dispositions`,
+      payload
+    )
+  },
+
+  recordTopicConfirmation(projectId, topicId, payload) {
+    return apiPost(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/confirmations`,
+      payload
+    )
+  },
+
+  getTopicRevision(projectId, topicId, revision) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/revisions/${revision}`
     )
   },
 
@@ -123,6 +155,12 @@ export const governanceBoardApi = {
 
   createDecision(projectId, payload) {
     return apiPost(`${projectPath(projectId)}/governance/decisions`, payload)
+  },
+
+  getDecisionRevision(projectId, decisionId, revision) {
+    return apiGet(
+      `${projectPath(projectId)}/governance/decisions/${encodeURIComponent(decisionId)}/revisions/${revision}`
+    )
   },
 
   getDecision(projectId, decisionId, before) {

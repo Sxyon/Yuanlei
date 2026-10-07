@@ -79,6 +79,12 @@
           }}</router-link>
           · {{ governanceStatusLabel(task.status) }}
         </p>
+        <a-alert v-if="referencedRevisionError" type="error" show-icon :message="referencedRevisionError" />
+        <article v-if="referencedRevision" class="history-node">
+          <h4>关联依据 · 决策版本 {{ referencedRevision.number }}（历史快照）</h4>
+          <h5>{{ referencedRevision.snapshot.title }}</h5>
+          <MarkdownPreview :content="`${referencedRevision.snapshot.conclusion}\n\n${referencedRevision.snapshot.rationale || ''}`" />
+        </article>
         <h4>{{ detail.status === 'draft' ? '当前草案' : '批准原文' }}</h4>
         <MarkdownPreview :content="`${detail.conclusion}\n\n---\n\n${detail.rationale || ''}`" />
         <p v-if="detail.decided_at">
@@ -273,6 +279,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Modal } from 'ant-design-vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -287,6 +294,10 @@ const props = defineProps({
   selectedId: { type: String, default: '' }
 })
 const emit = defineEmits(['updated', 'select', 'compose', 'topic'])
+const route = useRoute()
+const referencedRevision = ref(null)
+const referencedRevisionError = ref('')
+let referenceGeneration = 0
 const timestampLabel = (raw) => (raw ? new Date(raw).toLocaleString('zh-CN') : '')
 const relationLabels = { ordinary: '普通决策', supplement: '补充决策', replacement: '整条替代' }
 const fieldLabels = { title: '标题', conclusion: '结论', rationale: '理由' }
@@ -340,6 +351,7 @@ let generation = 0
 let deleteConfirmation
 onBeforeUnmount(() => {
   generation++
+  referenceGeneration++
   deleteConfirmation?.destroy()
 })
 function cancel() {
@@ -476,6 +488,21 @@ async function perform() {
     if (seq === generation) busy.value = false
   }
 }
+watch(
+  () => [props.projectId, props.selectedId, route?.query.decision_revision],
+  async ([projectId, id, revision]) => {
+    const seq = ++referenceGeneration
+    referencedRevision.value = null
+    referencedRevisionError.value = ''
+    if (!id || !revision) return
+    try {
+      const result = await api.getDecisionRevision(projectId, id, revision)
+      if (seq === referenceGeneration) referencedRevision.value = result
+    } catch (failure) {
+      if (seq === referenceGeneration) referencedRevisionError.value = failure?.message || '历史决策版本读取失败'
+    }
+  }, { immediate: true }
+)
 watch(
   () => props.selectedId,
   (id) => {

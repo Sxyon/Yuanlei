@@ -989,6 +989,8 @@ class GovernanceTopic(Base):
     )
     title = Column(String(512), nullable=False, comment="规范化标题")
     summary = Column(Text, nullable=True, comment="背景与候选方案摘要")
+    expected_outcome = Column(Text, nullable=True)
+    verification_conditions = Column(Text, nullable=True)
     status = Column(String(16), nullable=False, default="proposed", comment="proposed/canonical/rejected")
     progress = Column(String(16), nullable=False, default="open", server_default="open")
     execution_hint = Column(String(32), nullable=True)
@@ -1013,6 +1015,11 @@ class GovernanceTopicComment(Base):
     __tablename__ = "governance_topic_comments"
     __table_args__ = (
         Index("ix_governance_topic_comments_topic_created", "topic_id", "created_at", "id"),
+        UniqueConstraint("topic_id", "id", name="uq_topic_comment_scope"),
+        UniqueConstraint("topic_id", "operation_id", name="uq_topic_comment_operation"),
+        ForeignKeyConstraint(["topic_id", "parent_comment_id"],
+                             ["governance_topic_comments.topic_id", "governance_topic_comments.id"],
+                             name="fk_topic_reply_parent"),
         CheckConstraint(
             "discussion_type IN ('discussion', 'reconsideration', 'correction')", name="ck_topic_discussion_type"
         ),
@@ -1032,6 +1039,9 @@ class GovernanceTopicComment(Base):
     )
     discussion_type = Column(String(32), nullable=False, default="discussion", server_default="discussion")
     revision_number = Column(Integer, nullable=True)
+    parent_comment_id = Column(String(64), nullable=True)
+    operation_id = Column(String(64), nullable=True)
+    intent_fingerprint = Column(String(64), nullable=True)
     content = Column(Text, nullable=False, comment="Markdown 回复正文")
     author_name = Column(Text, nullable=False, comment="发帖时作者显示名快照")
     created_by = Column(String(64), nullable=True, comment="作者 uid，不建立用户外键以保留历史回复")
@@ -1046,6 +1056,8 @@ class GovernanceTopicRevision(Base):
     number = Column(Integer, primary_key=True)
     title = Column(String(512), nullable=False)
     summary = Column(Text, nullable=True)
+    expected_outcome = Column(Text, nullable=True)
+    verification_conditions = Column(Text, nullable=True)
     reason = Column(Text, nullable=True)
     author_name = Column(Text, nullable=True)
     created_by = Column(String(64), nullable=True)
@@ -1077,6 +1089,91 @@ class GovernanceTopicEvent(Base):
             ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
         ),
         CheckConstraint("sequence >= 1", name="ck_topic_event_sequence"),
+    )
+
+
+class GovernanceTopicDisposition(Base):
+    """顶层讨论的追加处置，保留每次说明与准确去向。"""
+
+    __tablename__ = "governance_topic_dispositions"
+    id = Column(String(64), primary_key=True)
+    topic_id = Column(String(64), ForeignKey("governance_topics.id", ondelete="CASCADE"), nullable=False)
+    comment_id = Column(String(64), nullable=False)
+    version = Column(Integer, nullable=False)
+    operation_id = Column(String(64), nullable=False)
+    intent_fingerprint = Column(String(64), nullable=False)
+    disposition = Column(String(16), nullable=False)
+    explanation = Column(Text, nullable=False)
+    revision_number = Column(Integer, nullable=False)
+    target_topic_id = Column(String(64), nullable=True)
+    target_revision = Column(Integer, nullable=True)
+    decision_id = Column(String(64), nullable=True)
+    decision_revision = Column(Integer, nullable=True)
+    result_id = Column(String(64), ForeignKey("project_work_results.id"), nullable=True)
+    reference_snapshot = Column(JSON_VALUE, nullable=True)
+    author_name = Column(Text, nullable=False)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        UniqueConstraint("comment_id", "version", name="uq_topic_disposition_version"),
+        UniqueConstraint("topic_id", "operation_id", name="uq_topic_disposition_operation"),
+        ForeignKeyConstraint(
+            ["topic_id", "comment_id"],
+            ["governance_topic_comments.topic_id", "governance_topic_comments.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["topic_id", "revision_number"],
+            ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
+        ),
+        ForeignKeyConstraint(
+            ["target_topic_id", "target_revision"],
+            ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
+        ),
+        ForeignKeyConstraint(
+            ["decision_id", "decision_revision"],
+            ["governance_decision_revisions.decision_id", "governance_decision_revisions.number"],
+        ),
+        CheckConstraint(
+            "disposition IN ('adopted','partial','rejected') AND version >= 1", name="ck_topic_disposition"
+        ),
+        CheckConstraint(
+            "(CASE WHEN target_topic_id IS NOT NULL THEN 1 ELSE 0 END + "
+            "CASE WHEN decision_id IS NOT NULL THEN 1 ELSE 0 END + "
+            "CASE WHEN result_id IS NOT NULL THEN 1 ELSE 0 END) <= 1",
+            name="ck_topic_disposition_target",
+        ),
+    )
+
+
+class GovernanceTopicConfirmation(Base):
+    """人工实际结果确认及更正，条件与依据在提交时冻结。"""
+
+    __tablename__ = "governance_topic_confirmations"
+    id = Column(String(64), primary_key=True)
+    topic_id = Column(String(64), ForeignKey("governance_topics.id", ondelete="CASCADE"), nullable=False)
+    version = Column(Integer, nullable=False)
+    operation_id = Column(String(64), nullable=False)
+    intent_fingerprint = Column(String(64), nullable=False)
+    action = Column(String(16), nullable=False)
+    explanation = Column(Text, nullable=False)
+    revision_number = Column(Integer, nullable=False)
+    expected_outcome = Column(Text, nullable=True)
+    verification_conditions = Column(Text, nullable=True)
+    result_id = Column(String(64), ForeignKey("project_work_results.id"), nullable=True)
+    reference_snapshot = Column(JSON_VALUE, nullable=True)
+    evidence = Column(JSON_VALUE, nullable=False, default=list)
+    author_name = Column(Text, nullable=False)
+    created_by = Column(String(64), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    __table_args__ = (
+        UniqueConstraint("topic_id", "version", name="uq_topic_confirmation_version"),
+        UniqueConstraint("topic_id", "operation_id", name="uq_topic_confirmation_operation"),
+        ForeignKeyConstraint(
+            ["topic_id", "revision_number"],
+            ["governance_topic_revisions.topic_id", "governance_topic_revisions.number"],
+        ),
+        CheckConstraint("action IN ('confirm','correct','withdraw') AND version >= 1", name="ck_topic_confirmation"),
     )
 
 

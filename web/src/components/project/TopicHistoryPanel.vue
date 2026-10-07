@@ -8,7 +8,16 @@
       description="此提示仅记录议题意见，不暂停关联任务或执行记录，也不撤销正式决策。"
     />
     <p>纳入议题不等于批准决策。正文修改保留修订，不覆盖正式决策。</p>
-    <RouterLink class="source-work-link" v-if="!topic.archived_at" :to="{ name: 'ProjectWorkTasksView', params: { project_id: projectId }, query: { create: '1', topic_id: topic.id } }">从此议题创建工作</RouterLink>
+    <RouterLink
+      class="source-work-link"
+      v-if="!topic.archived_at"
+      :to="{
+        name: 'ProjectWorkTasksView',
+        params: { project_id: projectId },
+        query: { create: '1', topic_id: topic.id }
+      }"
+      >从此议题创建工作</RouterLink
+    >
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <div v-if="!topic.archived_at" class="topic-maintenance">
       <a-select v-model:value="action" aria-label="议题操作" style="min-width: 160px">
@@ -80,6 +89,36 @@
       <a-button :disabled="busy || !content.trim()" @click="post">发布讨论</a-button>
       <span>讨论类型表达意图，发帖不会自动重开议题。</span>
     </div>
+    <a-alert v-if="followupError" type="error" show-icon :message="followupError" />
+    <a-button v-if="followupError" @click="loadFollowup">重新加载引用与确认</a-button>
+    <TopicOutcomePanel
+      v-if="followupReady"
+      :project-id="projectId"
+      :topic="topic"
+      :candidates="candidates"
+      :confirmations="confirmations"
+      :draft="draft"
+      @updated="refreshFollowup"
+    />
+    <article v-if="focusedRevision" class="history-event">
+      <h4>定位历史修订 {{ focusedRevision.number }}</h4>
+      <h5>{{ focusedRevision.title }}</h5>
+      <MarkdownPreview :content="focusedRevision.summary || '暂无正文'" /><MarkdownPreview
+        :content="`${focusedRevision.expected_outcome || '未填写预期结果'}\n\n${focusedRevision.verification_conditions || '未填写核对条件'}`"
+      />
+    </article>
+    <article v-if="focusedDiscussion" class="history-event">
+      <h4>定位原讨论</h4>
+      <TopicDiscussionCard
+        :project-id="projectId"
+        :topic-id="topic.id"
+        :comment="focusedDiscussion"
+        :candidates="candidates"
+        :archived="!!topic.archived_at"
+        :draft="draft"
+        @updated="refreshFollowup"
+      />
+    </article>
     <h4>历史时间线 · 最新在前</h4>
     <a-spin v-if="loading" />
     <p v-if="!loading && !events.length">暂无历史节点。</p>
@@ -93,7 +132,10 @@
       </header>
       <p v-if="event.reason">{{ event.reason }}</p>
       <p v-if="event.details?.result_id">
-        <router-link :to="`/projects/${projectId}/work/tasks/${event.details.work_task_id}#work-result-${event.details.result_id}`">查看来源工作结果</router-link>
+        <router-link
+          :to="`/projects/${projectId}/work/tasks/${event.details.work_task_id}#work-result-${event.details.result_id}`"
+          >查看来源工作结果</router-link
+        >
       </p>
       <p v-if="event.details?.execution_hint">
         {{
@@ -111,7 +153,37 @@
           >查看决策详情</router-link
         >
       </p>
-      <MarkdownPreview v-if="event.comment" :content="event.comment.content" />
+      <router-link
+        v-if="event.kind === 'reply' || event.kind === 'disposition'"
+        :to="{
+          query: {
+            ...$route.query,
+            comment_id: event.details.parent_comment_id || event.details.comment_id
+          }
+        }"
+        >打开原讨论及回复 / 处理历史</router-link
+      >
+      <p v-if="event.kind === 'disposition'">
+        {{ dispositionLabels[event.details.disposition] }} · 版本 {{ event.details.version }} ·
+        {{ event.details.explanation }}
+      </p>
+      <router-link v-if="event.details?.reference?.href" :to="event.details.reference.href"
+        >查看实际去向</router-link
+      >
+      <p v-if="event.kind === 'actual_confirmation'">
+        {{ event.details.explanation }}
+        <a @click="openConfirmation(event.details.confirmation_id)">查看确认及当时条件</a>
+      </p>
+      <TopicDiscussionCard
+        v-if="event.comment && event.comment.id !== focusedDiscussion?.id"
+        :project-id="projectId"
+        :topic-id="topic.id"
+        :comment="event.comment"
+        :candidates="candidates"
+        :archived="!!topic.archived_at"
+        :draft="draft"
+        @updated="refreshFollowup"
+      />
       <small v-if="event.comment && !event.revision_number">当时正文版本未知</small>
       <details v-if="event.revision">
         <summary>
@@ -120,6 +192,9 @@
         </summary>
         <h5>{{ event.revision.title }}</h5>
         <MarkdownPreview :content="event.revision.summary || '暂无正文'" />
+        <MarkdownPreview
+          :content="`${event.revision.expected_outcome || '未填写预期结果'}\n\n${event.revision.verification_conditions || '未填写核对条件'}`"
+        />
       </details>
     </article>
     <a-button v-if="nextBefore" :disabled="loading" @click="loadMore(false)">加载更早记录</a-button>
@@ -127,7 +202,11 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { consumeIntent, stableIntent } from '@/utils/topicFollowup'
+import TopicDiscussionCard from './TopicDiscussionCard.vue'
+import TopicOutcomePanel from './TopicOutcomePanel.vue'
 import { Modal } from 'ant-design-vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
@@ -140,6 +219,15 @@ const props = defineProps({
   draft: { type: Object, default: () => ({ content: '', discussionType: 'discussion' }) }
 })
 const emit = defineEmits(['updated'])
+const route = useRoute()
+const candidates = ref([]),
+  confirmations = ref([]),
+  focusedDiscussion = ref(null),
+  focusedRevision = ref(null)
+const followupError = ref(''),
+  followupReady = ref(false)
+const dispositionLabels = { adopted: '采纳', partial: '部分采纳', rejected: '不采纳' }
+let followupGeneration = 0
 const events = ref([])
 const nextBefore = ref(null)
 const loading = ref(false)
@@ -149,8 +237,9 @@ const action = ref(undefined)
 const reason = ref('')
 const decisionId = ref(undefined)
 const executionHint = ref(undefined)
-const discussionType = toRef(props.draft, 'discussionType', 'discussion')
-const content = toRef(props.draft, 'content')
+const sharedDraft = reactive(props.draft)
+const discussionType = toRef(sharedDraft, 'discussionType', 'discussion')
+const content = toRef(sharedDraft, 'content')
 const actionLabel = computed(
   () =>
     ({
@@ -169,6 +258,7 @@ let cancelDeleteConfirmation
 onBeforeUnmount(() => {
   active = false
   generation += 1
+  followupGeneration += 1
   cancelDeleteConfirmation?.()
   deleteConfirmation?.destroy()
 })
@@ -196,13 +286,52 @@ const labels = {
   reopen: '重开议题',
   archive: '归档',
   restore: '恢复归档',
-  migration_baseline: '迁移基线'
+  migration_baseline: '迁移基线',
+  reply: '追加回复',
+  disposition: '记录采纳处置',
+  actual_confirmation: '记录实际确认 / 更正'
 }
 const discussionLabels = { discussion: '研讨', reconsideration: '重议', correction: '纠偏' }
 function eventLabel(event) {
   return event.kind === 'comment'
     ? discussionLabels[event.comment?.discussion_type || 'discussion']
     : labels[event.kind] || event.kind
+}
+async function loadFollowup() {
+  const seq = ++followupGeneration
+  const topicId = props.topic.id
+  followupError.value = ''
+  try {
+    const result = await api.getTopicFollowup(props.projectId, topicId)
+    if (!active || seq !== followupGeneration || topicId !== props.topic.id) return
+    candidates.value = result.candidates
+    confirmations.value = result.confirmations
+    followupReady.value = true
+    focusedDiscussion.value = focusedRevision.value = null
+    const discussion = route?.query.comment_id
+      ? await api.getTopicDiscussion(props.projectId, topicId, route.query.comment_id)
+      : null
+    const revision = route?.query.revision
+      ? await api.getTopicRevision(props.projectId, topicId, route.query.revision)
+      : null
+    if (!active || seq !== followupGeneration || topicId !== props.topic.id) return
+    focusedDiscussion.value = discussion
+    focusedRevision.value = revision
+  } catch (failure) {
+    if (active && seq === followupGeneration) followupError.value = describeBoardError(failure)
+  }
+}
+async function refreshFollowup() {
+  emit('updated')
+  await Promise.all([loadMore(true), loadFollowup()])
+}
+async function openConfirmation(id) {
+  await nextTick()
+  const record = document.getElementById(`topic-confirmation-${id}`)
+  if (record) {
+    record.open = true
+    record.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 }
 async function loadMore(reset = false) {
   if (reset) generation += 1
@@ -290,8 +419,15 @@ const restore = () =>
 const post = () => {
   const submitted = content.value
   return perform(async () => {
-    await api.createTopicComment(props.projectId, props.topic.id, submitted, discussionType.value)
-    if (content.value === submitted) content.value = ''
+    const intent = stableIntent(props.draft, {
+      content: submitted,
+      discussion_type: discussionType.value
+    })
+    await api.createTopicComment(props.projectId, props.topic.id, submitted, discussionType.value, {
+      operation_id: intent.operation_id
+    })
+    if (active) consumeIntent(props.draft, intent.operation_id)
+    if (active && content.value === submitted) content.value = ''
   })
 }
 watch(
@@ -302,6 +438,9 @@ watch(
     nextBefore.value = null
     action.value = decisionId.value = executionHint.value = undefined
     reason.value = error.value = ''
+    followupReady.value = false
+    focusedDiscussion.value = focusedRevision.value = null
+    void loadFollowup()
     void loadMore(true)
   },
   { immediate: true }
@@ -315,12 +454,21 @@ watch(
   ],
   () => {
     void loadMore(true)
+    void loadFollowup()
+  }
+)
+watch(
+  () => [route?.query.comment_id, route?.query.revision],
+  () => {
+    void loadFollowup()
   }
 )
 </script>
 
 <style scoped>
-.source-work-link { color: var(--main-color); }
+.source-work-link {
+  color: var(--main-color);
+}
 .topic-history,
 .topic-maintenance,
 .topic-discussion {
@@ -328,7 +476,7 @@ watch(
   gap: 12px;
 }
 .history-event {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--gray-150);
   padding: 16px 0;
 }
 .history-event header {
@@ -338,7 +486,7 @@ watch(
 }
 .history-event header span,
 .topic-discussion span {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 .history-event details {

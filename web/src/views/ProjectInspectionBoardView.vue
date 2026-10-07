@@ -359,6 +359,8 @@
                   :auto-size="{ minRows: 16, maxRows: 36 }"
                   placeholder="使用 Markdown 编辑议题正文"
                 />
+                <a-textarea v-model:value="editingTopicExpected" aria-label="预期结果" placeholder="预期结果（可选）" :maxlength="100000" />
+                <a-textarea v-model:value="editingTopicConditions" aria-label="核对条件" placeholder="核对条件（可选）" :maxlength="100000" />
                 <a-input
                   v-model:value="editingTopicReason"
                   placeholder="修改原因（必填）"
@@ -732,12 +734,15 @@ const topicEditError = ref('')
 const topicDiscussionDrafts = ref({})
 // 草稿由工作台按议题保留，切换详情不会丢失未发送内容。
 function topicDiscussionDraft(topicId) {
-  return (topicDiscussionDrafts.value[topicId] ||= { content: '', discussionType: 'discussion' })
+  topicDiscussionDrafts.value[topicId] ||= { content: '', discussionType: 'discussion' }
+  return topicDiscussionDrafts.value[topicId]
 }
 const topicCommentError = ref('')
 const editingTopic = ref(false)
 const editingTopicTitle = ref('')
 const editingTopicSummary = ref('')
+const editingTopicExpected = ref('')
+const editingTopicConditions = ref('')
 const decisionTitle = ref('')
 const decisionConclusion = ref('')
 const decisionRationale = ref('')
@@ -855,6 +860,11 @@ function setTopicRoute(topicId) {
   else delete query.topic_id
   delete query.task_id
   delete query.decision_id
+  delete query.decision_revision
+  if (topicId !== route.query.topic_id) {
+    delete query.comment_id
+    delete query.revision
+  }
   router.replace({
     name: 'ProjectInspectionBoardComp',
     params: { project_id: projectId.value },
@@ -873,6 +883,7 @@ function selectTopic(topic) {
 
 function selectDecision(id) {
   const query = { ...route.query }
+  if (id !== route.query.decision_id) delete query.decision_revision
   if (id) query.decision_id = id
   else delete query.decision_id
   router.replace({ query, hash: route.hash })
@@ -909,7 +920,9 @@ function canLeaveTopicEditor() {
     !editingTopic.value ||
     !selectedTopic.value ||
     (editingTopicTitle.value === selectedTopic.value.title &&
-      editingTopicSummary.value === (selectedTopic.value.summary || ''))
+      editingTopicSummary.value === (selectedTopic.value.summary || '') &&
+      editingTopicExpected.value === (selectedTopic.value.expected_outcome || '') &&
+      editingTopicConditions.value === (selectedTopic.value.verification_conditions || ''))
   )
     return true
   topicCommentError.value = '当前提议有未保存的修改，请先保存或取消编辑。'
@@ -921,6 +934,8 @@ function beginEditTopic() {
   topicEditError.value = ''
   editingTopicTitle.value = selectedTopic.value.title
   editingTopicSummary.value = selectedTopic.value.summary || ''
+  editingTopicExpected.value = selectedTopic.value.expected_outcome || ''
+  editingTopicConditions.value = selectedTopic.value.verification_conditions || ''
   editingTopicReason.value = ''
   editingTopicRevision.value = selectedTopic.value.revision_number
   editingTopic.value = true
@@ -1224,6 +1239,8 @@ const saveTopicEdit = () =>
     await api.updateTopic(projectId.value, selectedTopic.value.id, {
       title: editingTopicTitle.value,
       summary: editingTopicSummary.value,
+      expected_outcome: editingTopicExpected.value,
+      verification_conditions: editingTopicConditions.value,
       expected_revision: editingTopicRevision.value,
       reason: editingTopicReason.value
     })

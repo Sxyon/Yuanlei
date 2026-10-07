@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { before, after, test } from 'node:test'
+import { before, beforeEach, after, test } from 'node:test'
 import { setImmediate } from 'node:timers'
-import { createRenderer, getCurrentInstance, h, nextTick, ref, ssrContextKey } from 'vue'
+import { createRenderer, getCurrentInstance, h, nextTick, ref, reactive, ssrContextKey } from 'vue'
 import { Modal } from 'ant-design-vue'
+import { routeLocationKey } from 'vue-router'
 import { createServer } from 'vite'
 
 let vite, Panel, api
@@ -12,6 +13,9 @@ before(async () => {
   ;({ default: Panel } = await vite.ssrLoadModule('/src/components/project/TopicHistoryPanel.vue'))
   ;({ governanceBoardApi: api } = await vite.ssrLoadModule('/src/apis/governance_board_api.js'))
 })
+beforeEach(t => {
+  t.mock.method(api, 'getTopicFollowup', async () => ({ candidates: [], confirmations: [] }))
+})
 after(async () => { await vite?.close(); delete globalThis.localStorage })
 const renderer = createRenderer({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
@@ -20,12 +24,13 @@ const renderer = createRenderer({
 })
 const settle = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)) }
 const topic = id => ({ id, admission_status: 'canonical', progress: 'open', revision_number: 1 })
-function mountPanel(t, current = ref(topic('a'))) {
+function mountPanel(t, current = ref(topic('a')), route = { query: {} }) {
   const instances = []
   const drafts = {}
   const Component = { ...Panel, render() { instances.push(getCurrentInstance()); return h('div') } }
   const app = renderer.createApp({ render: () => h(Component, { key: current.value.id, projectId: 'project', topic: current.value, draft: drafts[current.value.id] ||= { content: '', discussionType: 'discussion' } }) })
   app.provide(ssrContextKey, { modules: new Set() })
+  app.provide(routeLocationKey, route)
   app.mount({})
   t.after(() => app.unmount())
   return { instances, current, app }
@@ -72,7 +77,8 @@ test('切换议题后旧发布响应不清空新议题草稿', async t => {
   finishPost({ id: 'posted' })
   await posting
   assert.equal(active.content, 'B 的未发送草稿')
-  assert.deepEqual(submitted[0], ['project', 'a', 'A 的重议', 'reconsideration'])
+  assert.deepEqual(submitted[0].slice(0, 4), ['project', 'a', 'A 的重议', 'reconsideration'])
+  assert.match(submitted[0][4].operation_id, /^[a-f0-9-]{36}$/)
 })
 
 
@@ -150,4 +156,60 @@ test('离开议题销毁删除确认，迟到确认不删除旧议题', async t 
   await pending
   assert.equal(destroy.mock.callCount(), 1)
   assert.equal(operations.mock.callCount(), 0)
+})
+
+
+test('讨论收到成功后同文可再次独立发布，失败重试仍沿用原标识', async t => {
+  t.mock.method(api, 'getTopicTimeline', async () => ({ items: [], next_before: null }))
+  const ids = []
+  t.mock.method(api, 'createTopicComment', async (...args) => { ids.push(args[4].operation_id); return {} })
+  const { instances } = mountPanel(t)
+  await settle()
+  const state = instances.at(-1).setupState
+  state.content = '同样的讨论'
+  await state.post()
+  state.content = '同样的讨论'
+  await state.post()
+  assert.notEqual(ids[0], ids[1])
+})
+
+
+test('时间线确认定位展开对应历史条件，而不是停在折叠条目', async t => {
+  t.mock.method(api, 'getTopicTimeline', async () => ({ items: [], next_before: null }))
+  const { instances } = mountPanel(t)
+  await settle()
+  let scrolled = false, requested
+  const record = { open: false, scrollIntoView() { scrolled = true } }
+  const oldDocument = globalThis.document
+  globalThis.document = { getElementById(id) { requested = id; return record } }
+  try {
+    await instances.at(-1).setupState.openConfirmation('older')
+    assert.equal(requested, 'topic-confirmation-older')
+    assert.equal(record.open, true)
+    assert.equal(scrolled, true)
+  } finally { globalThis.document = oldDocument }
+})
+
+
+test('有效深链改成无效后清旧定位，仍展示当前议题确认事实', async t => {
+  t.mock.method(api, 'getTopicTimeline', async () => ({ items: [], next_before: null }))
+  t.mock.method(api, 'getTopicFollowup', async () => ({ candidates: [], confirmations: [{ id: 'actual', version: 1 }] }))
+  t.mock.method(api, 'getTopicDiscussion', async (_project, _topic, id) => {
+    if (id === 'missing') throw new Error('原讨论不存在')
+    return { id: 'old-comment', content: '旧定位' }
+  })
+  t.mock.method(api, 'getTopicRevision', async () => ({ number: 1 }))
+  const route = reactive({ query: { comment_id: 'exists', revision: '1' } })
+  const { instances } = mountPanel(t, ref(topic('a')), route)
+  await settle(); await settle()
+  const state = instances.at(-1).setupState
+  assert.equal(state.focusedDiscussion.id, 'old-comment')
+  assert.equal(state.focusedRevision.number, 1)
+  route.query.comment_id = 'missing'
+  await settle(); await settle()
+  assert.equal(state.followupReady, true)
+  assert.equal(state.confirmations[0].id, 'actual')
+  assert.equal(state.focusedDiscussion, null)
+  assert.equal(state.focusedRevision, null)
+  assert.match(state.followupError, /原讨论不存在/)
 })

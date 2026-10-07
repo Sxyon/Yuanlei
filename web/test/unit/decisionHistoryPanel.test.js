@@ -4,6 +4,7 @@ import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, ref, ssrContextKey } from 'vue'
 import { createServer } from 'vite'
 import { Modal } from 'ant-design-vue'
+import { routeLocationKey } from 'vue-router'
 
 let vite, Panel, api
 before(async () => {
@@ -20,12 +21,12 @@ const renderer = createRenderer({
 })
 const settle = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)) }
 const decision = id => ({ id, title: id, status: 'draft', revision_number: 1, conclusion: '原草案', rationale: '', relation_type: 'ordinary', topic_id: null, target_decision_id: null, timeline: [], next_before: null })
-function mountPanel(t) {
+function mountPanel(t, selectedId = ref(''), route = { query: {} }) {
   let instance
   const Component = { ...Panel, render() { instance = getCurrentInstance(); return h('div') } }
   const projectId = ref('project')
-  const app = renderer.createApp({ render: () => h(Component, { projectId: projectId.value, decisions: [decision('a'), decision('b')] }) })
-  app.provide(ssrContextKey, { modules: new Set() }); app.mount({})
+  const app = renderer.createApp({ render: () => h(Component, { projectId: projectId.value, decisions: [decision('a'), decision('b')], selectedId: selectedId.value }) })
+  app.provide(ssrContextKey, { modules: new Set() }); app.provide(routeLocationKey, route); app.mount({})
   t.after(() => app.unmount())
   return { state: () => instance.setupState, projectId, app }
 }
@@ -83,4 +84,24 @@ test('离开项目销毁删除确认，迟到确认不会删除草案', async t 
   await confirm.onOk()
   assert.equal(destroyed, true)
   assert.equal(operations.mock.callCount(), 0)
+})
+
+
+test('去向深链读取精确旧决策版本，迟到快照不能串入另一决策', async t => {
+  let finishOld
+  t.mock.method(api, 'getDecision', async (_project, id) => ({ ...decision(id), revision_number: 33, timeline: [{ sequence: 60 }] }))
+  const reads = []
+  t.mock.method(api, 'getDecisionRevision', (_project, id, revision) => {
+    reads.push([id, revision])
+    return id === 'a' ? new Promise(resolve => { finishOld = resolve }) : Promise.resolve({ number: 1, snapshot: { title: 'b旧依据', conclusion: '旧结论' } })
+  })
+  const id = ref('a')
+  const { state } = mountPanel(t, id, { query: { decision_revision: '1' } })
+  await settle()
+  id.value = 'b'; await settle()
+  finishOld({ number: 1, snapshot: { title: 'a旧依据' } }); await settle()
+  assert.deepEqual(reads, [['a', '1'], ['b', '1']])
+  assert.equal(state().referencedRevision.snapshot.title, 'b旧依据')
+  assert.equal(state().referencedRevision.number, 1)
+  assert.equal(state().detail.revision_number, 33)
 })

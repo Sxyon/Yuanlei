@@ -37,7 +37,7 @@ const settle = async () => {
 }
 
 /** 挂载真实页面 setup 并提供受控项目事实。 */
-async function mountWorkbench(t) {
+async function mountWorkbench(t, url = '/projects/p/inspection', topics = []) {
   t.mock.method(message, 'success', () => {})
   t.mock.method(api, 'getProjectBoard', async () => ({
     project: { id: 'p' },
@@ -48,7 +48,7 @@ async function mountWorkbench(t) {
   t.mock.method(api, 'listBlueprintArchives', async () => ({ documents: [] }))
   t.mock.method(api, 'getBlueprint', async () => ({ name: 'plan.md', content: '磁盘正文' }))
   t.mock.method(api, 'listDelegations', async () => [])
-  t.mock.method(api, 'listTopics', async () => [])
+  t.mock.method(api, 'listTopics', async () => topics)
   t.mock.method(agentApi, 'list', async () => ({ agents: [] }))
   const router = createRouter({
     history: createMemoryHistory(),
@@ -60,7 +60,7 @@ async function mountWorkbench(t) {
       }
     ]
   })
-  await router.push('/projects/p/inspection')
+  await router.push(url)
   let instance
   const app = renderer.createApp({
     ...View,
@@ -277,4 +277,23 @@ test('关闭或切项目后旧模板确认不清空草稿', async t => {
   state.newBlueprintContent = '另一项目草稿'
   confirmation.onOk()
   assert.equal(state.newBlueprintContent, '另一项目草稿')
+})
+
+
+test('切换议题清理旧评论与修订定位，同议题刷新保留；切换决策清理旧版本', async t => {
+  globalThis.document = { getElementById: () => null }
+  t.after(() => { delete globalThis.document })
+  const state = await mountWorkbench(t, '/projects/p/inspection?topic_id=a&comment_id=old&revision=4&decision_id=d1&decision_revision=3', [{ id: 'a' }, { id: 'b' }])
+  state.setTopicRoute('a'); await settle(); await settle()
+  assert.equal(state.route.query.comment_id, 'old')
+  assert.equal(state.route.query.revision, '4')
+  assert.equal(state.route.query.decision_revision, undefined)
+  state.selectTopic({ id: 'b' }); await settle(); await settle()
+  assert.equal(state.route.query.topic_id, 'b')
+  assert.equal(state.route.query.comment_id, undefined)
+  assert.equal(state.route.query.revision, undefined)
+  await state.router.replace({ query: { topic_id: 'b', decision_id: 'd1', decision_revision: '3' } })
+  state.selectDecision('d2'); await settle(); await settle()
+  assert.equal(state.route.query.decision_id, 'd2')
+  assert.equal(state.route.query.decision_revision, undefined)
 })
