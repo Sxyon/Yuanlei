@@ -1,0 +1,48 @@
+import {createApp,h,ref,computed,onMounted} from '/runtime/vue.js';
+const projects={alpha:'采购协同 · A',beta:'展陈筹备 · B'};
+const purchase={name:'采购观察 · 有限 R1',layout:'grid',blocks:[{type:'metric',title:'采购金额',field:'amount'},{type:'metric',title:'同比变化',field:'change'},{type:'note',title:'数据时间与口径'},{type:'trend',title:'采购月度趋势',field:'rows'},{type:'table',title:'采购月表明细',field:'rows'}]};
+const spatial={name:'展陈空间巡看',layout:'grid',blocks:[{type:'spatial-overlay',title:'场地状态与通行路径',field:'zones'}]};
+const fallback={name:'展陈空间巡看 · 清单降级',layout:'grid',blocks:[{type:'table',title:'场地区域清单（不表达空间）',field:'zones'},{type:'note',title:'数据时间与口径'}]};
+
+function validate(d){
+ if(!d||typeof d!=='object'||Object.keys(d).some(k=>!['name','layout','blocks'].includes(k)))throw Error('定义包含未声明输入；项目/代码/样式不能由定义注入');
+ if(d.layout!=='grid'||typeof d.name!=='string'||!Array.isArray(d.blocks)||!d.blocks.length||d.blocks.length>8)throw Error('当前样例只支持有界 grid 定义');
+ for(const b of d.blocks){if(Object.keys(b).some(k=>!['type','title','field'].includes(k)))throw Error('组件含未许可参数或脚本');if(!['metric','trend','table','note'].includes(b.type))throw Error(`不支持素材 ${b.type}：空间坐标、遮挡关系和路径叠加不能由当前四类素材忠实表达`);if(typeof b.title!=='string'||b.title.length>100)throw Error('标题输入不合格');if(b.type!=='note'&&!['amount','change','rows','zones'].includes(b.field))throw Error('字段不在声明输入中');if(b.type==='metric'&&!['amount','change'].includes(b.field))throw Error('指标字段需要可度量值');if(b.type==='table'&&!['rows','zones'].includes(b.field))throw Error('表格需要声明的数据行');if(b.type==='trend'&&b.field!=='rows')throw Error('趋势需要声明的月份数列');}
+ return d;
+}
+const B=(label,click,cls='')=>h('button',{class:'btn '+cls,onClick:click},label);
+const Tag=(label,tone='')=>h('span',{class:'badge '+tone},label);
+createApp({setup(){
+ const project=ref(new URLSearchParams(location.search).get('project')==='beta'?'beta':'alpha'),mode=ref('purchase'),data=ref(null),busy=ref(false),error=ref(''),report=ref(''),logs=ref([]),theme=ref('light'),definition=ref(purchase),attempt=ref(0);
+ const log=(label,result)=>{logs.value.unshift({label,result});logs.value=logs.value.slice(0,8)};
+ const refresh=async(s='normal',binding=(mode.value==='purchase'?'monthly-':'spatial-')+project.value)=>{const token=++attempt.value,p=project.value;busy.value=true;error.value='';try{const r=await fetch(`/sample-data?project=${p}&binding=${encodeURIComponent(binding)}&state=${s}`,{credentials:'omit'}),d=await r.json();if(token!==attempt.value)return;if(!r.ok)throw Error(`${r.status} · ${d.error}`);if(d.project!==p||d.binding!==binding||!d.synthetic)throw Error('响应绑定不一致');data.value=d;log('合成数据读取',p+' / '+d.status)}catch(ex){if(token===attempt.value){error.value=ex.message;log('读取拒绝/失败',ex.message)}}finally{if(token===attempt.value)busy.value=false}};
+ const navigate=async(kind,id,work)=>{const p=project.value,r=await fetch(`/resolve-navigation?project=${p}&kind=${kind}&id=${encodeURIComponent(id)}&work=${encodeURIComponent(work)}`,{credentials:'omit'}),d=await r.json();log('对象导航',r.status+' · '+(d.error||`${d.project}/${d.work}/${d.id}`));if(r.ok){location.href=d.target}else report.value=`导航被拒绝：${r.status} ${d.error}`};
+ const choose=m=>{mode.value=m;definition.value=m==='purchase'?purchase:m==='spatial'?spatial:fallback;try{validate(definition.value);report.value=m==='fallback'?'验证通过，但清单丢失空间位置/路径关系；不能声称完成空间展示要求':'定义验证通过；仍需核对数据与实际视觉'}catch(ex){report.value=ex.message}refresh()};
+ const negative=type=>{if(type==='binding')return refresh('normal','monthly-'+(project.value==='alpha'?'beta':'alpha'));if(type==='cross')return navigate('result',project.value==='alpha'?'b-r1':'r3',project.value==='alpha'?'b1':'t1');if(type==='mismatch')return navigate('result',project.value==='alpha'?'r3':'b-r1','wrong-work');const d=structuredClone(purchase);if(type==='script')d.blocks[0].onclick='fetch("https://example.com")';if(type==='project')d.project='beta';try{validate(d);report.value='此定义被接受'}catch(ex){report.value=ex.message;log('定义拒绝',ex.message)}};
+ const draw=()=>{if(!data.value)return h('div',{class:'empty'},'尚无成功快照');try{validate(definition.value)}catch(ex){return h('div',{class:'notice error',role:'alert'},ex.message)}const d=data.value;
+ return h('div',{class:'runtime-metrics'},definition.value.blocks.map(b=>{
+ if(b.type==='metric'){const v=d[b.field];return h('section',{class:'panel metric'},[h('div',{class:'label'},b.title),h('div',{class:'value'},v===null?'—':b.field==='amount'?v.toLocaleString('zh-CN'):v+'%'),h('div',{class:'foot'},v===null?'未取得 / 非零值':b.field==='amount'?d.unit:'同比基期口径')])}
+ if(b.type==='note')return h('section',{class:'panel panel-pad'},[h('h2',b.title),h('p',{class:'subtext'},`来源：${d.source}`),h('p',{class:'subtext'},`数据截至：${d.as_of}`),h('p',{class:'subtext'},`取得时间：${d.fetched_at}`),Tag(d.status==='empty'?'未接入':d.status==='missing'?'缺基期':d.status==='normal'?'已取得 · 合成快照':'过期快照','warn')]);
+ if(b.type==='trend')return h('section',{class:'panel',style:'grid-column:1/-1'},[h('div',{class:'panel-head'},[h('h2',b.title),Tag('可信 Vue 消费受控数列')]),h('div',{class:'chart-wrap'},h('div',{class:'bar-chart'},d.rows.map(([m,v])=>h('div',{class:'bar-column'},[h('span',{class:'bar-value'},v===null?'缺数':(v/10000).toFixed(1)+' 万'),v===null?h('div',{class:'more-tile'},'未取得'):h('div',{style:`background:var(--accent);width:70%;height:${Math.max(12,v/4000)}px;border-radius:6px`}),h('span',{class:'bar-label'},m+' 月')]))))]);
+ const rows=b.field==='zones'?(d.zones||[]):d.rows;return h('section',{class:'panel',style:'grid-column:1/-1'},[h('div',{class:'panel-head'},h('h2',b.title)),h('div',{class:'table-wrap'},h('table',{class:'compact-table'},[h('thead',h('tr',(b.field==='zones'?['区域','x','y','状态']:['月份','含税金额（元）']).map(v=>h('th',v)))),h('tbody',rows.map(r=>h('tr',r.map(v=>h('td',v===null?'缺数':String(v))))))]))]);
+ }))};
+ onMounted(()=>choose('purchase'));
+ return()=>h('main',{'data-theme':theme.value},[
+ h('div',{class:'prototypebar'},[h('span',{class:'mark'},'U3 / R1 · 独立技术样例 · 合成数据'),h('a',{class:'btn small',href:`index.html#a/${project.value}/business`},'← 回视觉原型'),B(theme.value==='light'?'☾ 深色':'☀ 浅色',()=>theme.value=theme.value==='light'?'dark':'light','small')]),
+ h('div',{class:'lab-header'},[h('div',{class:'eyebrow'},'有限数据 / 导航契约 · 非产品加载协议'),h('h1',{style:'font-size:27px;margin:8px 0'},'先验证可表达什么，再决定怎样扩展'),h('p',{class:'subtext'},'当前可信素材只有指标、趋势、表格、说明。Vue 运行时为本地安装 3.5.41；定义不包含可执行模板。')]),
+ h('div',{class:'lab-body'},[
+ h('div',{class:'notice'},'本服务只读回环地址下的合成数据，无真实登录、数据库、凭据或元垒业务接口。拒绝测试只证明此样例边界。'),
+ h('div',{class:'contract-grid'},[
+ h('aside',{class:'stack'},[
+ h('section',{class:'panel panel-pad'},[h('h2','当前宿主项目与绑定'),h('label',{class:'field-label',for:'labproject',style:'margin-top:17px'},'项目'),h('select',{id:'labproject',class:'btn',value:project.value,onChange:ev=>{project.value=ev.target.value;data.value=null;report.value='';refresh()}},Object.entries(projects).map(([p,n])=>h('option',{value:p},n))),h('p',{class:'subtext'},'宿主固定输入：'+(mode.value==='purchase'?'monthly-':'spatial-')+project.value),B('刷新',()=>refresh(),'small'),B('模拟源失败',()=>refresh('error'),'small'),B('空数据',()=>refresh('empty'),'small')]),
+ h('section',{class:'panel panel-pad'},[h('h2','结构不同的展示要求'),h('div',{class:'stack',style:'margin-top:15px;gap:8px'},[B('采购指标与趋势',()=>choose('purchase'),mode.value==='purchase'?'primary':''),B('空间状态与路径叠加',()=>choose('spatial'),mode.value==='spatial'?'primary':''),B('查看清单降级',()=>choose('fallback'),mode.value==='fallback'?'primary':'')]),h('p',{class:'small-note'},'空间要求：区域按坐标定位、物料遮挡、入口至出口路径叠加。没有为通过样例追加专属组件。')]),
+ h('section',{class:'panel panel-pad'},[h('h2','明确拒绝的输入'),h('div',{class:'actions',style:'margin-top:12px'},[B('跨项目绑定',()=>negative('binding'),'small'),B('跨项目对象',()=>negative('cross'),'small'),B('结果/工作错配',()=>negative('mismatch'),'small'),B('定义注入项目',()=>negative('project'),'small'),B('定义事件代码',()=>negative('script'),'small')]),h('p',{class:'small-note'},'这组负向检查使用真实本地 HTTP 或定义验证。不能替代产品后端权限测试。')]),
+ h('section',{class:'panel panel-pad'},[h('h2','准确导航'),h('p',{class:'subtext'},'当前项目对象，由服务核对归属和工作/结果关系。'),B('到当前要求结果',()=>navigate('result',project.value==='alpha'?'r3':'b-r1',project.value==='alpha'?'t1':'b1'),'primary')])]),
+ h('section',{class:'stack'},[
+ report.value&&mode.value!=='spatial'?h('div',{class:'notice '+(mode.value==='spatial'?'error':'info'),role:'status'},report.value):null,
+ error.value?h('div',{class:'notice error',role:'alert'},['读取失败 / 拒绝：'+error.value,'；成功旧快照保留并标注其时间。']):null,
+ busy.value?h('div',{class:'panel panel-pad','aria-busy':'true'},[h('p','正在读取…'),h('div',{class:'skeleton'})]):draw(),
+ mode.value!=='purchase'?h('section',{class:'panel panel-pad'},[h('h2','结构压力目标参照（示例 A 手绘，非 R1 输出）'),h('svg',{viewBox:'0 0 640 280',style:'width:100%;max-height:300px',role:'img','aria-label':'合成展陈空间位置与入口至出口路径示意'},[
+ h('rect',{x:20,y:20,width:600,height:230,fill:'var(--soft)',stroke:'var(--line)'}),...[[50,45,100,65,'A区入口'],[340,90,140,70,'B区展台'],[170,160,150,60,'C区物料阻挡'],[510,180,90,50,'D区出口']].flatMap(([x,y,w,ht,txt])=>[h('rect',{x,y,width:w,height:ht,rx:6,fill:txt.includes('阻挡')?'var(--warntint)':'var(--tint)',stroke:'var(--line)'}),h('text',{x:x+10,y:y+30,fill:'var(--text)','font-size':14},txt)]),h('path',{d:'M100 112 L100 135 L360 135 L360 220 L510 220',stroke:'var(--accent)','stroke-width':4,fill:'none'}),h('text',{x:40,y:275,fill:'var(--muted)','font-size':12},'坐标 / 遮挡 / 可通行路径不能由区域清单等价表达')]),h('p',{class:'subtext'},'观察：当前 R1 表格保留区域属性，但丢失位置、遮挡与路径关系。触发下一轮有限扩展与 R2 合成隔离代码路线对照；未证明需要全平台迁移，也未冻结 R1 为唯一创作能力。')]):null,
+ h('section',{class:'panel panel-pad'},[h('h2','定义与检查记录'),h('pre',JSON.stringify(definition.value,null,2)),...logs.value.map(l=>h('p',{class:'subtext'},l.label+'：'+l.result))])])])])]);
+}}).mount('#lab');
