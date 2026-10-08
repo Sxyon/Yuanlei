@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="400" viewBox="0 0 1080 400" role="img"><title>委派、当次交付与本地验收：候选闭环</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536679"/></marker></defs>
+<rect width="1080" height="100%" fill="#f8fafc"/>
+<g font-family="system-ui,sans-serif" fill="#172b42">
+<text x="28" y="34" font-size="22" font-weight="600">委派、当次交付与本地验收：候选闭环</text>
+<text x="28" y="62" font-size="14">绿色：复用已有 Owner　蓝色：候选增量　橙色：远端真实动作未验</text>
+<path d="M258,142 L290,142" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M520,142 L552,142" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M782,142 L814,142" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M933,184 L933,260" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M814,302 L782,302" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M552,302 L520,302" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M814,184 L258,260" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="541.0" y="214.0" font-size="13">异常保留，不报告成功</text>
+<rect x="28" y="100" width="230" height="84" rx="10" fill="#dcfce7" stroke="#7791aa"/>
+<text x="40" y="125" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">目标 / 正式依据 / 验收条件</text>
+<text x="40" y="147" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">工作与 Context Pack（已有）</text>
+<rect x="290" y="100" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="302" y="125" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">连接 / 明确 Agent / 生效项</text>
+<text x="302" y="147" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">最小配置与范围（候选）</text>
+<rect x="552" y="100" width="230" height="84" rx="10" fill="#ffedd5" stroke="#7791aa"/>
+<text x="564" y="125" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">意图提交 → 远端派发</text>
+<text x="564" y="147" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">准确触发 / Run / attempt（未验）</text>
+<rect x="814" y="100" width="238" height="84" rx="10" fill="#ffedd5" stroke="#7791aa"/>
+<text x="826" y="125" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">观察确切 Run</text>
+<text x="826" y="147" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">读入口部分已验；执行未验</text>
+<rect x="814" y="260" width="238" height="84" rx="10" fill="#ffedd5" stroke="#7791aa"/>
+<text x="826" y="285" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">正式输出 / 文件 + 可选补充</text>
+<text x="826" y="307" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">来源与当次绑定（未验）</text>
+<rect x="552" y="260" width="230" height="84" rx="10" fill="#dcfce7" stroke="#7791aa"/>
+<text x="564" y="285" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">唯一待验收结果</text>
+<text x="564" y="307" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">Result Owner 已有；导入未验</text>
+<rect x="290" y="260" width="230" height="84" rx="10" fill="#dcfce7" stroke="#7791aa"/>
+<text x="302" y="285" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">用户办理接受 / 未接受</text>
+<text x="302" y="307" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">验收与工作完成（已有）</text>
+<rect x="28" y="260" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="40" y="285" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">阻塞 / 归属未知 / 传输异常</text>
+<text x="40" y="307" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">Andon 与持久办理入口（候选）</text>
+</g>
+</svg>

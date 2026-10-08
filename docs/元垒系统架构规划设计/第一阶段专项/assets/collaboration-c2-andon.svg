@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="550" viewBox="0 0 1080 550" role="img"><title>Andon：直接委派者先处理，逐级返回与明确采用（整体候选）</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536679"/></marker></defs>
+<rect width="1080" height="100%" fill="#f8fafc"/>
+<g font-family="system-ui,sans-serif" fill="#172b42">
+<text x="28" y="34" font-size="22" font-weight="600">Andon：直接委派者先处理，逐级返回与明确采用（整体候选）</text>
+<text x="28" y="62" font-size="14">绿色：复用已有 Owner　蓝色：候选增量　橙色：远端真实动作未验</text>
+<path d="M258,142 L290,142" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M520,142 L552,142" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="541.0" y="134.0" font-size="13">无法处理</text>
+<path d="M782,142 L814,142" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="803.0" y="134.0" font-size="13">确需用户</text>
+<path d="M933,184 L933,275" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M814,317 L782,317" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M552,317 L520,317" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M290,317 L258,317" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M405,184 L405,275" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="410.0" y="221.5" font-size="13">直接答复</text>
+<path d="M667,184 L933,275" fill="none" stroke="#536679" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="805.0" y="221.5" font-size="13">A可处理</text>
+<rect x="28" y="100" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="40" y="125" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">C：问题 Q / 版本 / 等待尝试</text>
+<text x="40" y="147" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">生成阻塞并保留执行关系</text>
+<rect x="290" y="100" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="302" y="125" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">B：直接委派者先处理</text>
+<text x="302" y="147" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">有依据与权限则直接答复</text>
+<rect x="552" y="100" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="564" y="125" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">A：接收同根问题与上下文</text>
+<text x="564" y="147" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">补资料 / 授权内正式变更</text>
+<rect x="814" y="100" width="238" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="826" y="125" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">H：真正需要用户才进待办</text>
+<text x="826" y="147" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">信息 / 授权 / 直接批准</text>
+<rect x="814" y="275" width="238" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="826" y="300" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">A：结论 / 依据 / 适用范围</text>
+<text x="826" y="322" font-size="14" textLength="214" lengthAdjust="spacingAndGlyphs">治理 Owner 历史已有；授权候选</text>
+<rect x="552" y="275" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="564" y="300" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">B：转成下级可执行输入</text>
+<text x="564" y="322" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">保留来源；不扩大答复权限</text>
+<rect x="290" y="275" width="230" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="302" y="300" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">元垒：持久送达义务</text>
+<text x="302" y="322" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">去重；送达与采用分别记录</text>
+<rect x="28" y="275" width="230" height="84" rx="10" fill="#ffedd5" stroke="#7791aa"/>
+<text x="40" y="300" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">C：采用 / 原生或新尝试</text>
+<text x="40" y="322" font-size="14" textLength="206" lengthAdjust="spacingAndGlyphs">实际恢复与问题消除（未验）</text>
+<rect x="28" y="445" width="1024" height="84" rx="10" fill="#dbeafe" stroke="#7791aa"/>
+<text x="40" y="470" font-size="14" textLength="1000" lengthAdjust="spacingAndGlyphs">PG 保留 Q、转交、答复、责任、待送达与采用关联；父 Run 结束不丢失办理义务。</text>
+<text x="40" y="492" font-size="14" textLength="1000" lengthAdjust="spacingAndGlyphs">取消、更换尝试、晚到答案：核对准确对象；无法证明采用时留待处理。</text>
+<text x="40" y="514" font-size="14" textLength="1000" lengthAdjust="spacingAndGlyphs">远端拥有真实接收与执行状态；原生续接未证实时明确创建后继尝试。</text>
+</g>
+</svg>
