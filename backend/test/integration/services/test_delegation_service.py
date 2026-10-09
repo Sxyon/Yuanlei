@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -37,6 +38,8 @@ from yuxi.storage.postgres.models_business import (
     AgentRun,
     ChannelDelegation,
     GovernanceTopic,
+    ProjectWorkResult,
+    ProjectWorkTask,
     User,
 )
 from yuxi.utils.datetime_utils import utc_now_naive
@@ -1218,3 +1221,232 @@ async def test_dispatch_preserves_frozen_policy_in_session(monkeypatch):
             await db.commit()
             session = await db.get(CodingSession, handle.session_id)
             assert session.policy_json["agent_config"] == frozen
+
+
+@pytest.fixture
+def multica_trial_workdir(tmp_path, monkeypatch):
+    """用临时 UserWorkspace 保存真实文件，避免接触日常 Workdir。"""
+    root = tmp_path / "shared" / "uid-owner" / "workspace" / "projects" / "project-owner"
+    root.mkdir(parents=True)
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    workdir = Workdir.open_existing("uid-owner", "projects/project-owner")
+    workdir.create_file("/existing.txt", b"existing-bytes")
+    return workdir, root
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        ("in_progress", "multica_result_not_ready"),
+        ("unknown", "multica_result_not_ready"),
+        ("done", "multica_result_unverified"),
+    ],
+)
+async def test_multica_rejection_releases_owned_lease_without_result_or_file(status, code, multica_trial_workdir):
+    """真实 PG/Workdir 中两次拒绝均不封存，不生成描述结果或产物。"""
+    workdir, root = multica_trial_workdir
+    before = sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
+    async with _scoped_database("pytest_multica_collect_stoploss") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        client = _FakeMulticaClient()
+        async with sessions() as db:
+            service = DelegationService(db, executors=[MulticaExecutor(client)])
+            view = await service.dispatch(
+                executor_key="multica",
+                request=DelegationRequest(
+                    operation_id="",
+                    project_id="project-owner",
+                    task="虚构任务",
+                    metadata={"work_task_id": "project-owner-work"},
+                ),
+                uid="uid-owner",
+            )
+        client.issues[0] = MulticaIssue(
+            id="id-1",
+            identifier="YL-1",
+            title="虚构任务",
+            description="description-output-sentinel",
+            status=status,
+            url="https://multica.invalid/issues/YL-1",
+        )
+        for _ in range(2):
+            async with sessions() as db:
+                service = DelegationService(db, executors=[MulticaExecutor(client)])
+                with pytest.raises(DelegationError) as rejected:
+                    await service.collect(
+                        operation_id=view["operation_id"], project_id="project-owner", workdir=workdir
+                    )
+                assert rejected.value.error_code == code
+            async with sessions() as verify:
+                row = await ChannelDelegationRepository(verify).get_by_operation_id(operation_id=view["operation_id"])
+                assert row.dispatch_state == "dispatched"
+                assert row.owner_token is None and row.lease_expires_at is None
+                assert row.result_summary is None and row.result_json == {} and row.artifact_path is None
+                assert await verify.scalar(select(func.count()).select_from(ProjectWorkResult)) == 0
+                assert await verify.scalar(select(func.count()).select_from(AgentRun)) == 0
+                assert await verify.scalar(select(ProjectWorkTask.status)) == "todo"
+            assert sorted(path.relative_to(root).as_posix() for path in root.rglob("*")) == before
+            assert workdir.read_file("/existing.txt", max_bytes=100) == b"existing-bytes"
+            async with sessions() as db:
+                observed = await DelegationService(db, executors=[MulticaExecutor(client)]).status(
+                    operation_id=view["operation_id"], project_id="project-owner"
+                )
+                assert observed["dispatch_state"] == "dispatched" and observed["remote_status"] == status
+
+
+async def test_multica_late_rejection_preserves_new_collecting_owner(multica_trial_workdir):
+    """旧 Adapter 拒绝仅释放自己的租约，真实接管中的新 owner 保持不变。"""
+    workdir, root = multica_trial_workdir
+    async with _scoped_database("pytest_multica_rejection_owner") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).add_delegation(
+                operation_id="multica-race",
+                project_id="project-owner",
+                executor_key="multica",
+                task="虚构任务",
+                request_json={},
+                initiator_run_id=None,
+                created_by="uid-owner",
+            )
+            row.work_task_id = "project-owner-work"
+            row.external_ref = "YL-1"
+            row.dispatch_state = "dispatched"
+            await db.commit()
+        old_started, old_release = asyncio.Event(), asyncio.Event()
+        new_started, new_release = asyncio.Event(), asyncio.Event()
+
+        class WaitingClient(_FakeMulticaClient):
+            """暂停只读查询，制造两个真实 collect 事务的接管窗口。"""
+
+            def __init__(self, started, release):
+                super().__init__()
+                self.started, self.release = started, release
+
+            async def get_issue(self, *, issue_ref):
+                self.started.set()
+                await self.release.wait()
+                return MulticaIssue(
+                    id="i",
+                    identifier=issue_ref,
+                    title="T",
+                    description="race-sentinel",
+                    status="done",
+                    url="https://multica.invalid/issues/YL-1",
+                )
+
+        async with sessions() as old_db, sessions() as new_db:
+            old_service = DelegationService(
+                old_db, executors=[MulticaExecutor(WaitingClient(old_started, old_release))]
+            )
+            new_service = DelegationService(
+                new_db, executors=[MulticaExecutor(WaitingClient(new_started, new_release))]
+            )
+            old_pending = asyncio.create_task(old_service.collect(operation_id="multica-race", workdir=workdir))
+            new_pending = None
+            try:
+                await asyncio.wait_for(old_started.wait(), 10)
+                with pytest.raises(DelegationError) as busy:
+                    await new_service.collect(operation_id="multica-race", workdir=workdir)
+                assert busy.value.error_code == "delegation_collecting"
+                await new_db.rollback()
+                async with sessions() as db:
+                    await db.execute(
+                        text(
+                            "UPDATE channel_delegations SET lease_expires_at=:expired WHERE operation_id='multica-race'"
+                        ),
+                        {"expired": utc_now_naive() - timedelta(minutes=1)},
+                    )
+                    await db.commit()
+                new_pending = asyncio.create_task(new_service.collect(operation_id="multica-race", workdir=workdir))
+                await asyncio.wait_for(new_started.wait(), 10)
+                async with sessions() as db:
+                    row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="multica-race")
+                    new_token, new_lease = row.owner_token, row.lease_expires_at
+                    assert new_token is not None and new_lease > utc_now_naive()
+                old_release.set()
+                with pytest.raises(DelegationError) as rejected:
+                    await asyncio.wait_for(old_pending, 10)
+                assert rejected.value.error_code == "multica_result_unverified"
+                async with sessions() as db:
+                    row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="multica-race")
+                    assert row.dispatch_state == "collecting"
+                    assert row.owner_token == new_token and row.lease_expires_at == new_lease
+                    assert row.result_json == {} and row.artifact_path is None
+                new_release.set()
+                with pytest.raises(DelegationError) as rejected:
+                    await asyncio.wait_for(new_pending, 10)
+                assert rejected.value.error_code == "multica_result_unverified"
+            finally:
+                old_release.set()
+                new_release.set()
+                await asyncio.gather(
+                    *[task for task in (old_pending, new_pending) if task is not None], return_exceptions=True
+                )
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="multica-race")
+            assert row.dispatch_state == "dispatched" and row.owner_token is None and row.lease_expires_at is None
+            assert row.result_json == {} and row.artifact_path is None
+            assert await db.scalar(select(func.count()).select_from(ProjectWorkResult)) == 0
+        assert not (root / ".yuanlei").exists()
+        assert workdir.read_file("/existing.txt", max_bytes=100) == b"existing-bytes"
+
+
+async def test_multica_reclaimed_history_remains_idempotent(multica_trial_workdir):
+    """历史 reclaimed 直接读取缓存，守卫不重写历史结果或已存文件。"""
+    workdir, root = multica_trial_workdir
+    workdir.create_file("/historical.md", b"historical-result")
+    async with _scoped_database("pytest_multica_cached_result") as (manager, sessions):
+        await _seed_scope(manager.async_engine)
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).add_delegation(
+                operation_id="multica-history",
+                project_id="project-owner",
+                executor_key="multica",
+                task="历史任务",
+                request_json={},
+                initiator_run_id=None,
+                created_by="uid-owner",
+            )
+            row.work_task_id = "project-owner-work"
+            row.dispatch_state = "reclaimed"
+            row.external_ref = "YL-1"
+            row.result_summary = "historical-summary"
+            row.result_json = {"text": "historical-result", "artifacts": [], "usage": {}}
+            row.artifact_path = "historical.md"
+            db.add(
+                ProjectWorkResult(
+                    id="historical-result",
+                    project_id="project-owner",
+                    task_id="project-owner-work",
+                    request_id="historical-request",
+                    request_hash="historical-hash",
+                    summary="historical-result",
+                    source_delegation_id=row.id,
+                    origin_kind="automatic",
+                    submitted_by="uid-owner",
+                    status="accepted",
+                    version=2,
+                    review_comment="historical-review",
+                    source_output={"operation_id": "multica-history"},
+                )
+            )
+            await db.commit()
+        # 空客户端一旦被调用会失败，缓存读取不能再次调用远端 collect。
+        async with sessions() as db:
+            service = DelegationService(db, executors=[MulticaExecutor(_FakeMulticaClient())])
+            first = await service.collect(operation_id="multica-history", workdir=workdir)
+            again = await service.collect(operation_id="multica-history", workdir=workdir)
+            assert first == again and first["result"]["summary"] == "historical-summary"
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="multica-history")
+            assert row.dispatch_state == "reclaimed" and row.result_json["text"] == "historical-result"
+            assert row.artifact_path == "historical.md"
+            assert await db.scalar(select(func.count()).select_from(ProjectWorkResult)) == 1
+            result = (await db.scalars(select(ProjectWorkResult))).one()
+            assert result.id == "historical-result" and result.summary == "historical-result"
+            assert result.status == "accepted" and result.version == 2
+            assert result.review_comment == "historical-review"
+            assert result.source_output == {"operation_id": "multica-history"}
+        assert workdir.read_file("/historical.md", max_bytes=100) == b"historical-result"
+        assert not (root / ".yuanlei").exists()

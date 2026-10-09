@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from yuxi.delegation.contracts import DelegationHandle, DelegationRequest
+from yuxi.delegation.contracts import DelegationError, DelegationHandle, DelegationRequest
 from yuxi.delegation.multica import (
     HttpMulticaClient,
     MulticaExecutor,
@@ -102,17 +102,47 @@ async def test_dispatch_does_not_adopt_lookalike_without_marker() -> None:
 
 
 @pytest.mark.asyncio
-async def test_status_and_collect_expose_remote_projection() -> None:
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        ("todo", "multica_result_not_ready"),
+        ("in_progress", "multica_result_not_ready"),
+        ("running", "multica_result_not_ready"),
+        ("unknown", "multica_result_not_ready"),
+        ("", "multica_result_not_ready"),
+        ("canceled", "multica_result_not_ready"),
+        ("done", "multica_result_unverified"),
+    ],
+)
+async def test_collect_rejects_issue_projection_even_when_done(status, code) -> None:
+    """直接入口拒绝描述型结果，状态查询仍返回远端只读投影。"""
     client = _FakeClient(
-        issues=[MulticaIssue(id="i", identifier="YL-1", title="T", description="D", status="done", url="u")]
+        issues=[
+            MulticaIssue(
+                id="i",
+                identifier="YL-1",
+                title="T",
+                description="description-output-sentinel",
+                status=status,
+                url="https://multica.invalid/issues/YL-1",
+            )
+        ]
     )
     executor = MulticaExecutor(client)
     handle = DelegationHandle(operation_id="op-123", executor_key="multica", external_ref="YL-1")
-    assert await executor.status(handle) == "done"
-    result = await executor.collect(handle)
-    assert result.remote_status == "done"
-    assert result.artifacts == ({"kind": "url", "url": "u"},)
-    assert "done" in (result.text or "")
+    assert await executor.status(handle) == status
+    with pytest.raises(DelegationError) as rejected:
+        await executor.collect(handle)
+    assert rejected.value.error_code == code
+    assert "description-output-sentinel" not in str(rejected.value)
+
+
+@pytest.mark.asyncio
+async def test_collect_rejects_missing_handle_before_remote_read() -> None:
+    """缺少远端标识保持原有结构化拒绝。"""
+    with pytest.raises(DelegationError) as rejected:
+        await MulticaExecutor(_FakeClient()).collect(DelegationHandle(operation_id="op-123", executor_key="multica"))
+    assert rejected.value.error_code == "delegation_handle_invalid"
 
 
 def test_build_multica_client_from_env_fails_closed_without_credentials(monkeypatch) -> None:

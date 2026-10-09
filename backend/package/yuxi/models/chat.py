@@ -72,6 +72,8 @@ def load_chat_model(fully_specified_name: str | None, *, session_id: str | None 
     if info.provider_type == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
+        kwargs.setdefault("max_tokens", 65536)
+        
         return ChatAnthropic(
             model=info.model_id,
             api_key=SecretStr(api_key),

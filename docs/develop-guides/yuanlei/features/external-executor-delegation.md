@@ -1,6 +1,6 @@
 # 外部执行器委派与 Multica 桥接
 
-状态：已实现（MVP：委派/查询/回收 + Multica 拉取式入向与标记核对出向）
+状态：已实现（统一委派/查询/可信回收；Multica 入向与出向可用，成功回收暂停）
 类型：新增业务能力
 主要 Owner：backend/package/yuxi/services/delegation_service.py
 
@@ -71,7 +71,9 @@
 
 ## 结果交付与反馈
 
-成功终态的委派回收在所属事务生成唯一待验收结果，保留 operation/turn 与当次条件。租约接管后旧回收者不能改写新结果或释放新租约；不制造 AgentRun 或自动完成工作。语义与证据见[决策记录](../decisions/implemented/2026-10-06-execution-result-feedback.md)。
+成功终态且来源可信的委派回收在所属事务生成唯一待验收结果，保留 operation/turn 与当次条件。租约接管后旧回收者不能改写新结果或释放新租约；工作完成仍由业务验收办理。语义与证据见[结果反馈决策](../decisions/implemented/2026-10-06-execution-result-feedback.md)。
+
+Multica collect 仅能读取 issue 投影：非 done 返回 `multica_result_not_ready`，done 缺准确尝试正式输出返回 `multica_result_unverified`。拒绝不生成描述型结果或 Workdir artifact；Service 只释放仍属于本回收者的 collecting 租约并恢复 dispatched。status 仍可查询，历史 reclaimed 仍读取已有缓存。暂停成功回收的代价、直接入口与并发证据以及恢复条件由[止损决策](../decisions/implemented/2026-10-08-multica-collect-stoploss.md)解释；准确尝试的可信终态、正式输出及错配负向证据齐备后才能恢复回收。
 
 ## 决策与证据
 

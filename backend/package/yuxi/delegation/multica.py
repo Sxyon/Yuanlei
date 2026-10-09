@@ -112,20 +112,16 @@ class MulticaExecutor:
         return issue.status
 
     async def collect(self, handle: DelegationHandle) -> DelegationResult:
-        """回收远端工作项摘要；产物仅能作为远端 URL 引用。"""
+        """拒绝未就绪或尚无绑定尝试正式输出的工作项回收。"""
         if not handle.external_ref:
             raise DelegationError("Multica 委派句柄缺少 external_ref", error_code="delegation_handle_invalid")
         issue = await self.client.get_issue(issue_ref=handle.external_ref)
-        artifacts: tuple[dict[str, Any], ...] = ()
-        if issue.url:
-            artifacts = ({"kind": "url", "url": issue.url},)
-        text = f"# {issue.title}\n\n{issue.description}\n\n状态: {issue.status}\n"
-        return DelegationResult(
-            summary=f"{issue.title}（{issue.status}）",
-            text=text,
-            artifacts=artifacts,
-            usage={},
-            remote_status=issue.status,
+        if issue.status != "done":
+            raise DelegationError("Multica 工作项尚未就绪，请继续查询状态", error_code="multica_result_not_ready")
+        # issue 描述是输入；当前客户端没有准确尝试及正式输出来源，不能物化为交付。
+        raise DelegationError(
+            "Multica 结果来源未核实：缺少绑定尝试的正式输出",
+            error_code="multica_result_unverified",
         )
 
     async def _find_by_operation(self, operation_id: str) -> MulticaIssue | None:

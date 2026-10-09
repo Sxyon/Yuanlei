@@ -17,6 +17,25 @@ class Handler(SimpleHTTPRequestHandler):
  def do_GET(self):
   """校验有限绑定与对象归属，所有响应均为合成演示。"""
   u=urlsplit(self.path);q=parse_qs(u.query)
+  if u.path=='/spatial-scene':
+   if set(q)-{'project','state'} or any(len(v)!=1 for v in q.values()):return self.json(422,{'error':'unsupported_input'})
+   if q.get('project',[''])[0]!='alpha':return self.json(404,{'error':'demo_project_not_visible'})
+   state=q.get('state',['normal'])[0]
+   if state not in {'normal','empty','error','malformed'}:return self.json(422,{'error':'unsupported_state'})
+   if state=='error':return self.json(503,{'error':'synthetic_scene_timeout'})
+   scene=json.loads((ROOT/'spatial/scene.json').read_text())
+   if state=='empty':scene.update(zones=[],route=[])
+   if state=='malformed':scene['zones'][0]['rect'][0]=99
+   return self.json(200,scene)
+  if u.path=='/r2-bundle':
+   if set(q)-{'variant'} or any(len(v)!=1 for v in q.values()):return self.json(422,{'error':'unsupported_input'})
+   variant=q.get('variant',['normal'])[0]
+   if variant not in {'normal','crash','probe','missing','bad-digest'}:return self.json(422,{'error':'unsupported_variant'})
+   file=ROOT/'.build'/('r2-'+('normal' if variant=='bad-digest' else variant)+'.json')
+   if not file.is_file():return self.json(503,{'error':'synthetic_bundle_missing'})
+   data=json.loads(file.read_text())
+   if variant=='bad-digest':data['sha256']='0'*64
+   return self.json(200,data)
   if u.path=='/runtime/vue.js':
    if not VUE.is_file():return self.json(503,{'error':'local_vue_runtime_missing'})
    self.send_response(200);self.send_header('Content-Type','text/javascript');self.end_headers();self.wfile.write(VUE.read_bytes());return

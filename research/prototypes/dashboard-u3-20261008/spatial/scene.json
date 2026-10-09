@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "project": "alpha",
+  "source": "合成展陈通行图 A",
+  "as_of": "2026-10-08 09:00 +08:00",
+  "fetched_at": "2026-10-08 10:30 +08:00",
+  "extent": [12, 8],
+  "unit": "米（示意坐标，非测绘）",
+  "zones": [
+    {"id":"entrance","label":"A 入口","rect":[0.5,0.5,2,1.5],"status":"open","object":{"kind":"result","id":"r3","work":"t1"}},
+    {"id":"booth","label":"B 展台","rect":[6.5,1,2.5,2],"status":"setup","object":{"kind":"result","id":"r4","work":"t2"}},
+    {"id":"store","label":"C 物料阻挡","rect":[3.5,4.5,2.5,2],"status":"blocked","object":{"kind":"work","id":"t3"}},
+    {"id":"exit","label":"D 出口","rect":[9,6,2,1.5],"status":"open","object":{"kind":"result","id":"r3","work":"t1"}}
+  ],
+  "route": [[1.5,2],[1.5,3.8],[8.5,3.8],[8.5,6.75],[9,6.75]]
+}

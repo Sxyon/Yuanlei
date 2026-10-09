@@ -9,12 +9,16 @@ from contextlib import asynccontextmanager
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from server.routers.delegation_router import delegations
 from server.routers.governance_router import governance
 from server.utils.auth_middleware import get_db, get_required_user
+from yuxi.delegation.multica import MulticaIssue
+from yuxi.repositories.channel_delegation_repository import ChannelDelegationRepository
+from yuxi.storage.postgres.models_business import ProjectWorkResult
+from yuxi.workspace.workdir import Workdir
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import User
 
@@ -199,3 +203,71 @@ async def test_project_governance_http_creation_and_local_delegation_guard() -> 
             )
             assert generic.status_code == 422, generic.text
             assert any(error["loc"][-1] == "work_task_id" for error in generic.json()["detail"])
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [("in_progress", "multica_result_not_ready"), ("done", "multica_result_unverified")],
+)
+async def test_multica_collect_http_rejects_projection_and_releases_lease(status, code, tmp_path, monkeypatch):
+    """真实 HTTP/PG/Workdir 入口返回拒绝且保留可观察状态，无成功副作用。"""
+    root = tmp_path / "shared" / "uid-owner" / "workspace" / "projects" / "project-owner"
+    root.mkdir(parents=True)
+    monkeypatch.setenv("YUXI_USER_DATA_DIR", str(tmp_path))
+    workdir = Workdir.open_existing("uid-owner", "projects/project-owner")
+    workdir.create_file("/existing.txt", b"original-bytes")
+
+    class ProjectionClient:
+        """只替代远端读取，实际 Adapter、Service 和 HTTP 错误映射均保留。"""
+
+        async def get_issue(self, *, issue_ref):
+            return MulticaIssue(
+                id="i",
+                identifier=issue_ref,
+                title="T",
+                description="http-description-sentinel",
+                status=status,
+                url="https://multica.invalid/issues/YL-1",
+            )
+
+    monkeypatch.setattr("yuxi.services.delegation_service.build_multica_client_from_env", lambda: ProjectionClient())
+    async with _scoped_database("pytest_multica_collect_http") as (manager, sessions):
+        await _seed_user_with_project(manager.async_engine, uid="uid-owner", project_id="project-owner")
+        async with sessions() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO project_work_tasks "
+                    "(id,project_id,number,title,status,created_by,created_at,updated_at) "
+                    "VALUES ('work','project-owner','TEST-GEN-000001','虚构工作','todo','uid-owner',NOW(),NOW())"
+                )
+            )
+            row = await ChannelDelegationRepository(db).add_delegation(
+                operation_id="http-collect",
+                project_id="project-owner",
+                executor_key="multica",
+                task="虚构任务",
+                request_json={},
+                initiator_run_id=None,
+                created_by="uid-owner",
+            )
+            row.work_task_id = "work"
+            row.external_ref = "YL-1"
+            row.dispatch_state = "dispatched"
+            await db.commit()
+        user = User(username="owner", uid="uid-owner", password_hash="x", role="user")
+        async with _http_client(sessions, current_user=user) as client:
+            rejected = await client.post("/api/projects/project-owner/delegations/http-collect/collect")
+            assert rejected.status_code == 409, rejected.text
+            assert rejected.json()["detail"]["code"] == code
+            assert "http-description-sentinel" not in rejected.text
+            observed = await client.get("/api/projects/project-owner/delegations/http-collect")
+            assert observed.status_code == 200, observed.text
+            assert observed.json()["dispatch_state"] == "dispatched"
+            assert observed.json()["remote_status"] == status
+        async with sessions() as db:
+            row = await ChannelDelegationRepository(db).get_by_operation_id(operation_id="http-collect")
+            assert row.dispatch_state == "dispatched" and row.owner_token is None and row.lease_expires_at is None
+            assert row.result_json == {} and row.result_summary is None and row.artifact_path is None
+            assert await db.scalar(select(func.count()).select_from(ProjectWorkResult)) == 0
+        assert workdir.read_file("/existing.txt", max_bytes=100) == b"original-bytes"
+        assert not (root / ".yuanlei").exists()

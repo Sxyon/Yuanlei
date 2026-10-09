@@ -1,0 +1,40 @@
+{
+  "round": "2026-10-08",
+  "executedAt": "2026-10-08T16:17:27.626Z",
+  "browser": "155.0.8059.39",
+  "scope": "isolated synthetic; no human efficiency inference",
+  "results": [
+    {
+      "name": "五段连续任务回读：旧依据/当前结果/同名跨项目/已答未恢复/观察返回",
+      "status": "Passed"
+    },
+    {
+      "name": "同源同几何同准确导航，R1与R2返回空间来源",
+      "status": "Passed"
+    },
+    {
+      "name": "空/错误/越界保留有效快照；R1有限定义拒绝脚本",
+      "status": "Passed"
+    },
+    {
+      "name": "R2失败/缺包显式回退，实际iframe隔离与导航负向",
+      "status": "Passed"
+    },
+    {
+      "name": "消息source/origin/旧channel/非当前对象及坏摘要在对应边界拒绝",
+      "status": "Passed"
+    },
+    {
+      "name": "空间深色/窄屏、路径切换与任务说明不伪造通过",
+      "status": "Passed"
+    }
+  ],
+  "observations": [
+    {
+      "kind": "agent-script",
+      "sequence": "R2→R3→B-R1→Q2→C08/R4→C08/full",
+      "humanObservation": "Not received",
+      "state": "exact local readback"
+    }
+  ]
+}

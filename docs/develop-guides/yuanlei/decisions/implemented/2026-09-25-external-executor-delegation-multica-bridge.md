@@ -10,6 +10,8 @@ Owner：backend/package/yuxi/services/delegation_service.py
 
 事实 Owner 分工：统一委派编排归 `backend/package/yuxi/services/delegation_service.py` 与 `backend/package/yuxi/delegation/`；codex/opencode 的执行与会话事实仍归 `CodingExecutionService` 与 `coding_sessions`；入向治理归一归 `governance_service.py`；委派事实、同步游标与迁移归 `channel_delegation_repository.py`、`manager.py` 与 `storage_migration.py`；Workdir 物化归 `backend/package/yuxi/workspace/workdir.py`；工具门控归 `agents/toolkits/service.py` 与 `agent/buildin/subagent/graph.py`。
 
+Multica 成功回收的限制由[不可信回收止损](2026-10-08-multica-collect-stoploss.md)部分取代；委派、只读投影、入向同步和其他执行器仍沿用本记录。
+
 ## 问题
 
 元垒要有「执行与协同」面：把任务委派给外部执行者并回收结果。上游 Yuxi 拥有 Run、Conversation、队列、执行与事件链路；元垒已具备两段可复用能力（治理域的来源归一化、沙盒内的 codex/opencode 会话），但缺少把它们收敛成一条通道的统一抽象。

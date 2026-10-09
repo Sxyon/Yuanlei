@@ -1,0 +1,21 @@
+{
+  "round": "2026-10-08",
+  "executedAt": "2026-10-08T16:14:36.892Z",
+  "vue": "3.5.41",
+  "compiler": "3.5.41",
+  "esbuild": "0.28.2",
+  "sfcBytes": 2431,
+  "bundleBytes": 58814,
+  "bundleSha256": "794abd4b80cdbdd864f9d6bbc9d4e3d832ff751817da2aea9adf116594cc9831",
+  "negative": [
+    {
+      "name": "compile",
+      "error": "SFC parse failed: SyntaxError: Element is missing end tag."
+    },
+    {
+      "name": "dependency",
+      "error": "Build failed with 1 error:\nweb/Scene.vue:3:14: ERROR: [plugin: fixed-dependency] dependency_not_allowed: not-approved-library"
+    }
+  ],
+  "scope": "fixed hand-authored synthetic SFC; no agent generation"
+}
