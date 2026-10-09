@@ -1,0 +1,61 @@
+{
+  "round": "2026-10-08",
+  "executedAt": "2026-10-09T03:31:56.780Z",
+  "browser": "155.0.8059.39",
+  "scope": "isolated synthetic prototype only",
+  "results": [
+    {
+      "name": "A准确多结果、旧条件拒绝、结果独立草稿及文件返回",
+      "status": "Passed"
+    },
+    {
+      "name": "错误/冲突/失效文件拒绝并保持意见，加载/空状态入口可达",
+      "status": "Passed"
+    },
+    {
+      "name": "C月份/全屏/准确办理/文件/回原图墙，Escape退出",
+      "status": "Passed"
+    },
+    {
+      "name": "B已读未答与已答未恢复保留，答复不伪造恢复",
+      "status": "Passed"
+    },
+    {
+      "name": "A/B同任务脚本对照（非用户效率实验）",
+      "status": "Passed"
+    },
+    {
+      "name": "主题、窄屏、长标题与密集信息无页面横向溢出，移动结果选择与草稿可用",
+      "status": "Passed"
+    },
+    {
+      "name": "R1真实合成HTTP、独立绑定、错误/空值、准确对象与负向拒绝",
+      "status": "Passed"
+    },
+    {
+      "name": "R1结构压力：空间素材明确拒绝，清单降级不等价",
+      "status": "Passed"
+    },
+    {
+      "name": "桌面业务一屏、焦点返回、重载来源与R1深色主题",
+      "status": "Passed"
+    }
+  ],
+  "observations": [
+    {
+      "task": "核对A旧结果、办理A当前结果与B同标题结果",
+      "mode": "a",
+      "actions": 10,
+      "hashChanges": 5,
+      "correctResultReviews": 2
+    },
+    {
+      "task": "核对A旧结果、办理A当前结果与B同标题结果",
+      "mode": "b",
+      "actions": 8,
+      "hashChanges": 0,
+      "correctResultReviews": 2
+    }
+  ],
+  "pageErrors": []
+}

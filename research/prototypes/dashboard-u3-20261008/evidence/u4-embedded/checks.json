@@ -1,0 +1,62 @@
+{
+  "executedAt": "2026-10-09T03:41:35.712Z",
+  "browser": "155.0.8059.39",
+  "scope": "synthetic trusted same-DOM host mock; not production Vue embedding, not human observations",
+  "results": [
+    {
+      "name": "平台/项目/内容职责与同空间尺寸",
+      "status": "Passed"
+    },
+    {
+      "name": "悬浮退出保持焦点，Esc恢复显式入口",
+      "status": "Passed"
+    },
+    {
+      "name": "治理依据→已有正式工作，独立人工入口保留",
+      "status": "Passed"
+    },
+    {
+      "name": "业务全屏→准确R4→返回保留月份/全屏/宿主偏好",
+      "status": "Passed"
+    },
+    {
+      "name": "窄屏主题、宽度降级与触屏显式入口",
+      "status": "Passed"
+    }
+  ],
+  "widths": [
+    {
+      "label": "rail+project",
+      "viewport": 1440,
+      "platform": 64,
+      "project": 204,
+      "main": 1172,
+      "overflow": false
+    },
+    {
+      "label": "pinned+project",
+      "viewport": 1440,
+      "platform": 224,
+      "project": 204,
+      "main": 1012,
+      "overflow": false
+    },
+    {
+      "label": "pinned+wide-project",
+      "viewport": 1440,
+      "platform": 224,
+      "project": 260,
+      "main": 956,
+      "overflow": false
+    },
+    {
+      "label": "pinned+project-folded",
+      "viewport": 1440,
+      "platform": 224,
+      "project": 0,
+      "main": 1216,
+      "overflow": false
+    }
+  ],
+  "errors": []
+}

@@ -127,6 +127,14 @@ export default defineConfig({
           { text: '开发路线图', link: '/develop-guides/roadmap' },
           { text: '版本变更记录', link: '/develop-guides/changelog' },
           { text: '界面设计规范', link: '/develop-guides/design' },
+          {
+            text: '第一阶段专项（研究中）',
+            collapsed: true,
+            items: [
+              { text: '信息架构与 Dashboard 规划', link: '/元垒系统架构规划设计/第一阶段专项/信息架构与Dashboard专项规划-2026-10-08' },
+              { text: 'U4 分项收敛与首个实施包', link: '/元垒系统架构规划设计/第一阶段专项/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09' }
+            ]
+          },
           { text: '测试规范', link: '/develop-guides/testing-guidelines' },
           { text: '并发优化与评测', link: '/develop-guides/decisions/implemented/2026-09-07-agent-concurrency-optimization' },
           { text: 'Yuxi Spec Loop', link: '/develop-guides/spec-loop' },

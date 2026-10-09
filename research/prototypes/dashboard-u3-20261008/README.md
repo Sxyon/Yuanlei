@@ -45,3 +45,11 @@ node research/prototypes/dashboard-u3-20261008/spatial/build.cjs
 第二轮检查为 `node research/prototypes/dashboard-u3-20261008/check-round2.cjs`（沿用 Playwright/Chrome 环境输入），输出 `evidence/round2-checks.json`。正式结论由《信息架构与Dashboard-U3连续任务与空间对照-2026-10-08》拥有；第一轮失败与拒绝证据保留，旧 `lab.html` 不被覆盖成扩展成功。
 
 回归旧九组时设置 `YUANLEI_U3_EVIDENCE_DIR=research/prototypes/dashboard-u3-20261008/evidence/round2-regression`，保留第一轮截图和拒绝记录。检查记录使用 round 表示专项日期、executedAt 表示真实 UTC 执行时间。
+
+## U4 平台嵌入稿
+
+入口：`http://127.0.0.1:8767/embedded.html#a/alpha/overview`。复用同一合成数据与 A 内容，外侧增加可信同 DOM 宿主示意，比较平台显式展开/固定、桌面悬浮对照及项目收起/离散宽度。它没有挂入真实 AppLayout，不验证生产 iframe 或生成代码宿主协议，未扩展 R2。研究控制栏不属于产品稿。
+
+`check-embedded.cjs` 使用与既有脚本相同的 Playwright/Chrome 环境变量；五组检查及尺寸写入 `evidence/u4-embedded/checks.json`，图片同目录。原九组回归通过 `YUANLEI_U3_EVIDENCE_DIR=research/prototypes/dashboard-u3-20261008/evidence/u4-regression` 单独保存，避免改写旧证据。
+
+未实现：完整覆盖菜单焦点约束、真实触屏、拖动、逐项目导航偏好、真实治理创建/执行/恢复、实际 Vue 嵌入、动态 Dashboard/模板发布；这些只提供职责和后续验收计划。工作台“从有效决策准备工作”显示已关联的合成 CG-012，优先打开已有工作；人工创建仍只是未写业务的表单演示。
