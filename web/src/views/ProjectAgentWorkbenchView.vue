@@ -3,12 +3,14 @@
     <PageHeader :title="workbenchTitle" :loading="loading" show-border>
       <template #actions><a-button size="small" @click="load">刷新</a-button></template>
     </PageHeader>
-    <main class="agent-workbench-content">
+    <main ref="scrollContainer" class="agent-workbench-content">
       <a-spin v-if="loading" class="agent-workbench-state" />
       <a-alert v-else-if="error" type="error" show-icon :message="error">
         <template #action><a-button size="small" @click="load">重试</a-button></template>
       </a-alert>
       <template v-else-if="workbench">
+        <p class="agent-workbench-muted">这里接收和执行工作；执行完成不等于结果接受。核对交付进入准确工作详情；人工求助从收件箱答复，已答复但未恢复仍需跟进。</p>
+        <RouterLink :to="{ name: 'InboxView' }">查看跨项目收件箱</RouterLink>
         <section class="agent-workbench-section agent-workbench-config">
           <h2>任务接收设置</h2>
           <label class="agent-workbench-setting">
@@ -33,7 +35,7 @@
           <ul v-else>
             <li v-for="item in section.items" :key="item.id">
               <div>
-                <RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: item.task_id } }">
+                <RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: item.task_id }, hash: `#work-execution-${item.id}` }">
                   {{ item.task_number }} · {{ item.task_title }}
                 </RouterLink>
                 <p>{{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</p>
@@ -59,6 +61,7 @@
 </template>
 
 <script setup>
+import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
@@ -69,6 +72,8 @@ import { projectAgentApi } from '@/apis/project_agent_api'
 const route = useRoute()
 const workbench = ref(null)
 const loading = ref(false)
+const scrollContainer = ref(null)
+useReturnScroll(loading, () => scrollContainer.value?.closest('.project-page'))
 const error = ref('')
 const actionError = ref('')
 const working = ref(null)
@@ -97,7 +102,7 @@ const sections = computed(() => [
 ])
 const statusLabel = (status) => ({
   pending_acceptance: '待接受', queued: '排队中', dispatching: '派发中', submitted: '执行中',
-  interrupted: '等待答复', completed: '已完成', failed: '失败', cancelled: '已取消'
+  interrupted: '等待答复', completed: '执行已完成', failed: '失败', cancelled: '已取消'
 })[status] || status
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
 

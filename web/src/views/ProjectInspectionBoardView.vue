@@ -14,7 +14,7 @@
       </template>
     </PageHeader>
 
-    <div class="inspection-body">
+    <div ref="scrollContainer" class="inspection-body">
       <a-spin v-if="loading" class="inspection-state" />
       <a-alert
         v-else-if="errorMessage"
@@ -38,7 +38,7 @@
           <div>
             <p class="workbench-kicker">PROJECT WORKBENCH</p>
             <h1>{{ board.project?.name || '项目工作台' }}</h1>
-            <p>维护蓝图，研讨议题，将工作建议纳入正式工作并查看汇报。</p>
+            <p>维护蓝图、研讨议题与批准决策，将建议纳入正式工作。独立人工事项可直接在工作页创建；交付与验收在准确工作详情办理。</p>
           </div>
           <div class="workbench-links">
             <RouterLink :to="{ name: 'ProjectWorkTasksView', params: { project_id: projectId } }"
@@ -668,6 +668,7 @@
 </template>
 
 <script setup>
+import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { blueprintTemplates, blueprintTemplateContent } from '@/utils/blueprintTemplates'
 import TopicHistoryPanel from '@/components/project/TopicHistoryPanel.vue'
 import DecisionHistoryPanel from '@/components/project/DecisionHistoryPanel.vue'
@@ -694,6 +695,8 @@ const route = useRoute()
 const router = useRouter()
 const projectId = computed(() => String(route.params.project_id || ''))
 const loading = ref(false)
+const scrollContainer = ref(null)
+useReturnScroll(loading, () => scrollContainer.value)
 const busy = ref(false)
 const errorMessage = ref('')
 const actionError = ref('')

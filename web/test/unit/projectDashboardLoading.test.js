@@ -93,7 +93,7 @@ test('切换到无蓝图项目时过期蓝图请求不能让加载状态永久�
   assert.equal(instance.setupState.blueprintContent, '')
 })
 
-test('自定义页面就绪时不请求默认概览的项目数据', async (t) => {
+test('业务页面就绪仍加载管理兜底，蓝图失败不影响业务页面', async (t) => {
   t.mock.method(dashboardApi, 'getDashboard', async () => ({
     state: 'ready',
     html: '<p>自定义页面</p>',
@@ -101,11 +101,9 @@ test('自定义页面就绪时不请求默认概览的项目数据', async (t) =
     sha256: 'hash',
     size: 10
   }))
-  const boardRead = t.mock.method(boardApi, 'getProjectBoard', () => {
-    throw new Error('自定义页面不应读取项目治理数据')
-  })
-  const blueprintRead = t.mock.method(boardApi, 'listBlueprints', () => {
-    throw new Error('自定义页面不应读取蓝图')
+  const boardRead = t.mock.method(boardApi, 'getProjectBoard', async () => ({ project: { id: 'custom' }, overview: {} }))
+  const blueprintRead = t.mock.method(boardApi, 'listBlueprints', async () => {
+    throw new Error('蓝图暂不可读')
   })
   const router = createRouter({
     history: createMemoryHistory(),
@@ -129,6 +127,52 @@ test('自定义页面就绪时不请求默认概览的项目数据', async (t) =
   await settle()
   assert.equal(instance.setupState.page.state, 'ready')
   assert.match(instance.setupState.srcdoc, /自定义页面/)
-  assert.equal(boardRead.mock.callCount(), 0)
-  assert.equal(blueprintRead.mock.callCount(), 0)
+  assert.equal(instance.setupState.business, false)
+  assert.equal(instance.setupState.board.project.id, 'custom')
+  assert.ok(instance.setupState.blueprintError)
+  assert.equal(boardRead.mock.callCount(), 1)
+  assert.equal(blueprintRead.mock.callCount(), 1)
+})
+
+test('业务读取和蓝图正文挂起时管理独立就绪；蓝图不阻塞业务显示', async t => {
+  let finishDashboard, finishBlueprint
+  t.mock.method(dashboardApi, 'getDashboard', () => new Promise(resolve => { finishDashboard = resolve }))
+  t.mock.method(boardApi, 'getProjectBoard', async () => ({ project: { id: 'scope' }, overview: {} }))
+  t.mock.method(boardApi, 'listBlueprints', async () => ({ documents: [{ name: 'plan.md' }] }))
+  t.mock.method(boardApi, 'getBlueprint', () => new Promise(resolve => { finishBlueprint = resolve }))
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/dashboard', component: View }] })
+  await router.push('/projects/scope/dashboard'); await router.isReady()
+  let instance
+  const app = renderer.createApp({ ...View, render() { instance = getCurrentInstance(); return h('div') } })
+  app.use(router); app.provide(ssrContextKey, { modules: new Set() }); app.mount({}); t.after(() => app.unmount())
+  await settle()
+  const state = () => instance.setupState
+  assert.equal(state().boardLoading, false); assert.equal(state().board.project.id, 'scope')
+  assert.equal(state().businessLoading, true); assert.equal(state().blueprintLoading, true)
+  finishDashboard({ state: 'ready', html: '<p>独立业务页面</p>' }); await settle()
+  assert.equal(state().businessLoading, false); assert.equal(state().loading, false)
+  assert.equal(state().blueprintLoading, true); assert.match(state().srcdoc, /独立业务页面/)
+  finishBlueprint({ content: '合成蓝图' }); await settle()
+  assert.equal(state().blueprintLoading, false)
+})
+
+
+test('同项目最后一份蓝图移除后刷新清空旧正文与选择', async t => {
+  let documents = [{ name: 'plan.md' }]
+  t.mock.method(dashboardApi, 'getDashboard', async () => ({ state: 'empty' }))
+  t.mock.method(boardApi, 'getProjectBoard', async () => ({ project: { id: 'scope' }, overview: {} }))
+  t.mock.method(boardApi, 'listBlueprints', async () => ({ documents }))
+  t.mock.method(boardApi, 'getBlueprint', async () => ({ content: '已删除蓝图的合成正文' }))
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/dashboard', component: View }] })
+  await router.push('/projects/scope/dashboard'); await router.isReady()
+  let instance
+  const app = renderer.createApp({ ...View, render() { instance = getCurrentInstance(); return h('div') } })
+  app.use(router); app.provide(ssrContextKey, { modules: new Set() }); app.mount({}); t.after(() => app.unmount())
+  await settle()
+  assert.equal(instance.setupState.blueprintContent, '已删除蓝图的合成正文')
+  documents = []
+  await instance.setupState.load(); await settle()
+  assert.equal(instance.setupState.selectedBlueprint, '')
+  assert.equal(instance.setupState.blueprintContent, '')
+  assert.equal(instance.setupState.blueprintLoading, false)
 })

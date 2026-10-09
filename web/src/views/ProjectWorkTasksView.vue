@@ -7,7 +7,7 @@
         <a-button size="small" :disabled="loading" @click="load">刷新</a-button>
       </template>
     </PageHeader>
-    <main class="tasks-content">
+    <main ref="scrollContainer" class="tasks-content">
       <a-alert v-if="error" type="error" show-icon :message="error" class="tasks-alert">
         <template #action><a-button size="small" @click="load">重试</a-button></template>
       </a-alert>
@@ -181,6 +181,7 @@
 </template>
 
 <script setup>
+import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -205,6 +206,8 @@ let sourcePrefilled = false
 const topicCodeOpen = ref(false)
 const topicCodeDrafts = ref({})
 const loading = ref(false)
+const scrollContainer = ref(null)
+useReturnScroll(loading, () => scrollContainer.value?.closest('.project-page'))
 const saving = ref(false)
 const updatingId = ref('')
 const gitCompletion = ref(null)

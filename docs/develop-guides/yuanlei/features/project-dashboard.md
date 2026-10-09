@@ -1,12 +1,12 @@
 # 项目自定义 Dashboard
 
-状态：已实现（静态自定义页面与统一默认概览）
+状态：已实现（静态业务页面、默认管理概览与稳定项目导航）
 类型：新增能力
 主要 Owner：[项目自定义 Dashboard v0 Decision](../decisions/implemented/2026-09-21-project-dashboard.md)
 
 ## 需求与失败场景
 
-每个 Project 可以由带项目上下文的 Agent 创建和维护一个项目页面。没有自定义页面时，受信任的前端自动呈现统一的项目概览，从项目督查读视图与蓝图接口展示当前事实。自定义页面是可安全渲染的静态 HTML/CSS Dashboard；项目蓝图和治理操作由独立的项目工作台承载。
+每个 Project 可以由带项目上下文的 Agent 创建和维护一个项目页面。项目入口默认呈现受信任的管理概览，从项目督查读视图与蓝图接口展示当前事实；已有自定义页面通过业务视图切换查看，管理入口持续可达。自定义页面是可安全渲染的静态 HTML/CSS Dashboard；项目蓝图和治理操作由独立的项目工作台承载。平台宿主与项目布局拥有导航，内容页面只拥有自身观察与分析。
 
 页面以 `dashboard/index.html` 保存到 Project Workdir，数据库只保存 revision、hash 与大小元数据。页面或命名 JSON 的并发更新不能静默覆盖；文件系统与数据库提交失配必须显式显示待修复状态。Agent 只能在所属用户、正在运行的根 Project Run 中调用专用读写工具，浏览器没有写接口。
 
@@ -20,7 +20,7 @@
 - 页面字节的事实 Owner 是 Workdir，页面 revision 的事实 Owner 是 yuanlei `project_dashboards`。二者 hash 不一致时读取为 `repair_required`，不返回可能过期的页面。可读但违反静态策略的旧页不被采纳，只允许持有当前 revision 的安全写入覆盖修复；不可信路径、坏编码和超限仍拒绝覆盖。
 - 命名 JSON 的事实 Owner 是 yuanlei `project_documents`，以 `(project_id, key)` 唯一；它供受控 HTTP API 与未来能力使用，不向 iframe 暴露。
 - Dashboard 的读接口和 Agent 工具只对当前用户 active、selectable 的 Project 开放；不可见项目返回 404。
-- 默认概览以待处理、正式工作进展、待验收结果和当前执行异常四组呈现；结果份数与涉及工作数分开。下方展示蓝图、近期有效决策及实际结果反馈。关系图从议题/决策来源与工作/结果归属外键派生，标明反馈边；每类最多10条并显示遗漏数，图外来源仍有维护入口，执行当次冻结依据单独定位。它只读取已有授权接口，不创建默认 HTML，也不向自定义 iframe 注入数据。
+- 默认概览按待验收结果、当前执行异常、正式工作进展和待处理四组呈现；结果份数与涉及工作数分开。结果入口同时显示工作身份和各份交付摘要，并定位准确结果。下方展示蓝图、近期有效决策及实际结果反馈。关系图按需展开；关系图从议题/决策来源与工作/结果归属外键派生，标明反馈边；每类最多10条并显示遗漏数，图外来源仍有维护入口，执行当次冻结依据单独定位。它只读取已有授权接口，不创建默认 HTML，也不向自定义 iframe 注入数据。
 - Redis 不拥有页面、JSON、版本或锁的最终事实。
 
 ## 与 Yuxi 的边界
@@ -53,6 +53,8 @@ Yuxi 继续拥有 Project、认证、Conversation、AgentRun 以及 Workdir 的 
 新增项目工作台设置、智能体创建或命名 JSON 编辑时，需要 Decision 定义受信任 UI Owner，以及写操作的授权、审计和冲突契约。不得向任意 Agent 生成 HTML 页面授予项目数据 bridge。
 
 ## 决策与证据
+
+- [项目空间导航、管理/业务分工与准确结果办理](../decisions/implemented/2026-10-09-project-navigation-result-interface.md)
 
 - [正式工作与业务结果概览](../decisions/implemented/2026-10-07-formal-work-overview.md)
 

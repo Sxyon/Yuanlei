@@ -254,16 +254,19 @@ const handleFileSearchSelect = async (entry) => {
   const parentPath = entry.path.replace(/\/[^/]+$/, '') || '/'
   await selectWorkspacePath(parentPath)
   const matched = entries.value.find((item) => item.path === entry.path)
-  if (matched) await loadWorkspacePreview(matched)
+  if (matched?.is_dir) await selectWorkspacePath(matched.path)
+  else if (matched) await loadWorkspacePreview(matched)
 }
 
 // 侧边栏全局搜索选中工作区文件后，通过 query 跳转打开对应文件
 const openFileByPath = async (path) => {
   if (!path) return
-  const parentPath = String(path).replace(/\/[^/]+$/, '') || '/'
+  const viewerPath = `/${String(path).replace(/^\/+|\/+$/g, '')}`
+  const parentPath = viewerPath.replace(/\/[^/]+$/, '') || '/'
   await selectWorkspacePath(parentPath)
-  const matched = entries.value.find((item) => item.path === String(path))
-  if (matched) await loadWorkspacePreview(matched)
+  const matched = entries.value.find((item) => comparablePath(item.path) === viewerPath)
+  if (matched?.is_dir) await selectWorkspacePath(matched.path)
+  else if (matched) await loadWorkspacePreview(matched)
 }
 const knowledgeBreadcrumbItems = ref([])
 const workspaceBreadcrumbItems = ref(null)

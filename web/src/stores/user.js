@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { authApi } from '@/apis/auth_api'
 import { useAgentStore } from './agent'
 import { useProjectsStore } from './projects'
+import { clearReturnScroll } from '@/utils/pageReturnScroll'
+import { clearReviewDrafts } from '@/utils/resultReviewDrafts'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -23,6 +25,8 @@ export const useUserStore = defineStore('user', () => {
 
   // 动作
   function applySession(data) {
+    clearReviewDrafts()
+    clearReturnScroll()
     useProjectsStore().reset()
     token.value = data.access_token
     userId.value = data.user_id
@@ -48,6 +52,8 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function logout() {
+    clearReviewDrafts()
+    clearReturnScroll()
     // 清除状态
     token.value = ''
     userId.value = null
@@ -178,6 +184,7 @@ export const useUserStore = defineStore('user', () => {
       const userData = await authApi.getCurrentUser()
 
       // 更新本地状态
+      if (uid.value && uid.value !== userData.uid) { clearReviewDrafts(); clearReturnScroll() }
       userId.value = userData.id
       username.value = userData.username
       uid.value = userData.uid

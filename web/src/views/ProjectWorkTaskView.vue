@@ -1,7 +1,7 @@
 <template>
   <div class="work-task-page">
-    <PageHeader title="项目任务" :loading="loading" show-border>
-      <template #actions><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
+    <PageHeader :title="task?.title || '项目工作'" :loading="loading" show-border>
+      <template #actions><a-button size="small" @click="returnToSource">{{ returnPath ? '返回来源' : '工作列表' }}</a-button><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
     </PageHeader>
     <main class="work-task-content">
       <a-spin v-if="loading && !task" class="work-task-state" />
@@ -11,14 +11,17 @@
       <template v-else-if="task">
         <p v-if="loading" class="work-task-muted">正在刷新工作详情，输入仍保留。</p>
         <a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button @click="load">重试</a-button></template></a-alert>
+        <a-alert v-if="actionError" type="error" show-icon :message="actionError" />
+        <a-alert v-if="attachmentError" type="error" show-icon :message="attachmentError" />
         <div class="work-task-heading">
           <span class="work-task-number">{{ task.number }}</span>
           <h1>{{ task.title }}</h1>
           <span class="work-task-status">{{ statusLabel(task.status) }}</span>
         </div>
         <section class="work-task-section">
-          <WorkResultsPanel :project-id="String(route.params.project_id)" :task="task" :executions="executions" @refresh="load" @complete="completeWithGitCheck" />
+          <WorkResultsPanel :project-id="String(route.params.project_id)" :task="task" :executions="executions" :completion-busy="saving" :anchor="route.hash" @select-result="id => router.replace({ hash: `#work-result-${id}` })" @complete-task="selectedStatus = 'done'; updateStatus()" @download-attachment="downloadResultAttachment" @refresh="load" @complete="completeWithGitCheck" />
         </section>
+        <details class="work-management" :open="route.hash.startsWith('#work-execution-')"><summary>来源、执行历史与工作管理</summary>
         <p v-if="task.parent_id" class="work-task-parent">
           父任务：<RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: task.parent_id } }">查看父任务</RouterLink>
         </p>
@@ -156,7 +159,7 @@
         </section>
         <p v-if="!task.acceptance_criteria" class="work-task-muted">尚未填写验收条件，派发前请核对工作要求。</p>
         <WorkContextDrawer ref="contextDrawer" :project-id="String(route.params.project_id)" :task="task" @context="executionContext = $event" />
-        <WorkDelegationsPanel :anchor="route.hash" :context="executionContext" @history="(id) => contextDrawer?.showHistory('delegation', id)" :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
+        <WorkDelegationsPanel :completion-busy="saving" :anchor="route.hash" :context="executionContext" @history="(id) => contextDrawer?.showHistory('delegation', id)" :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
         <section class="work-task-section">
           <h2>智能体执行 <a-button size="small" type="link" @click="load">刷新状态</a-button></h2>
           <div class="work-task-controls">
@@ -241,6 +244,7 @@
           <a-button type="primary" :loading="saving" :disabled="!draft.trim()" @click="addComment">发表评论</a-button>
           <p v-if="actionError" class="work-task-error" role="alert">{{ actionError }}</p>
         </section>
+        </details>
       </template>
     </main>
     <a-modal v-model:open="gitCompletionOpen" title="任务仍有 Git 成果需要处理" :footer="null">
@@ -260,12 +264,14 @@
 </template>
 
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import WorkDelegationsPanel from '@/components/project/WorkDelegationsPanel.vue'
 import WorkContextDrawer from '@/components/project/WorkContextDrawer.vue'
+import { useUserStore } from '@/stores/user'
+import { clearReviewScope } from '@/utils/resultReviewDrafts'
 import { projectWorkApi } from '@/apis/project_work_api'
 import WorkSourceFields from '@/components/project/WorkSourceFields.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -277,6 +283,20 @@ import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 
 const route = useRoute()
 const router = useRouter()
+const user = useUserStore()
+const returnPath = computed(() => {
+  const current = route.fullPath
+  const back = router.options.history.state.back
+  if (typeof back !== 'string' || !back.startsWith('/') || back.startsWith('//')) return ''
+  const target = router.resolve(back)
+  const allowed = ['ProjectDashboardComp', 'ProjectWorkTasksView', 'ProjectInspectionBoardComp', 'ProjectAgentWorkbenchView', 'InboxView', 'InspectionBoardComp']
+  return target.fullPath !== current && allowed.includes(target.name) && (!target.params.project_id || target.params.project_id === route.params.project_id) ? back : ''
+})
+function returnToSource() {
+  if (returnPath.value) router.back()
+  else router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })
+}
+
 const contextDrawer = ref(null), executionContext = ref(null)
 const task = ref(null)
 const loading = ref(false)
@@ -409,7 +429,10 @@ async function load() {
     }
     if (selectedIssue.value && !result.issues.some((item) => item.id === selectedIssue.value.id)) selectedIssue.value = null
   } catch (cause) {
-    if (version === loadVersion) error.value = cause?.message || '任务加载失败'
+    if (version === loadVersion) {
+      error.value = cause?.message || '任务加载失败'
+      if ([401, 403, 404].includes(cause?.status)) { clearReviewScope(user.uid, projectId, taskId); task.value = null; executions.value = [] }
+    }
   } finally {
     if (version === loadVersion) loading.value = false
   }
@@ -425,7 +448,10 @@ async function runAction(action, fallback, errorTarget = actionError) {
     await action()
     if (version === loadVersion) await load()
   } catch (cause) {
-    if (version === loadVersion) errorTarget.value = cause?.message || fallback
+    if (version === loadVersion) {
+      errorTarget.value = cause?.message || fallback
+      if ([401, 403, 404].includes(cause?.status)) { clearReviewScope(user.uid, route.params.project_id, route.params.task_id); task.value = null; error.value = errorTarget.value }
+    }
   } finally {
     saving.value = false
   }
@@ -566,13 +592,21 @@ async function uploadAttachment(event) {
   }
 }
 
+function downloadResultAttachment(id) {
+  const attachment = task.value?.attachments?.find(item => item.id === id)
+  if (attachment) return downloadAttachment(attachment)
+  attachmentError.value = '该附件不在当前工作中，请刷新核对交付引用'
+}
+
 async function downloadAttachment(attachment) {
   const projectId = route.params.project_id
   const taskId = route.params.task_id
+  const version = loadVersion, owner = user.uid
   attachmentError.value = ''
   try {
     const response = await projectWorkApi.downloadAttachment(projectId, taskId, attachment.id)
     const blob = await response.blob()
+    if (version !== loadVersion || owner !== user.uid) return
     const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition')
     const match = disposition?.match(/filename\*=UTF-8''([^;]+)/i)
     const fileName = match ? decodeURIComponent(match[1]) : attachment.file_name
@@ -585,7 +619,7 @@ async function downloadAttachment(attachment) {
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
   } catch (cause) {
-    attachmentError.value = cause?.message || '附件下载失败'
+    if (version === loadVersion && owner === user.uid) attachmentError.value = cause?.message || '附件下载失败'
   }
 }
 
@@ -714,7 +748,8 @@ async function addComment() {
   }
 }
 
-watch([() => route.params.project_id, () => route.params.task_id], () => {
+watch([() => route.params.project_id, () => route.params.task_id, () => user.uid], () => {
+  task.value = null
   executionContext.value = null;
   gitCompletionOpen.value = false
   gitResourceSettingsOpen.value = false
@@ -753,7 +788,9 @@ watch([() => route.hash, task, executions, loading], async () => {
 </script>
 
 <style scoped lang="less">
-.work-task-content { max-width: 920px; margin: 0 auto; padding: 24px; }
+.work-task-page :deep(.page-header) { position: sticky; top: 0; z-index: 2; background: var(--gray-0); }
+.work-task-content { max-width: 1080px; margin: 0 auto; padding: 24px; }
+.work-management > summary { padding: 14px 0; font-weight: 600; cursor: pointer; }
 .work-task-state { display: block; margin: 56px auto; }
 .work-task-number { color: var(--main-color); font-size: 13px; }
 .work-task-heading h1 { margin: 6px 0; color: var(--gray-900); font-size: 24px; }

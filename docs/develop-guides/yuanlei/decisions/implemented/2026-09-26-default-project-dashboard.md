@@ -6,13 +6,15 @@ Owner：web/src/views/ProjectDashboardView.vue
 日期：2026-09-26
 关联 Feature：[项目自定义 Dashboard](../../features/project-dashboard.md)、[项目治理](../../features/project-governance.md)
 
+展示切换与导航部分由[项目空间导航与准确结果办理](2026-10-09-project-navigation-result-interface.md)取代：项目默认管理概览，静态业务视图独立切换；后端授权、默认HTML不持久化与无消息桥边界继续有效。
+
 ## 问题
 
 项目没有 Agent 自定义页面时，Dashboard 只显示生成提示，已有的蓝图、治理与执行数据无法在项目入口集中查看。项目工作台能操作这些数据，但入口分散、栏目不易定位。每个项目需要统一的基础信息层级，自定义页面仍需保留既有静态隔离边界。
 
 ## 决策
 
-受信任的 Vue 页面在自定义 Dashboard 状态为 `empty` 时展示统一默认范式，从已授权的项目督查读视图和蓝图读取接口获取数据。范式固定呈现项目概览、待办计数、蓝图、议题、任务、决策与汇报、执行动态；缺少记录时显示下一步入口。自定义页面状态为 `ready` 时继续只显示无脚本 iframe，默认范式不向 iframe 传递项目数据。状态为 `repair_required` 时保留修复警告，并允许用户查看独立的默认概览。
+受信任的 Vue 页面展示统一默认范式，从已授权的项目督查读视图和蓝图读取接口获取数据；项目入口默认打开管理概览。自定义 `ready` 页面在业务视图中以无脚本 iframe 显示，管理范式不向 iframe 传递项目数据；`repair_required` 保留修复警告及管理入口。当前排列与独立加载取舍由替代 Decision 及组件源码拥有。
 
 项目工作台继续拥有蓝图、治理和委派操作；默认 Dashboard 仅提供查看与跳转。侧边栏、跨项目督查、Dashboard 和工作台提供明确入口。项目页面的写入授权、审计与冲突语义保持在现有后端用例，不新增浏览器写接口、iframe bridge、调度器或持久化默认 HTML。
 

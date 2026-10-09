@@ -117,6 +117,7 @@ test('默认概览显示项目读视图', async () => {
   assert.match(html, /2 份结果，1 项工作/)
   assert.match(html, /要求修订 3/)
   assert.match(html, /#work-result-result-1/)
+  assert.match(html, /等待验收/)
   assert.ok(!html.includes('不应冒充工作'))
 })
 

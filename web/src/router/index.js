@@ -125,6 +125,11 @@ const router = createRouter({
       ]
     },
     {
+      path: '/projects/:project_id/agents',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectAgentsComp', component: () => import('../views/ProjectAgentsView.vue'), meta: { requiresAuth: true } }]
+    },
+    {
       path: '/projects/:project_id/dashboard',
       name: 'ProjectDashboard',
       component: AppLayout,

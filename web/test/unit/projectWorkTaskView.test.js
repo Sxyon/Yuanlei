@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createPinia, setActivePinia } from 'pinia'
 import { after, before, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, KeepAlive, nextTick, ssrContextKey } from 'vue'
@@ -7,6 +8,7 @@ import { createServer } from 'vite'
 
 let vite, View, projectWorkApi, projectAgentApi, projectWorkExecutionApi, governanceBoardApi
 before(async () => {
+  setActivePinia(createPinia())
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/views/ProjectWorkTaskView.vue'))
@@ -461,7 +463,7 @@ test('真实详情模板刷新不卸载结果面板，失败及Git预检查保�
   const originalSetup = Panel.setup
   t.mock.method(Panel, 'setup', function (...args) { mounts += 1; return originalSetup(...args) })
   let release
-  t.mock.method(projectWorkApi, 'getTask', async (_project, id) => ({ id, status: 'todo', criteria_revision: 1, acceptance_criteria: '条件', issues: [], comments: [], references: [], attachments: [], results: [] }))
+  t.mock.method(projectWorkApi, 'getTask', async (_project, id) => ({ id, status: 'todo', criteria_revision: 1, acceptance_criteria: '条件', issues: [], comments: [], references: [], attachments: [], results: [{ id: 'r', status: 'pending' }] }))
   t.mock.method(projectWorkApi, 'listDelegations', async () => ({ delegations: [] }))
   t.mock.method(projectAgentApi, 'list', async () => ({ agents: [] }))
   t.mock.method(projectWorkExecutionApi, 'listForTask', async () => [])
@@ -475,7 +477,7 @@ test('真实详情模板刷新不卸载结果面板，失败及Git预检查保�
   t.mock.method(projectWorkApi, 'getTask', () => new Promise(resolve => { release = resolve }))
   const refreshing = page.setupState.load(); await settle()
   assert.equal(mounts, 1); assert.equal(child.setupState.summary, '未提交摘要')
-  release({ id: 'a', status: 'todo', criteria_revision: 2, acceptance_criteria: '其他页面条件', issues: [], comments: [], references: [], attachments: [], results: [] })
+  release({ id: 'a', status: 'todo', criteria_revision: 2, acceptance_criteria: '其他页面条件', issues: [], comments: [], references: [], attachments: [], results: [{ id: 'r', status: 'pending' }] })
   await refreshing; await settle()
   assert.equal(mounts, 1); assert.equal(child.setupState.criteria, '未保存条件'); assert.equal(child.setupState.revision, 1)
   t.mock.method(projectWorkApi, 'getTask', async () => { throw new Error('刷新失败') })

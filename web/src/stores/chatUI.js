@@ -9,7 +9,8 @@ export const useChatUIStore = defineStore(
     const isLoadingMessages = ref(false)
 
     // 应用侧边栏折叠态
-    const sidebarCollapsed = ref(false)
+    const sidebarCollapsed = ref(true)
+    const projectNavigationCollapsed = ref({})
 
     // 更多菜单
     const moreMenuOpen = ref(false)
@@ -46,6 +47,7 @@ export const useChatUIStore = defineStore(
       // 状态
       isLoadingMessages,
       sidebarCollapsed,
+      projectNavigationCollapsed,
       moreMenuOpen,
       moreMenuPosition,
 
@@ -59,7 +61,7 @@ export const useChatUIStore = defineStore(
     persist: {
       key: 'chat-ui-store',
       storage: localStorage,
-      pick: ['sidebarCollapsed']
+      pick: ['sidebarCollapsed', 'projectNavigationCollapsed']
     }
   }
 )

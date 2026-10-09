@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, provide, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, provide, watch, nextTick, useId } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { GithubOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
@@ -14,7 +14,9 @@ import {
   PanelLeftOpen,
   MessageCirclePlus,
   Search,
-  Inbox
+  Inbox,
+  Pin,
+  Folders
 } from '@lucide/vue'
 
 import { useConfigStore } from '@/stores/config'
@@ -35,6 +37,7 @@ import GlobalSearchModal from '@/components/GlobalSearchModal.vue'
 import ProjectSettingsModal from '@/components/ProjectSettingsModal.vue'
 import { searchWorkspaceFiles } from '@/apis/workspace_api'
 import { projectApi } from '@/apis/project_api'
+import ProjectLayout from '@/layouts/ProjectLayout.vue'
 
 const configStore = useConfigStore()
 const agentStore = useAgentStore()
@@ -58,13 +61,54 @@ const isLoadingStars = ref(false)
 const showSettingsModal = ref(false)
 const settingsInitialTab = ref('')
 
-const { sidebarCollapsed } = storeToRefs(chatUIStore)
+const platformPinned = computed(() => !chatUIStore.sidebarCollapsed)
+const platformOpen = ref(false)
+const platformCompact = ref(false)
+const sidebarCollapsed = computed(() => !(platformOpen.value || (!platformCompact.value && platformPinned.value)))
+const platformOverlay = computed(() => platformOpen.value && (platformCompact.value || !platformPinned.value))
+const platformId = `platform-${useId()}`
+const platformPanel = ref(null)
+let platformTrigger = null
+let platformWidthQuery
+const syncPlatformWidth = () => {
+  platformCompact.value = platformWidthQuery.matches
+  platformOpen.value = false
+}
+const closePlatform = async (force = false) => {
+  if (!platformOpen.value && !force) return
+  platformOpen.value = false
+  await nextTick()
+  const trigger = platformTrigger?.isConnected ? platformTrigger : platformPanel.value?.querySelector('[aria-label="展开平台导航"]')
+  trigger?.focus?.()
+}
+const openPlatform = async (event) => {
+  platformTrigger = event?.currentTarget || null
+  platformOpen.value = true
+  await nextTick()
+  platformPanel.value?.querySelector('[aria-label="收起平台导航"]')?.focus()
+}
+const pinPlatform = async () => {
+  chatUIStore.sidebarCollapsed = !chatUIStore.sidebarCollapsed
+  if (!platformPinned.value) void closePlatform(true)
+  else if (!platformCompact.value) {
+    platformOpen.value = false
+    await nextTick()
+    platformPanel.value?.querySelector('[aria-label="取消固定平台导航"]')?.focus()
+  }
+}
+
+const collapsePlatform = () => {
+  if (!platformOverlay.value) chatUIStore.sidebarCollapsed = true
+  void closePlatform(true)
+}
+
 const conversationSearchOpen = ref(false)
 const projectPendingId = ref(null)
 const gitProject = ref(null)
 
 // Provide settings modal methods to child components
 const openSettingsModal = (tab) => {
+  void closePlatform()
   settingsInitialTab.value = tab || (userStore.isAdmin ? 'base' : 'account')
   showSettingsModal.value = true
 }
@@ -112,6 +156,11 @@ const handleGlobalKeydown = (e) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
+  if (window.matchMedia) {
+    platformWidthQuery = window.matchMedia('(max-width: 1100px)')
+    syncPlatformWidth()
+    platformWidthQuery.addEventListener('change', syncPlatformWidth)
+  }
   // 各 Store 自行处理错误，导航不等待无依赖的品牌、知识库或配置请求。
   void infoStore.loadInfoConfig()
   void getRemoteDatabase()
@@ -144,6 +193,7 @@ const startThreadStatusSync = () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  platformWidthQuery?.removeEventListener('change', syncPlatformWidth)
   if (threadStatusSyncTimer) {
     clearInterval(threadStatusSyncTimer)
     threadStatusSyncTimer = null
@@ -233,24 +283,17 @@ const isNavItemActive = (item) => {
   return activePaths.some((path) => route.path === path || route.path.startsWith(`${path}/`))
 }
 
-const setSidebarCollapsed = (collapsed) => {
-  sidebarCollapsed.value = collapsed
-}
-
-const toggleSidebar = () => {
-  setSidebarCollapsed(!sidebarCollapsed.value)
-}
-
 const openConversationSearch = () => {
   conversationSearchOpen.value = true
 }
 
 const initAgentNavigation = async () => {
   try {
-    if (!agentStore.isInitialized) {
-      await agentStore.initialize()
-    }
-    await Promise.all([chatThreadsStore.loadThreads(), loadProjects()])
+    await Promise.all([
+      agentStore.isInitialized ? Promise.resolve() : agentStore.initialize(),
+      chatThreadsStore.loadThreads(),
+      loadProjects()
+    ])
   } catch (error) {
     console.warn('加载对话导航失败:', error)
   }
@@ -390,6 +433,8 @@ watch(
   { immediate: true }
 )
 
+watch(() => route.fullPath, () => { void closePlatform() })
+
 // Provide settings modal methods to child components
 provide('settingsModal', {
   openSettingsModal
@@ -397,8 +442,12 @@ provide('settingsModal', {
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <div class="header">
+  <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'platform-overlay': platformOverlay }">
+    <a-drawer :open="platformOverlay" placement="left" :width="230" :get-container="false" :force-render="true" :closable="false" :body-style="{ padding: 0 }" @close="closePlatform()">
+      <div :id="platformId" class="platform-drawer-target" />
+    </a-drawer>
+    <Teleport :to="`#${platformId}`" :disabled="!platformOverlay" defer>
+    <div ref="platformPanel" class="header" aria-label="元垒平台导航">
       <div class="sidebar-brand" @click.stop>
         <router-link v-if="!sidebarCollapsed" to="/" class="brand-link">
           <img :src="infoStore.organization.avatar" class="brand-avatar" />
@@ -408,13 +457,15 @@ provide('settingsModal', {
           v-else
           type="button"
           class="brand-link brand-expand-button"
-          aria-label="展开侧边栏"
-          @click="setSidebarCollapsed(false)"
+          aria-label="展开平台导航"
+          :aria-expanded="!sidebarCollapsed"
+          @click="openPlatform"
         >
           <img :src="infoStore.organization.avatar" class="brand-avatar brand-avatar-image" />
           <PanelLeftOpen class="brand-expand-icon" size="20" />
         </button>
         <div v-if="!sidebarCollapsed" class="sidebar-header-actions" aria-label="侧边栏操作">
+          <button type="button" class="sidebar-header-action" :aria-label="platformPinned ? '取消固定平台导航' : '固定平台导航'" :aria-pressed="platformPinned" @click="pinPlatform"><Pin size="17" /></button>
           <button
             type="button"
             class="sidebar-header-action"
@@ -427,17 +478,19 @@ provide('settingsModal', {
           <button
             type="button"
             class="sidebar-header-action"
-            aria-label="折叠侧边栏"
-            @click="toggleSidebar"
+            aria-label="收起平台导航"
+            @click="collapsePlatform"
           >
             <PanelLeft size="17" />
           </button>
         </div>
       </div>
       <div class="nav">
+        <button v-if="sidebarCollapsed" type="button" class="nav-item" aria-label="项目与对话" title="项目与对话" @click="openPlatform"><Folders class="icon" size="18" /></button>
         <RouterLink
           v-if="primaryNavItem"
           :to="primaryNavItem.path"
+          :aria-label="primaryNavItem.name"
           class="nav-item"
           :class="{ active: isNavItemActive(primaryNavItem) }"
           :active-class="primaryNavItem.action ? '' : 'active'"
@@ -473,6 +526,7 @@ provide('settingsModal', {
           v-for="(item, index) in secondaryNavItems"
           :key="index"
           :to="item.path"
+          :aria-label="item.name"
           v-show="!item.hidden"
           class="nav-item"
           :class="{ active: isNavItemActive(item) }"
@@ -557,12 +611,15 @@ provide('settingsModal', {
         </div>
       </div>
     </div>
-    <router-view v-slot="{ Component, route }" id="app-router-view">
-      <keep-alive v-if="route.meta.keepAlive !== false">
-        <component :is="Component" />
+    </Teleport>
+    <ProjectLayout id="app-router-view" :enabled="Boolean(route.params.project_id)">
+    <router-view v-slot="{ Component, route }">
+      <keep-alive :key="userStore.uid">
+        <component :is="Component" :key="Component.type.name || Component.type.__name || route.name" v-if="route.meta.keepAlive !== false" />
       </keep-alive>
-      <component :is="Component" v-else />
+      <component :is="Component" v-if="route.meta.keepAlive === false" />
     </router-view>
+    </ProjectLayout>
 
     <GlobalSearchModal
       v-model:open="conversationSearchOpen"
@@ -595,7 +652,7 @@ provide('settingsModal', {
 <style lang="less" scoped>
 // Less 变量定义
 @sidebar-width: 230px;
-@sidebar-collapsed-width: 52px;
+@sidebar-collapsed-width: 64px;
 @sidebar-padding-y: 6px;
 @sidebar-padding-x: 8px;
 @sidebar-border-width: 1px;
@@ -620,7 +677,8 @@ provide('settingsModal', {
   flex-direction: row;
   width: 100%;
   height: 100vh;
-  min-width: var(--min-width);
+  min-width: 0;
+  position: relative;
 }
 
 div.header,
@@ -631,6 +689,7 @@ div.header,
 
 #app-router-view {
   flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
 }
 
@@ -1073,4 +1132,11 @@ div.header,
     }
   }
 }
+</style>
+
+<style lang="less" scoped>
+.platform-drawer-target { height: 100%; .header { height: 100%; width: 230px; } }
+.app-layout.platform-overlay { padding-left: 64px; }
+.header button:focus-visible, .header a:focus-visible { outline: 2px solid var(--main-color); outline-offset: -2px; }
+@media (max-width: 700px) { .header .nav-item, .sidebar-header-action, .brand-link { min-height: 44px; } }
 </style>

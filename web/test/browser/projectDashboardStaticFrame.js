@@ -16,13 +16,15 @@ async (page) => {
     updated_at: '2026-09-22T00:00:00', html: scriptHtml
   }
 
+  await page.route('**/api/projects', route => route.fulfill({ json: [{ id: projectId, name: '合成静态大屏验证', workdir_path: 'synthetic-dashboard' }] }))
+
   page.on('request', (request) => {
     if (request.url().includes('example.com')) externalRequests.push(request.url())
   })
   await page.route('**/api/projects/*/dashboard', (route) => route.fulfill({ json: readyPayload }))
 
   try {
-    await page.goto(`http://localhost:5173/projects/${projectId}/dashboard`, { waitUntil: 'networkidle' })
+    await page.goto(`http://localhost:5173/projects/${projectId}/dashboard?view=business`, { waitUntil: 'networkidle' })
     const frameElement = await page.waitForSelector('iframe.dashboard-frame', { timeout: 10000 })
     check(await frameElement.getAttribute('sandbox') === '', 'Dashboard iframe 必须使用空 sandbox')
 
@@ -40,5 +42,6 @@ async (page) => {
     return { ok: true, projectId }
   } finally {
     await page.unroute('**/api/projects/*/dashboard').catch(() => {})
+    await page.unroute('**/api/projects').catch(() => {})
   }
 }

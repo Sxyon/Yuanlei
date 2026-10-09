@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">项目概览 · 默认范式</p>
         <h1>{{ board.project?.name || '未命名项目' }}</h1>
-        <p class="overview-description">从蓝图到执行，在这里查看项目当前进展。</p>
+        <p class="overview-description">先核对待验收与异常，再查看工作进展和治理依据。</p>
       </div>
       <RouterLink class="primary-link" :to="workbenchRoute"
         >进入项目工作台 <ArrowUpRight :size="16"
@@ -22,6 +22,7 @@
         <ul v-if="group.items.length" class="item-list">
           <li v-for="item in group.items" :key="item.id">
             <RouterLink :to="item.url">{{ itemLabel(item) }}</RouterLink>
+            <p v-if="item.summary && item.title">{{ item.summary }}</p>
             <p>{{ detailLabel(item) }}</p>
           </li>
         </ul>
@@ -44,6 +45,7 @@
         <ul class="item-list">
           <li v-for="item in listPage.items || []" :key="item.id">
             <RouterLink :to="item.url" @click="closeList">{{ itemLabel(item) }}</RouterLink>
+            <p v-if="item.summary && item.title">{{ item.summary }}</p>
             <p>{{ detailLabel(item) }}</p>
           </li>
         </ul>
@@ -58,11 +60,13 @@
       </template>
     </a-modal>
 
+    <details class="overview-card"><summary>项目关系与历史依据</summary>
     <ProjectGovernanceGraph
       :project-id="projectId"
       :governance="governance"
       :graph="board.graph || {}"
     />
+    </details>
 
     <section v-if="effectiveDecisions.length" class="overview-card decision-summary">
       <div class="card-heading">
@@ -238,10 +242,10 @@ const groups = computed(() => {
       count: `${data.exceptions?.total || 0} 条`,
       note: '最新尝试失败或中断；历史异常单独保留，不代表业务受阻。'
     }
-  ].map((group) => ({ ...group, items: data[group.key]?.items || [] }))
+  ].sort((a, b) => ['results', 'exceptions', 'work', 'pending'].indexOf(a.key) - ['results', 'exceptions', 'work', 'pending'].indexOf(b.key)).map((group) => ({ ...group, items: data[group.key]?.items || [] }))
 })
 const itemLabel = (item) =>
-  `${item.kind ? ({ topic: '议题', suggestion: '工作建议', decision: '草稿决策', execution: '智能体尝试', delegation: '外部委派' }[item.kind] || item.kind) + ' · ' : ''}${item.number ? item.number + ' · ' : ''}${(item.kind ? item.title : item.summary) || item.title || item.summary || '议题反馈'}`
+  `${item.kind ? ({ topic: '议题', suggestion: '工作建议', decision: '草稿决策', execution: '智能体尝试', delegation: '外部委派' }[item.kind] || item.kind) + ' · ' : ''}${item.number ? item.number + ' · ' : ''}${item.title || item.summary || '议题反馈'}`
 const detailLabel = (item) =>
   [
     item.kind === 'topic' ? topicAdmissionLabel(item.admission_status) : overviewStatusLabel(
@@ -306,6 +310,8 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
 
 <style scoped lang="less">
 .default-dashboard {
+  container-type: inline-size;
+  container-name: project-overview;
   width: min(1320px, 100%);
   margin: 0 auto;
   display: grid;
@@ -669,5 +675,11 @@ const latest = (items, limit) => (items || []).slice(-limit).reverse()
   .stat strong {
     font-size: 20px;
   }
+}
+@container project-overview (max-width: 900px) {
+  .overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container project-overview (max-width: 680px) {
+  .overview-stats { grid-template-columns: 1fr; }
 }
 </style>

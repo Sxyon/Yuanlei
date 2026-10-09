@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createPinia, setActivePinia } from 'pinia'
 import { after, before, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, reactive, ssrContextKey } from 'vue'
@@ -6,12 +7,15 @@ import { createServer } from 'vite'
 
 let vite, Panel, api
 before(async () => {
+  setActivePinia(createPinia())
+  const data = new Map()
+  globalThis.sessionStorage = { getItem: key => data.get(key) || null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: Panel } = await vite.ssrLoadModule('/src/components/project/WorkResultsPanel.vue'))
   ;({ projectWorkApi: api } = await vite.ssrLoadModule('/src/apis/project_work_api.js'))
 })
-after(async () => { await vite?.close(); delete globalThis.localStorage })
+after(async () => { await vite?.close(); delete globalThis.localStorage; delete globalThis.sessionStorage })
 const renderer = createRenderer({ patchProp() {}, insert() {}, remove() {}, createElement: () => ({}), createText: () => ({}), createComment: () => ({}), setText() {}, setElementText() {}, parentNode: () => null, nextSibling: () => null })
 async function settle() { await nextTick(); await new Promise(resolve => setImmediate(resolve)) }
 function mount(t) {
@@ -105,4 +109,62 @@ test('丢响应后切换提交动作使用新标识，同一动作重试仍幂�
   assert.notEqual(calls[1].request_id, calls[2].request_id)
   state().submit(true); await complete()(true)
   assert.equal(calls[2].request_id, calls[3].request_id)
+})
+
+test('准确锚点不替换缺失结果；默认选择当前要求待验收，旧要求仍可查看', async t => {
+  const { task, state } = mount(t)
+  task.results = [{ id: 'old', status: 'pending', criteria_changed: true }, { id: 'current', status: 'pending', criteria_changed: false }]
+  await settle()
+  assert.equal(state().selectedResult.id, 'current')
+  state().selectResult('old'); assert.equal(state().selectedResult.id, 'old')
+  state().selectResult('missing'); assert.equal(state().selectedResult, undefined); assert.equal(state().missingResult, true)
+})
+
+test('意见按用户、项目、工作和结果恢复；冲突保留，成功及无权撤销', async t => {
+  const { useUserStore } = await vite.ssrLoadModule('/src/stores/user.js')
+  const { clearReviewDrafts, getReviewDraft } = await vite.ssrLoadModule('/src/utils/resultReviewDrafts.js')
+  clearReviewDrafts()
+  const user = useUserStore(); user.uid = 'u1'
+  const { task, state, events } = mount(t)
+  task.results = [{ id: 'r1', status: 'pending' }, { id: 'r2', status: 'pending' }]; await settle()
+  state().comments.r1 = '意见一'; state().comments.r2 = '意见二'
+  task.id = 'other'; await settle(); assert.equal(state().comments.r1, '')
+  task.id = 'task'; await settle(); assert.equal(state().comments.r1, '意见一'); assert.equal(state().comments.r2, '意见二')
+  user.uid = 'u2'; await settle(); assert.equal(state().comments.r1, '')
+  user.uid = 'u1'; await settle(); assert.equal(state().comments.r1, '意见一')
+  t.mock.method(api, 'reviewResult', async () => { throw Object.assign(new Error('版本冲突'), { status: 409 }) })
+  await state().review({ id: 'r1', version: 1 }, 'accepted', false)
+  assert.equal(state().comments.r1, '意见一'); assert.equal(events.at(-1), 'refresh')
+  assert.equal(state().needsRecheck.r1, true)
+  assert.match(sessionStorage.getItem('yuanlei-result-review-drafts'), /意见一/)
+  task.results = [{ id: 'r1', status: 'accepted' }, { id: 'r2', status: 'pending' }]; await settle()
+  assert.equal(state().comments.r1, '意见一')
+  t.mock.method(api, 'reviewResult', async () => ({}))
+  await state().review({ id: 'r1', version: 2 }, 'accepted', false)
+  assert.equal(getReviewDraft('u1', 'project', 'task', 'r1'), '')
+  assert.equal(state().comments.r2, '意见二')
+  t.mock.method(api, 'reviewResult', async () => { throw Object.assign(new Error('无权'), { status: 403 }) })
+  await state().review({ id: 'r2', version: 1 }, 'accepted', false)
+  assert.deepEqual(state().comments, {}); assert.equal(getReviewDraft('u1', 'project', 'task', 'r2'), '')
+  user.logout(); assert.equal(getReviewDraft('u1', 'project', 'other', 'r1'), '')
+  assert.equal(sessionStorage.getItem('yuanlei-result-review-drafts'), null)
+})
+
+test('页面重建恢复准确意见；实际登录换账户动作清空会话缓存', async t => {
+  const { useUserStore } = await vite.ssrLoadModule('/src/stores/user.js')
+  const { authApi } = await vite.ssrLoadModule('/src/apis/auth_api.js')
+  const { clearReviewDrafts, getReviewDraft } = await vite.ssrLoadModule('/src/utils/resultReviewDrafts.js')
+  clearReviewDrafts()
+  const user = useUserStore(); user.uid = 'u1'
+  const first = mount(t); first.task.results = [{ id: 'r', status: 'pending' }]; await settle()
+  first.state().comments.r = '重建前意见'
+  const second = mount(t); second.task.results = [{ id: 'r', status: 'pending' }]; await settle()
+  assert.equal(second.state().comments.r, '重建前意见')
+  second.task.id = 'same-title-other-task'; await settle(); assert.equal(second.state().comments.r, '')
+  t.mock.method(authApi, 'login', async () => ({ uid: 'u2', access_token: 'synthetic', user_id: 2, username: 'synthetic' }))
+  await user.login({}); await settle()
+  assert.equal(getReviewDraft('u1', 'project', 'task', 'r'), '')
+  assert.equal(sessionStorage.getItem('yuanlei-result-review-drafts'), null)
+  assert.equal(first.state().comments.r, '')
+  user.logout()
 })
