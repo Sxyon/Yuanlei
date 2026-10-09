@@ -131,9 +131,11 @@ export default defineConfig({
             text: '第一阶段专项（研究中）',
             collapsed: true,
             items: [
-              { text: 'OpenClaw T1-O 协议试验结果', link: '/元垒系统架构规划设计/第一阶段专项/协作接入-C3T1O协议试验结果-2026-10-09' },
-              { text: '信息架构与 Dashboard 规划', link: '/元垒系统架构规划设计/第一阶段专项/信息架构与Dashboard专项规划-2026-10-08' },
-              { text: 'U4 分项收敛与首个实施包', link: '/元垒系统架构规划设计/第一阶段专项/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09' }
+              { text: '协作 C0 整体契约与验收卡', link: '/元垒系统架构规划设计/第一阶段专项/协作接入-C0整体契约基线与C1-C6验收卡-2026-10-09' },
+              { text: 'OpenClaw T1-O 协议试验结果', link: '/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入-C3T1O协议试验结果-2026-10-09' },
+              { text: 'Dashboard D0 全景基线与验收卡', link: '/元垒系统架构规划设计/第一阶段专项/Dashboard-D0设计基线与D1-D6验收卡-2026-10-09' },
+              { text: '信息架构与 Dashboard 规划', link: '/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard专项规划-2026-10-08' },
+              { text: 'U4 分项收敛与首个实施包', link: '/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09' }
             ]
           },
           { text: '测试规范', link: '/develop-guides/testing-guidelines' },

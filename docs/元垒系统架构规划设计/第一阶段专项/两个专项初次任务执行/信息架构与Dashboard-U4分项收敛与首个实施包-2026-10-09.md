@@ -14,7 +14,7 @@
 | 已核实源码 | 平台 AppLayout 与 chatUI 拥有导航布局偏好；项目 Dashboard 当前静态 iframe 和默认管理样板；治理准入与正式工作分开；验收 service 拒绝旧条件作为当前接受依据 |
 | 作者原型检查 | 可信同 DOM 平台示意嵌入现有 A 内容；有限合成路径与几何/焦点/恢复检查。具体结果见第 7 节 |
 | 可逆呈现假设 | 64px 平台栏、204px 项目栏、概览阅读顺序、文件轻预览组合、窄屏阈值；尚无本轮人类观察 |
-| 已批准并实施的界面决定 | 三层导航职责、管理/业务分工、结果身份与依据连续、首包范围，见 [implemented Decision](../../develop-guides/yuanlei/decisions/implemented/2026-10-09-project-navigation-result-interface.md) |
+| 已批准并实施的界面决定 | 三层导航职责、管理/业务分工、结果身份与依据连续、首包范围，见 [implemented Decision](../../../develop-guides/yuanlei/decisions/implemented/2026-10-09-project-navigation-result-interface.md) |
 | U4 原未验项的当前状态 | 真 AppLayout 嵌入、隔离多结果及来源回返已由 U5 验证；屏幕阅读器、物理触屏、真实跨登录偏好和真实业务样本仍未验；动态加载/模板版本/Agent 工具/启用回退见后续出口 |
 
 用户批准界面分项并授权首包产品实现，未提供连续操作的阅读/误认观察。职责与业务不变量独立收敛；像素、密度、默认折叠保持可逆假设。无需等待动态创作闭合才准备首包；专项收尾仍必须验证真实嵌入与后续能力。
@@ -106,14 +106,14 @@ sequenceDiagram
 
 | 页面稿 | 核对目的 | 呈现判断 |
 | --- | --- | --- |
-| [管理概览](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/management.png) | 平台窄栏 + 项目导航 + 待验收主区域 | 首屏先给数量和定位；结果列表比历史关系优先。已有四组卡片语义保留，密度需真实内容复验 |
-| [业务观察](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/business.png) | 大屏在项目空间中占位 | 内容只带时间和数据导航；与管理并列切换，项目入口稳定 |
-| [平台覆盖展开](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/expanded-overlay.png) / [固定展开](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/pinned.png) | 取全局入口与长期跨项目工作 | 覆盖展开不压正文，固定展开换取持续可读菜单；宽度代价显式可见 |
-| [项目收起](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/project-folded.png) | 双层组合的释放空间 | 宿主标题区仍留“项目导航”按钮与身份，不把收起等同离开项目 |
-| [准确结果](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/accurate-result.png) | 交付信息与来源在平台中可辨 | 结果选择、提交时依据、意见属于同一对象；历史设置按需展开 |
-| [工作台](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/workbench.png) | 从有效依据进入正式工作 | 议题/决策不是执行列表；创建/关联入口标明正式工作边界 |
-| [窄屏深色](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/narrow-dark.png) / [窄屏菜单](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/narrow-platform.png) | 触屏显式入口，正文单列 | 窄屏重载收起，显式展开呈覆盖；回宽恢复固定偏好，真实覆盖层可访问实现待验 |
-| [全屏](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/fullscreen.png) / [返回恢复](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/fullscreen-return.png) | 观察 → R4 → 返回 → 退出 | 全屏是临时呈现；退出后宿主偏好保持 |
+| [管理概览](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/management.png) | 平台窄栏 + 项目导航 + 待验收主区域 | 首屏先给数量和定位；结果列表比历史关系优先。已有四组卡片语义保留，密度需真实内容复验 |
+| [业务观察](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/business.png) | 大屏在项目空间中占位 | 内容只带时间和数据导航；与管理并列切换，项目入口稳定 |
+| [平台覆盖展开](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/expanded-overlay.png) / [固定展开](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/pinned.png) | 取全局入口与长期跨项目工作 | 覆盖展开不压正文，固定展开换取持续可读菜单；宽度代价显式可见 |
+| [项目收起](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/project-folded.png) | 双层组合的释放空间 | 宿主标题区仍留“项目导航”按钮与身份，不把收起等同离开项目 |
+| [准确结果](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/accurate-result.png) | 交付信息与来源在平台中可辨 | 结果选择、提交时依据、意见属于同一对象；历史设置按需展开 |
+| [工作台](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/workbench.png) | 从有效依据进入正式工作 | 议题/决策不是执行列表；创建/关联入口标明正式工作边界 |
+| [窄屏深色](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/narrow-dark.png) / [窄屏菜单](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/narrow-platform.png) | 触屏显式入口，正文单列 | 窄屏重载收起，显式展开呈覆盖；回宽恢复固定偏好，真实覆盖层可访问实现待验 |
+| [全屏](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/fullscreen.png) / [返回恢复](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/fullscreen-return.png) | 观察 → R4 → 返回 → 退出 | 全屏是临时呈现；退出后宿主偏好保持 |
 
 ### 4.2 组件 / API 映射与改动范围
 
@@ -186,9 +186,9 @@ sequenceDiagram
 
 本节检查属于 U4 实施准备阶段；U5 的产品、测试及隔离任务回读结果单列于[首包验收](信息架构与Dashboard-U5首包实施与验收-2026-10-09.md)，不回写原型检查为产品证据。
 
-新合成检查由 原型目录的 `check-embedded.cjs`运行，证据见[结果 JSON](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/checks.json)：Chrome 155，五组检查通过，包含同空间几何、显式展开焦点/Esc、悬浮含焦点保持、非底部正文折叠位置保持、固定偏好窄屏重载/显式展开/Esc/回宽恢复、治理来源→已有工作、意见/文件返回、业务 R4→观察月份/全屏/宿主偏好、390px 深色与模拟 touch 显式按钮。结果 JSON 记录实际执行 UTC 时间和尺寸，没有人类效率结论。
+新合成检查由 原型目录的 `check-embedded.cjs`运行，证据见[结果 JSON](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-embedded/checks.json)：Chrome 155，五组检查通过，包含同空间几何、显式展开焦点/Esc、悬浮含焦点保持、非底部正文折叠位置保持、固定偏好窄屏重载/显式展开/Esc/回宽恢复、治理来源→已有工作、意见/文件返回、业务 R4→观察月份/全屏/宿主偏好、390px 深色与模拟 touch 显式按钮。结果 JSON 记录实际执行 UTC 时间和尺寸，没有人类效率结论。
 
-改动现有原型后的 九组回归（原型目录的 `check-prototype.cjs`）通过；本轮输出独立存放于 [u4-regression](../../../research/prototypes/dashboard-u3-20261008/evidence/u4-regression/checks.json)。它们只重检受影响的合成多结果/错误/意见/文件/返回/有限数据契约；R2 没有扩展也未重跑，保留 U3 证据及未覆盖范围。原独立原型的“业务一屏”结论不自动覆盖嵌入后的可用高度。
+改动现有原型后的 九组回归（原型目录的 `check-prototype.cjs`）通过；本轮输出独立存放于 [u4-regression](../../../../research/prototypes/dashboard-u3-20261008/evidence/u4-regression/checks.json)。它们只重检受影响的合成多结果/错误/意见/文件/返回/有限数据契约；R2 没有扩展也未重跑，保留 U3 证据及未覆盖范围。原独立原型的“业务一屏”结论不自动覆盖嵌入后的可用高度。
 
 作者查看管理、结果、窄屏覆盖等截图后的阅读判断：管理列表与右侧进展/依据形成主次；结果身份和提交依据先于历史设置；双固定栏的正文宽度成本可量化；窄屏只能让内容单列，研究控制栏占高不代表产品标题区。截图不证明真实长条件、密集表格和一屏高度适配，需要真实内容再验。
 

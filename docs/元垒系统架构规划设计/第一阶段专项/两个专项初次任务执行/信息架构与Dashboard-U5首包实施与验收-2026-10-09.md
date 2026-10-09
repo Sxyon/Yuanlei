@@ -2,7 +2,7 @@
 
 状态：P1a/P1b/P1c 界面包已实施，相关验证、批次及包级独立 Review 完成；专项整体未完成。
 
-读者：专项负责人、产品验收与维护人员。类型：分批实施证据与未验范围。前置：[U4 实施包](信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09.md)的导航职责、管理/业务分工和准确结果边界已获用户批准；[正式 Decision](../../develop-guides/yuanlei/decisions/implemented/2026-10-09-project-navigation-result-interface.md)保存取舍。目标：核对三个批次的实际页面、测试和最终业务事实。非目标：发布项目 Dashboard、修改后端语义或 schema、动态运行时、模板或 Agent 工具。
+读者：专项负责人、产品验收与维护人员。类型：分批实施证据与未验范围。前置：[U4 实施包](信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09.md)的导航职责、管理/业务分工和准确结果边界已获用户批准；[正式 Decision](../../../develop-guides/yuanlei/decisions/implemented/2026-10-09-project-navigation-result-interface.md)保存取舍。目标：核对三个批次的实际页面、测试和最终业务事实。非目标：发布项目 Dashboard、修改后端语义或 schema、动态运行时、模板或 Agent 工具。
 
 ## 1. 分批范围与当前入口
 

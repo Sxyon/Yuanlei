@@ -333,7 +333,7 @@ sequenceDiagram
 
 ## 5. Dashboard 能力候选：按维度独立比较
 
-当前静态能力的业务理由、Owner 和替换条件见 [Dashboard Feature](../../develop-guides/yuanlei/features/project-dashboard.md)，实现事实见 U0/U1 第 3、6 节。动态路线涉及新边界，需要后续 Feature/Decision 和真实验证；本页不修改现行静态契约。管理概览直接读平台正式事实，业务大屏读其声明的项目业务源；两者共用平台入口和错误表达，保留各自指标语义。
+当前静态能力的业务理由、Owner 和替换条件见 [Dashboard Feature](../../../develop-guides/yuanlei/features/project-dashboard.md)，实现事实见 U0/U1 第 3、6 节。动态路线涉及新边界，需要后续 Feature/Decision 和真实验证；本页不修改现行静态契约。管理概览直接读平台正式事实，业务大屏读其声明的项目业务源；两者共用平台入口和错误表达，保留各自指标语义。
 
 ### 5.1 渲染路线
 

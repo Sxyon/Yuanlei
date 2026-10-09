@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-09",
+  "scope": "隔离合成设计检查，不是产品验收",
+  "checks": [
+    {
+      "command": "node research/prototypes/dashboard-d0-20261009/check.mjs",
+      "result": "Passed",
+      "coverage": "3合法定义、5精确非法位置、未知版本、指标映射、独立绑定、结构差异"
+    },
+    {
+      "command": "node --check research/prototypes/dashboard-d0-20261009/app.js",
+      "result": "Passed"
+    },
+    {
+      "command": "python3 -m unittest scripts.test_verify_engineering_contracts",
+      "result": "Passed",
+      "tests": 70
+    },
+    {
+      "command": "python3 scripts/verify_engineering_contracts.py",
+      "result": "Failed",
+      "reason": "现存 S01-S03独立校验与第一阶段深度评估-ef65969.md 166/174/190/234 四个对举表述，本轮proposed状态已修正；未改旧评估结论"
+    },
+    {
+      "command": "pnpm run build (docs)",
+      "result": "Passed",
+      "reason": "最终vitepress完成client/server、页面与sitemap，22.10s；仅chunk size警告，未关闭死链检查"
+    },
+    {
+      "command": "git diff --check",
+      "result": "Passed"
+    },
+    {
+      "command": "修改Markdown相对文件链接检查",
+      "result": "Passed",
+      "count": 106,
+      "missing": []
+    }
+  ],
+  "author_browser": [
+    {
+      "task": "治理蓝图/议题/准确多结果与文件返回",
+      "result": "Passed",
+      "only": "合成DOM，草稿/意见保持和来源返回"
+    },
+    {
+      "task": "甲收件箱→乙同名结果→甲收件箱，已读/归档Q2仍已答未恢复",
+      "result": "Passed",
+      "only": "合成状态，无真实Andon"
+    },
+    {
+      "task": "派生、非法位置、CAS冲突、指定草稿预览、启用、首页、回退",
+      "result": "Passed",
+      "only": "合成版本，非真实事务与完整快照"
+    },
+    {
+      "task": "8月/全屏→准确R2→返回同实例修订/月份/全屏",
+      "result": "Passed",
+      "only": "合成返回，滚动/焦点/版本变动未验证"
+    },
+    {
+      "task": "390px治理深色稿",
+      "result": "Passed",
+      "only": "DOM width/scrollWidth=390，单列；非物理触屏"
+    },
+    {
+      "task": "Agent E2/W2准确执行页与返回",
+      "result": "Passed",
+      "only": "合成执行页面，无相邻结果替换"
+    },
+    {
+      "task": "最终自主实例无模板、模板升级禁用、对应绑定校验",
+      "result": "Passed",
+      "only": "合成DOM与有限检查"
+    }
+  ],
+  "not_run": [
+    "产品API/PG/worker/Agent生成",
+    "真实模板/数据集采纳/政策/动态Vue加载",
+    "物理触屏/辅助技术/人类使用观察",
+    "新产品unit/integration/E2E（未改产品）"
+  ],
+  "independent_review": {
+    "result": "Passed",
+    "scope": "完整D0设计、原主规划与隔离原型；不包含产品实现/用户批准/真实运行时",
+    "reviewer": "d0_complete_review，fork_turns=none",
+    "resolved": [
+      "历史query与rollback动作守卫",
+      "Agent W2/E2准确路由",
+      "三槽模板/完整任务/分析绑定一致性",
+      "服务端返回会话签发/Owner/期限/失效",
+      "自主无模板标注及独立绑定"
+    ],
+    "remaining_blockers": []
+  },
+  "product_diff": "git diff HEAD -- web backend 无改动"
+}

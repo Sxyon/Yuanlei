@@ -1,0 +1,456 @@
+{
+  "notice": "全部为合成设计样例，无产品连接或发布",
+  "rule_version": 1,
+  "materials": [
+    "metric@1",
+    "result-list@1",
+    "trend-chart@1",
+    "analysis-note@1",
+    "data-table@1",
+    "flow-lanes@1"
+  ],
+  "templates": [
+    {
+      "id": "delivery-watch",
+      "version": 1,
+      "scope": "builtin",
+      "name": "交付观察",
+      "definition": {
+        "schema_version": 1,
+        "title": "交付观察",
+        "inputs": [
+          {
+            "id": "results",
+            "contract": "work.results.v1",
+            "required_fields": [
+              "task_id",
+              "result_id",
+              "title",
+              "summary",
+              "criteria_revision",
+              "status"
+            ],
+            "filters": {
+              "status": "pending"
+            },
+            "required": true
+          }
+        ],
+        "layout": {
+          "kind": "grid",
+          "columns": 12,
+          "children": [
+            {
+              "id": "summary",
+              "component": "metric@1",
+              "input": "results",
+              "mapping": {
+                "value": "totals.total_results"
+              },
+              "span": 4,
+              "mobile_span": 12,
+              "display": {
+                "label": "待验收份数",
+                "format": "integer"
+              }
+            },
+            {
+              "id": "list",
+              "component": "result-list@1",
+              "input": "results",
+              "mapping": {
+                "title": "title",
+                "summary": "summary",
+                "status": "status"
+              },
+              "span": 8,
+              "mobile_span": 12,
+              "action": {
+                "type": "open-result",
+                "ids": {
+                  "task": "task_id",
+                  "result": "result_id"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "business-watch",
+      "version": 1,
+      "scope": "builtin",
+      "name": "经营观察",
+      "definition": {
+        "schema_version": 1,
+        "title": "经营观察",
+        "inputs": [
+          {
+            "id": "trend",
+            "contract": "business.monthly.v1",
+            "required_fields": [
+              "month",
+              "amount"
+            ],
+            "required": true
+          },
+          {
+            "id": "regions",
+            "contract": "business.regions.v1",
+            "required_fields": [
+              "region",
+              "amount",
+              "missing_count"
+            ],
+            "required": true
+          },
+          {
+            "id": "analysis",
+            "contract": "analysis.note.v1",
+            "required_fields": [
+              "content",
+              "author",
+              "as_of",
+              "basis"
+            ],
+            "required": true
+          }
+        ],
+        "layout": {
+          "kind": "grid",
+          "columns": 12,
+          "children": [
+            {
+              "id": "trend",
+              "component": "trend-chart@1",
+              "input": "trend",
+              "mapping": {
+                "x": "month",
+                "y": "amount"
+              },
+              "span": 8,
+              "mobile_span": 12,
+              "display": {
+                "unit": "CNY",
+                "format": "currency"
+              }
+            },
+            {
+              "id": "analysis",
+              "component": "analysis-note@1",
+              "input": "analysis",
+              "mapping": {
+                "text": "content",
+                "author": "author",
+                "time": "as_of",
+                "basis": "basis"
+              },
+              "span": 4,
+              "mobile_span": 12
+            },
+            {
+              "id": "regions",
+              "component": "data-table@1",
+              "input": "regions",
+              "mapping": {
+                "columns": [
+                  "region",
+                  "amount",
+                  "missing_count"
+                ]
+              },
+              "span": 12,
+              "mobile_span": 12,
+              "display": {
+                "unit": "CNY",
+                "format": "currency"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "instances": [
+    {
+      "id": "alpha-delivery",
+      "project": "alpha",
+      "name": "交付观察",
+      "template_ref": {
+        "id": "delivery-watch",
+        "version": 1
+      },
+      "bindings": {
+        "results": {
+          "source": "project.work_results",
+          "parameters": {
+            "status": "pending"
+          }
+        }
+      }
+    },
+    {
+      "id": "beta-delivery",
+      "project": "beta",
+      "name": "交付观察",
+      "template_ref": {
+        "id": "delivery-watch",
+        "version": 1
+      },
+      "bindings": {
+        "results": {
+          "source": "project.work_results",
+          "parameters": {
+            "status": "pending"
+          }
+        }
+      }
+    }
+  ],
+  "business_bindings": {
+    "alpha": {
+      "trend": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-alpha-sales",
+        "revision": 3
+      },
+      "regions": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-alpha-regions",
+        "revision": 2
+      },
+      "analysis": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-alpha-analysis",
+        "revision": 1,
+        "kind": "analysis"
+      }
+    },
+    "beta": {
+      "trend": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-beta-sales",
+        "revision": 7
+      },
+      "regions": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-beta-regions",
+        "revision": 4
+      },
+      "analysis": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-beta-analysis",
+        "revision": 1,
+        "kind": "analysis"
+      }
+    }
+  },
+  "autonomous": {
+    "instance": {
+      "id": "alpha-flow",
+      "project": "alpha",
+      "template_ref": null
+    },
+    "definition": {
+      "schema_version": 1,
+      "title": "执行路径观察",
+      "inputs": [
+        {
+          "id": "work",
+          "contract": "work.summary.v1",
+          "required_fields": [
+            "task_id",
+            "title",
+            "status"
+          ],
+          "required": true
+        },
+        {
+          "id": "results",
+          "contract": "work.results.v1",
+          "required_fields": [
+            "task_id",
+            "result_id",
+            "title",
+            "summary"
+          ],
+          "required": true
+        },
+        {
+          "id": "analysis",
+          "contract": "analysis.note.v1",
+          "required_fields": [
+            "content",
+            "author",
+            "as_of",
+            "basis"
+          ],
+          "required": true
+        }
+      ],
+      "layout": {
+        "kind": "stack",
+        "children": [
+          {
+            "id": "context",
+            "component": "analysis-note@1",
+            "input": "analysis",
+            "mapping": {
+              "text": "content",
+              "author": "author",
+              "time": "as_of",
+              "basis": "basis"
+            },
+            "span": 12,
+            "mobile_span": 12
+          },
+          {
+            "id": "lanes",
+            "component": "flow-lanes@1",
+            "input": "work",
+            "mapping": {
+              "group": "status",
+              "label": "title"
+            },
+            "span": 12,
+            "mobile_span": 12,
+            "action": {
+              "type": "open-work",
+              "ids": {
+                "task": "task_id"
+              }
+            }
+          },
+          {
+            "id": "results",
+            "component": "result-list@1",
+            "input": "results",
+            "mapping": {
+              "title": "title",
+              "summary": "summary"
+            },
+            "span": 12,
+            "mobile_span": 12,
+            "action": {
+              "type": "open-result",
+              "ids": {
+                "task": "task_id",
+                "result": "result_id"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "bindings": {
+      "work": {
+        "source": "project.work_summary"
+      },
+      "results": {
+        "source": "project.work_results"
+      },
+      "analysis": {
+        "source": "project.dataset",
+        "dataset_id": "dataset-alpha-analysis",
+        "revision": 1,
+        "kind": "analysis"
+      }
+    }
+  },
+  "dataset_candidate": {
+    "contract": "business.monthly.v1",
+    "expected_revision": 0,
+    "units": {
+      "amount": "CNY"
+    },
+    "as_of": "2026-10-09T08:00:00Z",
+    "rows": [
+      {
+        "month": "2026-08",
+        "amount": 12000
+      },
+      {
+        "month": "2026-09",
+        "amount": 18000
+      }
+    ],
+    "provenance": {
+      "kind": "analysis",
+      "run_id": "synthetic-root-run",
+      "basis_refs": [
+        "synthetic-sales-source@3"
+      ],
+      "coverage": "2个月合成演示；未实际核验"
+    },
+    "state": "candidate"
+  },
+  "illegal": {
+    "definition": {
+      "schema_version": 1,
+      "title": "交付观察",
+      "inputs": [
+        {
+          "id": "results",
+          "contract": "work.results.v1",
+          "required_fields": [
+            "task_id",
+            "result_id",
+            "title",
+            "summary",
+            "criteria_revision",
+            "status"
+          ],
+          "filters": {
+            "status": "pending"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "stack",
+        "children": [
+          {
+            "id": "bad",
+            "component": "remote-code@9",
+            "input": "results",
+            "mapping": {
+              "value": "untyped_money"
+            },
+            "action": {
+              "type": "approve-decision",
+              "url": "https://example.com"
+            }
+          }
+        ]
+      }
+    },
+    "bindings": {
+      "results": {
+        "source": "project.work_results",
+        "project_id": "beta"
+      }
+    }
+  },
+  "expected_errors": [
+    {
+      "pointer": "/definition/layout/children/0/component",
+      "code": "unknown_component"
+    },
+    {
+      "pointer": "/definition/layout/children/0/action/type",
+      "code": "write_action_forbidden"
+    },
+    {
+      "pointer": "/definition/layout/children/0/action/url",
+      "code": "unknown_field"
+    },
+    {
+      "pointer": "/bindings/results/project_id",
+      "code": "scope_override_forbidden"
+    },
+    {
+      "pointer": "/definition/layout/children/0/mapping/value",
+      "code": "unknown_field_mapping"
+    }
+  ]
+}

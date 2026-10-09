@@ -1,0 +1,1750 @@
+{
+  "status": "proposed-document-fixtures-only",
+  "synthetic": true,
+  "schema_scope": "C0 core task/return/answer; provider extensions and native tool payloads require negotiated schemas; business matching and permissions not proved by JSON schema",
+  "byte_limit": 262144,
+  "schemas": {
+    "task": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "yuanlei.collaboration/1.0"
+        },
+        "kind": {
+          "const": "task"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "work": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "criteria_revision": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "id",
+            "criteria_revision"
+          ],
+          "additionalProperties": false
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "snapshot_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "decisions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "revision"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "snapshot_id",
+            "fingerprint",
+            "decisions"
+          ],
+          "additionalProperties": false
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_ref": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "provider",
+            "target_ref"
+          ],
+          "additionalProperties": false
+        },
+        "direct_handler": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "relation": {
+              "const": "delegated-by"
+            }
+          },
+          "required": [
+            "ref",
+            "relation"
+          ],
+          "additionalProperties": false
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "object"
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "tools": {
+              "enum": [
+                "deny-all",
+                "scoped"
+              ]
+            },
+            "external_messages": {
+              "type": "boolean"
+            },
+            "files": {
+              "type": "boolean"
+            },
+            "budget_kind": {
+              "enum": [
+                "observed-only",
+                "server-hard"
+              ]
+            }
+          },
+          "required": [
+            "tools",
+            "external_messages",
+            "files",
+            "budget_kind"
+          ],
+          "additionalProperties": false
+        },
+        "delivery": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "const": "structured-return/1"
+            },
+            "supplement_max_code_points": {
+              "const": 200
+            }
+          },
+          "required": [
+            "format",
+            "supplement_max_code_points"
+          ],
+          "additionalProperties": false
+        },
+        "andon": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "blocked-return",
+                "native-question",
+                "delivery-only"
+              ]
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 0,
+              "maxItems": 8
+            },
+            "question_route": {
+              "const": "direct-handler"
+            },
+            "max_questions": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "on_answer": {
+              "enum": [
+                "explicit-successor",
+                "native-bound-reply",
+                "manual-only"
+              ]
+            },
+            "match": {
+              "const": [
+                "question_id",
+                "revision",
+                "wait_attempt_id",
+                "answer_id"
+              ]
+            }
+          },
+          "required": [
+            "mode",
+            "actions",
+            "question_route",
+            "max_questions",
+            "on_answer",
+            "match"
+          ],
+          "additionalProperties": false
+        },
+        "authority": {
+          "type": "object",
+          "properties": {
+            "formal_change_grants": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 0,
+              "maxItems": 8
+            },
+            "on_missing_grant": {
+              "const": "request-upstream"
+            }
+          },
+          "required": [
+            "formal_change_grants",
+            "on_missing_grant"
+          ],
+          "additionalProperties": false
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 4,
+          "patternProperties": {
+            "^[a-z][a-z0-9_-]{0,31}$": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "kind",
+        "operation_id",
+        "attempt_id",
+        "work",
+        "context",
+        "target",
+        "direct_handler",
+        "goal",
+        "inputs",
+        "limits",
+        "delivery",
+        "andon",
+        "authority"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "andon": {
+                "properties": {
+                  "mode": {
+                    "const": "native-question"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "andon": {
+                "properties": {
+                  "max_questions": {
+                    "maximum": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "return": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "yuanlei.collaboration/1.0"
+        },
+        "kind": {
+          "const": "return"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "blocked",
+            "failed"
+          ]
+        },
+        "formal_delivery": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 131072
+                },
+                "artifact_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "provider-object",
+                          "provider-url"
+                        ]
+                      },
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 0,
+                  "maxItems": 16
+                },
+                "unresolved": {
+                  "type": "array",
+                  "maxItems": 0
+                },
+                "criteria_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "context_snapshot_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "text",
+                "artifact_refs",
+                "unresolved",
+                "criteria_revision",
+                "context_snapshot_id"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "client_question_key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "revision": {
+                "const": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "missing": {
+                "type": "string",
+                "minLength": 1
+              },
+              "impact": {
+                "type": "string",
+                "minLength": 1
+              },
+              "checked_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 0,
+                "maxItems": 16
+              },
+              "requested_answer": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "client_question_key",
+              "revision",
+              "title",
+              "missing",
+              "impact",
+              "checked_refs",
+              "requested_answer"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 4
+        },
+        "supplement": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "assertion_level": {
+                  "const": "agent-report"
+                }
+              },
+              "required": [
+                "revision",
+                "summary",
+                "assertion_level"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 4,
+          "patternProperties": {
+            "^[a-z][a-z0-9_-]{0,31}$": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "kind",
+        "operation_id",
+        "attempt_id",
+        "outcome",
+        "formal_delivery",
+        "questions",
+        "supplement",
+        "error"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "formal_delivery": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 131072
+                  },
+                  "artifact_refs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "provider-object",
+                            "provider-url"
+                          ]
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "ref"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 0,
+                    "maxItems": 16
+                  },
+                  "unresolved": {
+                    "type": "array",
+                    "maxItems": 0
+                  },
+                  "criteria_revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "context_snapshot_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "text",
+                  "artifact_refs",
+                  "unresolved",
+                  "criteria_revision",
+                  "context_snapshot_id"
+                ],
+                "additionalProperties": false
+              },
+              "questions": {
+                "maxItems": 0
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "blocked"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "formal_delivery": {
+                "type": "null"
+              },
+              "questions": {
+                "minItems": 1
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "formal_delivery": {
+                "type": "null"
+              },
+              "questions": {
+                "maxItems": 0
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "answer": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "yuanlei.collaboration/1.0"
+        },
+        "kind": {
+          "const": "answer"
+        },
+        "question_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "answer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wait_attempt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicability": {
+          "type": "object",
+          "properties": {
+            "criteria_revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "decision_refs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "revision"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "criteria_revision",
+            "decision_refs"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_delta": {
+          "type": "object"
+        },
+        "requires_explicit_adoption": {
+          "const": true
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 4,
+          "patternProperties": {
+            "^[a-z][a-z0-9_-]{0,31}$": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "kind",
+        "question_id",
+        "question_revision",
+        "answer_id",
+        "from_node",
+        "to_node",
+        "wait_attempt_id",
+        "applicability",
+        "body",
+        "input_delta",
+        "requires_explicit_adoption",
+        "action_id"
+      ],
+      "additionalProperties": false,
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "supplement": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "assertion_level": {
+          "const": "agent-report"
+        }
+      },
+      "required": [
+        "revision",
+        "summary",
+        "assertion_level"
+      ],
+      "additionalProperties": false,
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    }
+  },
+  "model_message": "资料不足会影响结论时停止受影响计算，向直接委派者B报告缺项、影响、已查依据和所需答复。没有在线工具，只按受阻结构返回并自然结束。不得改正式约束或发外部消息。补充按200个Unicode字符限制。答案须匹配Q版本、旧attempt和answer；只接受明确后继任务，不自称已恢复。\n{\n  \"andon\": {\n    \"actions\": [],\n    \"match\": [\n      \"question_id\",\n      \"revision\",\n      \"wait_attempt_id\",\n      \"answer_id\"\n    ],\n    \"max_questions\": 4,\n    \"mode\": \"blocked-return\",\n    \"on_answer\": \"explicit-successor\",\n    \"question_route\": \"direct-handler\"\n  },\n  \"attempt_id\": \"attempt-C-1\",\n  \"authority\": {\n    \"formal_change_grants\": [],\n    \"on_missing_grant\": \"request-upstream\"\n  },\n  \"context\": {\n    \"decisions\": [\n      {\n        \"id\": \"decision-demo\",\n        \"revision\": 7\n      }\n    ],\n    \"fingerprint\": \"sha256:14129a9c5ae6692ea8f5fd495c137e944e4da51045f26d1d5e328a0ca5613988\",\n    \"snapshot_id\": \"ctx-demo-7\"\n  },\n  \"delivery\": {\n    \"format\": \"structured-return/1\",\n    \"supplement_max_code_points\": 200\n  },\n  \"direct_handler\": {\n    \"ref\": \"handler-B\",\n    \"relation\": \"delegated-by\"\n  },\n  \"goal\": \"按批准三年约束比较，不假定缺失许可\",\n  \"inputs\": {\n    \"A\": [\n      100,\n      110,\n      120\n    ],\n    \"B\": [\n      120,\n      110,\n      100\n    ],\n    \"C\": [\n      90,\n      100,\n      110\n    ],\n    \"third_year_data_license\": \"missing\"\n  },\n  \"kind\": \"task\",\n  \"limits\": {\n    \"budget_kind\": \"observed-only\",\n    \"external_messages\": false,\n    \"files\": false,\n    \"tools\": \"deny-all\"\n  },\n  \"operation_id\": \"op-demo-cost\",\n  \"protocol\": \"yuanlei.collaboration/1.0\",\n  \"target\": {\n    \"provider\": \"openclaw\",\n    \"target_ref\": \"target-demo-C\"\n  },\n  \"work\": {\n    \"criteria_revision\": 4,\n    \"id\": \"work-demo\"\n  }\n}",
+  "positive": [
+    {
+      "name": "task-blocked",
+      "schema": "task",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "task",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "work": {
+          "id": "work-demo",
+          "criteria_revision": 4
+        },
+        "context": {
+          "snapshot_id": "ctx-demo-7",
+          "fingerprint": "sha256:14129a9c5ae6692ea8f5fd495c137e944e4da51045f26d1d5e328a0ca5613988",
+          "decisions": [
+            {
+              "id": "decision-demo",
+              "revision": 7
+            }
+          ]
+        },
+        "target": {
+          "provider": "openclaw",
+          "target_ref": "target-demo-C"
+        },
+        "direct_handler": {
+          "ref": "handler-B",
+          "relation": "delegated-by"
+        },
+        "goal": "按批准三年约束比较，不假定缺失许可",
+        "inputs": {
+          "A": [
+            100,
+            110,
+            120
+          ],
+          "B": [
+            120,
+            110,
+            100
+          ],
+          "C": [
+            90,
+            100,
+            110
+          ],
+          "third_year_data_license": "missing"
+        },
+        "limits": {
+          "tools": "deny-all",
+          "external_messages": false,
+          "files": false,
+          "budget_kind": "observed-only"
+        },
+        "delivery": {
+          "format": "structured-return/1",
+          "supplement_max_code_points": 200
+        },
+        "andon": {
+          "mode": "blocked-return",
+          "actions": [],
+          "question_route": "direct-handler",
+          "max_questions": 4,
+          "on_answer": "explicit-successor",
+          "match": [
+            "question_id",
+            "revision",
+            "wait_attempt_id",
+            "answer_id"
+          ]
+        },
+        "authority": {
+          "formal_change_grants": [],
+          "on_missing_grant": "request-upstream"
+        }
+      }
+    },
+    {
+      "name": "return-blocked",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "blocked",
+        "formal_delivery": null,
+        "questions": [
+          {
+            "client_question_key": "license-3",
+            "revision": 1,
+            "title": "第三年许可缺失",
+            "missing": "合法数据许可或正式替代决定",
+            "impact": "不能提交合规三年比较",
+            "checked_refs": [
+              "ctx-demo-7"
+            ],
+            "requested_answer": "请补合法许可或升级正式替代决定"
+          }
+        ],
+        "supplement": {
+          "revision": 1,
+          "summary": "已查三年资料，第三年许可缺失，未假定。",
+          "assertion_level": "agent-report"
+        },
+        "error": null
+      }
+    },
+    {
+      "name": "return-completed",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "completed",
+        "formal_delivery": {
+          "text": "A=330/110；B=330/110；C=300/100；最低C。",
+          "artifact_refs": [],
+          "unresolved": [],
+          "criteria_revision": 4,
+          "context_snapshot_id": "ctx-demo-licensed"
+        },
+        "questions": [],
+        "supplement": {
+          "revision": 1,
+          "summary": "许可已核查，只使用被授权的给定资料。",
+          "assertion_level": "agent-report"
+        },
+        "error": null
+      }
+    },
+    {
+      "name": "return-failed",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "failed",
+        "formal_delivery": null,
+        "questions": [],
+        "supplement": {
+          "revision": 1,
+          "summary": "已查三年资料，第三年许可缺失，未假定。",
+          "assertion_level": "agent-report"
+        },
+        "error": {
+          "code": "provider_error",
+          "message": "公开运行回执报错"
+        }
+      }
+    },
+    {
+      "name": "answer",
+      "schema": "answer",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "answer",
+        "question_id": "Q1",
+        "question_revision": 1,
+        "answer_id": "answer-B-1",
+        "from_node": "node-B",
+        "to_node": "node-C",
+        "wait_attempt_id": "attempt-C-1",
+        "applicability": {
+          "criteria_revision": 4,
+          "decision_refs": [
+            {
+              "id": "decision-demo-8",
+              "revision": 2
+            }
+          ]
+        },
+        "body": "采用有效D8，只算前两年并除以2；原数据权限不变。",
+        "input_delta": {
+          "decision": "D8",
+          "years": [
+            2024,
+            2025
+          ]
+        },
+        "requires_explicit_adoption": true,
+        "action_id": "action-return-C"
+      }
+    },
+    {
+      "name": "supplement",
+      "schema": "supplement",
+      "value": {
+        "revision": 1,
+        "summary": "许可已核查，只使用被授权的给定资料。",
+        "assertion_level": "agent-report"
+      }
+    },
+    {
+      "name": "task-native-max3",
+      "schema": "task",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "task",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "work": {
+          "id": "work-demo",
+          "criteria_revision": 4
+        },
+        "context": {
+          "snapshot_id": "ctx-demo-7",
+          "fingerprint": "sha256:14129a9c5ae6692ea8f5fd495c137e944e4da51045f26d1d5e328a0ca5613988",
+          "decisions": [
+            {
+              "id": "decision-demo",
+              "revision": 7
+            }
+          ]
+        },
+        "target": {
+          "provider": "openclaw",
+          "target_ref": "target-demo-C"
+        },
+        "direct_handler": {
+          "ref": "handler-B",
+          "relation": "delegated-by"
+        },
+        "goal": "按批准三年约束比较，不假定缺失许可",
+        "inputs": {
+          "A": [
+            100,
+            110,
+            120
+          ],
+          "B": [
+            120,
+            110,
+            100
+          ],
+          "C": [
+            90,
+            100,
+            110
+          ],
+          "third_year_data_license": "missing"
+        },
+        "limits": {
+          "tools": "deny-all",
+          "external_messages": false,
+          "files": false,
+          "budget_kind": "observed-only"
+        },
+        "delivery": {
+          "format": "structured-return/1",
+          "supplement_max_code_points": 200
+        },
+        "andon": {
+          "mode": "native-question",
+          "actions": [
+            "collaboration_submit_question"
+          ],
+          "question_route": "direct-handler",
+          "max_questions": 3,
+          "on_answer": "native-bound-reply",
+          "match": [
+            "question_id",
+            "revision",
+            "wait_attempt_id",
+            "answer_id"
+          ]
+        },
+        "authority": {
+          "formal_change_grants": [],
+          "on_missing_grant": "request-upstream"
+        }
+      }
+    }
+  ],
+  "negative": [
+    {
+      "name": "native-max4",
+      "schema": "task",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "task",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "work": {
+          "id": "work-demo",
+          "criteria_revision": 4
+        },
+        "context": {
+          "snapshot_id": "ctx-demo-7",
+          "fingerprint": "sha256:14129a9c5ae6692ea8f5fd495c137e944e4da51045f26d1d5e328a0ca5613988",
+          "decisions": [
+            {
+              "id": "decision-demo",
+              "revision": 7
+            }
+          ]
+        },
+        "target": {
+          "provider": "openclaw",
+          "target_ref": "target-demo-C"
+        },
+        "direct_handler": {
+          "ref": "handler-B",
+          "relation": "delegated-by"
+        },
+        "goal": "按批准三年约束比较，不假定缺失许可",
+        "inputs": {
+          "A": [
+            100,
+            110,
+            120
+          ],
+          "B": [
+            120,
+            110,
+            100
+          ],
+          "C": [
+            90,
+            100,
+            110
+          ],
+          "third_year_data_license": "missing"
+        },
+        "limits": {
+          "tools": "deny-all",
+          "external_messages": false,
+          "files": false,
+          "budget_kind": "observed-only"
+        },
+        "delivery": {
+          "format": "structured-return/1",
+          "supplement_max_code_points": 200
+        },
+        "andon": {
+          "mode": "native-question",
+          "actions": [
+            "collaboration_submit_question"
+          ],
+          "question_route": "direct-handler",
+          "max_questions": 4,
+          "on_answer": "native-bound-reply",
+          "match": [
+            "question_id",
+            "revision",
+            "wait_attempt_id",
+            "answer_id"
+          ]
+        },
+        "authority": {
+          "formal_change_grants": [],
+          "on_missing_grant": "request-upstream"
+        }
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "unknown-major",
+      "schema": "task",
+      "value": {
+        "protocol": "yuanlei.collaboration/2.0",
+        "kind": "task",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "work": {
+          "id": "work-demo",
+          "criteria_revision": 4
+        },
+        "context": {
+          "snapshot_id": "ctx-demo-7",
+          "fingerprint": "sha256:14129a9c5ae6692ea8f5fd495c137e944e4da51045f26d1d5e328a0ca5613988",
+          "decisions": [
+            {
+              "id": "decision-demo",
+              "revision": 7
+            }
+          ]
+        },
+        "target": {
+          "provider": "openclaw",
+          "target_ref": "target-demo-C"
+        },
+        "direct_handler": {
+          "ref": "handler-B",
+          "relation": "delegated-by"
+        },
+        "goal": "按批准三年约束比较，不假定缺失许可",
+        "inputs": {
+          "A": [
+            100,
+            110,
+            120
+          ],
+          "B": [
+            120,
+            110,
+            100
+          ],
+          "C": [
+            90,
+            100,
+            110
+          ],
+          "third_year_data_license": "missing"
+        },
+        "limits": {
+          "tools": "deny-all",
+          "external_messages": false,
+          "files": false,
+          "budget_kind": "observed-only"
+        },
+        "delivery": {
+          "format": "structured-return/1",
+          "supplement_max_code_points": 200
+        },
+        "andon": {
+          "mode": "blocked-return",
+          "actions": [],
+          "question_route": "direct-handler",
+          "max_questions": 4,
+          "on_answer": "explicit-successor",
+          "match": [
+            "question_id",
+            "revision",
+            "wait_attempt_id",
+            "answer_id"
+          ]
+        },
+        "authority": {
+          "formal_change_grants": [],
+          "on_missing_grant": "request-upstream"
+        }
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "unknown-required-field",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "blocked",
+        "formal_delivery": null,
+        "questions": [
+          {
+            "client_question_key": "license-3",
+            "revision": 1,
+            "title": "第三年许可缺失",
+            "missing": "合法数据许可或正式替代决定",
+            "impact": "不能提交合规三年比较",
+            "checked_refs": [
+              "ctx-demo-7"
+            ],
+            "requested_answer": "请补合法许可或升级正式替代决定"
+          }
+        ],
+        "supplement": {
+          "revision": 1,
+          "summary": "已查三年资料，第三年许可缺失，未假定。",
+          "assertion_level": "agent-report"
+        },
+        "error": null,
+        "untrusted_run_id": "claimed-run"
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "blocked-with-formal",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "blocked",
+        "formal_delivery": {
+          "text": "A=330/110；B=330/110；C=300/100；最低C。",
+          "artifact_refs": [],
+          "unresolved": [],
+          "criteria_revision": 4,
+          "context_snapshot_id": "ctx-demo-licensed"
+        },
+        "questions": [
+          {
+            "client_question_key": "license-3",
+            "revision": 1,
+            "title": "第三年许可缺失",
+            "missing": "合法数据许可或正式替代决定",
+            "impact": "不能提交合规三年比较",
+            "checked_refs": [
+              "ctx-demo-7"
+            ],
+            "requested_answer": "请补合法许可或升级正式替代决定"
+          }
+        ],
+        "supplement": {
+          "revision": 1,
+          "summary": "已查三年资料，第三年许可缺失，未假定。",
+          "assertion_level": "agent-report"
+        },
+        "error": null
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "completed-with-question",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "completed",
+        "formal_delivery": {
+          "text": "A=330/110；B=330/110；C=300/100；最低C。",
+          "artifact_refs": [],
+          "unresolved": [],
+          "criteria_revision": 4,
+          "context_snapshot_id": "ctx-demo-licensed"
+        },
+        "questions": [
+          {
+            "client_question_key": "license-3",
+            "revision": 1,
+            "title": "第三年许可缺失",
+            "missing": "合法数据许可或正式替代决定",
+            "impact": "不能提交合规三年比较",
+            "checked_refs": [
+              "ctx-demo-7"
+            ],
+            "requested_answer": "请补合法许可或升级正式替代决定"
+          }
+        ],
+        "supplement": {
+          "revision": 1,
+          "summary": "许可已核查，只使用被授权的给定资料。",
+          "assertion_level": "agent-report"
+        },
+        "error": null
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "missing-andon-rules",
+      "schema": "task",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "task",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "work": {
+          "id": "work-demo",
+          "criteria_revision": 4
+        },
+        "context": {
+          "snapshot_id": "ctx-demo-7",
+          "fingerprint": "sha256:14129a9c5ae6692ea8f5fd495c137e944e4da51045f26d1d5e328a0ca5613988",
+          "decisions": [
+            {
+              "id": "decision-demo",
+              "revision": 7
+            }
+          ]
+        },
+        "target": {
+          "provider": "openclaw",
+          "target_ref": "target-demo-C"
+        },
+        "direct_handler": {
+          "ref": "handler-B",
+          "relation": "delegated-by"
+        },
+        "goal": "按批准三年约束比较，不假定缺失许可",
+        "inputs": {
+          "A": [
+            100,
+            110,
+            120
+          ],
+          "B": [
+            120,
+            110,
+            100
+          ],
+          "C": [
+            90,
+            100,
+            110
+          ],
+          "third_year_data_license": "missing"
+        },
+        "limits": {
+          "tools": "deny-all",
+          "external_messages": false,
+          "files": false,
+          "budget_kind": "observed-only"
+        },
+        "delivery": {
+          "format": "structured-return/1",
+          "supplement_max_code_points": 200
+        },
+        "authority": {
+          "formal_change_grants": [],
+          "on_missing_grant": "request-upstream"
+        }
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "summary-201-code-points",
+      "schema": "supplement",
+      "value": {
+        "revision": 1,
+        "summary": "字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字",
+        "assertion_level": "agent-report"
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "initial-revision-2",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "blocked",
+        "formal_delivery": null,
+        "questions": [
+          {
+            "client_question_key": "license-3",
+            "revision": 2,
+            "title": "第三年许可缺失",
+            "missing": "合法数据许可或正式替代决定",
+            "impact": "不能提交合规三年比较",
+            "checked_refs": [
+              "ctx-demo-7"
+            ],
+            "requested_answer": "请补合法许可或升级正式替代决定"
+          }
+        ],
+        "supplement": {
+          "revision": 1,
+          "summary": "已查三年资料，第三年许可缺失，未假定。",
+          "assertion_level": "agent-report"
+        },
+        "error": null
+      },
+      "expected": "schema-rejection"
+    },
+    {
+      "name": "failed-without-error",
+      "schema": "return",
+      "value": {
+        "protocol": "yuanlei.collaboration/1.0",
+        "kind": "return",
+        "operation_id": "op-demo-cost",
+        "attempt_id": "attempt-C-1",
+        "outcome": "failed",
+        "formal_delivery": null,
+        "questions": [],
+        "supplement": {
+          "revision": 1,
+          "summary": "已查三年资料，第三年许可缺失，未假定。",
+          "assertion_level": "agent-report"
+        },
+        "error": null
+      },
+      "expected": "schema-rejection"
+    }
+  ],
+  "semantic_vectors": [
+    {
+      "case": "wrong-session-or-run",
+      "expected": "delivery_source_unverified",
+      "current_result": "Not run"
+    },
+    {
+      "case": "same-Q-key-different-body",
+      "expected": "question_revision_conflict",
+      "current_result": "Not run"
+    },
+    {
+      "case": "late-answer-for-old-attempt",
+      "expected": "reply_target_ended",
+      "current_result": "Not run"
+    },
+    {
+      "case": "response-lost-without-idempotence",
+      "expected": "delivery_outcome_unknown",
+      "current_result": "Not run"
+    },
+    {
+      "case": "input-D8-but-output-old-three-year",
+      "expected": "adoption_not_verified",
+      "current_result": "Not run"
+    },
+    {
+      "case": "revoked-grant-new-intent",
+      "expected": "grant_invalid",
+      "current_result": "Not run"
+    }
+  ],
+  "byte_vectors": [
+    {
+      "name": "formal-han-over-128KiB",
+      "field": "formal_text",
+      "repeat": "字",
+      "count": 50000,
+      "limit_bytes": 131072,
+      "expected": "reject"
+    },
+    {
+      "name": "question-over-8KiB",
+      "field": "question",
+      "repeat": "字",
+      "count": 3000,
+      "limit_bytes": 8192,
+      "expected": "reject"
+    },
+    {
+      "name": "whole-over-256KiB",
+      "field": "return",
+      "repeat": "字",
+      "count": 100000,
+      "limit_bytes": 262144,
+      "expected": "reject"
+    },
+    {
+      "name": "formal-small",
+      "field": "formal_text",
+      "repeat": "字",
+      "count": 100,
+      "limit_bytes": 131072,
+      "expected": "accept"
+    }
+  ],
+  "optional_summary_policy": {
+    "validation": "return structure first; supplement policy separately; preserve valid formal delivery and original over-limit optional supplement with nonconformance record"
+  },
+  "scenario_events": [
+    {
+      "event_id": "event-demo-00",
+      "created_at": "2026-10-09T00:00:00Z",
+      "synthetic": true,
+      "question_id": null,
+      "question_revision": null,
+      "node_id": "node-C",
+      "actor_ref": "service",
+      "causal_event": null,
+      "kind": "dispatch-intent",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only"
+    },
+    {
+      "event_id": "event-demo-01",
+      "created_at": "2026-10-09T00:01:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-B",
+      "actor_ref": "agent-C",
+      "causal_event": "event-demo-00",
+      "kind": "question-submitted",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only"
+    },
+    {
+      "event_id": "event-demo-02",
+      "created_at": "2026-10-09T00:02:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-B",
+      "actor_ref": "agent-B",
+      "causal_event": "event-demo-01",
+      "kind": "transfer-B-A",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only"
+    },
+    {
+      "event_id": "event-demo-03",
+      "created_at": "2026-10-09T00:03:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-A",
+      "actor_ref": "agent-A",
+      "causal_event": "event-demo-02",
+      "kind": "request-H",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only"
+    },
+    {
+      "event_id": "event-demo-04",
+      "created_at": "2026-10-09T00:04:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-H",
+      "actor_ref": "user-H",
+      "causal_event": "event-demo-03",
+      "kind": "grant-H-A",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only",
+      "grant_scope": {
+        "id": "grant1",
+        "draft_id": "draft-demo-8",
+        "draft_revision": 1,
+        "draft_hash": "sha256:synthetic-placeholder-not-an-approval",
+        "base_decision": "D7",
+        "base_revision": 7,
+        "grantee": "agent-A",
+        "max_uses": 1,
+        "expires_at": "2026-10-09T00:14:00Z",
+        "allow_redelegation": false
+      }
+    },
+    {
+      "event_id": "event-demo-05",
+      "created_at": "2026-10-09T00:05:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-A",
+      "actor_ref": "agent-A",
+      "causal_event": "event-demo-04",
+      "kind": "approve-A",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only",
+      "governance_result": {
+        "draft_before_revision": 1,
+        "approved_decision": "D8",
+        "approved_revision": 2,
+        "consumed_grant": "grant1",
+        "actual_approver": "agent-A"
+      }
+    },
+    {
+      "event_id": "event-demo-06",
+      "created_at": "2026-10-09T00:06:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-B",
+      "actor_ref": "service",
+      "causal_event": "event-demo-05",
+      "kind": "answer-A-B",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only",
+      "answer_id": "answer-A-1",
+      "action_id": "action-return-B",
+      "delivery_state": "accepted"
+    },
+    {
+      "event_id": "event-demo-07",
+      "created_at": "2026-10-09T00:07:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-B",
+      "actor_ref": "agent-B",
+      "causal_event": "event-demo-06",
+      "kind": "translate-B-C",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": null,
+      "evidence_level": "synthetic-design-only",
+      "answer_id": "answer-B-1",
+      "translated_from": "answer-A-1",
+      "input_delta": {
+        "years": [
+          2024,
+          2025
+        ],
+        "divisor": 2,
+        "decision": "D8",
+        "decision_revision": 2
+      }
+    },
+    {
+      "event_id": "event-demo-08",
+      "created_at": "2026-10-09T00:08:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-C",
+      "actor_ref": "service",
+      "causal_event": "event-demo-07",
+      "kind": "input-bound-C2",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": "attempt-C-2",
+      "evidence_level": "synthetic-design-only",
+      "adoption_level": "input-bound",
+      "answer_id": "answer-B-1",
+      "delivery_state": "accepted"
+    },
+    {
+      "event_id": "event-demo-09",
+      "created_at": "2026-10-09T00:09:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-C",
+      "actor_ref": "service",
+      "causal_event": "event-demo-08",
+      "kind": "execution-adopted-C2",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": "attempt-C-2",
+      "evidence_level": "synthetic-design-only",
+      "adoption_level": "verified",
+      "independent_oracle": {
+        "totals": [
+          210,
+          230,
+          190
+        ],
+        "means": [
+          105,
+          115,
+          95
+        ],
+        "lowest": "C",
+        "note": "synthetic expected oracle; not remote execution"
+      }
+    },
+    {
+      "event_id": "event-demo-10",
+      "created_at": "2026-10-09T00:10:00Z",
+      "synthetic": true,
+      "question_id": "Q1",
+      "question_revision": 1,
+      "node_id": "node-B",
+      "actor_ref": "service",
+      "causal_event": "event-demo-09",
+      "kind": "block-resolved-and-result-pending",
+      "wait_attempt_id": "attempt-C-1",
+      "successor_attempt_id": "attempt-C-2",
+      "evidence_level": "synthetic-design-only",
+      "question_state": "resolved",
+      "result_state": "pending",
+      "work_completed": false
+    }
+  ]
+}

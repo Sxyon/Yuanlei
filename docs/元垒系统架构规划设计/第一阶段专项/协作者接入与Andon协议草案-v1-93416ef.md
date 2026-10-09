@@ -2,6 +2,8 @@
 
 日期：2026-10-09。事实基线：`93416ef`。读者：协作者Adapter开发者、任务委派者、Agent工具与治理/执行实现者。本文是待收敛契约，字段名及动作名是设计示意，不能按已有远端API使用。实施包与完成度由[重新规划总纲](两项专项全面审计与第一阶段重规划-93416ef.md)拥有。
 
+具体推荐、版本样例、完整处理链、持久与UI映射、能力套件及C1—C6卡由[C0整体契约基线](协作接入-C0整体契约基线与C1-C6验收卡-2026-10-09.md)收敛；本文保留草案来源，不作为当前已实现API。
+
 ## 1. 当前基础和需要补齐的公共机制
 
 现有DelegatedExecutor只有dispatch/status/collect，默认装配codex/opencode/multica，ChannelDelegation有持久意图、租约和结果。OpenClaw有成功协议样本，尚无产品Adapter。根项目Agent委派工具拒绝子Agent外部委派；现有用户提问/interrupt/resume和父子关系不构成逐级Andon。

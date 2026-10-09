@@ -62,7 +62,7 @@
 
 内置、个人跨项目共享、项目专属是待研究的来源范围。提取共享模板应提取结构与契约，排除原项目业务数据和凭据。模板版本、实例派生与当前启用版本分别讨论；模板升级如何影响现有实例尚未选定。
 
-当前技术事实由[项目 Dashboard Feature](../../develop-guides/yuanlei/features/project-dashboard.md)、[service](https://github.com/sxyon/Yuanlei/blob/main/backend/package/yuxi/services/project_dashboard_service.py)、[工具](https://github.com/sxyon/Yuanlei/blob/main/backend/package/yuxi/agents/toolkits/buildin/dashboard_tools.py)与[iframe 壳](https://github.com/sxyon/Yuanlei/blob/main/web/src/utils/dashboardFrame.js)相互核对：
+当前技术事实由[项目 Dashboard Feature](../../../develop-guides/yuanlei/features/project-dashboard.md)、[service](https://github.com/sxyon/Yuanlei/blob/main/backend/package/yuxi/services/project_dashboard_service.py)、[工具](https://github.com/sxyon/Yuanlei/blob/main/backend/package/yuxi/agents/toolkits/buildin/dashboard_tools.py)与[iframe 壳](https://github.com/sxyon/Yuanlei/blob/main/web/src/utils/dashboardFrame.js)相互核对：
 
 - 自定义入口为 Project Workdir 的 `/dashboard/index.html`，UTF-8 内容上限 1 MiB；writer 拒绝 script、meta 与非页内锚点 href。
 - iframe 使用空 sandbox 属性，无脚本/同源权限；CSP 禁止网络连接，只允许内联样式和 data URL 图片/字体。外部图片、脚本图表、Vue 与 fetch 数据均不具备当前加载能力。
