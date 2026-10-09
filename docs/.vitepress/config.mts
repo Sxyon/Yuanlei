@@ -131,6 +131,7 @@ export default defineConfig({
             text: '第一阶段专项（研究中）',
             collapsed: true,
             items: [
+              { text: 'OpenClaw T1-O 协议试验结果', link: '/元垒系统架构规划设计/第一阶段专项/协作接入-C3T1O协议试验结果-2026-10-09' },
               { text: '信息架构与 Dashboard 规划', link: '/元垒系统架构规划设计/第一阶段专项/信息架构与Dashboard专项规划-2026-10-08' },
               { text: 'U4 分项收敛与首个实施包', link: '/元垒系统架构规划设计/第一阶段专项/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09' }
             ]
