@@ -41,6 +41,9 @@ class ModelInfo:
     extra: dict[str, Any] = field(default_factory=dict)
     request_body_overrides: dict[str, Any] = field(default_factory=dict)
 
+    default_output_tokens: int | None = None
+    max_output_tokens: int | None = None
+
     # Embedding 专属
     dimension: int | None = None
     batch_size: int = 40
@@ -63,6 +66,8 @@ class ModelInfo:
             "headers": self.headers,
             "extra": self.extra,
             "request_body_overrides": self.request_body_overrides,
+            "default_output_tokens": self.default_output_tokens,
+            "max_output_tokens": self.max_output_tokens,
             "dimension": self.dimension,
             "batch_size": self.batch_size,
             "protocol": self.protocol,
@@ -90,6 +95,8 @@ class ModelInfo:
             headers=data.get("headers", {}),
             extra=data.get("extra", {}),
             request_body_overrides=data.get("request_body_overrides", {}),
+            default_output_tokens=data.get("default_output_tokens"),
+            max_output_tokens=data.get("max_output_tokens"),
             dimension=data.get("dimension"),
             batch_size=data.get("batch_size", 40),
             protocol=data.get("protocol", capability_profile.get("protocol", "openai_chat_completions")),
@@ -182,6 +189,8 @@ class ModelCache:
                     headers=dict(provider.headers_json or {}),
                     extra=dict(provider.extra_json or {}),
                     request_body_overrides=dict(model.get("request_body_overrides") or {}),
+                    default_output_tokens=model.get("default_output_tokens"),
+                    max_output_tokens=model.get("max_output_tokens"),
                     dimension=model.get("dimension"),
                     batch_size=model.get("batch_size", 40),
                     protocol=profile.protocol,

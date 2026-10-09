@@ -32,3 +32,5 @@
 - [Milvus 启动等待](milvus-startup.md)：上游启动缺陷修复；有限等待 Proxy 就绪并保留必需组件失败语义。
 
 - [项目设置与资源管理](project-settings-resources.md)：部分实现；项目设置与弱关联已接入，任务 Git 生命周期待实现。
+
+- [模型输出上限与截断](model-output-limits.md)：模型默认额度、调用覆盖与截断失败语义。

@@ -4,11 +4,13 @@ import asyncio
 import json
 import os
 import re
+from urllib.parse import urlparse
 from typing import Any
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yuxi.models.output import validate_output_tokens
 from yuxi.models.providers.builtin import BUILTIN_PROVIDERS
 from yuxi.models.providers.capabilities import normalize_input_modality, resolve_model_capabilities
 from yuxi.models.providers.repository import (
@@ -124,6 +126,13 @@ def _normalize_model_item(model: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"模型 {model_id} 的 request_body_overrides 只能包含合法 JSON 值") from exc
 
         normalized["request_body_overrides"] = dict(overrides)
+
+    maximum = model.get("max_output_tokens")
+    for field in ("max_output_tokens", "default_output_tokens"):
+        value = model.get(field)
+        validate_output_tokens(value, field=field, maximum=maximum if field == "default_output_tokens" else None)
+        if value is not None and model_type != "chat":
+            raise ValueError(f"{field} 仅支持 chat 模型")
 
     if model_type == "embedding":
         dimension = model.get("dimension")
@@ -345,7 +354,9 @@ def _normalize_remote_model(
         "context_length": (
             raw_model.get("context_length") or raw_model.get("inputTokenLimit") or top_provider.get("context_length")
         ),
-        "max_completion_tokens": top_provider.get("max_completion_tokens") or raw_model.get("outputTokenLimit"),
+        "max_output_tokens": top_provider.get("max_completion_tokens")
+        or raw_model.get("max_output_tokens")
+        or raw_model.get("outputTokenLimit"),
         "supported_parameters": raw_model.get("supported_parameters") or [],
         "pricing": raw_model.get("pricing") or {},
         "default_parameters": raw_model.get("default_parameters") or {},
@@ -373,10 +384,34 @@ async def get_model_provider_by_id(db: AsyncSession, provider_id: str) -> ModelP
 async def ensure_builtin_model_providers_in_db(db: AsyncSession) -> None:
     """确保独立模型配置模块的内置 provider 模板存在。
 
-    这里只补不存在的内置 provider，不覆盖管理员已编辑的配置。
+    补内置模板与官方 DeepSeek 缺失输出配置，保留管理员显式值。
     """
     existing = await list_model_providers(db)
     existing_ids = {p.provider_id: p for p in existing}
+
+    # 官方 DeepSeek 的 Anthropic 模型没有 SDK profile，补缺失配置以替代短 fallback。
+    # 只补缺失键；管理员显式 null 或较小额度仍然拥有优先级。
+    for provider in existing:
+        if provider.provider_type != "anthropic":
+            continue
+        models = []
+        for model in provider.enabled_models or []:
+            item = dict(model)
+            endpoint = urlparse(item.get("base_url_override") or provider.base_url)
+            if (
+                endpoint.scheme == "https"
+                and endpoint.hostname == "api.deepseek.com"
+                and endpoint.path.rstrip("/") == "/anthropic"
+                and item.get("type") == "chat"
+                and item.get("id") in {"deepseek-flash", "deepseek-v4-pro"}
+            ):
+                item.setdefault("max_output_tokens", 393216)
+                if "default_output_tokens" not in item:
+                    item["default_output_tokens"] = min(65536, item.get("max_output_tokens") or 65536)
+            models.append(item)
+        if models != provider.enabled_models:
+            provider.enabled_models = _normalize_model_list(models)
+            await db.flush()
 
     for provider_def in BUILTIN_PROVIDERS:
         provider_id = provider_def["provider_id"]

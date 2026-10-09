@@ -24,6 +24,7 @@ from yuxi.agents.middlewares import (
     ToolErrorGuardMiddleware,
     create_summary_middleware_from_context,
 )
+from yuxi.agents.middlewares.output_limit import OutputLimitMiddleware
 from yuxi.agents.middlewares.skills import SkillsMiddleware
 from yuxi.agents.tool_approval import SENSITIVE_BACKEND_TOOLS, normalize_tool_approval_mode
 from yuxi.agents.toolkits.service import resolve_configured_runtime_tools
@@ -135,6 +136,7 @@ async def _build_middlewares(context, backend, tool_approval_mode: str):
         NetworkRetryMiddleware(),
         ImageInputCompatibilityMiddleware(),
         TokenUsageMiddleware(),
+        OutputLimitMiddleware(),
     ]
 
 

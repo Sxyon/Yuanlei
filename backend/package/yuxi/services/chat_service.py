@@ -34,6 +34,7 @@ from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.repositories.model_message_audit_repository import ModelMessageAuditRepository
 from yuxi.repositories.subagent_thread_repository import SubagentThreadRepository
 from yuxi.repositories.tool_message_audit_repository import ToolMessageAuditRepository
+from yuxi.models.output import ModelOutputTruncated
 from yuxi.services.agent_run_manifest_service import PreparedRunExecution
 from yuxi.services.attachment_service import serialize_attachment
 from yuxi.services.input_message_service import AgentRunInputMessage
@@ -537,7 +538,11 @@ async def save_partial_message(
         }
         if full_msg:
             msg_dict = full_msg.model_dump() if hasattr(full_msg, "model_dump") else {}
-            content = full_msg.content if hasattr(full_msg, "content") else str(full_msg)
+            content = (
+                full_msg.text
+                if isinstance(full_msg, AIMessage)
+                else full_msg.content if hasattr(full_msg, "content") else str(full_msg)
+            )
             extra_metadata = msg_dict | extra_metadata
         else:
             content = ""
@@ -1272,9 +1277,13 @@ async def stream_agent_chat(
         logger.exception(f"Error streaming messages: {e}")
 
         error_msg = f"Error streaming messages: {e}"
-        error_type = "unexpected_error"
+        error_type = e.code if isinstance(e, ModelOutputTruncated) else "unexpected_error"
 
-        full_msg = AIMessage(content="".join(accumulated_content)) if accumulated_content else None
+        full_msg = (
+            e.message
+            if isinstance(e, ModelOutputTruncated)
+            else (AIMessage(content="".join(accumulated_content)) if accumulated_content else None)
+        )
 
         async with pg_manager.get_async_session_context() as new_db:
             new_conv_repo = ConversationRepository(new_db)
@@ -1516,8 +1525,9 @@ async def stream_agent_resume(
             await save_partial_message(
                 new_conv_repo,
                 thread_id,
+                full_msg=e.message if isinstance(e, ModelOutputTruncated) else None,
                 error_message=f"Error during resume: {e}",
-                error_type="resume_error",
+                error_type=e.code if isinstance(e, ModelOutputTruncated) else "resume_error",
                 trace_info=trace_info,
                 run_id=meta.get("run_id"),
                 request_id=meta.get("request_id"),
@@ -1525,7 +1535,11 @@ async def stream_agent_resume(
             )
 
         await _persist_model_request_timing(model_request_recorder, meta)
-        yield make_resume_chunk(message=f"Error during resume: {e}", status="error")
+        yield make_resume_chunk(
+            error_message=f"Error during resume: {e}",
+            error_type=e.code if isinstance(e, ModelOutputTruncated) else "resume_error",
+            status="error",
+        )
     finally:
         await asyncio.to_thread(flush_langfuse)
 

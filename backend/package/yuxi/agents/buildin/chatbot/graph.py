@@ -22,6 +22,7 @@ from yuxi.agents.middlewares import (
     create_memory_middleware,
     create_summary_middleware_from_context,
 )
+from yuxi.agents.middlewares.output_limit import OutputLimitMiddleware
 from yuxi.agents.middlewares.skills import SkillsMiddleware
 from yuxi.agents.middlewares.subagent_task import create_subagent_task_middleware
 from yuxi.agents.tool_approval import create_tool_approval_middleware, normalize_tool_approval_mode
@@ -64,6 +65,7 @@ async def _build_middlewares(context, backend):
             ),
             ImageInputCompatibilityMiddleware(),
             TokenUsageMiddleware(),
+            OutputLimitMiddleware(),
         ]
     )
     approval_middleware = create_tool_approval_middleware(

@@ -140,24 +140,14 @@ def test_select_model_wraps_langchain_model_and_expands_model_params(monkeypatch
 
 
 def test_select_model_maps_anthropic_max_completion_tokens(monkeypatch):
-    captured = {}
-
     monkeypatch.setattr(
         "yuxi.models.chat.model_cache.get_model_info",
-        lambda spec: (
-            _chat_model_info("anthropic", "mimo-v2.5", provider_type="anthropic")
-            if spec == "anthropic:mimo-v2.5"
-            else None
-        ),
+        lambda spec: _chat_model_info("anthropic", "mimo-v2.5", provider_type="anthropic"),
     )
-    monkeypatch.setattr(
-        "yuxi.models.chat.load_chat_model",
-        lambda spec, **kwargs: captured.update({"spec": spec, "kwargs": kwargs}) or SimpleNamespace(),
-    )
-
-    select_model("anthropic:mimo-v2.5", model_params={"max_completion_tokens": 123})
-
-    assert captured == {"spec": "anthropic:mimo-v2.5", "kwargs": {"max_tokens": 123}}
+    model = select_model("anthropic:mimo-v2.5", model_params={"max_completion_tokens": 123})
+    payload = model.model._get_request_payload("test")
+    assert payload["max_tokens"] == 123
+    assert "max_completion_tokens" not in payload
 
 
 def test_load_chat_model_uses_toolcall_chunk_fix_for_openai_compatible(monkeypatch):
@@ -345,7 +335,7 @@ async def test_langchain_chat_adapter_preserves_call_response_contract():
     response = await adapter.call([{"role": "user", "content": "Say hello"}], stream=False)
 
     assert response.content == "hello"
-    assert response.is_full is False
+    assert response.is_full is True
     assert type(captured["messages"][0]).__name__ == "HumanMessage"
 
 

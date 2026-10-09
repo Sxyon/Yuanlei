@@ -648,6 +648,8 @@ const normalizeModel = (model = {}) => ({
       : 'auto',
   input_modalities: Array.isArray(model.input_modalities) ? [...model.input_modalities] : undefined,
   context_length: model.context_length || null,
+  default_output_tokens: model.default_output_tokens ?? null,
+  max_output_tokens: model.max_output_tokens ?? null,
   dimension: model.dimension || null,
   batch_size: model.batch_size || null,
   supported_parameters: model.supported_parameters || [],
@@ -733,6 +735,8 @@ const openCreateModal = (provider) => {
     source: 'manual',
     protocol_override: null,
     base_url_override: null,
+    default_output_tokens: null,
+    max_output_tokens: null,
     request_body_overrides: {},
     request_body_overrides_text: '{}',
     capabilities: {},
@@ -1475,6 +1479,18 @@ defineExpose({
           </label>
         </div>
 
+        <template v-if="editingModel.type === 'chat'">
+          <label class="form-label">
+            <span>默认输出上限（token）</span>
+            <a-input-number v-model:value="editingModel.default_output_tokens" :min="1" :precision="0" />
+            <span class="form-hint">每次生成的默认额度；调用显式值优先，留空使用 SDK 默认。</span>
+          </label>
+          <label class="form-label">
+            <span>模型最大输出（token）</span>
+            <a-input-number v-model:value="editingModel.max_output_tokens" :min="1" :precision="0" />
+            <span class="form-hint">按供应商能力填写，仅用于校验；未知时留空。</span>
+          </label>
+        </template>
         <label v-if="editingModel.type === 'chat'" class="form-label full-width">
           <span>图片输入能力覆盖</span>
           <a-select

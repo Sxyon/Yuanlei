@@ -8,6 +8,13 @@ from langchain_openai import ChatOpenAI
 from pydantic import Field, SecretStr
 
 from yuxi import get_version
+from yuxi.models.output import (
+    OUTPUT_PARAMETERS,
+    ModelOutputTruncated,
+    check_output_complete,
+    output_limit_kwargs,
+    validate_output_tokens,
+)
 from yuxi.models.providers.cache import model_cache
 from yuxi.utils import get_docker_safe_url, logger
 
@@ -40,6 +47,8 @@ def load_chat_model(fully_specified_name: str | None, *, session_id: str | None 
     if info.model_type != "chat":
         raise ValueError(f"Model {fully_specified_name} is not a chat model (type={info.model_type})")
 
+    kwargs = output_limit_kwargs(info.provider_type, kwargs, info.default_output_tokens, info.max_output_tokens)
+
     api_key = info.api_key
     base_url = get_docker_safe_url(info.base_url)
     if info.provider_id in {"opencode", "opencode-go"}:
@@ -63,6 +72,7 @@ def load_chat_model(fully_specified_name: str | None, *, session_id: str | None 
             "yuxi_protocol": info.protocol,
             "yuxi_capabilities": info.capabilities,
             "yuxi_request_body_overrides": info.request_body_overrides,
+            "yuxi_max_output_tokens": info.max_output_tokens,
         }
     )
     kwargs["metadata"] = metadata
@@ -70,20 +80,18 @@ def load_chat_model(fully_specified_name: str | None, *, session_id: str | None 
     logger.debug(f"Loading model {fully_specified_name} with provider_type={info.provider_type}")
 
     if info.provider_type == "anthropic":
-        from langchain_anthropic import ChatAnthropic
+        from yuxi.models.anthropic import AnthropicChatAdapter
 
-        kwargs.setdefault("max_tokens", 65536)
-        
-        return ChatAnthropic(
+        return AnthropicChatAdapter(
             model=info.model_id,
             api_key=SecretStr(api_key),
             base_url=base_url,
             **kwargs,
         )
     if info.provider_type == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from yuxi.models.gemini import GeminiChatAdapter
 
-        return ChatGoogleGenerativeAI(
+        return GeminiChatAdapter(
             model=info.model_id,
             google_api_key=SecretStr(api_key),
             **kwargs,
@@ -166,7 +174,12 @@ class ChatCompletionsAdapter(ChatOpenAI):
 
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
         """支持推理的供应商在工具续答时接收完整原文。"""
+        maximum = (self.metadata or {}).get("yuxi_max_output_tokens")
+        kwargs = output_limit_kwargs("openai", kwargs, None, maximum)
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        validate_output_tokens(
+            payload.get("max_completion_tokens", payload.get("max_tokens")), field="输出上限", maximum=maximum
+        )
         if "messages" not in payload:
             return payload
         originals = self._convert_input(input_).to_messages()
@@ -186,9 +199,10 @@ class ChatCompletionsAdapter(ChatOpenAI):
 
 
 class GeneralResponse:
-    def __init__(self, content):
+    def __init__(self, content, *, response_metadata=None, is_full=False):
         self.content = content
-        self.is_full = False
+        self.response_metadata = response_metadata or {}
+        self.is_full = is_full
 
 
 class LangChainChatAdapter:
@@ -210,23 +224,32 @@ class LangChainChatAdapter:
             if stream:
                 return self._stream_response(messages)
             response = await self.model.ainvoke(messages)
-            return GeneralResponse(response.text)
+            check_output_complete(response)
+            return GeneralResponse(response.text, response_metadata=response.response_metadata, is_full=True)
+        except ModelOutputTruncated:
+            raise
         except Exception as e:
             err = f"Error calling model: {e}, URL: {self.base_url}, Model: {self.model_name}"
             logger.error(err)
             raise Exception(err)
 
     async def _stream_response(self, messages):
+        full = None
         async for chunk in self.model.astream(messages):
-            if chunk.text:
-                yield GeneralResponse(chunk.text)
+            full = chunk if full is None else full + chunk
+            if chunk.text or chunk.response_metadata:
+                yield GeneralResponse(chunk.text, response_metadata=chunk.response_metadata)
+        if full is not None:
+            check_output_complete(full)
+            yield GeneralResponse("", response_metadata=full.response_metadata, is_full=True)
 
 
 def _langchain_kwargs(provider_type: str, kwargs: dict) -> dict:
     langchain_kwargs = dict(kwargs.pop("model_params", {}) or {})
+    if any(key in kwargs for key in OUTPUT_PARAMETERS):
+        for key in OUTPUT_PARAMETERS:
+            langchain_kwargs.pop(key, None)
     langchain_kwargs.update(kwargs)
-    if provider_type == "anthropic" and "max_completion_tokens" in langchain_kwargs:
-        langchain_kwargs.setdefault("max_tokens", langchain_kwargs.pop("max_completion_tokens"))
     return langchain_kwargs
 
 

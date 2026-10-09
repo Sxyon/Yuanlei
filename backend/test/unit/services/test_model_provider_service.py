@@ -214,7 +214,8 @@ def test_normalize_remote_model_preserves_detailed_model_config():
     assert model["display_name"] == "Xiaomi: MiMo-V2-Omni"
     assert model["type"] == "chat"
     assert model["input_modalities"] == ["text", "audio", "image", "video"]
-    assert model["max_completion_tokens"] == 65536
+    assert model["max_output_tokens"] == 65536
+    assert "default_output_tokens" not in model
     assert model["raw_metadata"]["supported_parameters"] == ["temperature", "tools"]
 
 

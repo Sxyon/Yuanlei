@@ -11,6 +11,7 @@ from server.utils.auth_middleware import get_db, get_required_user, get_superadm
 from yuxi.config.options import system_options
 from yuxi.agents.tool_approval import ToolApprovalMode
 from yuxi.models import select_model
+from yuxi.models.output import ModelOutputTruncated
 from yuxi.services.attachment_service import (
     confirm_tmp_thread_attachments_view,
     delete_thread_attachment_view,
@@ -93,7 +94,18 @@ async def call(
     options = await system_options.get(db)
     model = select_model(model_spec=meta.get("model_spec") or meta.get("model") or options["default_model"])
 
-    response = await model.call(query)
+    try:
+        response = await model.call(query)
+    except ModelOutputTruncated as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": exc.code,
+                "message": str(exc),
+                "response": exc.message.text,
+                "response_metadata": exc.message.response_metadata,
+            },
+        ) from exc
     logger.debug({"query": query, "response": response.content})
 
     return {"response": response.content, "request_id": meta["request_id"]}
