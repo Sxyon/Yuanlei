@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import uuid
+import hashlib
+import json
 from collections.abc import Iterable
 from dataclasses import replace
 from datetime import timedelta
@@ -110,6 +112,10 @@ class DelegationService:
         client = build_multica_client_from_env() if multica_client is _UNSET else multica_client
         if client is not None:
             service.register(MulticaExecutor(client))
+        from yuxi.delegation.openclaw import OpenClawExecutor
+        from yuxi.services.collaborator_service import CollaboratorService
+
+        service.register(OpenClawExecutor(db, CollaboratorService(db).resolve_attempt))
         return service
 
     def register(self, executor: DelegatedExecutor) -> None:
@@ -154,11 +160,36 @@ class DelegationService:
         user: User,
         agent_slug: str | None = None,
         context: dict | None = None,
+        target_id: str | None = None,
+        target_revision: int | None = None,
+        summary_budget: int = 200,
     ) -> dict:
         """从正式工作校验执行者与当前来源，委派到项目专属沙盒。"""
         from yuxi.agents.backends.sandbox.provider import SandboxScope
         from yuxi.repositories.agent_repository import AgentRepository, user_can_manage_agent
 
+        if executor_key == "openclaw":
+            from yuxi.repositories.project_work_repository import ProjectWorkRepository
+
+            work = await ProjectWorkRepository(self.db, project_id=project_id, uid=str(user.uid)).get_task(task_id)
+            if work is None:
+                raise HTTPException(404, detail="正式工作不存在")
+            return await self.dispatch(
+                executor_key=executor_key,
+                uid=str(user.uid),
+                request=DelegationRequest(
+                    operation_id="",
+                    project_id=project_id,
+                    task=work.title + ("\n" + work.description if work.description else ""),
+                    metadata={
+                        "work_task_id": task_id,
+                        "context": context or {},
+                        "target_id": target_id,
+                        "target_revision": target_revision,
+                        "summary_budget": summary_budget,
+                    },
+                ),
+            )
         if executor_key not in SANDBOX_EXECUTOR_KEYS:
             raise HTTPException(status_code=422, detail={"code": "invalid_executor", "message": "仅支持本地编码执行器"})
         project = await ProjectRepository(self.db).lock_active_selectable_for_user(project_id, str(user.uid))
@@ -231,6 +262,22 @@ class DelegationService:
         project = await ProjectRepository(self.db).lock_active_selectable_for_user(request.project_id, str(uid))
         if project is None:
             raise HTTPException(404, detail="项目不存在")
+        if executor_key == "openclaw" and request.initiator_run_id:
+            from yuxi.storage.postgres.models_business import AgentRun, Conversation
+
+            origin = await self.db.scalar(
+                select(AgentRun)
+                .join(Conversation, Conversation.id == AgentRun.conversation_id)
+                .where(
+                    AgentRun.id == request.initiator_run_id,
+                    AgentRun.uid == str(uid),
+                    Conversation.uid == str(uid),
+                    Conversation.project_id == project.id,
+                    Conversation.status != "deleted",
+                )
+            )
+            if origin is None:
+                raise HTTPException(404, detail="发起运行不属于当前个人项目")
         work_id = request.metadata.get("work_task_id")
         if not work_id:
             raise HTTPException(409, detail={"code": "formal_work_required", "message": "请选择正式工作后发起委派"})
@@ -281,6 +328,13 @@ class DelegationService:
                 "source_decision_revision": source.source_decision_revision,
             },
         )
+        target = connection = None
+        if executor_key == "openclaw":
+            from yuxi.services.collaborator_service import CollaboratorService
+
+            target, connection = await CollaboratorService(self.db).dispatch_target(
+                request.metadata.get("target_id"), project.id, str(uid), request.metadata.get("target_revision")
+            )
         executor = self._require_executor(executor_key)
         operation_id = str(request.operation_id or uuid.uuid4().hex)
         request = replace(request, operation_id=operation_id)
@@ -301,7 +355,94 @@ class DelegationService:
             now=now,
         )
         row.context_snapshot = snapshot
+        if executor_key == "openclaw":
+            from yuxi.delegation.protocol import validate_contract, SCHEMA_ROOT
+            from yuxi.storage.postgres.models_business import DelegationAttempt
+
+            attempt_id = uuid.uuid4().hex
+            context_id = (
+                "ctx-" + hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            )
+            package = {
+                "protocol": "yuanlei.collaboration/1.0",
+                "kind": "task",
+                "operation_id": operation_id,
+                "attempt_id": attempt_id,
+                "work": {
+                    "id": work.id,
+                    "criteria_revision": next(x["revision"] for x in snapshot["items"] if x["kind"] == "requirements"),
+                },
+                "context": {"snapshot_id": context_id, "fingerprint": "sha256:" + context_id[4:], "decisions": []},
+                "target": {"provider": "openclaw", "target_ref": target.id},
+                "direct_handler": {"ref": "user:" + str(uid), "relation": "delegated-by"},
+                "goal": request.task,
+                "inputs": {"context_text": snapshot["input_text"]},
+                "limits": {
+                    "tools": "deny-all",
+                    "external_messages": False,
+                    "files": False,
+                    "budget_kind": "observed-only",
+                },
+                "delivery": {
+                    "format": "structured-return/1",
+                    "supplement_max_code_points": request.metadata.get("summary_budget", 200),
+                    "return_max_utf16_units": 4096,
+                },
+                "andon": {
+                    "mode": "delivery-only",
+                    "actions": [],
+                    "question_route": "direct-handler",
+                    "max_questions": 4,
+                    "on_answer": "manual-only",
+                    "match": ["question_id", "revision", "wait_attempt_id", "answer_id"],
+                },
+                "authority": {"formal_change_grants": [], "on_missing_grant": "request-upstream"},
+            }
+            if row.source_decision_id:
+                package["context"]["decisions"] = [
+                    {"id": row.source_decision_id, "revision": row.source_decision_revision}
+                ]
+            validate_contract("task", package)
+            rules = (
+                "只使用以下明确资料，禁止工具、外部消息和文件。返回单个符合所附schema的JSON对象。"
+                "正式交付、非阻塞notices及补充分开；缺资料/授权使本次不能交付时返回blocked，不伪造completed。"
+                "当前没有在线求助工具或自动恢复；受阻自然结束，由委派者人工办理。complete仅表示报告完整性。"
+                "整个返回JSON须在4096 UTF-16单位内，正式正文和补充共同计入；超过时明确failed，不能截断JSON。\n"
+            )
+            rendered = (
+                rules
+                + json.dumps(package, ensure_ascii=False)
+                + "\n返回schema：\n"
+                + (SCHEMA_ROOT / "return-v1.json").read_text()
+            )
+            if len(rendered.encode()) > 262144:
+                raise DelegationError("实际任务文本过大", error_code="collaboration_payload_too_large")
+            metadata = {**request.metadata, "attempt_id": attempt_id}
+            request = replace(request, task=rendered, metadata=metadata)
+            row.task = rendered
+            row.request_json = {**row.request_json, "metadata": metadata}
+            self.db.add(
+                DelegationAttempt(
+                    id=attempt_id,
+                    delegation_id=row.id,
+                    project_id=project.id,
+                    uid=str(uid),
+                    connection_id=connection.id,
+                    target_id=target.id,
+                    root_operation_id=operation_id,
+                    snapshot_json={
+                        "connection_revision": connection.revision,
+                        "target_revision": target.revision,
+                        "effective_config": target.check_json,
+                        "target_identity": target.remote_identity,
+                    },
+                    task_package=package,
+                    rendered_input_hash=hashlib.sha256(rendered.encode()).hexdigest(),
+                    remote_binding={},
+                )
+            )
         self._claim(row, now=now)
+        request = replace(request, metadata={**request.metadata, "dispatch_owner": row.owner_token})
         await self.db.commit()
         await self.db.refresh(row)
         try:
@@ -313,7 +454,15 @@ class DelegationService:
             await self._record_error(row, "executor_dispatch_failed", now=utc_now_naive())
             raise DelegationError(str(exc), error_code="executor_dispatch_failed") from exc
         await self.db.refresh(row)
+        if row.dispatch_state != "pending" or row.owner_token != request.metadata["dispatch_owner"]:
+            await self.db.rollback()
+            raise DelegationError("投递租约已变更，保留原意图供准确核对", error_code="delegation_owner_changed")
         self._apply_handle(row, handle, now=utc_now_naive())
+        if handle.binding:
+            from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+            attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+            attempt.remote_binding = {**handle.binding, "attempt_id": attempt.id}
         await self.db.commit()
         await self.db.refresh(row)
         if isinstance(executor, SandboxCodingExecutor):
@@ -321,7 +470,7 @@ class DelegationService:
                 await executor.enqueue(handle, plan_only=bool(request.metadata.get("plan_only", False)))
             except Exception:
                 logger.warning("Coding turn enqueue deferred to reconciliation: operation={}", operation_id)
-        return _serialize(row, capabilities=executor.capabilities())
+        return await self._view(row, capabilities=executor.capabilities())
 
     async def status(self, *, operation_id: str, project_id: str | None = None) -> dict:
         """读取统一视图，并刷新远端状态的只读投影（不改写 dispatch_state）。"""
@@ -338,7 +487,7 @@ class DelegationService:
                     row.remote_status_synced_at = utc_now_naive()
                     await self.db.commit()
                     await self.db.refresh(row)
-        return _serialize(row, capabilities=executor.capabilities() if executor is not None else None)
+        return await self._view(row, capabilities=executor.capabilities() if executor is not None else None)
 
     async def collect(
         self,
@@ -352,7 +501,7 @@ class DelegationService:
         if row is None or (project_id is not None and row.project_id != str(project_id)):
             raise DelegationNotFoundError(f"委派操作不存在: {operation_id}")
         if row.dispatch_state == "reclaimed":
-            return _serialize(row, capabilities=self.capabilities(row.executor_key))
+            return await self._view(row, capabilities=self.capabilities(row.executor_key))
         if row.dispatch_state not in {"dispatched", "collecting"}:
             raise DelegationError(f"当前状态不可回收: {row.dispatch_state}", error_code="delegation_state_invalid")
         executor = self._require_executor(row.executor_key)
@@ -365,7 +514,13 @@ class DelegationService:
         await self.db.refresh(row)
         try:
             result = await executor.collect(self._handle(row))
-        except DelegationError:
+            if row.executor_key == "openclaw":
+                from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+                attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+                if not attempt or result.source.get("attempt_id") != attempt.id:
+                    raise DelegationError("回收未绑定准确来源", error_code="delivery_source_unverified")
+        except DelegationError as exc:
             current = await self.db.scalar(
                 select(ChannelDelegation)
                 .where(ChannelDelegation.operation_id == operation_id)
@@ -373,6 +528,16 @@ class DelegationService:
                 .execution_options(populate_existing=True)
             )
             if current and current.dispatch_state == "collecting" and current.owner_token == owner_token:
+                from yuxi.delegation.contracts import ObservedDeliveryError
+
+                if isinstance(exc, ObservedDeliveryError) and current.executor_key == "openclaw":
+                    from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+                    attempt = await CollaboratorRepository(self.db).attempt(delegation_id=current.id)
+                    if exc.observation["source"]["attempt_id"] == attempt.id:
+                        attempt.observed_output = exc.observation
+                        current.error_code = exc.error_code
+                        current.last_error_at = utc_now_naive()
                 current.dispatch_state = "dispatched"
                 self._release(current)
                 await self.db.commit()
@@ -393,14 +558,36 @@ class DelegationService:
         if row.dispatch_state != "collecting" or row.owner_token != owner_token:
             await self.db.rollback()
             raise DelegationError("回收租约已变更，请重试", error_code="delegation_owner_changed")
+        if row.executor_key == "openclaw":
+            from yuxi.services.collaborator_service import CollaboratorService
+            from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+            current_attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+            try:
+                await CollaboratorService(self.db).resolve_attempt(
+                    current_attempt.id, require_current=False, lock_policy=True
+                )
+            except DelegationError:
+                row.dispatch_state = "dispatched"
+                self._release(row)
+                await self.db.commit()
+                raise
         artifact_path = None
         if result.text and workdir is not None:
             artifact_path = self._materialize(workdir, row.operation_id, result.text)
+        if row.executor_key == "openclaw":
+            from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+            attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+            attempt.source_json = result.source
+            attempt.supplement_json = result.supplement
         row.result_summary = result.summary
         row.result_json = {
             "text": result.text,
             "artifacts": [dict(item) for item in result.artifacts],
             "usage": dict(result.usage),
+            "source": result.source,
+            "notices": list(result.notices),
         }
         row.artifact_path = artifact_path
         if result.remote_status:
@@ -439,16 +626,113 @@ class DelegationService:
                         "turn_id": row.turn_id,
                         "external_ref": row.external_ref,
                         "artifacts": [dict(item) for item in result.artifacts],
+                        "source": result.source,
+                        "notices": list(result.notices),
                     },
                 )
         await self.db.commit()
         await self.db.refresh(row)
-        return _serialize(row, capabilities=executor.capabilities())
+        return await self._view(row, capabilities=executor.capabilities())
+
+    async def _view(self, row, *, capabilities=None):
+        """附加准确尝试及来源引用，正文补充由独立入口按需读取。"""
+        from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+        view = _serialize(row, capabilities=capabilities)
+        attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+        if attempt:
+            view["attempt_id"] = attempt.id
+            view["root_operation_id"] = attempt.root_operation_id
+            view["execution_snapshot"] = attempt.snapshot_json
+            view["remote_binding"] = attempt.remote_binding
+            view["result"]["source"] = attempt.source_json
+            view["supplement_count"] = int(attempt.supplement_json is not None)
+        return view
+
+    async def read_attempt_projection(self, *, attempt_id, project_id, uid):
+        """按唯一协作读Schema呈现C1真实事实，未接问题链明确partial。"""
+        from yuxi.repositories.collaborator_repository import CollaboratorRepository
+        from yuxi.repositories.project_work_repository import ProjectWorkRepository
+
+        repo = CollaboratorRepository(self.db)
+        attempt = await repo.attempt(identifier=attempt_id)
+        if attempt is None or attempt.project_id != project_id or attempt.uid != uid:
+            raise DelegationNotFoundError("协作尝试不存在")
+        row = await repo.delegation(attempt.delegation_id)
+        result = await ProjectWorkRepository(self.db, project_id=project_id, uid=uid).automatic_result(
+            delegation_id=row.id
+        )
+        state = {"running": "running", "completed": "completed", "failed": "failed", "cancelled": "cancelled"}.get(
+            row.remote_status, "unknown"
+        )
+        if row.dispatch_state == "pending":
+            state = "pending"
+        elif row.dispatch_state == "failed":
+            state = "failed"
+        actions = []
+        if result:
+            actions.append(
+                {
+                    "kind": "open-work-result",
+                    "project_id": project_id,
+                    "work_id": row.work_task_id,
+                    "question_id": None,
+                    "question_revision": None,
+                    "node_id": None,
+                    "attempt_id": attempt.id,
+                    "result_id": result.id,
+                }
+            )
+        return {
+            "projection_version": "collaboration.read/1",
+            "project_id": project_id,
+            "work_id": row.work_task_id,
+            "question": None,
+            "handler": None,
+            "answer_recipient": None,
+            "waiting_executor": {
+                "type": "agent",
+                "ref": attempt.snapshot_json["target_identity"],
+                "display_name": attempt.snapshot_json["target_identity"],
+            },
+            "human_obligation": {"user_ref": uid, "kind": "review-result", "node_id": None}
+            if result and result.status == "pending"
+            else None,
+            "answer": {"id": None, "delivery": "none", "adoption": "none"},
+            "attempt": {
+                "id": attempt.id,
+                "operation_id": attempt.root_operation_id,
+                "state": state,
+                "predecessor_id": attempt.predecessor_id,
+                "successor_id": None,
+            },
+            "result": {"id": result.id, "attempt_id": attempt.id, "state": result.status} if result else None,
+            "blocker": "unknown",
+            "execution_recovery": "none",
+            "supplement_count": int(attempt.supplement_json is not None),
+            "allowed_actions": actions,
+            "as_of": format_utc_datetime(utc_now_naive()),
+            "completeness": "partial",
+        }
+
+    async def read_supplement(self, *, operation_id, project_id):
+        """按准确委派来源读取独立补充，不用结果摘要代替。"""
+        from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+        row = await self._load(operation_id=operation_id, project_id=project_id)
+        attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+        return {
+            "operation_id": row.operation_id,
+            "attempt_id": attempt.id if attempt else None,
+            "source": attempt.source_json if attempt else None,
+            "observation": attempt.observed_output if attempt else None,
+            "supplement": attempt.supplement_json if attempt else None,
+        }
 
     async def list_delegations(self, *, project_id: str) -> list[dict]:
         """列出项目内委派事实的统一视图。"""
         rows = await self.repo.list_for_project(project_id=project_id)
-        return [_serialize(row, capabilities=self.capabilities(row.executor_key)) for row in rows]
+        return [await self._view(row, capabilities=self.capabilities(row.executor_key)) for row in rows]
 
     async def converge(self, *, limit: int = 50) -> dict[str, int]:
         """确定性收敛非终态委派：重投 pending、复位 collecting、刷新远端投影。"""
@@ -474,11 +758,14 @@ class DelegationService:
         return counts
 
     async def _converge_pending(self, row: ChannelDelegation, *, now, counts: dict[str, int]) -> ChannelDelegation:
-        owner_token = row.owner_token
         executor = self._executors.get(row.executor_key)
         if executor is None:
             self._release(row)
             return row
+        if row.executor_key == "openclaw":
+            self._claim(row, now=now)
+            await self.db.commit()
+        owner_token = row.owner_token
         try:
             handle = await executor.dispatch(self._request_from_row(row))
         except Exception as exc:
@@ -490,8 +777,9 @@ class DelegationService:
             if row.dispatch_state != "pending" or row.owner_token != owner_token:
                 return row
             row.error_code = (
-                "sandbox_policy_unsupported"
-                if isinstance(exc, DelegationError) and exc.error_code == "sandbox_policy_unsupported"
+                exc.error_code
+                if isinstance(exc, DelegationError)
+                and (row.executor_key == "openclaw" or exc.error_code == "sandbox_policy_unsupported")
                 else "executor_dispatch_failed"
             )
             if row.error_code == "sandbox_policy_unsupported":
@@ -500,6 +788,14 @@ class DelegationService:
             self._release(row)
             counts["failed"] += 1
         else:
+            if row.executor_key == "openclaw":
+                row = await self.repo.get_by_operation_id(operation_id=row.operation_id, for_update=True)
+                if row.dispatch_state != "pending" or row.owner_token != owner_token:
+                    return row
+                from yuxi.repositories.collaborator_repository import CollaboratorRepository
+
+                attempt = await CollaboratorRepository(self.db).attempt(delegation_id=row.id)
+                attempt.remote_binding = {**handle.binding, "attempt_id": attempt.id}
             self._apply_handle(row, handle, now=now)
             if isinstance(executor, SandboxCodingExecutor):
                 await self.db.commit()
@@ -582,6 +878,7 @@ class DelegationService:
             turn_id=row.turn_id,
             external_ref=row.external_ref,
             external_url=row.external_url,
+            binding={"attempt_id": (row.request_json or {}).get("metadata", {}).get("attempt_id")},
         )
 
     @staticmethod
@@ -594,7 +891,7 @@ class DelegationService:
             initiator_run_id=row.initiator_run_id,
             context_refs=tuple(payload.get("context_refs") or ()),
             budget=dict(payload.get("budget") or {}),
-            metadata=dict(payload.get("metadata") or {}),
+            metadata={**dict(payload.get("metadata") or {}), "dispatch_owner": row.owner_token},
         )
 
     @staticmethod

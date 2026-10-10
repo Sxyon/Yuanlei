@@ -1,0 +1,304 @@
+{
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "const": "yuanlei.collaboration/1.0"
+    },
+    "kind": {
+      "const": "task"
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "criteria_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "id",
+        "criteria_revision"
+      ],
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "fingerprint",
+        "decisions"
+      ],
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "provider",
+        "target_ref"
+      ],
+      "additionalProperties": false
+    },
+    "direct_handler": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "const": "delegated-by"
+        }
+      },
+      "required": [
+        "ref",
+        "relation"
+      ],
+      "additionalProperties": false
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "tools": {
+          "enum": [
+            "deny-all",
+            "scoped"
+          ]
+        },
+        "external_messages": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "boolean"
+        },
+        "budget_kind": {
+          "enum": [
+            "observed-only",
+            "server-hard"
+          ]
+        }
+      },
+      "required": [
+        "tools",
+        "external_messages",
+        "files",
+        "budget_kind"
+      ],
+      "additionalProperties": false
+    },
+    "delivery": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "structured-return/1"
+        },
+        "supplement_max_code_points": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192,
+          "default": 200
+        },
+        "return_max_utf16_units": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        }
+      },
+      "required": [
+        "format",
+        "supplement_max_code_points"
+      ],
+      "additionalProperties": false
+    },
+    "andon": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "blocked-return",
+            "native-question",
+            "delivery-only"
+          ]
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "maxItems": 8
+        },
+        "question_route": {
+          "const": "direct-handler"
+        },
+        "max_questions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "on_answer": {
+          "enum": [
+            "explicit-successor",
+            "native-bound-reply",
+            "manual-only"
+          ]
+        },
+        "match": {
+          "const": [
+            "question_id",
+            "revision",
+            "wait_attempt_id",
+            "answer_id"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "actions",
+        "question_route",
+        "max_questions",
+        "on_answer",
+        "match"
+      ],
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "properties": {
+        "formal_change_grants": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "maxItems": 8
+        },
+        "on_missing_grant": {
+          "const": "request-upstream"
+        }
+      },
+      "required": [
+        "formal_change_grants",
+        "on_missing_grant"
+      ],
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object",
+      "maxProperties": 4,
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]{0,31}$": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocol",
+    "kind",
+    "operation_id",
+    "attempt_id",
+    "work",
+    "context",
+    "target",
+    "direct_handler",
+    "goal",
+    "inputs",
+    "limits",
+    "delivery",
+    "andon",
+    "authority"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "andon": {
+            "properties": {
+              "mode": {
+                "const": "native-question"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "andon": {
+            "properties": {
+              "max_questions": {
+                "maximum": 3
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

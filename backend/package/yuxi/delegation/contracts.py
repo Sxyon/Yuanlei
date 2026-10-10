@@ -25,6 +25,14 @@ class DelegationError(RuntimeError):
             self.error_code = error_code
 
 
+class ObservedDeliveryError(DelegationError):
+    """准确来源已证实、正式交付不合规的可持久观察。"""
+
+    def __init__(self, cause: DelegationError, *, source: dict, text: str):
+        super().__init__(str(cause), error_code=cause.error_code)
+        self.observation = {"source": source, "text": text, "error_code": cause.error_code}
+
+
 class ExecutorUnavailableError(DelegationError):
     """执行器未注册或未配置，禁止静默换基底。"""
 
@@ -73,6 +81,7 @@ class DelegationHandle:
     external_ref: str | None = None
     external_url: str | None = None
     remote_status: str | None = None
+    binding: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +94,9 @@ class DelegationResult:
     usage: dict[str, Any] = field(default_factory=dict)
     remote_status: str | None = None
     error_code: str | None = None
+    source: dict[str, Any] = field(default_factory=dict)
+    supplement: dict[str, Any] | None = None
+    notices: tuple[dict[str, Any], ...] = ()
 
 
 @runtime_checkable

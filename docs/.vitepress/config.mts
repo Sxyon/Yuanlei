@@ -92,6 +92,7 @@ export default defineConfig({
           { text: 'Agent 运行时上下文', link: '/mechanisms/agent-runtime' },
           { text: '沙盒与文件系统', link: '/mechanisms/sandbox' },
           { text: '编码执行（opencode/codex）', link: '/mechanisms/coding-execution' },
+          { text: '协作者准确交付', link: '/mechanisms/collaborator-delivery' },
           { text: '上下文压缩', link: '/mechanisms/context-compression' },
           { text: '知识库', link: '/mechanisms/knowledge-base' }
         ]

@@ -1856,6 +1856,8 @@ class ChannelDelegation(Base):
     context_snapshot = Column(JSON_VALUE, nullable=True, comment="本次业务资料与实际注入文本，旧记录为空")
     __table_args__ = (
         UniqueConstraint("id", "work_task_id", "project_id", name="uq_delegation_result_source"),
+        UniqueConstraint("id", "project_id", name="uq_delegation_attempt_project"),
+        UniqueConstraint("operation_id", "project_id", name="uq_delegation_root_project"),
         ForeignKeyConstraint(
             ["work_task_id", "project_id"],
             ["project_work_tasks.id", "project_work_tasks.project_id"],
@@ -1886,7 +1888,7 @@ class ChannelDelegation(Base):
             name="ck_channel_delegations_dispatch_state",
         ),
         CheckConstraint(
-            "executor_key IN ('opencode', 'codex', 'multica')",
+            "executor_key IN ('opencode', 'codex', 'multica', 'openclaw')",
             name="ck_channel_delegations_executor_key",
         ),
         Index("ix_channel_delegations_project_id", "project_id"),
@@ -3157,3 +3159,97 @@ Index(
     AgentRunRequest.created_at,
     AgentRunRequest.id,
 )
+
+
+class CollaboratorConnection(Base):
+    """个人协作者连接及用途隔离的密文凭据。"""
+
+    __tablename__ = "collaborator_connections"
+    __table_args__ = (
+        UniqueConstraint("id", "uid", name="uq_collaborator_connection_owner"),
+        CheckConstraint("provider_key = 'openclaw'", name="ck_collaborator_provider"),
+    )
+    id = Column(String(64), primary_key=True)
+    uid = Column(String(64), ForeignKey("users.uid"), nullable=False)
+    label = Column(String(128), nullable=False)
+    provider_key = Column(String(32), nullable=False)
+    revision = Column(Integer, nullable=False, default=1)
+    enabled = Column(Boolean, nullable=False, default=True)
+    config_json = Column(JSON_VALUE, nullable=False)
+    ciphertext = Column(LargeBinary, nullable=False)
+    nonce = Column(LargeBinary, nullable=False)
+
+
+class CollaboratorConnectionProject(Base):
+    """连接对个人项目的明确许可。"""
+
+    __tablename__ = "collaborator_connection_projects"
+    __table_args__ = (
+        ForeignKeyConstraint(["connection_id", "uid"], ["collaborator_connections.id", "collaborator_connections.uid"]),
+        ForeignKeyConstraint(["project_id", "uid"], ["projects.id", "projects.uid"]),
+    )
+    connection_id = Column(String(64), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    project_id = Column(String(64), primary_key=True)
+    uid = Column(String(64), nullable=False)
+
+
+class CollaboratorTarget(Base):
+    """远端固定目标与有等级的只读核验记录。"""
+
+    __tablename__ = "collaborator_targets"
+    __table_args__ = (
+        UniqueConstraint("id", "connection_id", "uid", name="uq_collaborator_target_owner"),
+        ForeignKeyConstraint(["connection_id", "uid"], ["collaborator_connections.id", "collaborator_connections.uid"]),
+    )
+    id = Column(String(64), primary_key=True)
+    connection_id = Column(String(64), nullable=False)
+    uid = Column(String(64), nullable=False)
+    revision = Column(Integer, nullable=False, default=1)
+    enabled = Column(Boolean, nullable=False, default=True)
+    remote_identity = Column(String(128), nullable=False)
+    label = Column(String(128), nullable=False)
+    check_json = Column(JSON_VALUE, nullable=True)
+
+
+class DelegationAttempt(Base):
+    """一个委派行对应的准确业务尝试、正式来源与独立补充。"""
+
+    __tablename__ = "delegation_attempts"
+    __table_args__ = (
+        UniqueConstraint("delegation_id", name="uq_delegation_attempt_source"),
+        UniqueConstraint("id", "project_id", "uid", name="uq_attempt_owner"),
+        ForeignKeyConstraint(
+            ["root_operation_id", "project_id"], ["channel_delegations.operation_id", "channel_delegations.project_id"]
+        ),
+        ForeignKeyConstraint(
+            ["predecessor_id", "project_id", "uid"],
+            ["delegation_attempts.id", "delegation_attempts.project_id", "delegation_attempts.uid"],
+        ),
+        ForeignKeyConstraint(
+            ["delegation_id", "project_id"], ["channel_delegations.id", "channel_delegations.project_id"]
+        ),
+        ForeignKeyConstraint(
+            ["target_id", "connection_id", "uid"],
+            ["collaborator_targets.id", "collaborator_targets.connection_id", "collaborator_targets.uid"],
+        ),
+        ForeignKeyConstraint(
+            ["connection_id", "project_id"],
+            ["collaborator_connection_projects.connection_id", "collaborator_connection_projects.project_id"],
+        ),
+    )
+    id = Column(String(64), primary_key=True)
+    delegation_id = Column(String(64), ForeignKey("channel_delegations.id"), nullable=False)
+    project_id = Column(String(64), nullable=False)
+    uid = Column(String(64), nullable=False)
+    connection_id = Column(String(64), nullable=False)
+    target_id = Column(String(64), nullable=False)
+    root_operation_id = Column(String(128), nullable=False)
+    predecessor_id = Column(String(64), ForeignKey("delegation_attempts.id"), nullable=True)
+    snapshot_json = Column(JSON_VALUE, nullable=False)
+    task_package = Column(JSON_VALUE, nullable=False)
+    rendered_input_hash = Column(String(64), nullable=False)
+    remote_binding = Column(JSON_VALUE, nullable=False, default=dict)
+    observed_output = Column(JSON_VALUE, nullable=True, comment="准确来源已核对但交付被拒绝的有界原文")
+    source_json = Column(JSON_VALUE, nullable=True)
+    supplement_json = Column(JSON_VALUE, nullable=True)

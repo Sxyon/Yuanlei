@@ -1,0 +1,394 @@
+{
+  "synthetic": true,
+  "schema_owner": "backend/package/yuxi/delegation/schemas/collaboration-read-v1.json",
+  "examples": [
+    {
+      "name": "internal-processing",
+      "projection": {
+        "projection_version": "collaboration.read/1",
+        "project_id": "project-demo",
+        "work_id": "work-demo",
+        "question": {
+          "id": "Q1",
+          "revision": 1,
+          "node_id": "node-B"
+        },
+        "handler": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "answer_recipient": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "waiting_executor": {
+          "type": "agent",
+          "ref": "C",
+          "display_name": "执行者C"
+        },
+        "human_obligation": null,
+        "answer": {
+          "id": null,
+          "delivery": "none",
+          "adoption": "none"
+        },
+        "attempt": {
+          "id": "attempt-C-1",
+          "operation_id": "op-demo-cost",
+          "state": "terminal-blocked",
+          "predecessor_id": null,
+          "successor_id": null
+        },
+        "result": null,
+        "blocker": "open",
+        "execution_recovery": "none",
+        "supplement_count": 1,
+        "allowed_actions": [
+          {
+            "kind": "open-collaboration-question",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": "Q1",
+            "question_revision": 1,
+            "node_id": "node-B",
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          },
+          {
+            "kind": "open-collaboration-attempt",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": null,
+            "question_revision": null,
+            "node_id": null,
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          }
+        ],
+        "as_of": "2026-10-09T00:00:00Z",
+        "completeness": "synthetic-design-only"
+      },
+      "host_return": {
+        "token": "synthetic-opaque-return-token",
+        "trusted_context_owner": "dashboard-navigation-session",
+        "ttl_seconds": 7200
+      }
+    },
+    {
+      "name": "human-answer",
+      "projection": {
+        "projection_version": "collaboration.read/1",
+        "project_id": "project-demo",
+        "work_id": "work-demo",
+        "question": {
+          "id": "Q1",
+          "revision": 1,
+          "node_id": "node-H"
+        },
+        "handler": {
+          "type": "user",
+          "ref": "H",
+          "display_name": "本人"
+        },
+        "answer_recipient": {
+          "type": "user",
+          "ref": "H",
+          "display_name": "本人"
+        },
+        "waiting_executor": {
+          "type": "agent",
+          "ref": "C",
+          "display_name": "执行者C"
+        },
+        "human_obligation": {
+          "user_ref": "H",
+          "kind": "answer",
+          "node_id": "node-H"
+        },
+        "answer": {
+          "id": null,
+          "delivery": "none",
+          "adoption": "none"
+        },
+        "attempt": {
+          "id": "attempt-C-1",
+          "operation_id": "op-demo-cost",
+          "state": "terminal-blocked",
+          "predecessor_id": null,
+          "successor_id": null
+        },
+        "result": null,
+        "blocker": "open",
+        "execution_recovery": "none",
+        "supplement_count": 1,
+        "allowed_actions": [
+          {
+            "kind": "open-collaboration-question",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": "Q1",
+            "question_revision": 1,
+            "node_id": "node-H",
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          },
+          {
+            "kind": "open-collaboration-attempt",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": null,
+            "question_revision": null,
+            "node_id": null,
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          }
+        ],
+        "as_of": "2026-10-09T00:00:00Z",
+        "completeness": "synthetic-design-only"
+      },
+      "host_return": {
+        "token": "synthetic-opaque-return-token",
+        "trusted_context_owner": "dashboard-navigation-session",
+        "ttl_seconds": 7200
+      }
+    },
+    {
+      "name": "delivered-not-adopted",
+      "projection": {
+        "projection_version": "collaboration.read/1",
+        "project_id": "project-demo",
+        "work_id": "work-demo",
+        "question": {
+          "id": "Q1",
+          "revision": 1,
+          "node_id": "node-B"
+        },
+        "handler": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "answer_recipient": {
+          "type": "agent",
+          "ref": "C",
+          "display_name": "执行者C"
+        },
+        "waiting_executor": {
+          "type": "agent",
+          "ref": "C",
+          "display_name": "执行者C"
+        },
+        "human_obligation": null,
+        "answer": {
+          "id": "answer-B-1",
+          "delivery": "accepted",
+          "adoption": "none"
+        },
+        "attempt": {
+          "id": "attempt-C-1",
+          "operation_id": "op-demo-cost",
+          "state": "terminal-blocked",
+          "predecessor_id": null,
+          "successor_id": null
+        },
+        "result": null,
+        "blocker": "open",
+        "execution_recovery": "none",
+        "supplement_count": 1,
+        "allowed_actions": [
+          {
+            "kind": "open-collaboration-question",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": "Q1",
+            "question_revision": 1,
+            "node_id": "node-B",
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          },
+          {
+            "kind": "open-collaboration-attempt",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": null,
+            "question_revision": null,
+            "node_id": null,
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          }
+        ],
+        "as_of": "2026-10-09T00:00:00Z",
+        "completeness": "synthetic-design-only"
+      },
+      "host_return": {
+        "token": "synthetic-opaque-return-token",
+        "trusted_context_owner": "dashboard-navigation-session",
+        "ttl_seconds": 7200
+      }
+    },
+    {
+      "name": "adopted-execution-failed",
+      "projection": {
+        "projection_version": "collaboration.read/1",
+        "project_id": "project-demo",
+        "work_id": "work-demo",
+        "question": {
+          "id": "Q1",
+          "revision": 1,
+          "node_id": "node-B"
+        },
+        "handler": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "answer_recipient": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "waiting_executor": {
+          "type": "agent",
+          "ref": "C",
+          "display_name": "执行者C"
+        },
+        "human_obligation": null,
+        "answer": {
+          "id": "answer-B-1",
+          "delivery": "accepted",
+          "adoption": "verified"
+        },
+        "attempt": {
+          "id": "attempt-C-2",
+          "operation_id": "op-demo-cost",
+          "state": "failed",
+          "predecessor_id": "attempt-C-1",
+          "successor_id": null
+        },
+        "result": null,
+        "blocker": "resolved",
+        "execution_recovery": "failed",
+        "supplement_count": 1,
+        "allowed_actions": [
+          {
+            "kind": "open-collaboration-question",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": "Q1",
+            "question_revision": 1,
+            "node_id": "node-B",
+            "attempt_id": "attempt-C-2",
+            "result_id": null
+          },
+          {
+            "kind": "open-collaboration-attempt",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": null,
+            "question_revision": null,
+            "node_id": null,
+            "attempt_id": "attempt-C-2",
+            "result_id": null
+          }
+        ],
+        "as_of": "2026-10-09T00:00:00Z",
+        "completeness": "synthetic-design-only"
+      },
+      "host_return": {
+        "token": "synthetic-opaque-return-token",
+        "trusted_context_owner": "dashboard-navigation-session",
+        "ttl_seconds": 7200
+      }
+    },
+    {
+      "name": "old-attempt-replaced",
+      "projection": {
+        "projection_version": "collaboration.read/1",
+        "project_id": "project-demo",
+        "work_id": "work-demo",
+        "question": {
+          "id": "Q1",
+          "revision": 1,
+          "node_id": "node-B"
+        },
+        "handler": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "answer_recipient": {
+          "type": "agent",
+          "ref": "B",
+          "display_name": "直接委派者B"
+        },
+        "waiting_executor": {
+          "type": "agent",
+          "ref": "C",
+          "display_name": "执行者C"
+        },
+        "human_obligation": null,
+        "answer": {
+          "id": "answer-old",
+          "delivery": "superseded",
+          "adoption": "none"
+        },
+        "attempt": {
+          "id": "attempt-C-1",
+          "operation_id": "op-demo-cost",
+          "state": "superseded",
+          "predecessor_id": null,
+          "successor_id": "attempt-C-2"
+        },
+        "result": {
+          "id": "result-C-1",
+          "attempt_id": "attempt-C-1",
+          "state": "superseded"
+        },
+        "blocker": "open",
+        "execution_recovery": "none",
+        "supplement_count": 1,
+        "allowed_actions": [
+          {
+            "kind": "open-collaboration-question",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": "Q1",
+            "question_revision": 1,
+            "node_id": "node-B",
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          },
+          {
+            "kind": "open-collaboration-attempt",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": null,
+            "question_revision": null,
+            "node_id": null,
+            "attempt_id": "attempt-C-1",
+            "result_id": null
+          },
+          {
+            "kind": "open-work-result",
+            "project_id": "project-demo",
+            "work_id": "work-demo",
+            "question_id": null,
+            "question_revision": null,
+            "node_id": null,
+            "attempt_id": "attempt-C-1",
+            "result_id": "result-C-1"
+          }
+        ],
+        "as_of": "2026-10-09T00:00:00Z",
+        "completeness": "synthetic-design-only"
+      },
+      "host_return": {
+        "token": "synthetic-opaque-return-token",
+        "trusted_context_owner": "dashboard-navigation-session",
+        "ttl_seconds": 7200
+      }
+    }
+  ]
+}

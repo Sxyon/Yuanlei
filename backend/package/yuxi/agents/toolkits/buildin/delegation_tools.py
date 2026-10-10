@@ -121,9 +121,12 @@ async def delegation_dispatch(
     context_refs_json: str | None = None,
     budget_json: str | None = None,
     work_task_id: str | None = None,
+    target_id: str | None = None,
+    target_revision: int | None = None,
+    summary_budget: int = 200,
     runtime: ToolRuntime = None,
 ) -> str:
-    """把正式工作委派给已注册的外部执行器（opencode/codex/multica）并返回统一委派视图。
+    """把正式工作委派给已注册的外部执行器（opencode/codex/multica/openclaw）并返回统一委派视图。
     正式工作执行内自动沿用当次工作；普通对话须提供当前项目的 work_task_id。
 
     同一接口委派、同一路径回收；沙盒执行器在专属沙盒内排队被委派的那一轮。
@@ -143,7 +146,11 @@ async def delegation_dispatch(
         current_work = execution.task_id if execution else origin.get("project_work_task_id")
         if current_work and work_task_id and work_task_id != current_work:
             raise ValueError("不能把当次正式工作委派到另一项工作")
-        metadata = await _sandbox_metadata(db, runtime, str(run_id))
+        metadata = (
+            {"target_id": target_id, "target_revision": target_revision, "summary_budget": summary_budget}
+            if executor_key == "openclaw"
+            else await _sandbox_metadata(db, runtime, str(run_id))
+        )
         metadata["work_task_id"] = current_work or work_task_id
         if current_work:
             metadata["project_work_execution_id"] = (

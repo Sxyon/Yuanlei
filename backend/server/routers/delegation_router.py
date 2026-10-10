@@ -36,6 +36,9 @@ class DelegationCreate(BaseModel):
     task: str = Field(..., min_length=1)
     initiator_run_id: str | None = Field(None, max_length=64)
     budget: dict[str, Any] | None = None
+    target_id: str | None = Field(None, max_length=64)
+    target_revision: int | None = Field(None, ge=1)
+    summary_budget: int = Field(200, ge=1, le=8192, strict=True)
     context: ContextInput | None = None
 
 
@@ -43,8 +46,11 @@ class ProjectTaskDelegationCreate(BaseModel):
     """将已审核的项目任务交给本地执行器。"""
 
     model_config = ConfigDict(extra="forbid")
-    executor_key: str = Field(..., pattern="^(codex|opencode)$")
+    executor_key: str = Field(..., pattern="^(codex|opencode|openclaw)$")
     agent_slug: str | None = Field(None, max_length=80)
+    target_id: str | None = Field(None, max_length=64)
+    target_revision: int | None = Field(None, ge=1)
+    summary_budget: int = Field(200, ge=1, le=8192, strict=True)
     context: ContextInput | None = None
 
 
@@ -93,6 +99,9 @@ async def create_delegation(
         budget=payload.budget or {},
         metadata={
             "work_task_id": payload.work_task_id,
+            "target_id": payload.target_id,
+            "target_revision": payload.target_revision,
+            "summary_budget": payload.summary_budget,
             "context": payload.context.model_dump() if payload.context else {},
         },
     )
@@ -134,6 +143,9 @@ async def delegate_work_task(
             task_id=task_id,
             executor_key=payload.executor_key,
             agent_slug=payload.agent_slug,
+            target_id=payload.target_id,
+            target_revision=payload.target_revision,
+            summary_budget=payload.summary_budget,
             context=payload.context.model_dump() if payload.context else None,
             user=user,
         )
@@ -219,3 +231,37 @@ async def get_multica_cursor(
     if client is None:
         raise HTTPException(status_code=503, detail={"code": "channel_unavailable", "message": "Multica 渠道未配置"})
     return await ChannelSyncService(db, client=client).get_cursor(project_id=str(project.id))
+
+
+@delegations.get("/projects/{project_id}/delegations/{operation_id}/supplement")
+async def read_delegation_supplement(
+    project_id: str,
+    operation_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按项目权限读取准确尝试的独立补充正文。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    try:
+        return await DelegationService.build_default(db).read_supplement(
+            operation_id=operation_id, project_id=project_id
+        )
+    except DelegationError as exc:
+        raise _delegation_http_error(exc) from exc
+
+
+@delegations.get("/projects/{project_id}/collaboration/attempts/{attempt_id}")
+async def read_collaboration_attempt(
+    project_id: str,
+    attempt_id: str,
+    user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取准确尝试的唯一协作投影，未实现问题链保持未知。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    try:
+        return await DelegationService.build_default(db).read_attempt_projection(
+            attempt_id=attempt_id, project_id=project_id, uid=str(user.uid)
+        )
+    except DelegationError as exc:
+        raise _delegation_http_error(exc) from exc

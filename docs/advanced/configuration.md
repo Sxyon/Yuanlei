@@ -77,3 +77,9 @@ Compose 默认按单 worker、100 个同时运行的 AgentRun 配置。执行槽
 ## 历史配置
 
 旧版 `base.toml` 和 `SAVE_DIR` 不属于当前运行时配置来源。受支持的历史数据由一次性 storage migrator 处理；日常部署不要手动把旧文件复制回运行目录。升级步骤见[生产部署指南](./deployment.md)。
+
+## 个人OpenClaw连接部署边界
+
+`YUANLEI_COLLABORATION_KEY` 是用途专属的32字节密钥，以URL-safe Base64设置，负责个人Gateway凭据的AES-GCM加解密。密钥缺失或长度不符时拒绝保存/调用；更换密钥需要单独迁移密文，不能静默生成替代密钥。`YUANLEI_OPENCLAW_ALLOWED_ENDPOINTS` 用逗号列举允许的完整 `ws://` 或 `wss://` Gateway地址；缺省为空并拒绝新连接。地址由部署者配置，个人连接只能引用允许地址，不能任意访问内网。
+
+配置只在元垒真实调用边界读取。连接API的本人凭据写入密文，不出现在模型任务、API读响应或读投影。远端长期Agent配置仍由OpenClaw拥有，C1核验只读，参见[准确交付机制](../mechanisms/collaborator-delivery.md)。隔离产品验收用独立密钥、独立项目和专属目标；日常Compose配置不自动改变。
