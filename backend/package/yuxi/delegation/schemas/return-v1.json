@@ -1,0 +1,454 @@
+{
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "const": "yuanlei.collaboration/1.0"
+    },
+    "kind": {
+      "const": "return"
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "enum": [
+        "completed",
+        "blocked",
+        "failed"
+      ]
+    },
+    "formal_delivery": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 131072
+            },
+            "artifact_refs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "provider-object",
+                      "provider-url"
+                    ]
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ref"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 16
+            },
+            "unresolved": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "criteria_revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "context_snapshot_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "notices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "observation",
+                      "risk",
+                      "suggestion"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8192
+                  },
+                  "blocking": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text",
+                  "blocking"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "text",
+            "artifact_refs",
+            "unresolved",
+            "criteria_revision",
+            "context_snapshot_id",
+            "notices"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "client_question_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "const": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "missing": {
+            "type": "string",
+            "minLength": 1
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1
+          },
+          "checked_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 0,
+            "maxItems": 16
+          },
+          "requested_answer": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "client_question_key",
+          "revision",
+          "title",
+          "missing",
+          "impact",
+          "checked_refs",
+          "requested_answer"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 4
+    },
+    "supplement": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "summary": {
+              "type": "string"
+            },
+            "assertion_level": {
+              "const": "agent-report"
+            },
+            "details_ref": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "inline-text"
+                    },
+                    "text": {
+                      "type": "string",
+                      "maxLength": 65536
+                    },
+                    "size_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65536
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "text",
+                    "size_bytes",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "complete": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "revision",
+            "summary",
+            "assertion_level",
+            "details_ref",
+            "complete"
+          ],
+          "additionalProperties": false,
+          "$schema": "https://json-schema.org/draft/2020-12/schema"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "extensions": {
+      "type": "object",
+      "maxProperties": 4,
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]{0,31}$": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocol",
+    "kind",
+    "operation_id",
+    "attempt_id",
+    "outcome",
+    "formal_delivery",
+    "questions",
+    "supplement",
+    "error"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "formal_delivery": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 131072
+              },
+              "artifact_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "provider-object",
+                        "provider-url"
+                      ]
+                    },
+                    "ref": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "ref"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0,
+                "maxItems": 16
+              },
+              "unresolved": {
+                "type": "array",
+                "maxItems": 0
+              },
+              "criteria_revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "context_snapshot_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "notices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "observation",
+                        "risk",
+                        "suggestion"
+                      ]
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "blocking": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "text",
+                    "blocking"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 16
+              }
+            },
+            "required": [
+              "text",
+              "artifact_refs",
+              "unresolved",
+              "criteria_revision",
+              "context_snapshot_id",
+              "notices"
+            ],
+            "additionalProperties": false
+          },
+          "questions": {
+            "maxItems": 0
+          },
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "formal_delivery": {
+            "type": "null"
+          },
+          "questions": {
+            "minItems": 1
+          },
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "formal_delivery": {
+            "type": "null"
+          },
+          "questions": {
+            "maxItems": 0
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -89,3 +89,9 @@ Multica collect 仅能读取 issue 投影：非 done 返回 `multica_result_not_
 - 代码 Owner：`backend/package/yuxi/delegation/`（接口与适配器）、`backend/package/yuxi/services/delegation_service.py`、`backend/package/yuxi/services/channel_sync_service.py`、`backend/package/yuxi/repositories/channel_delegation_repository.py`、`backend/server/routers/delegation_router.py`、`backend/package/yuxi/agents/toolkits/buildin/delegation_tools.py`。
 - 单项目本地闭环与真实 Codex/Workdir 证据见 [决策记录](../decisions/implemented/2026-09-26-single-project-local-loop.md)。
 - 验收证据以关联 Decision 的六列矩阵为准；真实 Multica 实例的只读读取已复验，出向 `create_issue` 的 workspace 作用域经查询参数被真实服务端接受（受控写建单后回收），以 unit 断言 create 请求体不含 `workspace_id` 守住该形状；修正后客户端对真实实例的真实写未复测。单项目专属沙盒的真实 Codex 完成、结果回收和 Workdir 产物回读见 [单项目本地闭环决策](../decisions/implemented/2026-09-26-single-project-local-loop.md)。
+
+## OpenClaw 个人目标与准确文本
+
+OpenClaw 连接按个人所有者保存，项目许可、目标版本与当次执行快照由 `CollaboratorService` / `CollaboratorRepository` 和 yuanlei 域外键共同拥有。既有通用委派、正式工作委派和根 Run 工具复用 `DelegationService`；Multica 的实例级环境配置保持原边界。原生 session 和 Run 身份来自公开 Gateway 回执，模型自述不拥有来源证明。成功回收导入既有唯一待验收 Result；非成功输出仅保存已核对来源的有界观察，补充经独立入口读取。
+
+协议首包仅支持固定安装版的 deny-all 目标与有界结构化文本。整体返回受该提供者终态证明的4096 UTF-16单位限制；远端长文件、附件、续接、取消和自动Andon均等待对应能力验收。迁移、配置及失败语义见[准确交付机制](../../../mechanisms/collaborator-delivery.md)和[C1决定](../decisions/implemented/2026-10-10-c1-accurate-delivery.md)。上游出现等价连接/尝试结构时须按个人许可、来源、历史与幂等语义迁移，不能仅替换Adapter。

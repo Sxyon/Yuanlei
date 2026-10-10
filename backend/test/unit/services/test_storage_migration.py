@@ -258,6 +258,7 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -366,6 +367,7 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -482,6 +484,7 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -597,6 +600,7 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -711,6 +715,7 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -806,6 +811,7 @@ async def test_yuanlei_v20_is_upgraded_to_inbox_occurrences(monkeypatch):
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )
@@ -1084,6 +1090,7 @@ async def test_yuanlei_v31_only_adds_project_attributes_before_version_record(
         upgrade_yuanlei_schema_v33_to_v34=lambda: _record(calls, "work_context"),
         upgrade_yuanlei_schema_v34_to_v35=lambda: _record(calls, "execution_results"),
         upgrade_yuanlei_schema_v35_to_v36=lambda: _record(calls, "topic_followup"),
+        upgrade_yuanlei_schema_v36_to_v37=lambda: _record(calls, "collaborator_delivery"),
         get_async_session_context=session_context,
         close=lambda: _record(calls, "close"),
     )

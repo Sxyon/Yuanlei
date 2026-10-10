@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "properties": {
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "summary": {
+      "type": "string"
+    },
+    "assertion_level": {
+      "const": "agent-report"
+    },
+    "details_ref": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "inline-text"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "size_bytes",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "complete": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "revision",
+    "summary",
+    "assertion_level",
+    "details_ref",
+    "complete"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

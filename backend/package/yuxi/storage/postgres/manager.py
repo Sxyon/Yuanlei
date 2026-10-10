@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 36
+YUANLEI_SCHEMA_VERSION = 37
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1674,6 +1674,38 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v36_to_v37(self) -> None:
+        """增量创建个人协作者结构，保留旧委派与结果唯一性。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            await conn.execute(
+                text("ALTER TABLE channel_delegations DROP CONSTRAINT IF EXISTS ck_channel_delegations_executor_key")
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE channel_delegations ADD CONSTRAINT ck_channel_delegations_executor_key CHECK (executor_key IN ('codex','opencode','multica','openclaw'))"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_delegation_attempt_project ON channel_delegations(id, project_id)"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_delegation_root_project ON channel_delegations(operation_id, project_id)"
+                )
+            )
+            for name in (
+                "collaborator_connections",
+                "collaborator_connection_projects",
+                "collaborator_targets",
+                "delegation_attempts",
+            ):
+                await conn.run_sync(
+                    lambda sync, name=name: BusinessBase.metadata.tables[name].create(sync, checkfirst=True)
+                )
 
     async def upgrade_yuanlei_schema_v35_to_v36(self) -> None:
         """增加回复、处置和实际确认；旧字段保持未知，不改历史正文。"""
