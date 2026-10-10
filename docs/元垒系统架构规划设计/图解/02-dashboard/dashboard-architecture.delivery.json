@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b5f80da0-c402-41d2-a3b6-43d1fe18efde",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/02-dashboard/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/02-dashboard/dashboard-architecture.html",
+  "specification": {
+    "sha256": "3144ec91a0dafef229d770384ee55d896c5f3a2d0ae508f8c234d161976bb550",
+    "bytes": 5311
+  },
+  "artifact": {
+    "sha256": "a4c92c382ceb6262a985000ba3c288d44029341d47ba5ed7ee20d674bfb456c2",
+    "bytes": 762955
+  }
+}

@@ -1,0 +1,395 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "lanes": [
+    {
+      "id": "design",
+      "label": "设计与范围确认"
+    },
+    {
+      "id": "daily",
+      "label": "A 日常办理"
+    },
+    {
+      "id": "dynamic",
+      "label": "B/C/D 动态页面主线"
+    },
+    {
+      "id": "data",
+      "label": "C/D 业务数据子线"
+    },
+    {
+      "id": "finish",
+      "label": "E 故障与收尾"
+    }
+  ],
+  "mainPath": [
+    "t05",
+    "t06",
+    "t07",
+    "t09",
+    "t10a",
+    "t11",
+    "t13"
+  ],
+  "nodes": [
+    {
+      "id": "design-review",
+      "lane": "design",
+      "col": 0,
+      "type": "backend",
+      "label": "DB-D00 整体设计",
+      "sublabel": "编号图/模块理念/取舍",
+      "width": 128
+    },
+    {
+      "id": "scope-confirm",
+      "lane": "design",
+      "col": 1,
+      "type": "external",
+      "label": "对应范围确认",
+      "sublabel": "记录稿版本与原用户消息",
+      "width": 128
+    },
+    {
+      "id": "t01",
+      "lane": "daily",
+      "col": 1,
+      "type": "backend",
+      "label": "T01 治理收尾",
+      "sublabel": "读码准备/实施核授权",
+      "width": 128
+    },
+    {
+      "id": "t02",
+      "lane": "daily",
+      "col": 2,
+      "type": "backend",
+      "label": "T02 工作与概览",
+      "sublabel": "准确入口与统一口径",
+      "width": 128
+    },
+    {
+      "id": "t03",
+      "lane": "daily",
+      "col": 3,
+      "type": "backend",
+      "label": "T03 收件箱",
+      "sublabel": "义务与通知分开",
+      "width": 128
+    },
+    {
+      "id": "t04",
+      "lane": "daily",
+      "col": 4,
+      "type": "backend",
+      "label": "T04 项目Agent",
+      "sublabel": "运行与交付分层",
+      "width": 128
+    },
+    {
+      "id": "t05",
+      "lane": "dynamic",
+      "col": 0,
+      "type": "database",
+      "label": "T05 定义/草稿",
+      "sublabel": "项目实例与CAS",
+      "width": 128
+    },
+    {
+      "id": "t06",
+      "lane": "dynamic",
+      "col": 1,
+      "type": "backend",
+      "label": "T06 Runtime取数",
+      "sublabel": "真实已有结果源",
+      "width": 128
+    },
+    {
+      "id": "t07",
+      "lane": "dynamic",
+      "col": 2,
+      "type": "security",
+      "label": "T07 启用/返回",
+      "sublabel": "人工启用/回退",
+      "width": 128
+    },
+    {
+      "id": "t09",
+      "lane": "dynamic",
+      "col": 3,
+      "type": "backend",
+      "label": "T09 模板多实例",
+      "sublabel": "版本派生与保护",
+      "width": 128
+    },
+    {
+      "id": "t10a",
+      "lane": "dynamic",
+      "col": 4,
+      "type": "backend",
+      "label": "T10a 页面生成",
+      "sublabel": "真实根Run消费规则",
+      "width": 128
+    },
+    {
+      "id": "t11",
+      "lane": "dynamic",
+      "col": 5,
+      "type": "security",
+      "label": "T11 有限维护",
+      "sublabel": "范围内自动启用",
+      "width": 128
+    },
+    {
+      "id": "t08",
+      "lane": "data",
+      "col": 2,
+      "type": "database",
+      "label": "T08 业务数据",
+      "sublabel": "候选/采纳/经营观察",
+      "width": 128
+    },
+    {
+      "id": "t10b",
+      "lane": "data",
+      "col": 4,
+      "type": "backend",
+      "label": "T10b 数据候选",
+      "sublabel": "与页面启用分开",
+      "width": 128
+    },
+    {
+      "id": "t12",
+      "lane": "finish",
+      "col": 3,
+      "type": "backend",
+      "label": "T12 兼容/故障",
+      "sublabel": "全生命周期补证",
+      "width": 128
+    },
+    {
+      "id": "t13",
+      "lane": "finish",
+      "col": 5,
+      "type": "backend",
+      "label": "T13 完整收尾",
+      "sublabel": "各包出口＋使用观察",
+      "width": 128
+    }
+  ],
+  "edges": [
+    {
+      "id": "dep-0",
+      "from": "design-review",
+      "to": "scope-confirm",
+      "label": "审阅关键点"
+    },
+    {
+      "id": "dep-1",
+      "from": "scope-confirm",
+      "to": "t02",
+      "label": "新布局确认"
+    },
+    {
+      "id": "dep-2",
+      "from": "scope-confirm",
+      "to": "t05",
+      "label": "新增交互确认",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          306,
+          180
+        ],
+        [
+          16,
+          180
+        ],
+        [
+          16,
+          367
+        ]
+      ]
+    },
+    {
+      "id": "dep-3",
+      "from": "t01",
+      "to": "t02",
+      "label": "治理关联"
+    },
+    {
+      "id": "dep-4",
+      "from": "t02",
+      "to": "t03",
+      "label": "准确入口"
+    },
+    {
+      "id": "dep-5",
+      "from": "t02",
+      "to": "t04",
+      "label": "共用工作事实"
+    },
+    {
+      "id": "dep-6",
+      "from": "t05",
+      "to": "t06",
+      "label": "定义"
+    },
+    {
+      "id": "dep-7",
+      "from": "t06",
+      "to": "t07",
+      "label": "实际预览"
+    },
+    {
+      "id": "dep-8",
+      "from": "t07",
+      "to": "t09",
+      "label": "稳定生命周期"
+    },
+    {
+      "id": "dep-9",
+      "from": "t09",
+      "to": "t10a",
+      "label": "规则/库"
+    },
+    {
+      "id": "dep-10",
+      "from": "t10a",
+      "to": "t11",
+      "label": "真实生成"
+    },
+    {
+      "id": "dep-11",
+      "from": "t07",
+      "to": "t08",
+      "label": "源与生命周期"
+    },
+    {
+      "id": "dep-12",
+      "from": "t08",
+      "to": "t10b",
+      "label": "数据契约"
+    },
+    {
+      "id": "dep-13",
+      "from": "t10a",
+      "to": "t10b",
+      "label": "候选工具"
+    },
+    {
+      "id": "dep-14",
+      "from": "t07",
+      "to": "t12",
+      "label": "分项故障补证"
+    },
+    {
+      "id": "dep-15",
+      "from": "t12",
+      "to": "t13",
+      "label": "完整故障出口"
+    },
+    {
+      "id": "dep-16",
+      "from": "t11",
+      "to": "t13",
+      "label": "维护出口"
+    },
+    {
+      "id": "dep-17",
+      "from": "t10b",
+      "to": "t13",
+      "label": "候选出口"
+    },
+    {
+      "id": "dep-18",
+      "from": "t03",
+      "to": "t13",
+      "label": "收件箱出口",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          694,
+          50
+        ],
+        [
+          0,
+          50
+        ],
+        [
+          0,
+          710
+        ],
+        [
+          1058,
+          710
+        ]
+      ]
+    },
+    {
+      "id": "dep-19",
+      "from": "t04",
+      "to": "t13",
+      "label": "Agent出口",
+      "route": "outside-right",
+      "fromSide": "right",
+      "toSide": "right",
+      "channelX": 1170
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "图表示进入条件，不表示完成进度",
+      "items": [
+        "DB-D00与T01—13状态只在LOG-DB维护",
+        "T01读码/设计可准备；实施须定位原授权或确认相应范围"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "修正的非必要依赖",
+      "items": [
+        "T09不必等待T08；经营模板的联合验收仍需要真实数据",
+        "T10a先做页面生成；T10b另依赖T08，T11只依赖页面生成"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "收尾出口",
+      "items": [
+        "T13还要求所有T01—12出口和T10a/b，不以单条绿线收尾",
+        "协作保持暂停，真实问题链不由Dashboard伪造"
+      ]
+    }
+  ],
+  "meta": {
+    "title": "DB-G03 开发任务依赖：确认范围后按真实依赖实施",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "实施包"
+        },
+        "database": {
+          "label": "持久结构"
+        },
+        "security": {
+          "label": "校验/范围"
+        },
+        "external": {
+          "label": "用户审阅"
+        }
+      }
+    },
+    "viewBox": [
+      1210,
+      776
+    ]
+  }
+}

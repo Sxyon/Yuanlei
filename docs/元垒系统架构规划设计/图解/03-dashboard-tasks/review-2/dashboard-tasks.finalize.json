@@ -1,0 +1,1829 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "workflow",
+  "quality": "showcase",
+  "startedAt": "2026-10-10T10:06:27.670Z",
+  "specification": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/candidate.json",
+    "sha256": "eec18d9f6b2308d5a0e4c613f2af7e7e5c5a951a5a09a573b20e3be08121aa10",
+    "bytes": 7917
+  },
+  "artifact": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+    "sha256": "06bf0b8f433820d4b3b526770500c3c8b0bdbfd1dbb0ad0480acc10117e13851",
+    "bytes": 775193
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/Users/sam/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "/Users/sam/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "workflow",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/candidate.json",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "eec18d9f6b2308d5a0e4c613f2af7e7e5c5a951a5a09a573b20e3be08121aa10",
+          "bytes": 7917
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 1655,
+      "command": [
+        "/Users/sam/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "/Users/sam/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "workflow",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/candidate.json",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "b08c4943-636e-4244-906a-a7e9280171d7",
+        "ok": true,
+        "command": "deliver",
+        "type": "workflow",
+        "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/candidate.json",
+        "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+        "specification": {
+          "sha256": "eec18d9f6b2308d5a0e4c613f2af7e7e5c5a951a5a09a573b20e3be08121aa10",
+          "bytes": 7917
+        },
+        "artifact": {
+          "sha256": "06bf0b8f433820d4b3b526770500c3c8b0bdbfd1dbb0ad0480acc10117e13851",
+          "bytes": 775193
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 370,
+      "command": [
+        "/Users/sam/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "/Users/sam/.agents/skills/archify/bin/archify.mjs",
+        "check",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+        "artifact": {
+          "sha256": "06bf0b8f433820d4b3b526770500c3c8b0bdbfd1dbb0ad0480acc10117e13851",
+          "bytes": 775193
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 22,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 6.148760330578512,
+            "maxBends": 4,
+            "routesOverSuggestedBends": 3,
+            "maxStretch": 3.36,
+            "routesOverSuggestedStretch": 1,
+            "minSegmentPx": 16,
+            "minInteriorSegmentPx": 172.4,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": [
+              {
+                "relationship": {
+                  "id": "dep-14",
+                  "from": "t07",
+                  "to": "t12",
+                  "label": "分项故障补证",
+                  "collectionIndex": 6,
+                  "artifactIndex": 7
+                },
+                "bends": 3,
+                "stretch": 1.159
+              },
+              {
+                "relationship": {
+                  "id": "dep-18",
+                  "from": "t03",
+                  "to": "t13",
+                  "label": "收件箱出口",
+                  "collectionIndex": 10,
+                  "artifactIndex": 11
+                },
+                "bends": 4,
+                "stretch": 3.36
+              },
+              {
+                "relationship": {
+                  "id": "dep-2",
+                  "from": "scope-confirm",
+                  "to": "t05",
+                  "label": "新增交互确认",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "bends": 3,
+                "stretch": 1.133
+              }
+            ]
+          },
+          "leadingSpace": {
+            "measured": false,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "legacy-930",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 930,
+            "actualBudgetPx": 930,
+            "limit": "legacy",
+            "requestedTargetPx": null,
+            "requestedTargetMet": null,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "node",
+              "id": "design-review"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 6.148760330578512,
+            "semanticTextCount": 52
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "b08c4943-636e-4244-906a-a7e9280171d7"
+      }
+    },
+    "browser-check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 6958,
+      "command": [
+        "/Users/sam/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "/Users/sam/.agents/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+        "--json",
+        "--require-provenance",
+        "--out-dir",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/review-2"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "pass",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "b08c4943-636e-4244-906a-a7e9280171d7",
+        "artifact": {
+          "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+          "sha256": "06bf0b8f433820d4b3b526770500c3c8b0bdbfd1dbb0ad0480acc10117e13851",
+          "bytes": 775193
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "available",
+          "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        },
+        "diagnostics": [],
+        "containment": {
+          "status": "pass",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 900,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1193,
+              "diagramWidth": 1163,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 52,
+                "diagramChromePx": 78,
+                "svgPx": 746,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 100,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 100,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                }
+              ],
+              "minimumProjectedNodeTextPx": 7.689256198347107,
+              "minimumProjectedNonEdgeTextPx": 7.689256198347107,
+              "minimumProjectedEdgeTextPx": 7.689256198347107,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1000,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1246,
+              "diagramWidth": 1216,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 780,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 105,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 105,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1080,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1371,
+              "diagramWidth": 1341,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 860,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 115,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 115,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1737,
+              "diagramWidth": 1687,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 68,
+                "diagramChromePx": 94,
+                "svgPx": 1082,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 145,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 145,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
+        },
+        "themeStates": {
+          "status": "pass",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1440,
+              "height": 900,
+              "requestedTheme": "dark",
+              "resolvedTheme": "dark",
+              "ok": true
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "requestedTheme": "dark",
+              "resolvedTheme": "dark",
+              "ok": true
+            }
+          ]
+        },
+        "readability": {
+          "status": "pass",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 900,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1193,
+              "diagramWidth": 1163,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 52,
+                "diagramChromePx": 78,
+                "svgPx": 746,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 100,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 100,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                }
+              ],
+              "minimumProjectedNodeTextPx": 7.689256198347107,
+              "minimumProjectedNonEdgeTextPx": 7.689256198347107,
+              "minimumProjectedEdgeTextPx": 7.689256198347107,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1000,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1246,
+              "diagramWidth": 1216,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 780,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 105,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 105,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1080,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1371,
+              "diagramWidth": 1341,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 860,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 115,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 115,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1737,
+              "diagramWidth": 1687,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 68,
+                "diagramChromePx": 94,
+                "svgPx": 1082,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 145,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 145,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
+        },
+        "viewerChrome": {
+          "status": "pass",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 900,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1193,
+              "diagramWidth": 1163,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 52,
+                "diagramChromePx": 78,
+                "svgPx": 746,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 100,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 100,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 100,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 50,
+                  "spaceAboveNodesPx": 39,
+                  "spaceBelowNodesPx": 11
+                }
+              ],
+              "minimumProjectedNodeTextPx": 7.689256198347107,
+              "minimumProjectedNonEdgeTextPx": 7.689256198347107,
+              "minimumProjectedEdgeTextPx": 7.689256198347107,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1000,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1246,
+              "diagramWidth": 1216,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 780,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 105,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 105,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 105,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 52,
+                  "spaceAboveNodesPx": 41,
+                  "spaceBelowNodesPx": 11
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1080,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1371,
+              "diagramWidth": 1341,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 860,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 115,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 115,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 115,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 58,
+                  "spaceAboveNodesPx": 45,
+                  "spaceBelowNodesPx": 12
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": null,
+              "ok": true,
+              "readerWidth": 1737,
+              "diagramWidth": 1687,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 68,
+                "diagramChromePx": 94,
+                "svgPx": 1082,
+                "cardsPx": 0,
+                "viewBoxHeight": 776
+              },
+              "viewBoxWidth": 1210,
+              "workflowLanes": [
+                {
+                  "frameId": "lane-0",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "design-review",
+                    "scope-confirm"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-1",
+                  "heightPx": 145,
+                  "nodeCount": 4,
+                  "nodeIds": [
+                    "t01",
+                    "t02",
+                    "t03",
+                    "t04"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-2",
+                  "heightPx": 145,
+                  "nodeCount": 6,
+                  "nodeIds": [
+                    "t05",
+                    "t06",
+                    "t07",
+                    "t09",
+                    "t10a",
+                    "t11"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-3",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t08",
+                    "t10b"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                },
+                {
+                  "frameId": "lane-4",
+                  "heightPx": 145,
+                  "nodeCount": 2,
+                  "nodeIds": [
+                    "t12",
+                    "t13"
+                  ],
+                  "nodeSpanPx": 72,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 15
+                }
+              ],
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 8,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "编号图/模块理念/取舍",
+              "minimumProjectedNodeTextDetail": "context",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "node",
+                "id": "design-review"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "directory": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/review-2",
+          "receipt": "dashboard-tasks.browser-check.json",
+          "files": []
+        }
+      }
+    }
+  },
+  "diagnostics": [],
+  "evidence": {
+    "receipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/review-2/dashboard-tasks.finalize.json",
+    "summaryReceipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/review-2/dashboard-tasks.finalize-summary.json",
+    "browserCheckReceipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/review-2/dashboard-tasks.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "finishedAt": "2026-10-10T10:06:37.388Z",
+  "durationMs": 9718,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-10T09:20:08.372Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

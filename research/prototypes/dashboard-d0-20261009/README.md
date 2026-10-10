@@ -4,7 +4,7 @@
 
 ## 入口与检查
 
-从仓库根运行 `python3 -m http.server 8768 --bind 127.0.0.1 --directory research/prototypes/dashboard-d0-20261009`，打开 [连续稿](http://127.0.0.1:8768/#alpha/overview)。机器样例由 [examples.json](examples.json) 拥有，有限结构检查执行 `node research/prototypes/dashboard-d0-20261009/check.mjs`。完整设计与 D1—D6 卡见 [D0 基线](../../../docs/元垒系统架构规划设计/第一阶段专项/Dashboard-D0设计基线与D1-D6验收卡-2026-10-09.md)。
+从仓库根运行 `python3 -m http.server 8768 --bind 127.0.0.1 --directory research/prototypes/dashboard-d0-20261009`，打开 [连续稿](http://127.0.0.1:8768/#alpha/overview)。机器样例由 [examples.json](examples.json) 拥有，有限结构检查执行 `node research/prototypes/dashboard-d0-20261009/check.mjs`。完整设计与 D1—D6 卡见 [D0 基线](../../../docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/Dashboard-D0设计基线与D1-D6验收卡-2026-10-09.md)。
 
 ## 连续任务
 

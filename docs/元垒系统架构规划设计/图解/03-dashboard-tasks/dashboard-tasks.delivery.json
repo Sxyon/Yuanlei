@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b08c4943-636e-4244-906a-a7e9280171d7",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+  "specification": {
+    "sha256": "eec18d9f6b2308d5a0e4c613f2af7e7e5c5a951a5a09a573b20e3be08121aa10",
+    "bytes": 7917
+  },
+  "artifact": {
+    "sha256": "06bf0b8f433820d4b3b526770500c3c8b0bdbfd1dbb0ad0480acc10117e13851",
+    "bytes": 775193
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "6eecba40-b62b-47f3-bcca-3d52af813729",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/04-collaboration/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
+  "specification": {
+    "sha256": "d5fff44d0351f3bd24a22d7cfb69fd523564636c292a8ce1a63aa5e852379dba",
+    "bytes": 4995
+  },
+  "artifact": {
+    "sha256": "053a5b9eee99538183e49ded606120923339e0332caf9403433114ca4f4a0996",
+    "bytes": 759766
+  }
+}

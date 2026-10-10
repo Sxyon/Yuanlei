@@ -1,0 +1,13 @@
+{
+  "baseline": "3c5ee33c",
+  "local_link_references": 323,
+  "broken_local_links": [],
+  "negative_missing_path_detected": true,
+  "archive_paths_present": 68,
+  "tracked_original_sha256_matched": 65,
+  "excluded_system_metadata": 3,
+  "scope": "file targets; route/anchor semantics also checked by documentation build",
+  "published_diagrams_byte_identical": 7,
+  "published_archive_nonmarkdown_byte_identical": true,
+  "negative_link_extractor_probe": "one in-memory broken reference rejected"
+}

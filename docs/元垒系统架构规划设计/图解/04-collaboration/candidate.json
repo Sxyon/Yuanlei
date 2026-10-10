@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CA-G04 协作冻结目标：准确交付与持久处理职责",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "业务职责"
+        },
+        "frontend": {
+          "label": "界面职责"
+        },
+        "database": {
+          "label": "持久记录"
+        },
+        "security": {
+          "label": "校验与授权"
+        },
+        "external": {
+          "label": "维护者/协作者"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "work",
+      "type": "backend",
+      "label": "准确工作与上下文",
+      "sublabel": "条件修订、预算与来源",
+      "pos": [
+        40,
+        100
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "delegation",
+      "type": "backend",
+      "label": "统一委派与attempt",
+      "sublabel": "意图先持久，网络重试分开",
+      "pos": [
+        410,
+        100
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "provider",
+      "type": "external",
+      "label": "Provider Adapter",
+      "sublabel": "公开协议、准确远端绑定",
+      "pos": [
+        780,
+        100
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "formal",
+      "type": "backend",
+      "label": "正式交付 / 独立补充",
+      "sublabel": "回原Result Owner待验收",
+      "pos": [
+        1150,
+        100
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "question",
+      "type": "backend",
+      "label": "问题与处理节点",
+      "sublabel": "先交直接上级；可回答或上报",
+      "pos": [
+        780,
+        360
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "handler",
+      "type": "backend",
+      "label": "受控处理与返回",
+      "sublabel": "逐级匹配Q修订/节点/attempt",
+      "pos": [
+        410,
+        360
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "records",
+      "type": "database",
+      "label": "持久义务与outbox",
+      "sublabel": "处理/转交/答复/送达/采用",
+      "pos": [
+        410,
+        620
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "grant",
+      "type": "security",
+      "label": "有限正式决定授权",
+      "sublabel": "治理Owner重验并消费Grant",
+      "pos": [
+        40,
+        360
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "adoption",
+      "type": "backend",
+      "label": "采用与继续执行证据",
+      "sublabel": "blocked后继与原生恢复区分",
+      "pos": [
+        1150,
+        360
+      ],
+      "size": [
+        230,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "link-0",
+      "from": "work",
+      "to": "delegation",
+      "label": "冻结任务包"
+    },
+    {
+      "id": "link-1",
+      "from": "delegation",
+      "to": "provider",
+      "label": "实际下发规则"
+    },
+    {
+      "id": "link-2",
+      "from": "provider",
+      "to": "formal",
+      "label": "可信来源回读"
+    },
+    {
+      "id": "link-3",
+      "from": "provider",
+      "to": "question",
+      "label": "受阻时求助"
+    },
+    {
+      "id": "link-4",
+      "from": "question",
+      "to": "handler",
+      "label": "直接上级处理"
+    },
+    {
+      "id": "link-5",
+      "from": "grant",
+      "to": "handler",
+      "label": "需变更时校验"
+    },
+    {
+      "id": "link-6",
+      "from": "handler",
+      "to": "records",
+      "label": "持久义务"
+    },
+    {
+      "id": "link-7",
+      "from": "handler",
+      "to": "adoption",
+      "label": "准确答复/继续",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          525,
+          500
+        ],
+        [
+          1265,
+          500
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "专项暂停，图为保留目标",
+      "items": [
+        "现有码有准确文本交付基础；Andon节点/outbox/正式授权未实现",
+        "本图不声明远端产品链已验，不恢复试验或执行权限"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "规则必须被下游实际看见",
+      "items": [
+        "实际渲染输入含任务/补充/求助Schema并核对输入指纹",
+        "配置由具体Provider承载；不能从提示词推导真实权限"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "逐级返回与失败事实",
+      "items": [
+        "CA-G06时序图详解C→B→A→H与逐级答复",
+        "送达、采用和执行成功独立；取消请求不等于真实停止"
+      ]
+    }
+  ]
+}

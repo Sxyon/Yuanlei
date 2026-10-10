@@ -1,0 +1,37 @@
+[
+  [
+    "docs/元垒系统架构规划设计/图解/01-platform/candidate.json",
+    "docs/元垒系统架构规划设计/图解/01-platform/platform-target.html",
+    "architecture"
+  ],
+  [
+    "docs/元垒系统架构规划设计/图解/02-dashboard/candidate.json",
+    "docs/元垒系统架构规划设计/图解/02-dashboard/dashboard-architecture.html",
+    "architecture"
+  ],
+  [
+    "docs/元垒系统架构规划设计/图解/03-dashboard-tasks/candidate.json",
+    "docs/元垒系统架构规划设计/图解/03-dashboard-tasks/dashboard-tasks.html",
+    "workflow"
+  ],
+  [
+    "docs/元垒系统架构规划设计/图解/04-collaboration/candidate.json",
+    "docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
+    "architecture"
+  ],
+  [
+    "docs/元垒系统架构规划设计/图解/05-topic/candidate.json",
+    "docs/元垒系统架构规划设计/图解/05-topic/topic-relations.html",
+    "architecture"
+  ],
+  [
+    "docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+    "docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+    "sequence"
+  ],
+  [
+    "docs/元垒系统架构规划设计/图解/07-collaboration-tasks/candidate.json",
+    "docs/元垒系统架构规划设计/图解/07-collaboration-tasks/collaboration-frozen-tasks.html",
+    "workflow"
+  ]
+]

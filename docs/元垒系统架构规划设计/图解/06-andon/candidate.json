@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "CA-G06 暂停目标：Andon逐级处理与匹配返回",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+    "viewBox": [
+      1040,
+      660
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "c",
+      "type": "external",
+      "label": "协作者C",
+      "sublabel": "准确等待尝试"
+    },
+    {
+      "id": "b",
+      "type": "backend",
+      "label": "直接上级B",
+      "sublabel": "持有上下文与返回义务"
+    },
+    {
+      "id": "a",
+      "type": "backend",
+      "label": "上级A",
+      "sublabel": "范围内答复或继续上报"
+    },
+    {
+      "id": "h",
+      "type": "external",
+      "label": "用户H",
+      "sublabel": "超范围及有限授权"
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "持久事件",
+      "sublabel": "送达/采用/执行分开"
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-0",
+      "from": "c",
+      "to": "b",
+      "y": 160,
+      "label": "提交Q修订与等待attempt",
+      "variant": "default"
+    },
+    {
+      "id": "message-1",
+      "from": "b",
+      "to": "c",
+      "y": 203,
+      "label": "范围内能回答则直接答复",
+      "variant": "return"
+    },
+    {
+      "id": "message-2",
+      "from": "b",
+      "to": "a",
+      "y": 246,
+      "label": "先判断，无法解决或超范围再转交",
+      "variant": "security"
+    },
+    {
+      "id": "message-3",
+      "from": "a",
+      "to": "b",
+      "y": 289,
+      "label": "自身范围能解决则返回",
+      "variant": "return"
+    },
+    {
+      "id": "message-4",
+      "from": "a",
+      "to": "h",
+      "y": 332,
+      "label": "仍无法解决/需新增授权再上报",
+      "variant": "security"
+    },
+    {
+      "id": "message-5",
+      "from": "h",
+      "to": "a",
+      "y": 375,
+      "label": "针对原Q回答或明确授权",
+      "variant": "return"
+    },
+    {
+      "id": "message-6",
+      "from": "a",
+      "to": "b",
+      "y": 418,
+      "label": "逐级转译，保留来源与适用范围",
+      "variant": "return"
+    },
+    {
+      "id": "message-7",
+      "from": "b",
+      "to": "c",
+      "y": 461,
+      "label": "匹配原Q修订和等待attempt下达",
+      "variant": "return"
+    },
+    {
+      "id": "message-8",
+      "from": "c",
+      "to": "ledger",
+      "y": 504,
+      "label": "核对并记录实际采用证据",
+      "variant": "dashed"
+    },
+    {
+      "id": "message-9",
+      "from": "c",
+      "to": "ledger",
+      "y": 547,
+      "label": "记录原生恢复或后继attempt关联",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "目标未实现，暂停不执行",
+      "items": [
+        "B能回答时直接返回C，A能回答时不再上报H",
+        "同图显示需要升到H的分支，不要求所有问题都交人"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "持久匹配与权限",
+      "items": [
+        "各级保留Q修订、答复来源/转译、接收节点和等待attempt",
+        "正式变更必须有具体Grant并由治理Owner消费；父Run结束不丢义务"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "不能混淆的成功",
+      "items": [
+        "收到不是采用；采用不是运行成功；新attempt不是原Run恢复",
+        "旧答案/迟到owner不得写入新问题或错误尝试"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import { defineConfig } from 'vitepress'
+import { cp } from 'node:fs/promises'
+import { join } from 'node:path'
 import markdownItTaskCheckbox from 'markdown-it-task-checkbox'
 
 
@@ -9,6 +11,19 @@ export default defineConfig({
   description: "Yuanlei AI 时代的 个人 / 企业 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。",
   base: '/Yuanlei/',
   srcExclude: ['vibe/**'],
+  async buildEnd(siteConfig) {
+    // 独立图稿由规划目录维护，静态站点复制相同字节以保留校验身份。
+    const diagrams = '元垒系统架构规划设计/图解'
+    await cp(join(siteConfig.srcDir, diagrams), join(siteConfig.outDir, diagrams), {
+      recursive: true,
+      filter: (source) => !source.endsWith('.json') && !source.endsWith('.md')
+    })
+    const archive = '元垒系统架构规划设计/归档'
+    await cp(join(siteConfig.srcDir, archive), join(siteConfig.outDir, archive), {
+      recursive: true,
+      filter: (source) => !source.endsWith('.md') && !source.endsWith('.DS_Store')
+    })
+  },
   sitemap: {
     hostname: 'https://sxyon.github.io/Yuanlei/'
   },
@@ -129,14 +144,21 @@ export default defineConfig({
           { text: '版本变更记录', link: '/develop-guides/changelog' },
           { text: '界面设计规范', link: '/develop-guides/design' },
           {
-            text: '第一阶段专项（研究中）',
+            text: '系统架构与专项规划',
             collapsed: true,
             items: [
-              { text: '协作 C0 整体契约与验收卡', link: '/元垒系统架构规划设计/第一阶段专项/协作接入-C0整体契约基线与C1-C6验收卡-2026-10-09' },
-              { text: 'OpenClaw T1-O 协议试验结果', link: '/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入-C3T1O协议试验结果-2026-10-09' },
-              { text: 'Dashboard D0 全景基线与验收卡', link: '/元垒系统架构规划设计/第一阶段专项/Dashboard-D0设计基线与D1-D6验收卡-2026-10-09' },
-              { text: '信息架构与 Dashboard 规划', link: '/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard专项规划-2026-10-08' },
-              { text: 'U4 分项收敛与首个实施包', link: '/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09' }
+              { text: '当前入口与图解', link: '/元垒系统架构规划设计/' },
+              { text: '系统架构与阶段边界', link: '/元垒系统架构规划设计/SYS-PL-001-系统架构与阶段边界' },
+              { text: 'Dashboard设计', link: '/元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计' },
+              { text: 'Dashboard开发任务', link: '/元垒系统架构规划设计/DEV-DB-001-Dashboard开发任务与实施约束' },
+              { text: 'Dashboard进度', link: '/元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录' },
+              { text: '议题设计审阅示范', link: '/元垒系统架构规划设计/SYS-DB-002-议题详情设计审阅示范' },
+              { text: '协作冻结设计', link: '/元垒系统架构规划设计/SYS-CA-001-协作接入与Andon系统设计' },
+              { text: '协作冻结细节', link: '/元垒系统架构规划设计/DEV-CA-001-协作接入与Andon冻结落地细节' },
+              { text: '协作暂停进展', link: '/元垒系统架构规划设计/LOG-CA-001-协作接入与Andon暂停盘点与事实进展' },
+              { text: '专项推进与设计汇报', link: '/元垒系统架构规划设计/DEV-MG-001-专项推进与设计汇报机制' },
+              { text: '目录重整与图文核对', link: '/元垒系统架构规划设计/LOG-MG-002-目录重整与图文核对记录' },
+              { text: '历史归档', link: '/元垒系统架构规划设计/归档/2026-10-10-重整前/' }
             ]
           },
           { text: '测试规范', link: '/develop-guides/testing-guidelines' },

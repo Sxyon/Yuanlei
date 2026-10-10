@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G02 Dashboard目标架构：生成、启用与办理",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/02-dashboard/dashboard-architecture.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "业务职责"
+        },
+        "frontend": {
+          "label": "界面职责"
+        },
+        "database": {
+          "label": "持久记录"
+        },
+        "security": {
+          "label": "校验与授权"
+        },
+        "external": {
+          "label": "维护者/协作者"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "author",
+      "type": "external",
+      "label": "本人 / 项目根Agent",
+      "sublabel": "子Agent只交候选",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "draft",
+      "type": "database",
+      "label": "项目实例与草稿修订",
+      "sublabel": "定义与绑定不可变追加",
+      "pos": [
+        390,
+        300
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "validate",
+      "type": "security",
+      "label": "精确验证与启用",
+      "sublabel": "版本/权限/CAS/策略消费",
+      "pos": [
+        740,
+        300
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "active",
+      "type": "database",
+      "label": "稳定修订指针",
+      "sublabel": "失败不改稳定页；管理兜底",
+      "pos": [
+        1090,
+        300
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "frontend",
+      "label": "可信Vue Runtime",
+      "sublabel": "只渲染受控定义",
+      "pos": [
+        1090,
+        560
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "host",
+      "type": "frontend",
+      "label": "平台/项目宿主",
+      "sublabel": "校验导航、身份与返回状态",
+      "pos": [
+        740,
+        560
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "business",
+      "type": "frontend",
+      "label": "准确业务办理页",
+      "sublabel": "议题/工作/结果沿原Owner操作",
+      "pos": [
+        390,
+        560
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "templates",
+      "type": "backend",
+      "label": "规则、素材与模板库",
+      "sublabel": "锁定模板/素材版本；实例独立",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "grant",
+      "type": "security",
+      "label": "人工 / 有限维护授权",
+      "sublabel": "页面维护不包含数据采纳",
+      "pos": [
+        740,
+        70
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "data",
+      "type": "backend",
+      "label": "有界授权数据服务",
+      "sublabel": "正式事实/采纳数据/分析分开",
+      "pos": [
+        1090,
+        70
+      ],
+      "size": [
+        230,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "link-0",
+      "from": "author",
+      "to": "draft",
+      "label": "按规则保存"
+    },
+    {
+      "id": "link-1",
+      "from": "templates",
+      "to": "draft",
+      "label": "固定版本派生"
+    },
+    {
+      "id": "link-2",
+      "from": "draft",
+      "to": "validate",
+      "label": "精确修订"
+    },
+    {
+      "id": "link-3",
+      "from": "grant",
+      "to": "validate",
+      "label": "批准范围"
+    },
+    {
+      "id": "link-4",
+      "from": "validate",
+      "to": "active",
+      "label": "重验后原子启用"
+    },
+    {
+      "id": "link-5",
+      "from": "active",
+      "to": "runtime",
+      "label": "加载精确版本"
+    },
+    {
+      "id": "link-6",
+      "from": "data",
+      "to": "runtime",
+      "label": "授权只读取数",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1370,
+          110
+        ],
+        [
+          1370,
+          600
+        ]
+      ]
+    },
+    {
+      "id": "link-7",
+      "from": "runtime",
+      "to": "host",
+      "label": "注册导航请求"
+    },
+    {
+      "id": "link-8",
+      "from": "host",
+      "to": "business",
+      "label": "重验后办理"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "目标设计，待分项审阅与实现",
+      "items": [
+        "模板库不等待经营数据；运行时首屏可读已有结果",
+        "任意生成Vue/JS隔离包仍是需求触发的后继路线"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "维护与回退",
+      "items": [
+        "启用/设首页/回退是独立幂等动作；回退重验历史稳定版",
+        "页面回退不撤销业务数据；current槽重验绑定而非锁住全部值"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "宿主与数据边界",
+      "items": [
+        "办理页携带uid绑定短期返回token，回原实例/修订/筛选",
+        "页面传入的所有ID都要重新校验；未知数值不填零"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "components": [
+    {
+      "id": "reviewer",
+      "type": "external",
+      "label": "使用者",
+      "sublabel": "阅读并办理项目事项",
+      "pos": [
+        30,
+        300
+      ],
+      "size": [
+        180,
+        76
+      ],
+      "icon": "person"
+    },
+    {
+      "id": "project-context",
+      "type": "frontend",
+      "label": "项目与平台入口",
+      "sublabel": "跨项目出口保留",
+      "pos": [
+        330,
+        300
+      ],
+      "size": [
+        180,
+        76
+      ]
+    },
+    {
+      "id": "topic-reading",
+      "type": "frontend",
+      "label": "M1 / M2 议题主线",
+      "sublabel": "问题、目标、当前版本",
+      "pos": [
+        650,
+        300
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "active-decisions",
+      "type": "frontend",
+      "label": "M3 当前决定",
+      "sublabel": "草稿与有效依据分开",
+      "pos": [
+        1020,
+        300
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "linked-work",
+      "type": "frontend",
+      "label": "M4 关联行动",
+      "sublabel": "工作与准确结果摘要",
+      "pos": [
+        1020,
+        550
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "work-detail",
+      "type": "frontend",
+      "label": "准确工作详情",
+      "sublabel": "办理对应 Run 与结果",
+      "pos": [
+        650,
+        550
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "discussion-events",
+      "type": "frontend",
+      "label": "M5 讨论与变化",
+      "sublabel": "按当时版本追溯",
+      "pos": [
+        330,
+        550
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "supporting-evidence",
+      "type": "frontend",
+      "label": "M6 按需证据",
+      "sublabel": "材料、历史、适用规则",
+      "pos": [
+        650,
+        70
+      ],
+      "size": [
+        210,
+        76
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-entry",
+      "from": "reviewer",
+      "to": "project-context",
+      "label": "选择项目"
+    },
+    {
+      "id": "project-topic",
+      "from": "project-context",
+      "to": "topic-reading",
+      "label": "打开准确议题"
+    },
+    {
+      "id": "topic-decision",
+      "from": "topic-reading",
+      "to": "active-decisions",
+      "label": "理解当前结论"
+    },
+    {
+      "id": "decision-work",
+      "from": "active-decisions",
+      "to": "linked-work",
+      "label": "查看关联行动"
+    },
+    {
+      "id": "open-work",
+      "from": "linked-work",
+      "to": "work-detail",
+      "label": "定位并办理"
+    },
+    {
+      "id": "return-context",
+      "from": "work-detail",
+      "to": "topic-reading",
+      "label": "保留上下文返回"
+    },
+    {
+      "id": "read-evidence",
+      "from": "topic-reading",
+      "to": "supporting-evidence",
+      "label": "按需展开"
+    },
+    {
+      "id": "trace-discussion",
+      "from": "topic-reading",
+      "to": "discussion-events",
+      "label": "讨论与变化"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "候选设计，未确认、未实现",
+      "items": [
+        "本图说明设计逻辑，不声称当前产品已完成这些接线",
+        "对应页面草图 M1—M6，位置与视觉层级由草图说明"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "同页组织，独立语义",
+      "items": [
+        "讨论不能代替批准；草稿与当前有效决定分开",
+        "工作/Run终态不自动代表业务接受或议题目标达成"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "审阅重点与推荐",
+      "items": [
+        "推荐围绕议题持续维护，按需展开证据与历史",
+        "用户审阅设计，Codex负责方案、实现和自测"
+      ]
+    }
+  ],
+  "meta": {
+    "title": "DB-G05 议题详情候选：模块关系与办理路径",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/05-topic/topic-relations.html"
+  }
+}

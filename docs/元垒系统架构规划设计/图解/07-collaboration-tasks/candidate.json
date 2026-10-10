@@ -1,0 +1,248 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "lanes": [
+    {
+      "id": "restart",
+      "label": "当前暂停与重启前提"
+    },
+    {
+      "id": "future",
+      "label": "保留目标，无当前执行安排"
+    },
+    {
+      "id": "provider",
+      "label": "第二渠道基础可在C1后验证（仍需重启/具体范围）"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "pause",
+      "lane": "restart",
+      "col": 0,
+      "type": "security",
+      "label": "当前全面暂停",
+      "sublabel": "保留源码、证据和残余",
+      "width": 128
+    },
+    {
+      "id": "human-restart",
+      "lane": "restart",
+      "col": 1,
+      "type": "external",
+      "label": "用户明确重启",
+      "sublabel": "不沿用旧试验授权",
+      "width": 128
+    },
+    {
+      "id": "check-drift",
+      "lane": "restart",
+      "col": 2,
+      "type": "backend",
+      "label": "版本与条件重核",
+      "sublabel": "部署/协议/目标/残余",
+      "width": 128
+    },
+    {
+      "id": "new-card",
+      "lane": "restart",
+      "col": 3,
+      "type": "security",
+      "label": "新实施与试验范围",
+      "sublabel": "提供推荐与具体整卡",
+      "width": 128
+    },
+    {
+      "id": "c1",
+      "lane": "future",
+      "col": 0,
+      "type": "backend",
+      "label": "C1 准确产品交付",
+      "sublabel": "真实入口与worker链",
+      "width": 128
+    },
+    {
+      "id": "c2",
+      "lane": "future",
+      "col": 1,
+      "type": "backend",
+      "label": "C2 直接上级",
+      "sublabel": "Q/node/outbox与处理Run",
+      "width": 128
+    },
+    {
+      "id": "c3",
+      "lane": "future",
+      "col": 2,
+      "type": "backend",
+      "label": "C3 多级返回",
+      "sublabel": "持久送达/采用/接替",
+      "width": 128
+    },
+    {
+      "id": "c4",
+      "lane": "future",
+      "col": 3,
+      "type": "security",
+      "label": "C4 有限正式授权",
+      "sublabel": "精确草案到类型化范围",
+      "width": 128
+    },
+    {
+      "id": "c5",
+      "lane": "future",
+      "col": 4,
+      "type": "frontend",
+      "label": "C5 完整产品办理",
+      "sublabel": "真实时间线与义务投影",
+      "width": 128
+    },
+    {
+      "id": "c6",
+      "lane": "future",
+      "col": 5,
+      "type": "backend",
+      "label": "C6b 接入指南联验",
+      "sublabel": "第二渠道与处理链共同验收",
+      "width": 128
+    },
+    {
+      "id": "c6a",
+      "lane": "provider",
+      "col": 2,
+      "type": "backend",
+      "label": "C6a 第二渠道基础",
+      "sublabel": "准确交付与能力核验",
+      "width": 128
+    }
+  ],
+  "edges": [
+    {
+      "id": "ca-dep-0",
+      "from": "pause",
+      "to": "human-restart",
+      "label": "仅明确重启"
+    },
+    {
+      "id": "ca-dep-1",
+      "from": "human-restart",
+      "to": "check-drift",
+      "label": "核当前条件"
+    },
+    {
+      "id": "ca-dep-2",
+      "from": "check-drift",
+      "to": "new-card",
+      "label": "具体消费者与范围"
+    },
+    {
+      "id": "ca-dep-3",
+      "from": "new-card",
+      "to": "c1",
+      "label": "确认相应范围"
+    },
+    {
+      "id": "ca-dep-4",
+      "from": "c1",
+      "to": "c2",
+      "label": "准确来源基础"
+    },
+    {
+      "id": "ca-dep-5",
+      "from": "c2",
+      "to": "c3",
+      "label": "直接处理成立"
+    },
+    {
+      "id": "ca-dep-6",
+      "from": "c3",
+      "to": "c4",
+      "label": "真实变更场景"
+    },
+    {
+      "id": "ca-dep-7",
+      "from": "c3",
+      "to": "c5",
+      "label": "问题处理链"
+    },
+    {
+      "id": "ca-dep-8",
+      "from": "c4",
+      "to": "c5",
+      "label": "授权办理出口"
+    },
+    {
+      "id": "ca-dep-9",
+      "from": "c5",
+      "to": "c6",
+      "label": "独立接入联验"
+    },
+    {
+      "id": "provider-after-c1",
+      "from": "c1",
+      "to": "c6a",
+      "label": "基础已成立"
+    },
+    {
+      "id": "provider-joint",
+      "from": "c6a",
+      "to": "c6",
+      "label": "第二渠道出口"
+    }
+  ],
+  "mainPath": [
+    "c1",
+    "c2",
+    "c3",
+    "c5",
+    "c6"
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "不是当前行动计划",
+      "items": [
+        "暂停节点之后的线全部受明确重启与具体范围约束",
+        "仅整理文档/图稿不会恢复外部写入、计量或业务批准权限"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "分项准备与完整出口",
+      "items": [
+        "C5基础只读可在C1后准备，完整办理需要C3/C4真实事实",
+        "C6a不等待完整Andon；C6b接入指南联验同时需要第二渠道和处理链"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "未知保持未知",
+      "items": [
+        "原C1产品卡未执行，不能把计划对象当实际残余",
+        "旧协议证据复用须先证明版本/目标/范围未漂移"
+      ]
+    }
+  ],
+  "meta": {
+    "title": "CA-G07 冻结后继任务：明确重启后才可领取",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/07-collaboration-tasks/collaboration-frozen-tasks.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "冻结实施包"
+        },
+        "frontend": {
+          "label": "产品办理"
+        },
+        "security": {
+          "label": "授权/范围"
+        },
+        "external": {
+          "label": "用户决定"
+        }
+      }
+    }
+  }
+}

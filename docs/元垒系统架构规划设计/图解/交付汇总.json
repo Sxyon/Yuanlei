@@ -1,0 +1,253 @@
+{
+  "baseline": "3c5ee33c",
+  "purpose": "target/candidate/frozen planning diagrams; not product implementation evidence",
+  "diagrams": [
+    {
+      "type": "architecture",
+      "candidate": "01-platform/candidate.json",
+      "html": "01-platform/platform-target.html",
+      "sha256": "8e5c8bcc2c90dd163fd5e2416125e05a1ec30874cce6f8b915c35412eef19ce1",
+      "finalize": "01-platform/platform-target.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "1440x900/light"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": null,
+      "capture_receipt": "01-platform/visual-check/platform-target.visual-check.json"
+    },
+    {
+      "type": "architecture",
+      "candidate": "02-dashboard/candidate.json",
+      "html": "02-dashboard/dashboard-architecture.html",
+      "sha256": "a4c92c382ceb6262a985000ba3c288d44029341d47ba5ed7ee20d674bfb456c2",
+      "finalize": "02-dashboard/dashboard-architecture.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "1440x900/light",
+          "2048x1320/dark"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": null,
+      "capture_receipt": "02-dashboard/visual-check/dashboard-architecture.visual-check.json"
+    },
+    {
+      "type": "workflow",
+      "candidate": "03-dashboard-tasks/candidate.json",
+      "html": "03-dashboard-tasks/dashboard-tasks.html",
+      "sha256": "06bf0b8f433820d4b3b526770500c3c8b0bdbfd1dbb0ad0480acc10117e13851",
+      "finalize": "03-dashboard-tasks/review-2/dashboard-tasks.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "1440x900/light",
+          "2048x1320/dark"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": {
+        "action": "inspect-route-readability",
+        "signals": {
+          "routesOverSuggestedBends": 3,
+          "routesOverSuggestedStretch": 1
+        },
+        "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+        "affectedRoutes": {
+          "crossings": [],
+          "detours": [
+            {
+              "relationship": {
+                "id": "dep-14",
+                "from": "t07",
+                "to": "t12",
+                "label": "分项故障补证",
+                "collectionIndex": 6,
+                "artifactIndex": 7
+              },
+              "bends": 3,
+              "stretch": 1.159
+            },
+            {
+              "relationship": {
+                "id": "dep-18",
+                "from": "t03",
+                "to": "t13",
+                "label": "收件箱出口",
+                "collectionIndex": 10,
+                "artifactIndex": 11
+              },
+              "bends": 4,
+              "stretch": 3.36
+            },
+            {
+              "relationship": {
+                "id": "dep-2",
+                "from": "scope-confirm",
+                "to": "t05",
+                "label": "新增交互确认",
+                "collectionIndex": 12,
+                "artifactIndex": 13
+              },
+              "bends": 3,
+              "stretch": 1.133
+            }
+          ],
+          "truncated": false
+        },
+        "hints": [
+          "t07 → t12 needs 3 bends: move node t07 or t12 so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+          "t03 → t13 needs 4 bends: move node t03 or t13 so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+          "scope-confirm → t05 needs 3 bends: move node scope-confirm or t05 so they share a row or column with matching centers, or sit diagonally with a clear corner."
+        ],
+        "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+      },
+      "capture_receipt": "03-dashboard-tasks/visual-check/dashboard-tasks.visual-check.json"
+    },
+    {
+      "type": "architecture",
+      "candidate": "04-collaboration/candidate.json",
+      "html": "04-collaboration/collaboration-target.html",
+      "sha256": "053a5b9eee99538183e49ded606120923339e0332caf9403433114ca4f4a0996",
+      "finalize": "04-collaboration/collaboration-target.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "1440x900/light"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": null,
+      "capture_receipt": "04-collaboration/visual-check/collaboration-target.visual-check.json"
+    },
+    {
+      "type": "architecture",
+      "candidate": "05-topic/candidate.json",
+      "html": "05-topic/topic-relations.html",
+      "sha256": "4c9a88ac5b75d033966358088b0ea0b19c50a991338d718ac0e5cc7c4d22aa43",
+      "finalize": "05-topic/review-2/topic-relations.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "1440x900/light"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": null,
+      "capture_receipt": "05-topic/visual-check-v2/topic-relations.visual-check.json"
+    },
+    {
+      "type": "sequence",
+      "candidate": "06-andon/candidate.json",
+      "html": "06-andon/andon-return.html",
+      "sha256": "452e6ea948d324960ed59266cb1225d4a0d6792420b0c7b09f8a90996da890b8",
+      "finalize": "06-andon/review-3/andon-return.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "1440x900/light",
+          "2048x1320/dark"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": null,
+      "capture_receipt": "06-andon/visual-check/andon-return.visual-check.json"
+    },
+    {
+      "type": "workflow",
+      "candidate": "07-collaboration-tasks/candidate.json",
+      "html": "07-collaboration-tasks/collaboration-frozen-tasks.html",
+      "sha256": "199e240642faa33fbbf01239e8e63317b24d00b4d2de740ed7f4b89691f2f591",
+      "finalize": "07-collaboration-tasks/review-2/collaboration-frozen-tasks.finalize-summary.json",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "visual_review": {
+        "reviewer": "Codex image inspection",
+        "status": "inspected",
+        "scope": [
+          "2048x1320/dark"
+        ],
+        "limit": "Design diagram inspection; no human approval or product verification implied"
+      },
+      "route_advice": {
+        "action": "inspect-route-readability",
+        "signals": {
+          "routesOverSuggestedBends": 1
+        },
+        "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+        "affectedRoutes": {
+          "crossings": [],
+          "detours": [
+            {
+              "relationship": {
+                "id": "ca-dep-3",
+                "from": "new-card",
+                "to": "c1",
+                "label": "确认相应范围",
+                "collectionIndex": 3,
+                "artifactIndex": 4
+              },
+              "bends": 3,
+              "stretch": 1.04
+            }
+          ],
+          "truncated": false
+        },
+        "hints": [
+          "new-card → c1 needs 3 bends: move node new-card or c1 so they share a row or column with matching centers, or sit diagonally with a clear corner."
+        ],
+        "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+      },
+      "capture_receipt": "07-collaboration-tasks/visual-check-v2/collaboration-frozen-tasks.visual-check.json"
+    }
+  ]
+}

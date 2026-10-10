@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+    "sha256": "ca7f9e8367252790fa786728e5140a23b91c33c8b2db605598a4051f22334aac",
+    "bytes": 3599
+  },
+  "artifact": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+    "sha256": "399a83ef22c724b6f2b2548dbf4b9ece237b7d1764cffe4408f46309d326cdf6",
+    "bytes": 754078
+  },
+  "gates": {
+    "validate": "fail",
+    "deliver": "not-run",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "validate",
+  "diagnostics": [
+    {
+      "code": "schema/minimum",
+      "severity": "error",
+      "message": "/messages/0/y (id/label: \"message-0\") must be >= 160 {\"comparison\":\">=\",\"limit\":160}",
+      "subject": {
+        "diagramType": "sequence",
+        "path": "/messages/0/y",
+        "identity": "message-0"
+      },
+      "evidence": {
+        "keyword": "minimum",
+        "comparison": ">=",
+        "limit": 160
+      },
+      "supportedFixes": [
+        "use a value >= 160"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/review-2/andon-return.finalize.json",
+    "summaryReceipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/review-2/andon-return.finalize-summary.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-10T09:20:08.372Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2444,
+  "nextAction": {
+    "action": "edit-in-place",
+    "candidate": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+    "constraint": "Preserve unaffected semantics and geometry; do not replace the whole candidate.",
+    "then": "finalize-once"
+  }
+}

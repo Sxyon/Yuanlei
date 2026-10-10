@@ -177,6 +177,9 @@ jobs:
         )
         self._write("web/AGENTS.md", "# Web 约定\n见 [根约定](../AGENTS.md)。\n")
         self._write("docs/AGENTS.md", "# 文档约定\n见 [根约定](../AGENTS.md)。\n")
+        self._write(
+            "docs/元垒系统架构规划设计/AGENTS.md", "# 专项约定\n"
+        )
 
     def _write_valid_postmortem_files(self) -> None:
         self._write(
@@ -669,6 +672,17 @@ Yuxi 拥有基础入口，元垒拥有差异行为。
 
         self.assertTrue(
             any("缺少 AGENTS 指令文件" in error for error in self._errors())
+        )
+
+    def test_specialist_management_instruction_missing_is_rejected(self) -> None:
+        relative = "docs/元垒系统架构规划设计/AGENTS.md"
+        (self.root / relative).unlink()
+
+        self.assertTrue(
+            any(
+                "缺少 AGENTS 指令文件" in error and relative in error
+                for error in self._errors()
+            )
         )
 
     def test_agents_instruction_broken_link_is_rejected(self) -> None:

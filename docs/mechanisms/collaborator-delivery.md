@@ -34,4 +34,4 @@ PG提交委派intent和创建session标记后调用 `sessions.create`；回执�
 4. 在隔离真实HTTP/PG/Workdir验证错来源、撤权、漂移、未终态、晚Owner、回执丢失及重复回收。
 5. 通过独立Review后按具体整卡验证真实产品入口；各提供者只发布已证明能力。
 
-源码Owner为 `DelegationService`、`CollaboratorService`、`OpenClawExecutor`、`CollaboratorRepository` 与原Result服务；直接证据见 `test_openclaw_delivery.py`、`test_collaboration_protocol.py` 及[C1工程验收与远端卡](../元垒系统架构规划设计/第一阶段专项/协作接入-C1工程验收与远端产品卡-2026-10-10.md)。
+源码Owner为 `DelegationService`、`CollaboratorService`、`OpenClawExecutor`、`CollaboratorRepository` 与原Result服务；直接证据见 `test_openclaw_delivery.py`、`test_collaboration_protocol.py` 及[C1工程验收与远端卡](../元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/协作接入-C1工程验收与远端产品卡-2026-10-10.md)。

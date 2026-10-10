@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "startedAt": "2026-10-10T09:55:12.451Z",
+  "specification": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+    "sha256": "f5c44caab071b852759c1ace58da20e351f11092bf11d472b25d2ebd8d3bf7ef",
+    "bytes": 3599
+  },
+  "artifact": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+    "sha256": "399a83ef22c724b6f2b2548dbf4b9ece237b7d1764cffe4408f46309d326cdf6",
+    "bytes": 754078
+  },
+  "stages": {
+    "validate": {
+      "status": "not-run",
+      "execution": "embedded-in-deliver"
+    },
+    "deliver": {
+      "status": "fail",
+      "exitCode": 0,
+      "durationMs": 7301,
+      "command": [
+        "/Users/sam/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "/Users/sam/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "sequence",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "5c6c28cd-0e4b-4297-a936-9b18370458fc",
+        "ok": true,
+        "command": "deliver",
+        "type": "sequence",
+        "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+        "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+        "specification": {
+          "sha256": "f5c44caab071b852759c1ace58da20e351f11092bf11d472b25d2ebd8d3bf7ef",
+          "bytes": 3599
+        },
+        "artifact": {
+          "sha256": "399a83ef22c724b6f2b2548dbf4b9ece237b7d1764cffe4408f46309d326cdf6",
+          "bytes": 754078
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 1,
+          "compositionIssues": [
+            {
+              "severity": "warning",
+              "code": "composition/viewport-height",
+              "readerFit": null,
+              "viewBoxWidth": 1040,
+              "viewBoxHeight": 800,
+              "viewportWidth": 1440,
+              "viewportHeight": 900,
+              "ratio": 1.3,
+              "wideRatio": 1.55,
+              "svgWidthPx": 1346,
+              "svgHeightPx": 1035,
+              "fixedChromePx": 126,
+              "pageHeightPx": 1161,
+              "overflowPx": 261,
+              "detail": "[composition/viewport-height] Preserve every node, relationship, and label. This 1040x800 canvas (ratio 1.3) declares no intrinsic-height fit and is below the 1.55 wide ratio, so the desktop Reader can neither narrow it nor accept vertical scroll: it renders 1035px tall at the full 1346px width and the page reaches 1161px before cards against 900px, a certain visual-check failure. Either compact vertical spacing so meta.viewBox height is at most 670 at this width, or spread content sideways so the width is at least 1240 at this height; for architecture, omitting meta.viewBox lets the renderer size the canvas and declare the fit."
+            }
+          ]
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "composition/viewport-height",
+      "severity": "error",
+      "message": "Showcase delivery reported composition/viewport-height; zero warnings are required.",
+      "subject": {
+        "stage": "deliver",
+        "check": "composition"
+      },
+      "evidence": {
+        "reportedSeverity": "warning",
+        "readerFit": null,
+        "viewBoxWidth": 1040,
+        "viewBoxHeight": 800,
+        "viewportWidth": 1440,
+        "viewportHeight": 900,
+        "ratio": 1.3,
+        "wideRatio": 1.55,
+        "svgWidthPx": 1346,
+        "svgHeightPx": 1035,
+        "fixedChromePx": 126,
+        "pageHeightPx": 1161,
+        "overflowPx": 261
+      },
+      "supportedFixes": [
+        "Preserve every node, relationship, and label. This 1040x800 canvas (ratio 1.3) declares no intrinsic-height fit and is below the 1.55 wide ratio, so the desktop Reader can neither narrow it nor accept vertical scroll: it renders 1035px tall at the full 1346px width and the page reaches 1161px before cards against 900px, a certain visual-check failure. Either compact vertical spacing so meta.viewBox height is at most 670 at this width, or spread content sideways so the width is at least 1240 at this height; for architecture, omitting meta.viewBox lets the renderer size the canvas and declare the fit."
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.finalize.json",
+    "summaryReceipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "deliver",
+  "finishedAt": "2026-10-10T09:55:20.189Z",
+  "durationMs": 7738,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-10T09:20:08.372Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

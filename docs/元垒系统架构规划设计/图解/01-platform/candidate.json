@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PL-G01 系统目标架构：个人管理闭环",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/01-platform/platform-target.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "业务职责"
+        },
+        "frontend": {
+          "label": "界面职责"
+        },
+        "database": {
+          "label": "持久记录"
+        },
+        "security": {
+          "label": "校验与授权"
+        },
+        "external": {
+          "label": "维护者/协作者"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "project",
+      "type": "backend",
+      "label": "项目入口",
+      "sublabel": "分类标签；责任标识不授予权限",
+      "pos": [
+        50,
+        310
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "work",
+      "type": "backend",
+      "label": "正式工作",
+      "sublabel": "允许无议题/无Agent的人工工作",
+      "pos": [
+        430,
+        310
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "context",
+      "type": "backend",
+      "label": "Context Pack",
+      "sublabel": "要求、选定资料、版本与指纹",
+      "pos": [
+        810,
+        310
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "attempt",
+      "type": "backend",
+      "label": "执行尝试",
+      "sublabel": "分配/派发；人工不虚构Run",
+      "pos": [
+        810,
+        570
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "result",
+      "type": "database",
+      "label": "准确结果与证据",
+      "sublabel": "绑定尝试、要求与文件来源",
+      "pos": [
+        430,
+        570
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "review",
+      "type": "backend",
+      "label": "验收与复盘",
+      "sublabel": "运行结束不等于业务达成",
+      "pos": [
+        50,
+        570
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "topic",
+      "type": "backend",
+      "label": "议题：持续研讨",
+      "sublabel": "同页组织方案、讨论和决定",
+      "pos": [
+        50,
+        80
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "decision",
+      "type": "backend",
+      "label": "批准决定",
+      "sublabel": "草稿/补充/替代/撤销分开",
+      "pos": [
+        430,
+        80
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "blueprint",
+      "type": "backend",
+      "label": "蓝图与目标",
+      "sublabel": "方向、约束和复盘更新",
+      "pos": [
+        810,
+        80
+      ],
+      "size": [
+        230,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "link-0",
+      "from": "project",
+      "to": "work",
+      "label": "直接创建"
+    },
+    {
+      "id": "link-1",
+      "from": "project",
+      "to": "topic",
+      "label": "按需研讨"
+    },
+    {
+      "id": "link-2",
+      "from": "topic",
+      "to": "decision",
+      "label": "形成选择"
+    },
+    {
+      "id": "link-3",
+      "from": "decision",
+      "to": "work",
+      "label": "可选来源"
+    },
+    {
+      "id": "link-4",
+      "from": "blueprint",
+      "to": "context",
+      "label": "选定片段"
+    },
+    {
+      "id": "link-5",
+      "from": "work",
+      "to": "context",
+      "label": "冻结要求"
+    },
+    {
+      "id": "link-6",
+      "from": "context",
+      "to": "attempt",
+      "label": "绑定输入"
+    },
+    {
+      "id": "link-7",
+      "from": "attempt",
+      "to": "result",
+      "label": "准确交付"
+    },
+    {
+      "id": "link-8",
+      "from": "result",
+      "to": "review",
+      "label": "业务核对"
+    },
+    {
+      "id": "link-9",
+      "from": "review",
+      "to": "topic",
+      "label": "反馈/重议",
+      "fromSide": "left",
+      "toSide": "left",
+      "via": [
+        [
+          10,
+          610
+        ],
+        [
+          10,
+          120
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "目标关系与当前事实分开",
+      "items": [
+        "图说明业务架构，不表示所有模型与页面均已验收",
+        "已有基础、具体缺口及源码证据见SYS-PL-001与LOG"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "阶段边界",
+      "items": [
+        "第一阶段用现有任务承载一次性业务；周期定义/实例在第二阶段",
+        "组织成员/共享角色在第三阶段；协作专项暂停目标保留"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "观察层",
+      "items": [
+        "Dashboard读取这些事实，业务写动作进入可信办理页",
+        "项目允许独立工作，不强制每件事先经过议题/决定"
+      ]
+    }
+  ]
+}

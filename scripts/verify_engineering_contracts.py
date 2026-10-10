@@ -90,6 +90,7 @@ AGENTS_FILE_BUDGETS = {
     "backend/AGENTS.md": 2400,
     "web/AGENTS.md": 1000,
     "docs/AGENTS.md": 3200,
+    "docs/元垒系统架构规划设计/AGENTS.md": 1200,
 }
 MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
 REPOSITORY_PATH_CODE_PATTERN = re.compile(

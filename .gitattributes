@@ -4,3 +4,6 @@
 # Docker files
 Dockerfile* text eol=lf
 *.dockerfile text eol=lf
+# Archify图稿保留已验证原始字节；仅允许生成器的行尾空白。
+# 不做换行规范化，其他空白检查继续执行。
+docs/元垒系统架构规划设计/图解/*/*.html -text whitespace=-blank-at-eol

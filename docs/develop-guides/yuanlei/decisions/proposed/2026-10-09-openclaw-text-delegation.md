@@ -8,7 +8,7 @@ Owner：backend/package/yuxi/delegation/contracts.py
 
 ## 问题
 
-[T1-O 实际试验](../../../../元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入-C3T1O协议试验结果-2026-10-09.md) 已取得准确 session/run 的持久文本、终态和同消息补充。现有元垒注册、委派与 Result Owner 尚无 OpenClaw Adapter；现有句柄不能完整恢复远端 Agent、sessionKey 和生命周期修订。外部协议成功不能直接登记为产品接入完成。
+[T1-O 实际试验](../../../../元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作接入-C3T1O协议试验结果-2026-10-09.md) 已取得准确 session/run 的持久文本、终态和同消息补充。现有元垒注册、委派与 Result Owner 尚无 OpenClaw Adapter；现有句柄不能完整恢复远端 Agent、sessionKey 和生命周期修订。外部协议成功不能直接登记为产品接入完成。
 
 ## 提案
 

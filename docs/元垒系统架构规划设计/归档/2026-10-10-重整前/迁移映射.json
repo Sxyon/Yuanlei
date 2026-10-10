@@ -1,0 +1,349 @@
+{
+  "date": "2026-10-10",
+  "baseline": "3c5ee33c64f82fcb5214f29e7b7198730bdeed55",
+  "files": [
+    {
+      "original": "docs/元垒系统架构规划设计/.DS_Store",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/.DS_Store",
+      "sha256_before": "1ee6d3b2d1ed13e5bc913a5884e301ec6c9dbe9d72ec40955b9c588cd6c30c57",
+      "local_only": true
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P01决策需求吸收与执行补充.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P01决策需求吸收与执行补充.md",
+      "sha256_before": "9a38e6f9cc6ee3d2bcd3d966fbdf2a75a5cc8e56155105ae3a304f6698452cc1"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P01完成核对与P02启动建议-b459d82.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P01完成核对与P02启动建议-b459d82.md",
+      "sha256_before": "3c5890c6c3585be33a1784eeba283b458fb7b10340c84dd57142fe4833a19137"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P02完成核对与P03启动建议-dfddcd2.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P02完成核对与P03启动建议-dfddcd2.md",
+      "sha256_before": "164a2ea3cc2447f19d60e71fe5f4efde0fb018f5ad47dd883c558b648134e086"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P03完成核对与P04启动建议-135d0d0.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P03完成核对与P04启动建议-135d0d0.md",
+      "sha256_before": "012b8484ca3c9f08e4c9f84a21099cb026a32be160d40523a673b6ae7aa354da"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P04完成核对与P05启动建议-a199779.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P04完成核对与P05启动建议-a199779.md",
+      "sha256_before": "66779286818ca084e42817c6f16f60f948016b47a1a141a4f5909f1967b19d5f"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P05完成核对与P06启动建议-8f81a2b.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P05完成核对与P06启动建议-8f81a2b.md",
+      "sha256_before": "c4cabdbe6019fc3694b61f02520be92eb9715c4d63c0e29d52eb60d687e5cb18"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P06完成核对与P07启动建议-da51ad9.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P06完成核对与P07启动建议-da51ad9.md",
+      "sha256_before": "984c311e66dfddfa4f7f69c7ac56c03da85d4d0a8e2cdd21bf12f2a2b96b6f4d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P07完成核对与P08启动建议-db0963e.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P07完成核对与P08启动建议-db0963e.md",
+      "sha256_before": "b68aa4e2ce600da4bb340bfa15b64324adf0c232a7300decd901eba7cf78ec24"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P07执行与验收记录.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P07执行与验收记录.md",
+      "sha256_before": "ec1d1ff472a859a6c89d6ac3aaa601da4c778d8abd2dad149b9dd2d6652e7260"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P08完成核对与P09启动建议-89790db.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P08完成核对与P09启动建议-89790db.md",
+      "sha256_before": "0106d4080ca34d9fbb3e9ac56fc32acc503f0ed68bb9d720017ab3562c2050cc"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P08执行与验收记录.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P08执行与验收记录.md",
+      "sha256_before": "d4bf4a2c7c1e9fb1d94739a8a6a58bdc1a05c4c1df8d38f0a82fb3d724df82a0"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P09完成核对与P10启动建议-f611b0c.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P09完成核对与P10启动建议-f611b0c.md",
+      "sha256_before": "2402a8e07e4345c7140fa42388c60fd755cd73ca026d16a71d3734b09071c798"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P09执行与验收记录.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P09执行与验收记录.md",
+      "sha256_before": "611eedf38703dbe9b8f9221f73e976789cf730b580b4a69542e0e7736e895eb2"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/P10执行与验收记录.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/P10执行与验收记录.md",
+      "sha256_before": "66c112583bcfe37140f3148d8c8603deeebb03bcf26ed16e27dfffdc0f135f24"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/S01-S03独立校验与第一阶段深度评估-ef65969.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/S01-S03独立校验与第一阶段深度评估-ef65969.md",
+      "sha256_before": "fc3833e31dd647a3a5d7acca53c4129083961c337b2e9b5143a24ab5c8faf1a4"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/S01历史迁移测试修复验收-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/S01历史迁移测试修复验收-2026-10-08.md",
+      "sha256_before": "03e106a2de11cf34701f87149933b04cceb59a0e6cc643992a6ba90fb0c45cb1"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/S02历史议题资料接入验收-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/S02历史议题资料接入验收-2026-10-08.md",
+      "sha256_before": "49610bca864a6ec1683253a667f4b42cda16321932fe8bf831fae764d5201778"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/S03文件交付登记复验-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/S03文件交付登记复验-2026-10-08.md",
+      "sha256_before": "3fc289738948b7701088c604b38f51c88494e8b4ba2764477e9682dd52d98f20"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/元垒系统架构规划设计.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/元垒系统架构规划设计.md",
+      "sha256_before": "692ffeb474c35608af08d8cc37083dbb1e182f667395423f140976b888519593"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/.DS_Store",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/.DS_Store",
+      "sha256_before": "82ebeca072205ee843288c4a01d384cb9d710cb844066b54f40763de81abdc2d",
+      "local_only": true
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/D0独立走查-问题返回链-7f7cee.png",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/D0独立走查-问题返回链-7f7cee.png",
+      "sha256_before": "ac163ea5beb3cf3dd18087c9ffefa2e1149fca59cc9ee46082772a2280d0838d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/D1治理工作台分批实施与验收-2026-10-10.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/D1治理工作台分批实施与验收-2026-10-10.md",
+      "sha256_before": "bf78409a9f95afcaf06d1239a687510c07b33406f3bdd473a2e9a4886a31706d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/Dashboard-D0设计基线与D1-D6验收卡-2026-10-09.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/Dashboard-D0设计基线与D1-D6验收卡-2026-10-09.md",
+      "sha256_before": "8cda4c32d9746dd1f9c15f73dfee1f9ab214b14d76b33571c8f91ae668f35ae5"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/Dashboard生成加载与项目管理契约草案-v1-93416ef.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/Dashboard生成加载与项目管理契约草案-v1-93416ef.md",
+      "sha256_before": "003d60159c666e38b3be3c2090029d6101e4a594883dda50f4704905c38c4fd4"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两专项D0-C0全面复核与实施收敛-7f7cee.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两专项D0-C0全面复核与实施收敛-7f7cee.md",
+      "sha256_before": "8856cd3688a31e4c31d38f908984694f546feb3a0cf66a3834fc1b9e7b8719f3"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/.DS_Store",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/.DS_Store",
+      "sha256_before": "ff8129d988aa6c41d1fedb9b772449f17024a180470c72c774848f03aeac96d9",
+      "local_only": true
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/Dashboard会话纠偏与下一轮任务-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/Dashboard会话纠偏与下一轮任务-2026-10-08.md",
+      "sha256_before": "f836444e3600faea284517a7a2123929339c1d6ab0cbbebb29cfeba2b10208c5"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/U3独立复查-结果与草稿.png",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/U3独立复查-结果与草稿.png",
+      "sha256_before": "a8d65fd9571b8eddc67ae988dc0497c4867afc83a2ff6e14a18b104133b85316"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/U5独立核查-准确结果页面.png",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/U5独立核查-准确结果页面.png",
+      "sha256_before": "c637ed334d69fdfc8044506012031dc67d15a7a2dd9596d9ead2fd43e6f2dd7d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/collaboration-c2-andon.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/collaboration-c2-andon.svg",
+      "sha256_before": "d8c69b914905fb14c3037bc116f57cde4f500afb33f5435f87cadad790f842eb"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/collaboration-c2-delivery.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/collaboration-c2-delivery.svg",
+      "sha256_before": "8538e055ef52535bcbc31851960408393aa5e96c174dabb2b141ad5710c2f7e2"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-a-relations.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-a-relations.svg",
+      "sha256_before": "405fe2203b5d656c6b303ca5dc59248457d1468fbc31c7de9cd3fe36d50dedec"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-a-sequence.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-a-sequence.svg",
+      "sha256_before": "4a1778fc8565ec7bbadb4db58b232630440c8c9c6063350886e1cf4edc632aa5"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-b-relations.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-b-relations.svg",
+      "sha256_before": "0d3d816eb9adca08c6db216f15df03cb3a4318851748212fab9f426eb05f07f3"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-b-sequence.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-b-sequence.svg",
+      "sha256_before": "1fa146a31f9ef031863e0133b3892e2ca1f7f2a445057972fadc369b99ee782c"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-c-relations.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-c-relations.svg",
+      "sha256_before": "bee4ccc0d4c14d47721f3e464add4e3ba258a55e3064d77ec732d132e4a4369b"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-c-sequence.svg",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/assets/dashboard-u2-c-sequence.svg",
+      "sha256_before": "ddb8ab52b3aa6f8dd0f1d684e944b37948dc6d01be6fd5f319440e3aafc14213"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/两专项U2C2复核与下一轮推进-5f0d098.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/两专项U2C2复核与下一轮推进-5f0d098.md",
+      "sha256_before": "84026ebafeccad5c83fe631fb5e2a511de493c57d25765ccdfabffa13776d189"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/两专项U3T0独立复核与下一步-81faf377-b3ed905f.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/两专项U3T0独立复核与下一步-81faf377-b3ed905f.md",
+      "sha256_before": "afd65589b4a43b36ce23665bc17cad8e22ba594ed1fc95dc593a8de49b07c566"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/两专项U4与T1授权复核及下一步-1f3fe2a.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/两专项U4与T1授权复核及下一步-1f3fe2a.md",
+      "sha256_before": "cfa1e22cf81cea4ebe90f71add50690a06e820a7582cfdbc01b192b0ab78b4fb"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/两专项U5与OpenClaw试验复核及下一步-93416ef.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/两专项U5与OpenClaw试验复核及下一步-93416ef.md",
+      "sha256_before": "425d02d8b21a73b4bb1894ba3fbd48da5dc8234c028dd9c9d71f40ae77f2cef2"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/两专项第三轮独立复核与收敛建议-6a672f4.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/两专项第三轮独立复核与收敛建议-6a672f4.md",
+      "sha256_before": "b69401c0c5652a99014af1118f07429baf87c62904b18ab1816607418a24efe3"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/两专项首轮评估与工作方式纠偏-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/两专项首轮评估与工作方式纠偏-2026-10-08.md",
+      "sha256_before": "54c33c226e2ac76f9424d0f466b4e6de977218d7c4c2fde8063b6b63e8a06ee3"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U0U1事实与讨论-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U0U1事实与讨论-2026-10-08.md",
+      "sha256_before": "785d219a7f31056ad1451745e269900d81e461639b0d2c5918d46bcf84712ece"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U2整体方案比较-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U2整体方案比较-2026-10-08.md",
+      "sha256_before": "5da8b3226d30c6a8311f2c7731521f31b701a8e0ee4d9e55011e54438eca3cb8"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U3第一轮原型与观察-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U3第一轮原型与观察-2026-10-08.md",
+      "sha256_before": "903438f72063c3381dd3701c194e7a26edbe85f5f5cca85447ecc08782248f9a"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U3连续任务与空间对照-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U3连续任务与空间对照-2026-10-08.md",
+      "sha256_before": "577871b3b29da03f8f9e48120604a26fdeb219f0dd7096d682fe2a0c587dab5d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U4分项收敛与首个实施包-2026-10-09.md",
+      "sha256_before": "0975d616c86c9c63c2ad1971501a16d781aa18e614a1c7ef0dac9afdc04eaf2e"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U5首包实施与验收-2026-10-09.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard-U5首包实施与验收-2026-10-09.md",
+      "sha256_before": "bbeebbc76b0337d9990af83464056e8cac030a32329bf4e339669d91b5da917e"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard专项规划-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/信息架构与Dashboard专项规划-2026-10-08.md",
+      "sha256_before": "f76060624c46a23c14c68b59dfc9354d373ee5cdbc6e5d08e610186cdeedc78d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作与Andon会话纠偏与下一轮任务-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作与Andon会话纠偏与下一轮任务-2026-10-08.md",
+      "sha256_before": "53d3e69183355c0a31cd585fbf5d038bb1cc7c8efbd3e604be314dfa34c83c4a"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入-C3T1O协议试验结果-2026-10-09.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作接入-C3T1O协议试验结果-2026-10-09.md",
+      "sha256_before": "693056b839007c579e5ca51c6f369ad0c581f3fb5a220e1603f3aa98d0fcd3a8"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入与Andon-C0C1事实与讨论-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作接入与Andon-C0C1事实与讨论-2026-10-08.md",
+      "sha256_before": "ff6d49ea3e51da804092162bb04d34be32be20398965618d9fe7fb31fabbfda0"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入与Andon-C2端到端方案比较-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作接入与Andon-C2端到端方案比较-2026-10-08.md",
+      "sha256_before": "1dab83b5a32a3e1ae5ce023c67a4c0ce7e27ebe22ef3c1887504b8ff0dde0536"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入与Andon-C3T0前置核查与T1任务卡-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作接入与Andon-C3T0前置核查与T1任务卡-2026-10-08.md",
+      "sha256_before": "98e31243e70823a29f3c517457fa20f07d91831ec6005a71b3ed3d30f864eb05"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/协作接入与Andon专项规划-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/协作接入与Andon专项规划-2026-10-08.md",
+      "sha256_before": "02d78103f806ae6c7952eda8e90469b9548b06b293ac2518e856f1e0ebb282fe"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/模型输出截断修复与收敛-一次性任务指令.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/模型输出截断修复与收敛-一次性任务指令.md",
+      "sha256_before": "2fdb2bc74b1554c6141834b1d05c132c575d2e3ac6fad0000d455e46732c31bc"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两个专项初次任务执行/第一阶段两项专项规划总纲-2026-10-08.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两个专项初次任务执行/第一阶段两项专项规划总纲-2026-10-08.md",
+      "sha256_before": "ff3c4407a1cdd246d62877eb4ab6d6c87bd502a9d12270a0a953186a0c4a25e6"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/两项专项全面审计与第一阶段重规划-93416ef.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/两项专项全面审计与第一阶段重规划-93416ef.md",
+      "sha256_before": "679e9d769d309757c1e9941f1d19b733662c5ed73083bd4692616c210ca0945b"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/协作接入-C0整体契约基线与C1-C6验收卡-2026-10-09.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/协作接入-C0整体契约基线与C1-C6验收卡-2026-10-09.md",
+      "sha256_before": "52752a3c3b89cf12103c194149a714f4eb8ea4fa7a97a118e7b06a8f8c8fe40d"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/协作接入-C1工程验收与远端产品卡-2026-10-10.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/协作接入-C1工程验收与远端产品卡-2026-10-10.md",
+      "sha256_before": "6515103e23e39fd03aecc541d64f71c5ae5c97d8e4ae3133913e66e6a9d7add4"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/协作者接入与Andon协议草案-v1-93416ef.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/协作者接入与Andon协议草案-v1-93416ef.md",
+      "sha256_before": "94b338e602b10d138dbde47a63ee314eab40961c1006ed3f479779ae65a2fe8a"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/样例/collaboration-read-v1-joint.json",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/样例/collaboration-read-v1-joint.json",
+      "sha256_before": "7c0e6426f05abaf7efbbd726e1e1871d97386e7119cf5f484a0bac855539c8f3"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段专项/样例/collaboration-v1-c0.json",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段专项/样例/collaboration-v1-c0.json",
+      "sha256_before": "3ca9dda9741683bbb28795bf9aed8149c118f311418b9d67d64e9ad1dad0bcb7"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段建设评估与执行计划-bd563c9.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段建设评估与执行计划-bd563c9.md",
+      "sha256_before": "9704853e10e4c665ffd046fad6f95c76f1eadefa0dc1dc9e25d049a6226050a7"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/第一阶段独立工程审查与下一步行动计划-9ace7be.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/第一阶段独立工程审查与下一步行动计划-9ace7be.md",
+      "sha256_before": "a4430fb0362c066f14bea1e2f530013ed400ff83c8d230d28a717d86e09fd987"
+    },
+    {
+      "original": "docs/元垒系统架构规划设计/议题规划吸收评估与下一次开发任务.md",
+      "archive": "docs/元垒系统架构规划设计/归档/2026-10-10-重整前/议题规划吸收评估与下一次开发任务.md",
+      "sha256_before": "595c865941ec6f742c68475426307def075b9a8a86caeb79302ba685294f3653"
+    }
+  ]
+}

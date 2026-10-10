@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "784a5fb0-be35-44e5-90e7-da5f8f67bfdc",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/01-platform/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/01-platform/platform-target.html",
+  "specification": {
+    "sha256": "e1ed793588d3037367b8be13665692a880cac92969354ebbf9a2b4ed8ea17203",
+    "bytes": 5047
+  },
+  "artifact": {
+    "sha256": "8e5c8bcc2c90dd163fd5e2416125e05a1ec30874cce6f8b915c35412eef19ce1",
+    "bytes": 760389
+  }
+}

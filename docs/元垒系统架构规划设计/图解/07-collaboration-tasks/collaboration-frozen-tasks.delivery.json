@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ffa67be5-508f-487b-b0f4-d3638d10b6e6",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/07-collaboration-tasks/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/07-collaboration-tasks/collaboration-frozen-tasks.html",
+  "specification": {
+    "sha256": "c2c6c1b00174348681556c8715c34218481974932bbf6afe7685614bf4ce3058",
+    "bytes": 5538
+  },
+  "artifact": {
+    "sha256": "199e240642faa33fbbf01239e8e63317b24d00b4d2de740ed7f4b89691f2f591",
+    "bytes": 764912
+  }
+}
