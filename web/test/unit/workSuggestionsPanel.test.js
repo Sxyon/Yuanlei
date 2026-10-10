@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict'
+import { createPinia, setActivePinia } from 'pinia'
 import { after, before, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, ssrContextKey } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createServer } from 'vite'
+let useUserStore, clearGovernanceDrafts
 let vite, Panel, api, workApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+  ;({ useUserStore } = await vite.ssrLoadModule('/src/stores/user.js'))
+  ;({ clearGovernanceDrafts } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js'))
   ;({ default: Panel } = await vite.ssrLoadModule(
     '/src/components/project/WorkSuggestionsPanel.vue'
   ))
@@ -34,7 +38,8 @@ const settle = async () => {
   await nextTick()
   await new Promise((resolve) => setImmediate(resolve))
 }
-async function mount(t) {
+async function mount(t, preserve = false) {
+  const pinia = createPinia(); setActivePinia(pinia); if (!preserve) clearGovernanceDrafts(); useUserStore().uid = 'test-user'
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -60,6 +65,7 @@ async function mount(t) {
     { projectId: 'project' }
   )
   app.use(router)
+  app.use(pinia)
   app.provide(ssrContextKey, { modules: new Set() })
   app.mount({})
   t.after(() => app.unmount())
@@ -160,4 +166,46 @@ test('关闭弹窗后迟到候选不覆盖选择', async (t) => {
   assert.equal(state.selected, null)
   assert.deepEqual(state.works, [])
   assert.equal(state.projectCode, '')
+})
+
+
+test('关闭及重新进入恢复准确建议的准入草稿，成功清除该对象', async t => {
+  t.mock.method(workApi, 'listTasks', async () => [{ id: 'target', number: 'P-G-1', title: '已有工作' }])
+  t.mock.method(workApi, 'listTopics', async () => [])
+  t.mock.method(workApi, 'getCode', async () => ({ code: 'P' }))
+  const item = { id: 'suggestion', title: '来源建议' }
+  const first = await mount(t)
+  await first.state.open(item)
+  first.state.mode = 'link'; first.state.workId = 'target'; first.state.reason = '准确目标'
+  first.state.close()
+  const restored = await mount(t, true)
+  await restored.state.open(item)
+  assert.equal(restored.state.mode, 'link')
+  assert.equal(restored.state.workId, 'target')
+  assert.equal(restored.state.reason, '准确目标')
+  t.mock.method(api, 'admitTask', async () => ({ work: { id: 'target' } }))
+  await restored.state.submit()
+  const { getGovernanceDraft } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js')
+  assert.equal(getGovernanceDraft('test-user', 'project', 'suggestion:suggestion'), null)
+})
+
+
+test('恢复准入草稿不恢复无版本依据的人工复核；写入无权后清除缓存', async t => {
+  t.mock.method(workApi, 'listTasks', async () => [])
+  t.mock.method(workApi, 'listTopics', async () => [])
+  t.mock.method(workApi, 'getCode', async () => ({ code: 'P' }))
+  const item = { id: 's', title: '合成建议' }
+  const first = await mount(t)
+  await first.state.open(item)
+  first.state.reviewConfirmed = true; first.state.description = '未提交正文'
+  first.state.close()
+  const next = await mount(t, true)
+  await next.state.open(item)
+  assert.equal(next.state.description, '未提交正文')
+  assert.equal(next.state.reviewConfirmed, false)
+  t.mock.method(api, 'admitTask', async () => { throw Object.assign(new Error('无权'), { status: 403 }) })
+  await next.state.submit()
+  assert.equal(next.state.selected, null)
+  const { getGovernanceDraft } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js')
+  assert.equal(getGovernanceDraft('test-user', 'project', 'suggestion:s'), null)
 })

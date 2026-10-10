@@ -62,6 +62,7 @@
         >
       </div>
       <div v-if="dispositionOpen" class="record-form">
+        <a-button :disabled="busy" @click="discardDisposition">清弃处置草稿并重新核对</a-button>
         <a-select v-model:value="dispositionDraft.disposition" aria-label="采纳处置"
           ><a-select-option v-for="(label, key) in labels" :key="key" :value="key">{{
             label
@@ -122,7 +123,7 @@ const props = defineProps({
   archived: Boolean,
   draft: Object
 })
-const emit = defineEmits(['updated'])
+const emit = defineEmits(['updated', 'visibility-lost'])
 const sharedDraft = reactive(props.draft)
 const replyOpen = ref(false),
   dispositionOpen = ref(false),
@@ -161,14 +162,28 @@ async function postReply() {
     if (replyDraft.content === content) replyDraft.content = ''
     emit('updated')
   } catch (failure) {
-    if (active) error.value = describeBoardError(failure)
+    if (active) {
+      error.value = describeBoardError(failure)
+      if ([401, 403, 404].includes(failure?.status || failure?.response?.status)) emit('visibility-lost', failure)
+    }
   } finally {
     if (active) busy.value = false
   }
 }
 function openDisposition() {
-  dispositionDraft.expectedVersion = currentDisposition.value?.version || 0
+  if (!dispositionDraft.explanation && !dispositionDraft.referenceKey && !dispositionDraft.intent)
+    dispositionDraft.expectedVersion = currentDisposition.value?.version || 0
   dispositionOpen.value = !dispositionOpen.value
+  error.value = dispositionDraft.expectedVersion !== (currentDisposition.value?.version || 0)
+    ? '保留原处置版本的草稿；请核对当前记录，或清弃草稿后重新起草。' : ''
+}
+function discardDisposition() {
+  dispositionDraft.explanation = ''
+  dispositionDraft.referenceKey = undefined
+  delete dispositionDraft.intent
+  delete dispositionDraft.operationId
+  dispositionDraft.expectedVersion = currentDisposition.value?.version || 0
+  error.value = ''
 }
 async function saveDisposition() {
   const payload = stableIntent(dispositionDraft, {
@@ -182,10 +197,15 @@ async function saveDisposition() {
   try {
     await api.recordTopicDisposition(props.projectId, props.topicId, props.comment.id, payload)
     if (!active) return
+    consumeIntent(dispositionDraft, payload.operation_id)
+    if (dispositionDraft.disposition === payload.disposition && dispositionDraft.explanation === payload.explanation && JSON.stringify(selectedReference(dispositionDraft.referenceKey)) === JSON.stringify(payload.reference)) { dispositionDraft.explanation = ''; dispositionDraft.referenceKey = undefined }
     dispositionOpen.value = false
     emit('updated')
   } catch (failure) {
-    if (active) error.value = describeBoardError(failure)
+    if (active) {
+      error.value = describeBoardError(failure)
+      if ([401, 403, 404].includes(failure?.status || failure?.response?.status)) emit('visibility-lost', failure)
+    }
   } finally {
     if (active) busy.value = false
   }

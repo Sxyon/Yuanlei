@@ -1,5 +1,11 @@
 <template>
   <section class="decision-panel">
+    <details v-if="removedDraft">
+      <summary>复制已移除决策的未提交草稿 · {{ removedDraft.title }}</summary>
+      <a-textarea :value="removedDraft.content" readonly aria-label="已移除决策草稿" :rows="6" />
+      <a-button @click="removedDraft = null">清除此草稿副本</a-button>
+    </details>
+    <a-alert v-if="selectedId && !decisions.some(item => item.id === selectedId)" type="warning" show-icon message="指定决策不在当前可见列表；保留原地址，不跳到另一条决策。" />
     <p>草案可修改；批准后原文保留。补充保留原决策有效，整条替代才使原决策失效。</p>
     <p v-if="!decisions.length">还没有决策记录。</p>
     <article
@@ -280,6 +286,8 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import { getGovernanceDraft, setGovernanceDraft, clearGovernanceDrafts } from '@/utils/governanceDrafts'
 import { Modal } from 'ant-design-vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -293,8 +301,9 @@ const props = defineProps({
   topics: { type: Array, default: () => [] },
   selectedId: { type: String, default: '' }
 })
-const emit = defineEmits(['updated', 'select', 'compose', 'topic'])
+const emit = defineEmits(['updated', 'select', 'compose', 'topic', 'visibility-lost'])
 const route = useRoute()
+const user = useUserStore()
 const referencedRevision = ref(null)
 const referencedRevisionError = ref('')
 let referenceGeneration = 0
@@ -344,6 +353,14 @@ const draft = ref({}),
     corrected_text: '',
     meaning_unchanged: false
   })
+const removedDraft = ref(null)
+const actionRevision = ref(null)
+let restoringDraft = false
+const actionFields = { action, reason, draft, erratum, actionRevision }
+watch(Object.values(actionFields), () => {
+  if (restoringDraft || !selected.value || !user.uid) return
+  setGovernanceDraft(user.uid, props.projectId, `decision:${selected.value.id}`, action.value ? Object.fromEntries(Object.entries(actionFields).map(([name, value]) => [name, value.value])) : null)
+}, { deep: true, flush: 'sync' })
 const approvedTargets = computed(() =>
   props.decisions.filter((d) => d.status === 'approved' && d.id !== selected.value?.id)
 )
@@ -364,6 +381,7 @@ function chooseAction(value) {
     error.value = '当前表单尚未保存，请先保存或取消。'
     return false
   }
+  actionRevision.value = detail.value.revision_number
   action.value = value
   reason.value = ''
   error.value = ''
@@ -384,22 +402,24 @@ function beginEdit() {
     topic_id: detail.value.topic_id,
     relation_type: detail.value.relation_type,
     target_decision_id: detail.value.target_decision_id,
-    expected_revision: detail.value.revision_number
+    expected_revision: actionRevision.value
   }
 }
-async function open(decision) {
+async function open(decision, updateRoute = true) {
   if (busy.value) return
   if (action.value) {
     error.value = '当前表单尚未保存，请先保存或取消；草稿仍可复制。'
     return
   }
+  restoringDraft = true
   selected.value = decision
   detail.value = null
   events.value = []
   nextBefore.value = null
   error.value = ''
   action.value = ''
-  emit('select', decision.id)
+  restoringDraft = false
+  if (updateRoute) emit('select', decision.id)
   const seq = ++generation
   loading.value = true
   try {
@@ -409,15 +429,30 @@ async function open(decision) {
     selected.value = result
     events.value = result.timeline
     nextBefore.value = result.next_before
+    const saved = getGovernanceDraft(user.uid, props.projectId, `decision:${decision.id}`)
+    if (saved) {
+      restoringDraft = true
+      for (const [name, value] of Object.entries(actionFields)) value.value = saved[name]
+      restoringDraft = false
+      if (actionRevision.value !== result.revision_number) error.value = '原依据已变化，草稿保留原修订；请复制或取消后重新核对，不能自动重放。'
+    }
   } catch (e) {
-    if (seq === generation) error.value = e?.message || '读取决策失败'
+    if (seq === generation) {
+      error.value = e?.message || '读取决策失败'
+      if ((e?.status || e?.response?.status) === 404) {
+        const saved = getGovernanceDraft(user.uid, props.projectId, `decision:${decision.id}`)
+        if (saved) removedDraft.value = { id: decision.id, title: decision.title, content: JSON.stringify(saved, null, 2) }
+        emit('visibility-lost', e)
+      }
+      if ([401, 403].includes(e?.status || e?.response?.status)) { clearGovernanceDrafts(user.uid, props.projectId); restoringDraft = true; action.value = ''; restoringDraft = false; emit('visibility-lost', e) }
+    }
   } finally {
     if (seq === generation) loading.value = false
   }
 }
-function openById(id) {
+function openById(id, updateRoute = true) {
   const decision = props.decisions.find((d) => d.id === id)
-  if (decision) open(decision)
+  if (decision) open(decision, updateRoute)
 }
 async function loadMore() {
   if (loading.value || !nextBefore.value) return
@@ -464,12 +499,12 @@ async function perform() {
       await api.createDecisionErratum(props.projectId, id, {
         ...erratum.value,
         reason: reason.value,
-        expected_revision: detail.value.revision_number
+        expected_revision: actionRevision.value
       })
     else
       await api.operateDecision(props.projectId, id, {
         action: operation,
-        expected_revision: detail.value.revision_number,
+        expected_revision: actionRevision.value,
         reason: reason.value
       })
     if (seq !== generation) return
@@ -483,7 +518,11 @@ async function perform() {
       emit('select', '')
     } else await open({ id })
   } catch (e) {
-    if (seq === generation) error.value = e?.message || '操作失败，草稿已保留'
+    if (seq === generation) {
+      error.value = e?.message || '操作失败，草稿已保留'
+      if ((e?.status || e?.response?.status) === 404) emit('visibility-lost', e)
+      if ([401, 403].includes(e?.status || e?.response?.status)) { clearGovernanceDrafts(user.uid, props.projectId); restoringDraft = true; action.value = ''; restoringDraft = false; emit('visibility-lost', e) }
+    }
   } finally {
     if (seq === generation) busy.value = false
   }
@@ -506,26 +545,40 @@ watch(
 watch(
   () => props.selectedId,
   (id) => {
-    if (id && id !== selected.value?.id) openById(id)
+    if (id && id !== selected.value?.id) openById(id, false)
   },
   { immediate: true }
 )
 watch(
   () => props.decisions,
   () => {
-    if (props.selectedId && !selected.value) openById(props.selectedId)
+    if (selected.value && !props.decisions.some(item => item.id === selected.value.id)) {
+      if (action.value) removedDraft.value = { id: selected.value.id, title: selected.value.title, content: JSON.stringify({ draft: draft.value, erratum: erratum.value, reason: reason.value }, null, 2) }
+      generation++
+      busy.value = false
+      loading.value = false
+      restoringDraft = true
+      selected.value = null
+      detail.value = null
+      action.value = ''
+      restoringDraft = false
+    }
+    if (props.selectedId && !selected.value) openById(props.selectedId, false)
   }
 )
 watch(
-  () => props.projectId,
+  () => [props.projectId, user.uid],
   () => {
     generation++
     deleteConfirmation?.destroy()
     loading.value = false
     busy.value = false
+    removedDraft.value = null
+    restoringDraft = true
     selected.value = null
     detail.value = null
     action.value = ''
+    restoringDraft = false
     events.value = []
   }
 )

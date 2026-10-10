@@ -25,7 +25,7 @@
       >
         <template #action><a-button size="small" @click="load">重试</a-button></template>
       </a-alert>
-      <template v-else>
+      <div v-if="!errorMessage" v-show="!loading" class="workbench-content">
         <a-alert
           v-if="actionError"
           type="error"
@@ -57,13 +57,14 @@
             v-for="item in sectionLinks"
             :key="item.id"
             type="button"
-            @click="jumpTo(item.id)"
+            :aria-pressed="activeSection === item.id"
+            @click="navigateSection(item.id)"
           >
             {{ item.label }}
           </button>
         </nav>
 
-        <section id="blueprint" class="workbench-section">
+        <section id="blueprint" v-show="activeSection === 'blueprint'" class="workbench-section">
           <div class="section-heading">
             <span class="section-index">01</span>
             <div>
@@ -94,8 +95,15 @@
             <a-button :disabled="busy || loading" @click="openCreateBlueprint">新建蓝图</a-button>
           </div>
           <a-alert v-if="sharedBlueprintDirectory" type="info" show-icon message="这些项目共用目录，蓝图文件可能共享。修改、重命名和归档会作用于同一份文件。" class="blueprint-shared-hint" />
-          <a-textarea
+          <div v-if="blueprintName && !blueprintEditing" class="blueprint-reader">
+            <MarkdownPreview :content="blueprintContent || '这份蓝图尚无正文。'" />
+            <a-button :disabled="busy || loading" @click="blueprintEditing = true">编辑蓝图</a-button>
+            <span v-if="blueprintContent !== savedBlueprintContent" class="hint">已恢复未保存草稿；尚未写入蓝图。</span>
+          </div>
+          <p v-else-if="!blueprintName" class="hint">暂无蓝图，可新建并记录项目目标与计划。</p>
+          <a-textarea v-show="blueprintName && blueprintEditing"
             v-model:value="blueprintContent"
+            aria-label="蓝图正文"
             :rows="9"
             :disabled="!blueprintName"
             placeholder="在这里编辑项目目标、范围、验收标准与执行计划"
@@ -103,12 +111,13 @@
           <div class="form-row">
             <a-button
               type="primary"
-              :disabled="!blueprintName || blueprintName !== loadedBlueprintName || busy || loading"
+              v-if="blueprintEditing"
+              :disabled="!blueprintName || !blueprints.some(doc => doc.name === loadedBlueprintName) || blueprintName !== loadedBlueprintName || busy || loading"
               @click="saveBlueprint"
               >保存蓝图</a-button
-            ><span v-if="blueprintContent !== savedBlueprintContent" class="hint"
+            ><a-button v-if="blueprintEditing" :disabled="busy" @click="blueprintEditing = false">返回阅读（保留草稿）</a-button><span v-if="blueprintEditing && blueprintContent !== savedBlueprintContent" class="hint"
               >有未保存的蓝图草稿</span
-            ><span v-else class="hint">保存后从项目 Workdir 回读。</span>
+            ><span v-else-if="blueprintEditing" class="hint">保存后从项目 Workdir 回读。</span>
             <a-dropdown v-if="blueprintName" :trigger="['click']" placement="bottomRight">
               <a-button
                 class="blueprint-more"
@@ -132,7 +141,8 @@
               </template>
             </a-dropdown>
           </div>
-          <div class="blueprint-history">
+          <details class="blueprint-history" :open="!!selectedArchive">
+            <summary>历史蓝图 · {{ archivedBlueprints.length }} 份</summary>
             <h3>
               历史蓝图 <span>{{ archivedBlueprints.length }}</span>
             </h3>
@@ -170,7 +180,7 @@
                 <p v-else class="hint">选择一份历史蓝图查看内容。</p>
               </div>
             </div>
-          </div>
+          </details>
         </section>
 
         <a-modal v-model:open="createBlueprintOpen" title="新建蓝图" :width="760" :mask-closable="false" :confirm-loading="busy" :ok-button-props="{ disabled: busy }" :cancel-button-props="{ disabled: busy }" ok-text="创建蓝图" cancel-text="取消" @ok="createBlueprint">
@@ -262,7 +272,7 @@
           </div>
         </a-modal>
 
-        <section id="topics" class="workbench-section">
+        <section id="topics" v-show="activeSection === 'topics'" class="workbench-section">
           <div class="section-heading">
             <span class="section-index">02</span>
             <div>
@@ -296,17 +306,29 @@
             </div>
           </div>
           <a-alert v-if="topicCommentError" type="error" show-icon :message="topicCommentError" />
+          <details v-if="orphanedTopicDraft" class="draft-recovery">
+            <summary>复制不可见议题的未提交草稿 · {{ orphanedTopicDraft.title }} · 原修订 {{ orphanedTopicDraft.revision }}</summary>
+            <a-textarea :value="`${orphanedTopicDraft.content}\n\n预期：${orphanedTopicDraft.expected}\n核对：${orphanedTopicDraft.conditions}\n原因：${orphanedTopicDraft.reason}`" readonly aria-label="不可见议题草稿" :auto-size="{ minRows: 6, maxRows: 20 }" />
+            <a-button @click="orphanedTopicDraft = null">清除此草稿副本</a-button>
+          </details>
           <div class="topic-layout">
             <aside class="topic-sidebar">
               <div class="topic-sidebar-heading">
                 <strong>议题列表</strong>
                 <a-checkbox v-model:checked="showArchivedTopics">显示归档</a-checkbox>
-                <span>{{ allTopics.length }}</span>
+                <span>{{ visibleTopics.length }} / {{ allTopics.length }}</span>
                 <a-button size="small" :disabled="busy" @click="topicComposerVisible = true">
                   提出议题
                 </a-button>
               </div>
-              <p v-if="!allTopics.length" class="hint topic-list-empty">还没有议题。</p>
+              <a-input v-model:value="topicSearch" aria-label="搜索议题" placeholder="按标题或正文查找" allow-clear />
+              <a-select v-model:value="topicFilter" aria-label="议题准入筛选">
+                <a-select-option value="all">全部准入状态</a-select-option>
+                <a-select-option value="proposed">待纳入</a-select-option>
+                <a-select-option value="canonical">已纳入</a-select-option>
+                <a-select-option value="rejected">已拒绝</a-select-option>
+              </a-select>
+              <p v-if="!visibleTopics.length" class="hint topic-list-empty">没有符合条件的议题。</p>
               <article
                 v-for="topic in visibleTopics"
                 :key="topic.id"
@@ -321,6 +343,7 @@
                   <span class="topic-list-summary">{{ topic.summary || '暂无议题说明' }}</span>
                 </button>
                 <a-tag>{{ topicProgressLabel(topic.progress) }}</a-tag>
+                <a-tag v-if="topic.requires_review" color="orange">需复核</a-tag>
                 <a-button
                   v-if="!topic.archived_at"
                   size="small"
@@ -373,7 +396,7 @@
                     @click="saveTopicEdit"
                     >保存议题修改</a-button
                   >
-                  <a-button :disabled="busy" @click="editingTopic = false">取消</a-button>
+                  <a-button :disabled="busy" @click="cancelTopicEdit">取消</a-button>
                 </div>
               </div>
               <section v-else class="topic-proposal-body">
@@ -387,6 +410,24 @@
                 </p>
               </section>
 
+              <section v-if="!editingTopic" class="current-topic-context" aria-label="当前决定与关联工作">
+                <h4>当前有效决定</h4>
+                <p v-if="!selectedTopicDecisions.length" class="hint">尚无已批准决定；讨论和工作可独立进行。</p>
+                <article v-for="decision in selectedTopicDecisions" :key="decision.id" class="context-card">
+                  <button type="button" class="context-link" @click="selectDecision(decision.id)">{{ decision.title }} · 修订 {{ decision.revision_number }}</button>
+                  <a-tag v-if="decision.requires_review" color="orange">需复核</a-tag>
+                  <MarkdownPreview :content="decision.conclusion || ''" />
+                  <RouterLink :to="decisionWorkLink(decision)">基于此决定创建正式工作</RouterLink>
+                </article>
+                <h4>关联工作与建议</h4>
+                <RouterLink v-for="work in selectedTopicWorks" :key="work.id" class="context-card" :to="{ name: 'ProjectWorkTaskView', params: { project_id: projectId, task_id: work.id } }">{{ work.number }} · {{ work.title }} · {{ overviewStatusLabel(work.status) }}</RouterLink>
+                <p v-if="!selectedTopicSuggestions.length && !selectedTopicWorks.length" class="hint">当前没有关联工作建议；正式工作仍可从项目“工作”独立创建。</p>
+                <div v-for="item in selectedTopicSuggestions" :key="item.id" class="context-card">
+                  <RouterLink v-if="item.work" :to="{ name: 'ProjectWorkTaskView', params: { project_id: projectId, task_id: item.work.id } }">建议 {{ item.title }} · 已纳入 {{ item.work.number }}</RouterLink>
+                  <button v-else type="button" class="context-link" @click="openSuggestion(item)">{{ item.title }} · {{ governanceStatusLabel(item.status) }}</button>
+                </div>
+              </section>
+
               <TopicHistoryPanel
                 :key="`${projectId}:${selectedTopic.id}`"
                 :project-id="projectId"
@@ -394,6 +435,7 @@
                 :draft="topicDiscussionDraft(selectedTopic.id)"
                 :decisions="board.governance?.decisions || []"
                 @updated="load"
+                @visibility-lost="visibilityLost"
               />
 
               <footer
@@ -437,7 +479,8 @@
             </div>
           </div>
 
-          <div id="decision-entry" class="decision-entry">
+          <details id="decision-entry" :open="decisionComposerVisible" class="decision-entry" @toggle="decisionComposerVisible = $event.target.open">
+            <summary>新增决策草案</summary>
             <div class="composer-heading">
               <div>
                 <h3>新增决策</h3>
@@ -515,7 +558,7 @@
                 >保存决策草案</a-button
               >
             </div>
-          </div>
+          </details>
           <section id="decisions" class="decision-records">
             <div class="composer-heading">
               <div>
@@ -531,6 +574,7 @@
               :topics="allTopics"
               :selected-id="String(route.query.decision_id || '')"
               @updated="load"
+                @visibility-lost="visibilityLost"
               @select="selectDecision"
               @compose="composeRelatedDecision"
               @topic="openDecisionTopic"
@@ -538,7 +582,7 @@
           </section>
         </section>
 
-        <section id="tasks" class="workbench-section">
+        <section id="tasks" v-show="activeSection === 'tasks'" class="workbench-section">
           <div class="section-heading">
             <span class="section-index">03</span>
             <div>
@@ -546,6 +590,9 @@
               <p>建议纳入正式工作后执行，旧执行记录继续保留。</p>
             </div>
           </div>
+          <details :open="taskComposerVisible" class="suggestion-composer" @toggle="taskComposerVisible = $event.target.open">
+            <summary>记录工作建议</summary>
+            <p class="hint">议题、决定和数字员工均可不选；直接创建正式工作请进入项目“工作”。</p>
           <div class="form-row">
             <a-input v-model:value="taskTitle" placeholder="工作建议标题" /><a-select
               v-model:value="taskAgentSlug"
@@ -588,7 +635,8 @@
               >创建工作建议</a-button
             >
           </div>
-          <WorkSuggestionsPanel :project-id="projectId" :suggestions="board.governance?.tasks || []" :topics="allTopics" :decisions="board.governance?.decisions || []" @reject="task => reviewTask(task, false)" @admitted="load" />
+          </details>
+          <WorkSuggestionsPanel :project-id="projectId" :suggestions="board.governance?.tasks || []" :topics="allTopics" :decisions="board.governance?.decisions || []" @reject="task => reviewTask(task, false)" @admitted="load" @visibility-lost="visibilityLost" />
           <ul class="workbench-list">
             <li
               v-for="task in (board.governance?.tasks || []).filter(item => taskDelegations(item.id).length)"
@@ -645,7 +693,7 @@
           </ul>
         </section>
 
-        <section id="reports" class="workbench-section">
+        <section id="reports" v-show="activeSection === 'reports'" class="workbench-section">
           <div class="section-heading">
             <span class="section-index">04</span>
             <div>
@@ -662,7 +710,7 @@
             </li>
           </ul>
         </section>
-      </template>
+      </div>
     </div>
   </div>
 </template>
@@ -684,15 +732,21 @@ import GovernanceBoardPanel from '@/components/inspection/GovernanceBoardPanel.v
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { displayBlueprintName, normalizeBlueprintName } from '@/utils/blueprintName'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
+import { useUserStore } from '@/stores/user'
+import { getGovernanceDraft, setGovernanceDraft, clearGovernanceDrafts } from '@/utils/governanceDrafts'
+import { projectWorkApi } from '@/apis/project_work_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 import {
   describeBoardError,
   governanceStatusColor,
-  governanceStatusLabel
+  governanceStatusLabel,
+  overviewStatusLabel
 } from '@/utils/governanceBoard'
 
 const route = useRoute()
 const router = useRouter()
+const user = useUserStore()
+let active = true
 const projectId = computed(() => String(route.params.project_id || ''))
 const loading = ref(false)
 const scrollContainer = ref(null)
@@ -714,6 +768,8 @@ const sharedBlueprintDirectory = ref(false)
 let newBlueprintInitialized = false
 const blueprintActionError = ref('')
 const blueprintContent = ref('')
+const blueprintEditing = ref(false)
+const activeSection = ref('blueprint')
 const loadedBlueprintName = ref('')
 const savedBlueprintContent = ref('')
 const renameBlueprintOpen = ref(false)
@@ -734,6 +790,7 @@ const topicDraftTitle = ref('')
 const topicDraftSummary = ref('')
 const selectedTopicId = ref('')
 const topicEditError = ref('')
+const orphanedTopicDraft = ref(null)
 const topicDiscussionDrafts = ref({})
 // 草稿由工作台按议题保留，切换详情不会丢失未发送内容。
 function topicDiscussionDraft(topicId) {
@@ -742,6 +799,7 @@ function topicDiscussionDraft(topicId) {
 }
 const topicCommentError = ref('')
 const editingTopic = ref(false)
+const editingTopicId = ref('')
 const editingTopicTitle = ref('')
 const editingTopicSummary = ref('')
 const editingTopicExpected = ref('')
@@ -764,23 +822,86 @@ const sectionLinks = [
   { id: 'tasks', label: '工作建议' },
   { id: 'reports', label: '督查与汇报' }
 ]
-const jumpTo = (id) =>
+/** 旧对象锚点先展开所属栏目，再定位原对象。 */
+async function jumpTo(id) {
+  if (!active) return
+  const section = sectionLinks.some(item => item.id === id) ? id
+    : id.startsWith('task-') || id.startsWith('legacy-execution-') ? 'tasks'
+    : id.startsWith('decision-') || id === 'decisions' ? 'topics' : null
+  if (section) activeSection.value = section
+  if (id === 'decision-entry') decisionComposerVisible.value = true
+  await nextTick()
+  if (!active) return
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 let blueprintReadSeq = 0
 let archiveReadSeq = 0
 let loadSeq = 0
 const pageTitle = computed(() =>
   board.value?.project?.name ? `${board.value.project.name} · 项目工作台` : '项目工作台'
 )
+const formalWorks = ref([])
 const topicRows = ref([])
+const topicSearch = ref('')
+const topicFilter = ref('all')
+const decisionComposerVisible = ref(false)
+const taskComposerVisible = ref(false)
 const showArchivedTopics = ref(false)
 const allTopics = computed(() => topicRows.value)
 const visibleTopics = computed(() =>
-  allTopics.value.filter((t) => showArchivedTopics.value || !t.archived_at)
+  allTopics.value.filter((t) => (showArchivedTopics.value || !t.archived_at) && (topicFilter.value === 'all' || t.admission_status === topicFilter.value) && `${t.title} ${t.summary || ''}`.toLocaleLowerCase().includes(topicSearch.value.trim().toLocaleLowerCase()))
 )
 const selectableTopics = computed(() => allTopics.value.filter((t) => !t.archived_at))
+const selectedTopicDecisions = computed(() => (board.value.governance?.decisions || []).filter(d => d.topic_id === selectedTopicId.value && d.status === 'approved'))
+const selectedTopicWorks = computed(() => formalWorks.value.filter(w => w.topic_id === selectedTopicId.value || selectedTopicDecisions.value.some(d => d.id === w.source_decision_id)))
+const selectedTopicSuggestions = computed(() => (board.value.governance?.tasks || []).filter(t => t.topic_id === selectedTopicId.value || selectedTopicDecisions.value.some(d => d.id === t.decision_id)))
+const decisionWorkLink = decision => ({ name: 'ProjectWorkTasksView', params: { project_id: projectId.value }, query: { create: '1', source_decision_id: decision.id, ...(decision.topic_id ? { topic_id: decision.topic_id } : {}) } })
+function openSuggestion(item) { router.replace({ query: { ...route.query, task_id: item.id }, hash: `#task-${item.id}` }); jumpTo(`task-${item.id}`) }
+function navigateSection(id) { router.replace({ query: route.query, hash: `#${id}` }); jumpTo(id) }
 const editingTopicReason = ref('')
 const editingTopicRevision = ref(null)
+// 只缓存表单及其原依据，不缓存后端状态、权限或业务读投影。
+const formRefs = { topicSearch, topicFilter, showArchivedTopics, decisionComposerVisible, taskComposerVisible, activeSection, blueprintEditing, blueprintName, loadedBlueprintName,
+  blueprintContent, savedBlueprintContent, newBlueprintName, newBlueprintContent,
+  newBlueprintTemplate, newBlueprintBaseline, topicDraftTitle, topicDraftSummary,
+  topicComposerVisible, orphanedTopicDraft, topicDiscussionDrafts, selectedTopicId, editingTopic, editingTopicId,
+  editingTopicTitle, editingTopicSummary, editingTopicExpected, editingTopicConditions,
+  editingTopicReason, editingTopicRevision, decisionTitle, decisionConclusion,
+  decisionRationale, decisionTopicId, decisionRelationType, decisionTargetId,
+  taskTitle, taskDescription, taskTopicId, taskDecisionId, taskAgentSlug }
+const copy = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value))
+const formDefaults = Object.fromEntries(Object.entries(formRefs).map(([name, value]) => [name, copy(value.value)]))
+let draftScope = { user: user.uid, project: projectId.value }
+let restoringForms = false
+function restoreForms() {
+  const draft = getGovernanceDraft(user.uid, projectId.value, 'workbench')
+  restoringForms = true
+  for (const [name, value] of Object.entries(formRefs)) value.value = copy(draft?.[name] ?? formDefaults[name])
+  newBlueprintInitialized = Boolean(newBlueprintContent.value)
+  restoringForms = false
+}
+async function visibilityLost(error) {
+  const status = error?.status || error?.response?.status
+  const project = projectId.value, owner = user.uid
+  if (status === 404) {
+    try {
+      await api.getProjectBoard(project)
+      return // 单个对象不可见，保留原对象草稿供核对，不清同项目其他正文。
+    } catch (failure) {
+      if (![401, 403, 404].includes(failure?.status || failure?.response?.status)) return
+    }
+  }
+  if (project !== projectId.value || owner !== user.uid) return
+  errorMessage.value = describeBoardError(error)
+  clearGovernanceDrafts(user.uid, projectId.value)
+  restoreForms()
+}
+function persistForms() {
+  if (restoringForms || errorMessage.value || draftScope.user !== user.uid || draftScope.project !== projectId.value) return
+  setGovernanceDraft(user.uid, projectId.value, 'workbench',
+    Object.fromEntries(Object.entries(formRefs).map(([name, value]) => [name, value.value])))
+}
+watch(Object.values(formRefs), persistForms, { deep: true, flush: 'sync' })
 const selectedTopic = computed(() =>
   allTopics.value.find((item) => item.id === selectedTopicId.value)
 )
@@ -822,16 +943,19 @@ async function readBlueprint() {
   }
   const name = blueprintName.value
   const project = projectId.value
+  const owner = user.uid
+  const before = blueprintContent.value
   const seq = ++blueprintReadSeq
   try {
     const document = await api.getBlueprint(project, name)
-    if (seq !== blueprintReadSeq || blueprintName.value !== name || projectId.value !== project)
+    if (seq !== blueprintReadSeq || blueprintName.value !== name || projectId.value !== project || owner !== user.uid)
       return
+    if (blueprintContent.value !== before) return
     blueprintContent.value = document.content
     savedBlueprintContent.value = document.content
     loadedBlueprintName.value = document.name
   } catch (error) {
-    if (seq !== blueprintReadSeq || blueprintName.value !== name || projectId.value !== project)
+    if (seq !== blueprintReadSeq || blueprintName.value !== name || projectId.value !== project || owner !== user.uid)
       return
     blueprintName.value = loadedBlueprintName.value
     blueprintActionError.value = describeBoardError(error)
@@ -840,6 +964,7 @@ async function readBlueprint() {
 
 async function readArchive(name) {
   const project = projectId.value
+  const owner = user.uid
   const seq = ++archiveReadSeq
   selectedArchive.value = name
   archiveLoading.value = true
@@ -847,13 +972,13 @@ async function readArchive(name) {
   archiveContent.value = ''
   try {
     const document = await api.getBlueprintArchive(project, name)
-    if (seq !== archiveReadSeq || projectId.value !== project) return
+    if (seq !== archiveReadSeq || projectId.value !== project || owner !== user.uid) return
     archiveContent.value = document.content
   } catch (error) {
-    if (seq !== archiveReadSeq || projectId.value !== project) return
+    if (seq !== archiveReadSeq || projectId.value !== project || owner !== user.uid) return
     archiveError.value = describeBoardError(error)
   } finally {
-    if (seq === archiveReadSeq && projectId.value === project) archiveLoading.value = false
+    if (seq === archiveReadSeq && projectId.value === project && owner === user.uid) archiveLoading.value = false
   }
 }
 
@@ -872,7 +997,7 @@ function setTopicRoute(topicId) {
     name: 'ProjectInspectionBoardComp',
     params: { project_id: projectId.value },
     query,
-    hash: route.hash
+    hash: '#topics'
   })
 }
 
@@ -889,13 +1014,19 @@ function selectDecision(id) {
   if (id !== route.query.decision_id) delete query.decision_revision
   if (id) query.decision_id = id
   else delete query.decision_id
-  router.replace({ query, hash: route.hash })
+  activeSection.value = 'topics'
+  router.replace({ query, hash: '#decisions' })
 }
 function openDecisionTopic(id) {
   const topic = allTopics.value.find((t) => t.id === id)
   if (topic) selectTopic(topic)
 }
 function composeRelatedDecision(decision, relationType) {
+  if (decisionTitle.value || decisionConclusion.value || decisionRationale.value) {
+    actionError.value = '已有未提交的决策草案，请先保存；原草稿与来源保持不变。'
+    jumpTo('decision-entry')
+    return
+  }
   decisionTitle.value = ''
   decisionConclusion.value = ''
   decisionRationale.value = ''
@@ -906,6 +1037,11 @@ function composeRelatedDecision(decision, relationType) {
 }
 
 function createDecisionFromTopic(topic) {
+  if (decisionTitle.value || decisionConclusion.value || decisionRationale.value) {
+    actionError.value = '已有未提交的决策草案，请先保存；原草稿与来源保持不变。'
+    jumpTo('decision-entry')
+    return
+  }
   if (!canLeaveTopicEditor()) return
   selectedTopicId.value = topic.id
   decisionTopicId.value = topic.id
@@ -932,59 +1068,81 @@ function canLeaveTopicEditor() {
   return false
 }
 
+const topicEditFields = { editingTopicTitle, editingTopicSummary, editingTopicExpected, editingTopicConditions, editingTopicReason, editingTopicRevision }
+watch(Object.values(topicEditFields), () => {
+  if (editingTopic.value && editingTopicId.value && !restoringForms && draftScope.user === user.uid && draftScope.project === projectId.value)
+    setGovernanceDraft(user.uid, projectId.value, `topic-edit:${editingTopicId.value}`, Object.fromEntries(Object.entries(topicEditFields).map(([name, value]) => [name, value.value])))
+}, { deep: true, flush: 'sync' })
+function cancelTopicEdit() {
+  setGovernanceDraft(user.uid, projectId.value, `topic-edit:${editingTopicId.value}`, null)
+  editingTopic.value = false
+}
 function beginEditTopic() {
   if (!selectedTopic.value || selectedTopic.value.archived_at) return
   topicEditError.value = ''
+  editingTopicId.value = selectedTopic.value.id
   editingTopicTitle.value = selectedTopic.value.title
   editingTopicSummary.value = selectedTopic.value.summary || ''
   editingTopicExpected.value = selectedTopic.value.expected_outcome || ''
   editingTopicConditions.value = selectedTopic.value.verification_conditions || ''
   editingTopicReason.value = ''
   editingTopicRevision.value = selectedTopic.value.revision_number
+  const saved = getGovernanceDraft(user.uid, projectId.value, `topic-edit:${editingTopicId.value}`)
+  if (saved) {
+    restoringForms = true
+    for (const [name, value] of Object.entries(topicEditFields)) value.value = saved[name]
+    restoringForms = false
+    if (editingTopicRevision.value !== selectedTopic.value.revision_number) topicEditError.value = '草稿保留原修订，请先核对当前正文；不会自动改换依据重放。'
+  }
   editingTopic.value = true
 }
 
 async function load() {
   const project = projectId.value
+  const owner = user.uid
   const seq = ++loadSeq
   loading.value = true
   errorMessage.value = ''
   try {
-    const [boardResult, docsResult, archiveResult, agentResult, delegationResult, topicsResult] =
+    const [boardResult, docsResult, archiveResult, agentResult, delegationResult, topicsResult, worksResult] =
       await Promise.allSettled([
         api.getProjectBoard(project),
         api.listBlueprints(project),
         api.listBlueprintArchives(project),
         projectAgentApi.list(project),
         api.listDelegations(project),
-        api.listTopics(project, true)
+        api.listTopics(project, true),
+        projectWorkApi.listTasks(project)
       ])
-    if (seq !== loadSeq || projectId.value !== project) return
+    if (seq !== loadSeq || projectId.value !== project || owner !== user.uid) return
     if (boardResult.status === 'rejected') throw boardResult.reason
     board.value = boardResult.value
+    formalWorks.value = worksResult.status === 'fulfilled' ? worksResult.value : []
     topicRows.value =
       topicsResult.status === 'fulfilled'
         ? topicsResult.value
         : boardResult.value.governance?.topics || []
     const topics = topicRows.value
     const requestedTopicId = String(route.query.topic_id || '')
-    const nextTopic =
+    const missingTopic = topicsResult.status === 'fulfilled' && ((requestedTopicId && !topics.some(item => item.id === requestedTopicId)) || (editingTopic.value && selectedTopicId.value && !topics.some(item => item.id === selectedTopicId.value)))
+    if (missingTopic) {
+      if (editingTopic.value) orphanedTopicDraft.value = { id: selectedTopicId.value, revision: editingTopicRevision.value, title: editingTopicTitle.value, content: editingTopicSummary.value, expected: editingTopicExpected.value, conditions: editingTopicConditions.value, reason: editingTopicReason.value }
+      editingTopic.value = false
+      topicCommentError.value = '原议题不可见或已移除，不会把原草稿提交到另一议题。请核对原地址；未提交正文仍保留供复制。'
+    }
+    const nextTopic = missingTopic ? null :
       topics.find((item) => item.id === requestedTopicId) ||
       topics.find((item) => item.id === selectedTopicId.value) ||
       [...topics]
         .reverse()
         .find((item) => item.admission_status === 'proposed' && !item.archived_at) ||
       [...topics].reverse()[0]
+    if (editingTopic.value && nextTopic?.id !== editingTopicId.value) editingTopic.value = false
     selectedTopicId.value = nextTopic?.id || ''
-    if (
-      topicsResult.status === 'fulfilled' &&
-      requestedTopicId &&
-      !topics.some((item) => item.id === requestedTopicId)
-    )
-      setTopicRoute('')
+
     agents.value = agentResult.status === 'fulfilled' ? agentResult.value.agents || [] : []
     delegations.value = delegationResult.status === 'fulfilled' ? delegationResult.value : []
-    const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult, topicsResult]
+    const auxiliaryErrors = [docsResult, archiveResult, agentResult, delegationResult, topicsResult, worksResult]
       .filter((result) => result.status === 'rejected')
       .map((result) => describeBoardError(result.reason))
     if (auxiliaryErrors.length)
@@ -1005,33 +1163,46 @@ async function load() {
         }
       }
       if (!blueprints.value.length) {
-        blueprintName.value = ''
-        loadedBlueprintName.value = ''
-        blueprintContent.value = ''
-        savedBlueprintContent.value = ''
+        if (blueprintContent.value !== savedBlueprintContent.value) {
+          blueprintActionError.value = '原蓝图已不在当前列表，未保存草稿保留供复制；请核对后新建。'
+        } else {
+          blueprintName.value = ''
+          loadedBlueprintName.value = ''
+          blueprintContent.value = ''
+          savedBlueprintContent.value = ''
+        }
       }
     }
   } catch (error) {
-    if (seq === loadSeq && projectId.value === project)
+    if (seq === loadSeq && projectId.value === project && owner === user.uid) {
       errorMessage.value = describeBoardError(error)
+      if ([401, 403, 404].includes(error?.status || error?.response?.status)) {
+        clearGovernanceDrafts(user.uid, project)
+        restoreForms()
+      }
+    }
   } finally {
-    if (seq === loadSeq && projectId.value === project) loading.value = false
+    if (seq === loadSeq && projectId.value === project && owner === user.uid) loading.value = false
   }
 }
 
 async function act(operation, errorTarget = actionError) {
+  const project = projectId.value, owner = user.uid
   busy.value = true
   errorTarget.value = ''
   try {
-    await operation()
+    await operation(() => project === projectId.value && owner === user.uid)
+    if (project !== projectId.value || owner !== user.uid) return
     await load()
   } catch (error) {
+    if (project !== projectId.value || owner !== user.uid) return
     errorTarget.value = describeBoardError(error)
+    if ([401, 403, 404].includes(error?.status || error?.response?.status)) await visibilityLost(error)
     if (error?.response?.data?.detail?.code === 'revision_conflict') {
       errorTarget.value += '。您的草稿已保留，可先复制正文，再取消编辑并刷新后重新修改。'
     }
   } finally {
-    busy.value = false
+    if (project === projectId.value && owner === user.uid) busy.value = false
   }
 }
 
@@ -1055,8 +1226,9 @@ function openCreateBlueprint() {
 function changeBlueprintTemplate(type) {
   if (type === newBlueprintTemplate.value) return
   const project = projectId.value
+  const owner = user.uid
   const apply = () => {
-    if (project !== projectId.value || !createBlueprintOpen.value) return
+    if (project !== projectId.value || owner !== user.uid || !createBlueprintOpen.value) return
     newBlueprintTemplate.value = type
     newBlueprintContent.value = blueprintTemplateContent(type)
     newBlueprintBaseline.value = newBlueprintContent.value
@@ -1079,11 +1251,12 @@ async function createBlueprint() {
     return
   }
   const project = projectId.value
+  const owner = user.uid
   busy.value = true
   createBlueprintError.value = ''
   try {
     const created = await api.createBlueprint(project, name, newBlueprintContent.value)
-    if (project !== projectId.value) return
+    if (project !== projectId.value || owner !== user.uid) return
     blueprintReadSeq += 1
     blueprintName.value = created.name
     loadedBlueprintName.value = created.name
@@ -1095,28 +1268,34 @@ async function createBlueprint() {
     newBlueprintContent.value = ''
     await load()
   } catch (error) {
-    if (project === projectId.value) createBlueprintError.value = describeBoardError(error)
+    if (project === projectId.value && owner === user.uid) createBlueprintError.value = describeBoardError(error)
+    if (project === projectId.value && owner === user.uid && [401, 403, 404].includes(error?.status || error?.response?.status)) await visibilityLost(error)
   } finally {
-    busy.value = false
+    if (project === projectId.value && owner === user.uid) busy.value = false
   }
 }
-const saveBlueprint = () =>
-  act(async () => {
+const saveBlueprint = () => {
+  const project = projectId.value, name = loadedBlueprintName.value, submitted = blueprintContent.value
+  return act(async (isCurrent) => {
     const document = await api.putBlueprint(
-      projectId.value,
-      loadedBlueprintName.value,
-      blueprintContent.value
+      project,
+      name,
+      submitted
     )
+    if (!isCurrent() || project !== projectId.value || name !== loadedBlueprintName.value) return
     savedBlueprintContent.value = document.content
     loadedBlueprintName.value = document.name
+    if (blueprintContent.value === submitted) blueprintEditing.value = false
   }, blueprintActionError)
+}
 const archiveBlueprint = () => {
   if (blueprintContent.value !== savedBlueprintContent.value) {
     blueprintActionError.value = '蓝图有未保存的修改，请先保存后归档'
     return
   }
-  act(async () => {
+  act(async (isCurrent) => {
     const archived = await api.archiveBlueprint(projectId.value, blueprintName.value)
+    if (!isCurrent()) return
     blueprintReadSeq += 1
     blueprintName.value = ''
     loadedBlueprintName.value = ''
@@ -1135,12 +1314,13 @@ function handleBlueprintMenu({ key }) {
   } else if (key === 'delete') {
     openBlueprintDelete(false)
   } else if (key === 'archive') {
+    const project = projectId.value, owner = user.uid, name = loadedBlueprintName.value
     Modal.confirm({
       title: '归档蓝图',
       content: `「${displayBlueprintName(loadedBlueprintName.value)}」归档后将从当前列表移出，可在历史蓝图中翻阅。`,
       okText: '归档',
       cancelText: '取消',
-      onOk: archiveBlueprint
+      onOk: () => { if (project === projectId.value && owner === user.uid && name === loadedBlueprintName.value) return archiveBlueprint() }
     })
   }
 }
@@ -1157,9 +1337,10 @@ async function renameBlueprint() {
   busy.value = true
   renameBlueprintError.value = ''
   const project = projectId.value
+  const owner = user.uid
   try {
     const renamed = await api.renameBlueprint(project, loadedBlueprintName.value, name)
-    if (projectId.value !== project) return
+    if (projectId.value !== project || owner !== user.uid) return
     blueprintReadSeq += 1
     blueprints.value = blueprints.value
       .map((doc) => (doc.name === loadedBlueprintName.value ? { ...doc, ...renamed } : doc))
@@ -1169,9 +1350,10 @@ async function renameBlueprint() {
     renameBlueprintOpen.value = false
     message.success('蓝图已重命名')
   } catch (error) {
-    if (projectId.value === project) renameBlueprintError.value = describeBoardError(error)
+    if (projectId.value === project && owner === user.uid) renameBlueprintError.value = describeBoardError(error)
+    if (project === projectId.value && owner === user.uid && [401, 403, 404].includes(error?.status || error?.response?.status)) await visibilityLost(error)
   } finally {
-    busy.value = false
+    if (project === projectId.value && owner === user.uid) busy.value = false
   }
 }
 
@@ -1193,12 +1375,13 @@ async function deleteBlueprint() {
   if (busy.value || !deleteBlueprintTarget.value) return
   const target = deleteBlueprintTarget.value
   const project = projectId.value
+  const owner = user.uid
   busy.value = true
   deleteBlueprintError.value = ''
   try {
     if (target.archived) {
       await api.deleteBlueprintArchive(project, target.key)
-      if (projectId.value !== project) return
+      if (projectId.value !== project || owner !== user.uid) return
       archiveReadSeq += 1
       selectedArchive.value = ''
       archiveContent.value = ''
@@ -1206,7 +1389,7 @@ async function deleteBlueprint() {
       archiveLoading.value = false
     } else {
       await api.deleteBlueprint(project, target.key)
-      if (projectId.value !== project) return
+      if (projectId.value !== project || owner !== user.uid) return
       blueprintReadSeq += 1
       blueprintName.value = ''
       loadedBlueprintName.value = ''
@@ -1217,29 +1400,32 @@ async function deleteBlueprint() {
     message.success('蓝图已永久删除')
     await load()
   } catch (error) {
-    if (projectId.value !== project) return
+    if (projectId.value !== project || owner !== user.uid) return
+    if ([401, 403, 404].includes(error?.status || error?.response?.status)) await visibilityLost(error)
     if (deleteBlueprintOpen.value) deleteBlueprintError.value = describeBoardError(error)
     else blueprintActionError.value = describeBoardError(error)
   } finally {
-    busy.value = false
+    if (project === projectId.value && owner === user.uid) busy.value = false
   }
 }
 
 const submitTopic = () =>
-  act(async () => {
+  act(async (isCurrent) => {
     const created = await api.createTopic(projectId.value, {
       title: topicDraftTitle.value,
       summary: topicDraftSummary.value
     })
+    if (!isCurrent()) return
     topicDraftTitle.value = ''
     topicDraftSummary.value = ''
     topicComposerVisible.value = false
     selectedTopicId.value = created.id
     setTopicRoute(created.id)
   })
-const saveTopicEdit = () =>
-  act(async () => {
-    await api.updateTopic(projectId.value, selectedTopic.value.id, {
+const saveTopicEdit = () => {
+  if (!editingTopic.value || editingTopicId.value !== selectedTopic.value?.id) return
+  return act(async (isCurrent) => {
+    await api.updateTopic(projectId.value, editingTopicId.value, {
       title: editingTopicTitle.value,
       summary: editingTopicSummary.value,
       expected_outcome: editingTopicExpected.value,
@@ -1247,12 +1433,15 @@ const saveTopicEdit = () =>
       expected_revision: editingTopicRevision.value,
       reason: editingTopicReason.value
     })
+    if (!isCurrent()) return
+    setGovernanceDraft(user.uid, projectId.value, `topic-edit:${editingTopicId.value}`, null)
     editingTopic.value = false
   }, topicEditError)
+}
 const reviewTopic = (topic, approve) =>
   act(() => api.reviewTopic(projectId.value, topic.id, approve))
 const createDecision = () =>
-  act(async () => {
+  act(async (isCurrent) => {
     await api.createDecision(projectId.value, {
       title: decisionTitle.value,
       conclusion: decisionConclusion.value,
@@ -1261,6 +1450,7 @@ const createDecision = () =>
       relation_type: decisionRelationType.value,
       target_decision_id: decisionTargetId.value || null
     })
+    if (!isCurrent()) return
     decisionTitle.value = ''
     decisionConclusion.value = ''
     decisionRationale.value = ''
@@ -1269,7 +1459,7 @@ const createDecision = () =>
     decisionTargetId.value = undefined
   })
 const createTask = () =>
-  act(async () => {
+  act(async (isCurrent) => {
     await api.createTask(projectId.value, {
       title: taskTitle.value,
       description: taskDescription.value,
@@ -1277,6 +1467,7 @@ const createTask = () =>
       decision_id: taskDecisionId.value || null,
       assignee_agent_slug: taskAgentSlug.value || null
     })
+    if (!isCurrent()) return
     taskTitle.value = ''
     taskDescription.value = ''
     taskTopicId.value = undefined
@@ -1302,9 +1493,10 @@ async function pollDelegations() {
   )
     return
   const project = projectId.value
+  const owner = user.uid
   try {
     const rows = await api.listDelegations(project)
-    if (project === projectId.value) delegations.value = rows
+    if (project === projectId.value && owner === user.uid) delegations.value = rows
   } catch {
     // 手动刷新仍可重试；轮询不覆盖页面上的其他错误。
   }
@@ -1316,7 +1508,7 @@ const refreshDelegation = (item) =>
 const collectDelegation = (item) =>
   act(() => api.collectDelegation(projectId.value, item.operation_id))
 
-watch(projectId, () => {
+watch([projectId, () => user.uid], () => {
   createBlueprintOpen.value = false
   createBlueprintError.value = ''
   newBlueprintName.value = ''
@@ -1344,6 +1536,7 @@ watch(projectId, () => {
   blueprintActionError.value = ''
   selectedTopicId.value = ''
   topicRows.value = []
+  formalWorks.value = []
   showArchivedTopics.value = false
   topicCommentError.value = ''
   topicComposerVisible.value = false
@@ -1357,6 +1550,10 @@ watch(projectId, () => {
   decisionRationale.value = ''
   decisionTopicId.value = undefined
   taskTopicId.value = undefined
+  draftScope = { user: user.uid, project: projectId.value }
+  restoreForms()
+  actionError.value = ''
+  busy.value = false
   load()
 })
 watch(
@@ -1372,10 +1569,10 @@ watch(
   }
 )
 watch(
-  [loading, () => route.query.task_id, () => route.query.decision_id],
-  async ([isLoading, taskId, decisionId]) => {
+  [loading, () => route.query.task_id, () => route.query.decision_id, () => route.query.topic_id],
+  async ([isLoading, taskId, decisionId, topicId]) => {
     if (isLoading) return
-    const recordId = taskId ? `task-${taskId}` : decisionId ? `decision-${decisionId}` : ''
+    const recordId = taskId ? `task-${taskId}` : decisionId ? `decision-${decisionId}` : topicId ? 'topics' : ''
     if (!recordId) return
     await nextTick()
     jumpTo(recordId)
@@ -1385,20 +1582,31 @@ watch(
 watch(
   [loading, () => route.hash],
   async ([isLoading, hash]) => {
-    if (isLoading || !hash || !sectionLinks.some((item) => `#${item.id}` === hash)) return
+    if (isLoading || !hash) return
     await nextTick()
     jumpTo(hash.slice(1))
   },
   { immediate: true }
 )
 onMounted(() => {
+  restoreForms()
   load()
   delegationPoll = setInterval(pollDelegations, 10000)
 })
-onUnmounted(() => clearInterval(delegationPoll))
+onUnmounted(() => { active = false; clearInterval(delegationPoll) })
 </script>
 
 <style scoped lang="less">
+.current-topic-context { display: flex; flex-direction: column; gap: 10px; }
+.context-card { padding: 12px; border: 1px solid var(--gray-150); border-radius: 6px; overflow-wrap: anywhere; }
+.context-link { padding: 0; background: none; border: none; color: var(--main-color); cursor: pointer; text-align: left; }
+summary { min-height: 36px; cursor: pointer; color: var(--gray-700); }
+.workbench-content { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.blueprint-reader { min-width: 0; overflow-wrap: anywhere; }
+.workbench-nav button[aria-pressed="true"] { background: var(--main-30); color: var(--main-color); border-color: var(--main-color); }
+.workbench-nav button:focus-visible { outline: 2px solid var(--main-color); outline-offset: 2px; }
+.workbench-nav button { min-height: 44px; }
+.blueprint-history summary { cursor: pointer; color: var(--color-text-secondary); }
 .blueprint-shared-hint { margin: 10px 0; }
 .inspection-page {
   display: flex;
@@ -1415,6 +1623,9 @@ onUnmounted(() => clearInterval(delegationPoll))
   gap: 18px;
   padding: var(--page-padding);
   background: var(--gray-25);
+}
+.inspection-body :deep(a) {
+  color: var(--main-color);
 }
 .workbench-intro {
   display: flex;
@@ -1547,6 +1758,21 @@ onUnmounted(() => clearInterval(delegationPoll))
   overflow-wrap: anywhere;
 }
 @media (max-width: 680px) {
+  .inspection-page :deep(.page-header) {
+    height: auto;
+    min-height: 48px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .inspection-page :deep(.page-header-title) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .inspection-page :deep(.page-header-right) {
+    flex-wrap: wrap;
+  }
   .workbench-intro {
     align-items: flex-start;
     flex-direction: column;

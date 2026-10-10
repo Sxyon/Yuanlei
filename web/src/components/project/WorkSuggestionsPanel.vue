@@ -113,6 +113,8 @@
 </template>
 <script setup>
 import { ref, watch } from 'vue'
+import { useUserStore } from '@/stores/user'
+import { getGovernanceDraft, setGovernanceDraft, clearGovernanceDrafts } from '@/utils/governanceDrafts'
 import { RouterLink, useRouter } from 'vue-router'
 import { governanceBoardApi } from '@/apis/governance_board_api'
 import { projectWorkApi } from '@/apis/project_work_api'
@@ -124,8 +126,9 @@ const props = defineProps({
   topics: { type: Array, default: () => [] },
   decisions: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['reject', 'admitted'])
+const emit = defineEmits(['reject', 'admitted', 'visibility-lost'])
 const router = useRouter()
+const user = useUserStore()
 const selected = ref(null),
   mode = ref('create'),
   title = ref(''),
@@ -145,6 +148,11 @@ const works = ref([]),
   loading = ref(false),
   busy = ref(false)
 let generation = 0
+let restoring = false
+const fields = { mode, title, description, topicId, decisionId, workId, reason, codeDraft, topicCodeDraft }
+watch(Object.values(fields), () => {
+  if (!restoring && selected.value && user.uid) setGovernanceDraft(user.uid, props.projectId, `suggestion:${selected.value.id}`, Object.fromEntries(Object.entries(fields).map(([name, value]) => [name, value.value])))
+}, { deep: true, flush: 'sync' })
 const workLink = (id) => ({
   name: 'ProjectWorkTaskView',
   params: { project_id: props.projectId, task_id: id }
@@ -158,6 +166,7 @@ function close() {
 }
 async function open(item) {
   const seq = ++generation
+  restoring = true
   selected.value = item
   mode.value = 'create'
   title.value = item.title
@@ -171,6 +180,10 @@ async function open(item) {
   existingWork.value = null
   codeDraft.value = ''
   topicCodeDraft.value = ''
+  const saved = getGovernanceDraft(user.uid, props.projectId, `suggestion:${item.id}`)
+  if (saved) for (const [name, value] of Object.entries(fields)) value.value = saved[name]
+  reviewConfirmed.value = false
+  restoring = false
   loading.value = true
   try {
     const [tasks, topics, code] = await Promise.all([
@@ -183,7 +196,11 @@ async function open(item) {
     workTopics.value = topics
     projectCode.value = code?.code || ''
   } catch (e) {
-    if (seq === generation) error.value = e?.message || '读取失败，请关闭后重试'
+    if (seq === generation) {
+      error.value = e?.message || '读取失败，请关闭后重试'
+      if ((e?.status || e?.response?.status) === 404) emit('visibility-lost', e)
+      if ([401, 403].includes(e?.status || e?.response?.status)) { clearGovernanceDrafts(user.uid, props.projectId); selected.value = null; emit('visibility-lost', e) }
+    }
   } finally {
     if (seq === generation) loading.value = false
   }
@@ -197,7 +214,7 @@ async function saveCode() {
     const code = await projectWorkApi.configureCode(project, codeDraft.value)
     if (seq === generation) projectCode.value = code.code
   } catch (e) {
-    if (seq === generation) error.value = e?.message || '编号保存失败，输入已保留'
+    if (seq === generation) { if ((e?.status || e?.response?.status) === 404) emit('visibility-lost', e); error.value = e?.message || '编号保存失败，输入已保留'; if ([401, 403].includes(e?.status || e?.response?.status)) { clearGovernanceDrafts(user.uid, project); selected.value = null; emit('visibility-lost', e) } }
   } finally {
     if (seq === generation) busy.value = false
   }
@@ -213,7 +230,7 @@ async function saveTopicCode() {
     const topics = await projectWorkApi.listTopics(project)
     if (seq === generation) workTopics.value = topics
   } catch (e) {
-    if (seq === generation) error.value = e?.message || '议题编号保存失败，输入已保留'
+    if (seq === generation) { if ((e?.status || e?.response?.status) === 404) emit('visibility-lost', e); error.value = e?.message || '议题编号保存失败，输入已保留'; if ([401, 403].includes(e?.status || e?.response?.status)) { clearGovernanceDrafts(user.uid, project); selected.value = null; emit('visibility-lost', e) } }
   } finally {
     if (seq === generation) busy.value = false
   }
@@ -240,12 +257,17 @@ async function submit() {
           }
     const result = await governanceBoardApi.admitTask(project, item.id, payload)
     if (seq !== generation) return
+    setGovernanceDraft(user.uid, project, `suggestion:${item.id}`, null)
     selected.value = null
     emit('admitted')
     await router.push(workLink(result.work.id))
   } catch (e) {
     if (seq === generation) {
       error.value = e?.message || '纳入失败，输入已保留'
+      if ((e?.status || e?.response?.status) === 404) emit('visibility-lost', e)
+      if ([401, 403].includes(e?.status || e?.response?.status)) {
+        clearGovernanceDrafts(user.uid, project); selected.value = null; emit('visibility-lost', e); return
+      }
       if (e?.response?.data?.detail?.code === 'suggestion_already_admitted') {
         try {
           const board = await governanceBoardApi.getProjectBoard(project)
@@ -261,8 +283,9 @@ async function submit() {
     if (seq === generation) busy.value = false
   }
 }
+watch(() => props.decisions, () => { reviewConfirmed.value = false }, { deep: true })
 watch(
-  () => props.projectId,
+  () => [props.projectId, user.uid],
   () => {
     generation++
     selected.value = null

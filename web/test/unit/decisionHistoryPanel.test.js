@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createPinia, setActivePinia } from 'pinia'
 import { before, after, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, ref, ssrContextKey } from 'vue'
@@ -6,10 +7,13 @@ import { createServer } from 'vite'
 import { Modal } from 'ant-design-vue'
 import { routeLocationKey } from 'vue-router'
 
+let useUserStore, clearGovernanceDrafts
 let vite, Panel, api
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+  ;({ useUserStore } = await vite.ssrLoadModule('/src/stores/user.js'))
+  ;({ clearGovernanceDrafts } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js'))
   ;({ default: Panel } = await vite.ssrLoadModule('/src/components/project/DecisionHistoryPanel.vue'))
   ;({ governanceBoardApi: api } = await vite.ssrLoadModule('/src/apis/governance_board_api.js'))
 })
@@ -21,14 +25,18 @@ const renderer = createRenderer({
 })
 const settle = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)) }
 const decision = id => ({ id, title: id, status: 'draft', revision_number: 1, conclusion: '原草案', rationale: '', relation_type: 'ordinary', topic_id: null, target_decision_id: null, timeline: [], next_before: null })
-function mountPanel(t, selectedId = ref(''), route = { query: {} }) {
+function mountPanel(t, selectedId = ref(''), route = { query: {} }, preserve = false) {
+  const pinia = createPinia(); setActivePinia(pinia); if (!preserve) clearGovernanceDrafts(); useUserStore().uid = 'test-user'
   let instance
   const Component = { ...Panel, render() { instance = getCurrentInstance(); return h('div') } }
   const projectId = ref('project')
-  const app = renderer.createApp({ render: () => h(Component, { projectId: projectId.value, decisions: [decision('a'), decision('b')], selectedId: selectedId.value }) })
+  const decisions = ref([decision('a'), decision('b')])
+  const selectedEvents = []
+  const app = renderer.createApp({ render: () => h(Component, { projectId: projectId.value, decisions: decisions.value, selectedId: selectedId.value, onSelect: id => selectedEvents.push(id) }) })
+  app.use(pinia)
   app.provide(ssrContextKey, { modules: new Set() }); app.provide(routeLocationKey, route); app.mount({})
   t.after(() => app.unmount())
-  return { state: () => instance.setupState, projectId, app }
+  return { state: () => instance.setupState, projectId, decisions, app, selectedEvents }
 }
 
 test('决策切换丢弃延迟旧响应，局部历史不会串入新决策', async t => {
@@ -104,4 +112,48 @@ test('去向深链读取精确旧决策版本，迟到快照不能串入另一�
   assert.equal(state().referencedRevision.snapshot.title, 'b旧依据')
   assert.equal(state().referencedRevision.number, 1)
   assert.equal(state().detail.revision_number, 33)
+})
+
+
+test('重新进入恢复准确决策草稿及原修订，冲突不会换成当前修订重放', async t => {
+  t.mock.method(api, 'getDecision', async (_p, id) => decision(id))
+  const first = mountPanel(t)
+  await first.state().open(decision('a'))
+  first.state().beginEdit(); first.state().draft.conclusion = '原修订草稿'; first.state().reason = '核对'
+  first.app.unmount()
+  t.mock.method(api, 'getDecision', async (_p, id) => ({ ...decision(id), revision_number: 3 }))
+  const writes = t.mock.method(api, 'updateDecision', async (_p, _id, body) => { assert.equal(body.expected_revision, 1); throw new Error('revision_conflict') })
+  const restored = mountPanel(t, ref('a'), { query: {} }, true)
+  await settle()
+  assert.equal(restored.state().draft.conclusion, '原修订草稿')
+  assert.equal(restored.state().actionRevision, 1)
+  await restored.state().submit()
+  assert.equal(writes.mock.callCount(), 1)
+  assert.equal(restored.state().draft.expected_revision, 1)
+  assert.equal(restored.state().action, 'edit')
+})
+
+
+test('正在编辑的决策移除后保留准确复制出口且允许打开另一决策', async t => {
+  t.mock.method(api, 'getDecision', async (_p, id) => decision(id))
+  const panel = mountPanel(t)
+  await panel.state().open(decision('a'))
+  panel.state().beginEdit(); panel.state().draft.conclusion = 'A未提交正文'
+  panel.decisions.value = [decision('b')]; await settle()
+  assert.equal(panel.state().selected, null)
+  assert.equal(panel.state().action, '')
+  assert.match(panel.state().removedDraft.content, /A未提交正文/)
+  await panel.state().open(decision('b'))
+  assert.equal(panel.state().detail.id, 'b')
+})
+
+test('恢复路由中的决定仅加载详情，不改写同时定位的建议锚点', async t => {
+  t.mock.method(api, 'getDecision', async (_project, id) => decision(id))
+  const { state, selectedEvents } = mountPanel(t, ref('a'), { query: { decision_id: 'a', task_id: 'suggestion' }, hash: '#task-suggestion' })
+  await settle()
+  assert.equal(state().detail.id, 'a')
+  assert.deepEqual(selectedEvents, [])
+  state().openById('b')
+  await settle()
+  assert.deepEqual(selectedEvents, ['b'])
 })

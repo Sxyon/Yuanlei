@@ -7,17 +7,19 @@ import { createServer } from 'vite'
 import { message, Modal } from 'ant-design-vue'
 import { createPinia, setActivePinia } from 'pinia'
 
-let vite, View, api, agentApi
+let vite, View, api, agentApi, workApi
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/views/ProjectInspectionBoardView.vue'))
   ;({ governanceBoardApi: api } = await vite.ssrLoadModule('/src/apis/governance_board_api.js'))
+  ;({ projectWorkApi: workApi } = await vite.ssrLoadModule('/src/apis/project_work_api.js'))
   ;({ projectAgentApi: agentApi } = await vite.ssrLoadModule('/src/apis/project_agent_api.js'))
 })
 after(async () => {
   await vite?.close()
   delete globalThis.localStorage
+  delete globalThis.document
 })
 const renderer = createRenderer({
   createElement: () => ({}),
@@ -37,7 +39,15 @@ const settle = async () => {
 }
 
 /** 挂载真实页面 setup 并提供受控项目事实。 */
-async function mountWorkbench(t, url = '/projects/p/inspection', topics = []) {
+async function mountWorkbench(t, url = '/projects/p/inspection', topics = [], preserve = false) {
+  globalThis.document ||= { getElementById: () => null }
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const { useUserStore } = await vite.ssrLoadModule('/src/stores/user.js')
+  const { clearGovernanceDrafts } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js')
+  if (!preserve) clearGovernanceDrafts()
+  useUserStore().uid = 'draft-test'
+
   t.mock.method(message, 'success', () => {})
   t.mock.method(api, 'getProjectBoard', async () => ({
     project: { id: 'p' },
@@ -49,6 +59,7 @@ async function mountWorkbench(t, url = '/projects/p/inspection', topics = []) {
   t.mock.method(api, 'getBlueprint', async () => ({ name: 'plan.md', content: '磁盘正文' }))
   t.mock.method(api, 'listDelegations', async () => [])
   t.mock.method(api, 'listTopics', async () => topics)
+  t.mock.method(workApi, 'listTasks', async () => [])
   t.mock.method(agentApi, 'list', async () => ({ agents: [] }))
   const router = createRouter({
     history: createMemoryHistory(),
@@ -69,6 +80,7 @@ async function mountWorkbench(t, url = '/projects/p/inspection', topics = []) {
       return h('div')
     }
   })
+  app.use(pinia)
   app.use(router)
   app.provide(ssrContextKey, { modules: new Set() })
   app.mount({})
@@ -130,8 +142,8 @@ test('删除失败保留未保存正文，成功丢弃草稿并回读空列表',
 test('删除收到真实 204 空 Response 后关闭弹窗并回读列表', async (t) => {
   setActivePinia(createPinia())
   const { useUserStore } = await vite.ssrLoadModule('/src/stores/user.js')
-  useUserStore().token = 'test-token'
   const state = await mountWorkbench(t)
+  useUserStore().token = 'test-token'
   state.openBlueprintDelete(false)
   t.mock.method(globalThis, 'fetch', async () =>
     new Response(null, { status: 204, headers: { 'content-type': 'application/json' } })
@@ -296,4 +308,96 @@ test('切换议题清理旧评论与修订定位，同议题刷新保留；切�
   state.selectDecision('d2'); await settle(); await settle()
   assert.equal(state.route.query.decision_id, 'd2')
   assert.equal(state.route.query.decision_revision, undefined)
+})
+
+
+test('蓝图默认阅读，刷新和重新进入保留未保存正文与原基线', async t => {
+  const first = await mountWorkbench(t)
+  assert.equal(first.blueprintEditing, false)
+  first.blueprintEditing = true
+  first.blueprintContent = '跨页独有草稿'
+  await first.load()
+  assert.equal(first.blueprintContent, '跨页独有草稿')
+  const restored = await mountWorkbench(t, '/projects/p/inspection', [], true)
+  assert.equal(restored.blueprintContent, '跨页独有草稿')
+  assert.equal(restored.savedBlueprintContent, '磁盘正文')
+  assert.equal(restored.blueprintEditing, true)
+})
+test('迟到正文不覆盖请求期间输入，保存失败保留正文', async t => {
+  const state = await mountWorkbench(t)
+  let resolveRead
+  t.mock.method(api, 'getBlueprint', () => new Promise(resolve => { resolveRead = resolve }))
+  const pending = state.readBlueprint()
+  state.blueprintContent = '读取期间新输入'
+  resolveRead({ name: 'plan.md', content: '迟到旧正文' })
+  await pending
+  assert.equal(state.blueprintContent, '读取期间新输入')
+  t.mock.method(api, 'putBlueprint', async () => { throw new Error('写入失败') })
+  await state.saveBlueprint()
+  assert.equal(state.blueprintContent, '读取期间新输入')
+  assert.match(state.blueprintActionError, /写入失败/)
+})
+test('原议题移除后不会将其编辑草稿转移到另一议题', async t => {
+  const topic = { id: 'original', title: '原议题', admission_status: 'proposed', revision_number: 2 }
+  const state = await mountWorkbench(t, '/projects/p/inspection?topic_id=original', [topic])
+  state.beginEditTopic()
+  state.editingTopicSummary = '准确原对象草稿'
+  t.mock.method(api, 'listTopics', async () => [{ ...topic, id: 'another', title: '另一议题' }])
+  await state.load()
+  assert.equal(state.selectedTopicId, '')
+  assert.equal(state.editingTopic, false)
+  assert.equal(state.editingTopicSummary, '准确原对象草稿')
+  assert.match(state.topicCommentError, /不会把原草稿提交到另一议题/)
+})
+test('无权回读清除当前项目草稿，并阻止重新进入泄漏', async t => {
+  const state = await mountWorkbench(t)
+  state.blueprintContent = '私有草稿'
+  t.mock.method(api, 'getProjectBoard', async () => { throw Object.assign(new Error('无权'), { status: 403 }) })
+  await state.load()
+  assert.equal(state.blueprintContent, '')
+  const { getGovernanceDraft } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js')
+  assert.equal(getGovernanceDraft('draft-test', 'p', 'workbench'), null)
+})
+
+
+test('从另一个可见议题深链返回时，A 的编辑草稿不会写到 B', async t => {
+  const topics = ['a', 'b'].map(id => ({ id, title: id, summary: id + '正文', revision_number: 1, admission_status: 'canonical' }))
+  const a = await mountWorkbench(t, '/projects/p/inspection?topic_id=a', topics)
+  a.beginEditTopic(); a.editingTopicSummary = 'A 独有草稿'; a.editingTopicReason = '修改A'
+  const b = await mountWorkbench(t, '/projects/p/inspection?topic_id=b', topics, true)
+  assert.equal(b.selectedTopicId, 'b')
+  assert.equal(b.activeSection, 'topics')
+  assert.equal(b.editingTopic, false)
+  const writes = t.mock.method(api, 'updateTopic', async () => ({}))
+  await b.saveTopicEdit()
+  assert.equal(writes.mock.callCount(), 0)
+  b.beginEditTopic()
+  assert.equal(b.editingTopicId, 'b')
+  assert.equal(b.editingTopicSummary, 'b正文')
+  const { getGovernanceDraft } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js')
+  assert.equal(getGovernanceDraft('draft-test', 'p', 'topic-edit:a').editingTopicSummary, 'A 独有草稿')
+})
+test('写入失权清除工作台全部活草稿，409冲突仍保留', async t => {
+  const state = await mountWorkbench(t)
+  state.blueprintContent = '私有编辑'; state.decisionTitle = '私有决策'; state.taskTitle = '私有建议'
+  t.mock.method(api, 'putBlueprint', async () => { throw Object.assign(new Error('权限已撤销'), { status: 403 }) })
+  await state.saveBlueprint()
+  assert.equal(state.blueprintContent, '')
+  assert.equal(state.decisionTitle, '')
+  assert.equal(state.taskTitle, '')
+  const { getGovernanceDraft } = await vite.ssrLoadModule('/src/utils/governanceDrafts.js')
+  assert.equal(getGovernanceDraft('draft-test', 'p', 'workbench'), null)
+})
+test('单对象404且项目仍可见时保留全部草稿，项目404才清理', async t => {
+  const state = await mountWorkbench(t)
+  state.blueprintContent = '蓝图草稿'; state.decisionTitle = '决策草稿'
+  const absent = Object.assign(new Error('单对象不可见'), { status: 404 })
+  await state.visibilityLost(absent)
+  assert.equal(state.blueprintContent, '蓝图草稿')
+  assert.equal(state.decisionTitle, '决策草稿')
+  assert.equal(state.errorMessage, '')
+  t.mock.method(api, 'getProjectBoard', async () => { throw Object.assign(new Error('项目不可见'), { status: 404 }) })
+  await state.visibilityLost(absent)
+  assert.equal(state.blueprintContent, '')
+  assert.equal(state.decisionTitle, '')
 })

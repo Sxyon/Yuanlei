@@ -5,6 +5,7 @@ import { useAgentStore } from './agent'
 import { useProjectsStore } from './projects'
 import { clearReturnScroll } from '@/utils/pageReturnScroll'
 import { clearReviewDrafts } from '@/utils/resultReviewDrafts'
+import { clearGovernanceDrafts } from '@/utils/governanceDrafts'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -26,6 +27,7 @@ export const useUserStore = defineStore('user', () => {
   // 动作
   function applySession(data) {
     clearReviewDrafts()
+    clearGovernanceDrafts()
     clearReturnScroll()
     useProjectsStore().reset()
     token.value = data.access_token
@@ -53,6 +55,7 @@ export const useUserStore = defineStore('user', () => {
 
   function logout() {
     clearReviewDrafts()
+    clearGovernanceDrafts()
     clearReturnScroll()
     // 清除状态
     token.value = ''
@@ -184,7 +187,7 @@ export const useUserStore = defineStore('user', () => {
       const userData = await authApi.getCurrentUser()
 
       // 更新本地状态
-      if (uid.value && uid.value !== userData.uid) { clearReviewDrafts(); clearReturnScroll() }
+      if (uid.value && uid.value !== userData.uid) { clearReviewDrafts(); clearGovernanceDrafts(); clearReturnScroll() }
       userId.value = userData.id
       username.value = userData.username
       uid.value = userData.uid

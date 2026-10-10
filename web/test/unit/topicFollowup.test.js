@@ -156,3 +156,45 @@ test('首次初始化的普通草稿输入后能更新发布与保存状态', as
   await settle()
   assert.equal(hasExplanation.value, true)
 })
+test('恢复现实确认草稿保留原议题和确认版本，清弃后才采用当前依据', t => {
+  const draft = reactive({ outcome: { action: 'confirm', explanation: '旧依据说明', evidenceKind: 'url', evidenceValue: 'https://example.invalid/evidence', expectedRevision: 2, expectedVersion: 1 } })
+  const current = topic(); current.revision_number = 3
+  const { state } = mount(t, Outcome, { projectId: 'project', topic: current, candidates: [], confirmations: [{ version: 2 }], draft })
+  state.openForm('confirm')
+  assert.equal(draft.outcome.expectedRevision, 2)
+  assert.equal(draft.outcome.expectedVersion, 1)
+  assert.match(state.error, /原操作与依据/)
+  state.discardDraft()
+  assert.equal(draft.outcome.expectedRevision, 3)
+  assert.equal(draft.outcome.expectedVersion, 2)
+  assert.equal(draft.outcome.explanation, '')
+})
+test('恢复处置草稿保留准确原版本，清弃后才采用当前记录', t => {
+  const draft = reactive({ dispositions: { comment: { disposition: 'adopted', explanation: '旧处理解释', expectedVersion: 1 } } })
+  const current = comment(); current.dispositions = [{ version: 2 }]
+  const { state } = mount(t, Discussion, { projectId: 'project', topicId: 'topic', comment: current, candidates: [], draft })
+  state.openDisposition()
+  assert.equal(draft.dispositions.comment.expectedVersion, 1)
+  assert.match(state.error, /原处置版本/)
+  state.discardDisposition()
+  assert.equal(draft.dispositions.comment.expectedVersion, 2)
+  assert.equal(draft.dispositions.comment.explanation, '')
+})
+
+
+test('确认提交途中改选引用，迟到成功保留新引用与正文', async t => {
+  let finish
+  t.mock.method(api, 'recordTopicConfirmation', () => new Promise(resolve => { finish = resolve }))
+  const candidates = [{ kind: 'decision', id: 'a', version: 1 }, { kind: 'decision', id: 'b', version: 1 }]
+  const draft = reactive({})
+  const { state } = mount(t, Outcome, { projectId: 'project', topic: topic(), candidates, confirmations: [], draft })
+  state.openForm('confirm')
+  state.outcomeDraft.explanation = '核对依据'
+  state.outcomeDraft.referenceKey = utils.candidateKey(candidates[0])
+  const pending = state.save()
+  state.outcomeDraft.referenceKey = utils.candidateKey(candidates[1])
+  finish({})
+  await pending
+  assert.equal(state.outcomeDraft.referenceKey, utils.candidateKey(candidates[1]))
+  assert.equal(state.outcomeDraft.explanation, '核对依据')
+})

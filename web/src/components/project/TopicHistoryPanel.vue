@@ -19,7 +19,8 @@
       >从此议题创建工作</RouterLink
     >
     <a-alert v-if="error" type="error" show-icon :message="error" />
-    <div v-if="!topic.archived_at" class="topic-maintenance">
+    <details v-if="!topic.archived_at" :open="!!action" class="topic-maintenance">
+      <summary>议题维护（关闭、重开、归档等）</summary>
       <a-select v-model:value="action" aria-label="议题操作" style="min-width: 160px">
         <a-select-option v-if="topic.admission_status === 'rejected'" value="resubmit"
           >重新提交纳入</a-select-option
@@ -71,7 +72,7 @@
       <a-button :danger="action === 'delete'" :disabled="busy || !action" @click="operate">{{
         actionLabel
       }}</a-button>
-    </div>
+    </details>
     <a-button v-else :disabled="busy" @click="restore">恢复归档议题</a-button>
     <div v-if="!topic.archived_at" class="topic-discussion">
       <h4>持续研讨</h4>
@@ -99,6 +100,7 @@
       :confirmations="confirmations"
       :draft="draft"
       @updated="refreshFollowup"
+      @visibility-lost="failure => emit('visibility-lost', failure)"
     />
     <article v-if="focusedRevision" class="history-event">
       <h4>定位历史修订 {{ focusedRevision.number }}</h4>
@@ -117,9 +119,11 @@
         :archived="!!topic.archived_at"
         :draft="draft"
         @updated="refreshFollowup"
+      @visibility-lost="failure => emit('visibility-lost', failure)"
       />
     </article>
-    <h4>历史时间线 · 最新在前</h4>
+    <details :open="!!route?.query.comment_id || !!route?.query.revision">
+    <summary>历史时间线 · 最新在前（{{ events.length }} 个已加载节点）</summary>
     <a-spin v-if="loading" />
     <p v-if="!loading && !events.length">暂无历史节点。</p>
     <article v-for="event in events" :key="event.sequence" class="history-event">
@@ -183,6 +187,7 @@
         :archived="!!topic.archived_at"
         :draft="draft"
         @updated="refreshFollowup"
+      @visibility-lost="failure => emit('visibility-lost', failure)"
       />
       <small v-if="event.comment && !event.revision_number">当时正文版本未知</small>
       <details v-if="event.revision">
@@ -198,6 +203,7 @@
       </details>
     </article>
     <a-button v-if="nextBefore" :disabled="loading" @click="loadMore(false)">加载更早记录</a-button>
+    </details>
   </section>
 </template>
 
@@ -218,7 +224,7 @@ const props = defineProps({
   decisions: { type: Array, default: () => [] },
   draft: { type: Object, default: () => ({ content: '', discussionType: 'discussion' }) }
 })
-const emit = defineEmits(['updated'])
+const emit = defineEmits(['updated', 'visibility-lost'])
 const route = useRoute()
 const candidates = ref([]),
   confirmations = ref([]),
@@ -233,11 +239,11 @@ const nextBefore = ref(null)
 const loading = ref(false)
 const busy = ref(false)
 const error = ref('')
-const action = ref(undefined)
-const reason = ref('')
-const decisionId = ref(undefined)
-const executionHint = ref(undefined)
 const sharedDraft = reactive(props.draft)
+const action = toRef(sharedDraft, 'action')
+const reason = toRef(sharedDraft, 'reason', '')
+const decisionId = toRef(sharedDraft, 'decisionId')
+const executionHint = toRef(sharedDraft, 'executionHint')
 const discussionType = toRef(sharedDraft, 'discussionType', 'discussion')
 const content = toRef(sharedDraft, 'content')
 const actionLabel = computed(
@@ -365,6 +371,7 @@ async function perform(callback, refresh = true) {
   } catch (failure) {
     if (active) {
       error.value = describeBoardError(failure)
+      if ([401, 403, 404].includes(failure?.status || failure?.response?.status)) emit('visibility-lost', failure)
     }
   } finally {
     if (active) busy.value = false
@@ -432,12 +439,15 @@ const post = () => {
 }
 watch(
   () => [props.projectId, props.topic.id],
-  () => {
+  (_current, previous) => {
     generation += 1
     events.value = []
     nextBefore.value = null
-    action.value = decisionId.value = executionHint.value = undefined
-    reason.value = error.value = ''
+    if (previous) {
+      action.value = decisionId.value = executionHint.value = undefined
+      reason.value = ''
+    }
+    error.value = ''
     followupReady.value = false
     focusedDiscussion.value = focusedRevision.value = null
     void loadFollowup()
@@ -466,6 +476,7 @@ watch(
 </script>
 
 <style scoped>
+summary { cursor: pointer; min-height: 36px; color: var(--gray-700); }
 .source-work-link {
   color: var(--main-color);
 }

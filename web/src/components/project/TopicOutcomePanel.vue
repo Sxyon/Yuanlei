@@ -63,6 +63,7 @@
       <a-button :disabled="busy || !outcomeDraft.explanation.trim()" @click="save"
         >保存{{ actionLabels[outcomeDraft.action] }}</a-button
       >
+      <a-button :disabled="busy" @click="discardDraft">清弃草稿并重新核对</a-button>
       <a-button :disabled="busy" @click="formOpen = false">收起表单（保留草稿）</a-button>
     </div>
     <details
@@ -118,6 +119,7 @@ import {
   confirmationConditionsChanged,
   snapshotText,
   selectedReference,
+  consumeIntent,
   stableIntent
 } from '@/utils/topicFollowup'
 const props = defineProps({
@@ -127,7 +129,7 @@ const props = defineProps({
   confirmations: Array,
   draft: Object
 })
-const emit = defineEmits(['updated'])
+const emit = defineEmits(['updated', 'visibility-lost'])
 const sharedDraft = reactive(props.draft)
 sharedDraft.outcome ||= {
   action: 'confirm',
@@ -150,11 +152,23 @@ onBeforeUnmount(() => {
   active = false
 })
 function openForm(action) {
-  outcomeDraft.action = action
-  outcomeDraft.expectedRevision = props.topic.revision_number
-  outcomeDraft.expectedVersion = props.confirmations[0]?.version || 0
+  const hasDraft = outcomeDraft.explanation || outcomeDraft.evidenceValue || outcomeDraft.referenceKey || outcomeDraft.intent
+  if (!hasDraft) {
+    outcomeDraft.action = action
+    outcomeDraft.expectedRevision = props.topic.revision_number
+    outcomeDraft.expectedVersion = props.confirmations[0]?.version || 0
+  }
   formOpen.value = true
-  error.value = ''
+  error.value = hasDraft && (action !== outcomeDraft.action || outcomeDraft.expectedRevision !== props.topic.revision_number || outcomeDraft.expectedVersion !== (props.confirmations[0]?.version || 0))
+    ? '已保留草稿的原操作与依据。请核对当前记录，或清弃草稿后重新起草；不会自动更新修订重放。' : ''
+}
+function discardDraft() {
+  outcomeDraft.explanation = ''
+  outcomeDraft.evidenceValue = ''
+  outcomeDraft.referenceKey = undefined
+  delete outcomeDraft.intent
+  delete outcomeDraft.operationId
+  openForm(outcomeDraft.action)
 }
 async function save() {
   const payload = stableIntent(outcomeDraft, {
@@ -172,10 +186,15 @@ async function save() {
   try {
     await api.recordTopicConfirmation(props.projectId, props.topic.id, payload)
     if (!active) return
+    consumeIntent(outcomeDraft, payload.operation_id)
+    if (outcomeDraft.action === payload.action && outcomeDraft.explanation === payload.explanation && outcomeDraft.evidenceValue === (payload.evidence[0]?.value || '') && (!payload.evidence.length || outcomeDraft.evidenceKind === payload.evidence[0].kind) && JSON.stringify(selectedReference(outcomeDraft.referenceKey)) === JSON.stringify(payload.reference)) { outcomeDraft.explanation = ''; outcomeDraft.evidenceValue = ''; outcomeDraft.referenceKey = undefined }
     formOpen.value = false
     emit('updated')
   } catch (failure) {
-    if (active) error.value = describeBoardError(failure)
+    if (active) {
+      error.value = describeBoardError(failure)
+      if ([401, 403, 404].includes(failure?.status || failure?.response?.status)) emit('visibility-lost', failure)
+    }
   } finally {
     if (active) busy.value = false
   }
