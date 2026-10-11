@@ -40,3 +40,13 @@ C2—C6 继续保持未完成；C2增加跨消息逻辑问题去重和上级处�
 工程边界：70项checker、范围lint、diff检查、离线锁核对与VitePress构建通过；全仓信任检查仍被未修改的S01-S03旧报告四处措辞拒绝。该存量门槛未绕过，本决定不宣称全仓检查全绿或可直接发布。
 
 最终派发参数的HTTP聚焦回归1 passed；此前隔离HTTP启动超时发生在业务断言前，原因未定位，失败与复核均保留于工程卡。
+
+## 存量 v36 启动升级
+
+迁移入口明确接受已有 v36，通过既有 36→37 幂等升级创建个人协作者结构，成功后才记录 v37。上游 business/knowledge 版本及 API/worker 的严格版本校验保持既有边界。直接改版本记录会掩盖缺表；为此缺陷增加兼容后端没有必要。此修复补齐既有升级链的准入，不新增 Schema 或产品语义。
+
+单元回归覆盖 v31—v36 和末步失败不推进版本；恢复漏掉 v36 的准入列表时，两项 v36 用例因 Unsupported yuanlei schema version 失败。真实 PostgreSQL 重复升级与旧委派保留由 `test_v37_migration_idempotence_and_owner_constraints` 验证。
+
+验证结果：迁移单元文件与真实 PostgreSQL 幂等/归属用例合计 32 项通过；工程信任检查、71 项 verifier 单测及 docs build 通过。正式 storage-migrator 升级及重复执行均以 0 退出；SQL 回读为 business=7、knowledge=2、yuanlei=37，四张新增表存在。API、worker 与 sandbox-provisioner 健康，直接 API 和前端代理的 ready 协议均为 ready、degraded=false。此证据覆盖启动恢复与迁移，真实远端 OpenClaw 产品验收仍未执行。
+
+完整后端 unit 使用 `docker compose exec -T api uv run --no-sync --group test pytest test/unit -m "not slow"` 执行，2859 项通过、63 项跳过。原规范命令在测试前因 `/app/uv.lock` 写权限失败；使用镜像已安装依赖避免改写运行容器锁文件，跳过项不计为通过。

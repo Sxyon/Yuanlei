@@ -1064,7 +1064,7 @@ async def _async_value(value):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("old_version", [31, 32, 33, 34, 35])
+@pytest.mark.parametrize("old_version", [31, 32, 33, 34, 35, 36])
 @pytest.mark.parametrize("fail_followup", [False, True])
 async def test_yuanlei_v31_only_adds_project_attributes_before_version_record(
     monkeypatch, old_version, fail_followup
@@ -1106,15 +1106,20 @@ async def test_yuanlei_v31_only_adds_project_attributes_before_version_record(
     if fail_followup:
         async def fail():
             """模拟新结构迁移失败，验证版本不提前推进。"""
-            raise RuntimeError("议题迁移失败")
-        manager.upgrade_yuanlei_schema_v35_to_v36 = fail
-        with pytest.raises(RuntimeError, match="议题迁移失败"):
+            raise RuntimeError("协作者迁移失败")
+        manager.upgrade_yuanlei_schema_v36_to_v37 = fail
+        with pytest.raises(RuntimeError, match="协作者迁移失败"):
             await storage_migration.main()
         assert not any(str(call).startswith("version:yuanlei:") for call in calls)
         return
     await storage_migration.main()
     version = f"version:yuanlei:{storage_migration.YUANLEI_SCHEMA_VERSION}"
-    assert calls.index("topic_followup") < calls.index(version)
+    assert calls.index("collaborator_delivery") < calls.index(version)
+    assert calls.count("collaborator_delivery") == 1
+    if old_version < 36:
+        assert calls.index("topic_followup") < calls.index("collaborator_delivery")
+    else:
+        assert "topic_followup" not in calls
     if old_version < 35:
         assert calls.index("execution_results") < calls.index("topic_followup")
     else:
