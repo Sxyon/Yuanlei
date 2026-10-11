@@ -149,8 +149,9 @@ export default defineConfig({
             items: [
               { text: '当前入口与图解', link: '/元垒系统架构规划设计/' },
               { text: '系统架构与阶段边界', link: '/元垒系统架构规划设计/SYS-PL-001-系统架构与阶段边界' },
-              { text: 'Dashboard设计', link: '/元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计' },
-              { text: 'Dashboard开发任务', link: '/元垒系统架构规划设计/DEV-DB-001-Dashboard开发任务与实施约束' },
+              { text: '项目主题需求与方向', link: '/元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计' },
+              { text: '当前阶段审阅入口', link: '/元垒系统架构规划设计/DEV-MG-002-DB-D00设计审阅阅读计划' },
+              { text: '项目主题渐进开发', link: '/元垒系统架构规划设计/DEV-DB-001-Dashboard开发任务与实施约束' },
               { text: 'Dashboard进度', link: '/元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录' },
               { text: '议题设计审阅示范', link: '/元垒系统架构规划设计/SYS-DB-002-议题详情设计审阅示范' },
               { text: '协作冻结设计', link: '/元垒系统架构规划设计/SYS-CA-001-协作接入与Andon系统设计' },

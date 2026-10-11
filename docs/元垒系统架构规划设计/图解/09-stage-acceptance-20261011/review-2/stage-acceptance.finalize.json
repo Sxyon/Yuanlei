@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "workflow",
+  "quality": "showcase",
+  "startedAt": "2026-10-11T07:47:23.789Z",
+  "specification": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/candidate.json",
+    "sha256": "86c7f9ae35480408f3b2b892bcb09af8782f53bb5102c0ec27ef54254820363b",
+    "bytes": 10898
+  },
+  "artifact": {
+    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/stage-acceptance.html",
+    "sha256": "4642f2813c66ed130de65b7ed1f96d6af95828addd9f12c4e5f2a98347fb15b1",
+    "bytes": 779719
+  },
+  "stages": {
+    "validate": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": null,
+      "command": [
+        "/usr/local/Cellar/node/26.7.0/bin/node",
+        "/Users/sam/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "workflow",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/candidate.json",
+        "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/stage-acceptance.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "deliver",
+        "receiptId": "2460cbbe-e33e-4771-9d4c-b4927df963b6",
+        "stage": "render",
+        "type": "workflow",
+        "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/candidate.json",
+        "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/stage-acceptance.html",
+        "error": "Workflow layout validation failed:\n- [composition/proper-crossing] showcase workflow edges[10] id \"next4\" \"gate04\" -> \"s05\" crosses edges[15] id \"revise3\" \"gate03\" -> \"s03\" at [153, 294] (segments 1 and 4) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.\n- [composition/proper-crossing] showcase workflow edges[10] id \"next4\" \"gate04\" -> \"s05\" crosses edges[16] id \"revise4\" \"gate04\" -> \"s04\" at [743.4, 294] (segments 1 and 3) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.\n- [composition/ambiguous-corridor] showcase workflow edges[12] id \"next6\" \"gate06\" -> \"s07\" shares a 43.6px corridor with edges[19] id \"revise7\" \"gate07\" -> \"s07\" at [274, 552] -> [317.6, 552] (segments 1 and 2; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.\n- [composition/ambiguous-corridor] showcase workflow edges[15] id \"revise3\" \"gate03\" -> \"s03\" shares a 646.8px corridor with edges[16] id \"revise4\" \"gate04\" -> \"s04\" at [743.4, 296] -> [1390.2, 296] (segments 3 and 2; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.",
+        "diagnostics": [
+          {
+            "code": "composition/proper-crossing",
+            "severity": "error",
+            "message": "[composition/proper-crossing] showcase workflow edges[10] id \"next4\" \"gate04\" -> \"s05\" crosses edges[15] id \"revise3\" \"gate03\" -> \"s03\" at [153, 294] (segments 1 and 4) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+            "subject": {
+              "diagramType": "workflow",
+              "collection": "edges",
+              "index": 10,
+              "id": "next4",
+              "from": "gate04",
+              "to": "s05"
+            },
+            "evidence": {
+              "otherRelationship": {
+                "diagramType": "workflow",
+                "collection": "edges",
+                "index": 15,
+                "id": "revise3",
+                "from": "gate03",
+                "to": "s03"
+              },
+              "point": [
+                153,
+                294
+              ],
+              "segmentIndex": 1,
+              "otherSegmentIndex": 4
+            },
+            "supportedFixes": [
+              "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+            ]
+          },
+          {
+            "code": "composition/proper-crossing",
+            "severity": "error",
+            "message": "[composition/proper-crossing] showcase workflow edges[10] id \"next4\" \"gate04\" -> \"s05\" crosses edges[16] id \"revise4\" \"gate04\" -> \"s04\" at [743.4, 294] (segments 1 and 3) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+            "subject": {
+              "diagramType": "workflow",
+              "collection": "edges",
+              "index": 10,
+              "id": "next4",
+              "from": "gate04",
+              "to": "s05"
+            },
+            "evidence": {
+              "otherRelationship": {
+                "diagramType": "workflow",
+                "collection": "edges",
+                "index": 16,
+                "id": "revise4",
+                "from": "gate04",
+                "to": "s04"
+              },
+              "point": [
+                743.3999999999996,
+                294
+              ],
+              "segmentIndex": 1,
+              "otherSegmentIndex": 3
+            },
+            "supportedFixes": [
+              "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+            ]
+          },
+          {
+            "code": "composition/ambiguous-corridor",
+            "severity": "error",
+            "message": "[composition/ambiguous-corridor] showcase workflow edges[12] id \"next6\" \"gate06\" -> \"s07\" shares a 43.6px corridor with edges[19] id \"revise7\" \"gate07\" -> \"s07\" at [274, 552] -> [317.6, 552] (segments 1 and 2; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.",
+            "subject": {
+              "diagramType": "workflow",
+              "collection": "edges",
+              "index": 12,
+              "id": "next6",
+              "from": "gate06",
+              "to": "s07"
+            },
+            "evidence": {
+              "otherRelationship": {
+                "diagramType": "workflow",
+                "collection": "edges",
+                "index": 19,
+                "id": "revise7",
+                "from": "gate07",
+                "to": "s07"
+              },
+              "overlapLengthPx": 43.6,
+              "minimumPx": 8,
+              "from": [
+                274,
+                552
+              ],
+              "to": [
+                317.6,
+                552
+              ],
+              "segmentIndex": 1,
+              "otherSegmentIndex": 2
+            },
+            "supportedFixes": [
+              "adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge"
+            ]
+          },
+          {
+            "code": "composition/ambiguous-corridor",
+            "severity": "error",
+            "message": "[composition/ambiguous-corridor] showcase workflow edges[15] id \"revise3\" \"gate03\" -> \"s03\" shares a 646.8px corridor with edges[16] id \"revise4\" \"gate04\" -> \"s04\" at [743.4, 296] -> [1390.2, 296] (segments 3 and 2; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.",
+            "subject": {
+              "diagramType": "workflow",
+              "collection": "edges",
+              "index": 15,
+              "id": "revise3",
+              "from": "gate03",
+              "to": "s03"
+            },
+            "evidence": {
+              "otherRelationship": {
+                "diagramType": "workflow",
+                "collection": "edges",
+                "index": 16,
+                "id": "revise4",
+                "from": "gate04",
+                "to": "s04"
+              },
+              "overlapLengthPx": 646.8,
+              "minimumPx": 8,
+              "from": [
+                743.4000000000001,
+                296
+              ],
+              "to": [
+                1390.2,
+                296
+              ],
+              "segmentIndex": 3,
+              "otherSegmentIndex": 2
+            },
+            "supportedFixes": [
+              "adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge"
+            ]
+          }
+        ],
+        "provenance": "failed",
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      },
+      "execution": "embedded-in-deliver"
+    },
+    "deliver": {
+      "status": "not-run",
+      "execution": "blocked-by-validate"
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[10] id \"next4\" \"gate04\" -> \"s05\" crosses edges[15] id \"revise3\" \"gate03\" -> \"s03\" at [153, 294] (segments 1 and 4) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 10,
+        "id": "next4",
+        "from": "gate04",
+        "to": "s05"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 15,
+          "id": "revise3",
+          "from": "gate03",
+          "to": "s03"
+        },
+        "point": [
+          153,
+          294
+        ],
+        "segmentIndex": 1,
+        "otherSegmentIndex": 4
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    },
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[10] id \"next4\" \"gate04\" -> \"s05\" crosses edges[16] id \"revise4\" \"gate04\" -> \"s04\" at [743.4, 294] (segments 1 and 3) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 10,
+        "id": "next4",
+        "from": "gate04",
+        "to": "s05"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 16,
+          "id": "revise4",
+          "from": "gate04",
+          "to": "s04"
+        },
+        "point": [
+          743.3999999999996,
+          294
+        ],
+        "segmentIndex": 1,
+        "otherSegmentIndex": 3
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    },
+    {
+      "code": "composition/ambiguous-corridor",
+      "severity": "error",
+      "message": "[composition/ambiguous-corridor] showcase workflow edges[12] id \"next6\" \"gate06\" -> \"s07\" shares a 43.6px corridor with edges[19] id \"revise7\" \"gate07\" -> \"s07\" at [274, 552] -> [317.6, 552] (segments 1 and 2; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 12,
+        "id": "next6",
+        "from": "gate06",
+        "to": "s07"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 19,
+          "id": "revise7",
+          "from": "gate07",
+          "to": "s07"
+        },
+        "overlapLengthPx": 43.6,
+        "minimumPx": 8,
+        "from": [
+          274,
+          552
+        ],
+        "to": [
+          317.6,
+          552
+        ],
+        "segmentIndex": 1,
+        "otherSegmentIndex": 2
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge"
+      ]
+    },
+    {
+      "code": "composition/ambiguous-corridor",
+      "severity": "error",
+      "message": "[composition/ambiguous-corridor] showcase workflow edges[15] id \"revise3\" \"gate03\" -> \"s03\" shares a 646.8px corridor with edges[16] id \"revise4\" \"gate04\" -> \"s04\" at [743.4, 296] -> [1390.2, 296] (segments 3 and 2; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 15,
+        "id": "revise3",
+        "from": "gate03",
+        "to": "s03"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 16,
+          "id": "revise4",
+          "from": "gate04",
+          "to": "s04"
+        },
+        "overlapLengthPx": 646.8,
+        "minimumPx": 8,
+        "from": [
+          743.4000000000001,
+          296
+        ],
+        "to": [
+          1390.2,
+          296
+        ],
+        "segmentIndex": 3,
+        "otherSegmentIndex": 2
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/review-2/stage-acceptance.finalize.json",
+    "summaryReceipt": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/review-2/stage-acceptance.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "validate",
+  "finishedAt": "2026-10-11T07:47:25.321Z",
+  "durationMs": 1531,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-10T09:20:08.372Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

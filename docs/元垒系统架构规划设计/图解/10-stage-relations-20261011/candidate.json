@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G09｜S01—S07 任务推进与验收关系",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/10-stage-relations-20261011/stage-acceptance.html"
+  },
+  "components": [
+    {
+      "id": "s01",
+      "type": "backend",
+      "label": "S01 项目管理入口",
+      "sublabel": "原要求 1—5｜一级导航 / 列表 / 新增编辑",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 1—5"
+    },
+    {
+      "id": "gate01",
+      "type": "security",
+      "label": "验收01 项目入口可用",
+      "sublabel": "卡片列表清楚 / 字段缺口明确",
+      "pos": [
+        620,
+        40
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "s02",
+      "type": "backend",
+      "label": "S02 技术调研与选型",
+      "sublabel": "原要求 6—7｜Vue加载 / 存储 / 通信候选",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 6—7"
+    },
+    {
+      "id": "gate02",
+      "type": "security",
+      "label": "验收02 选型有真实依据",
+      "sublabel": "三类实例 / 小试 / 推荐与判断",
+      "pos": [
+        620,
+        300
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "s03",
+      "type": "backend",
+      "label": "S03 两主题前端样板",
+      "sublabel": "原要求 8｜默认 / 调研 / 同一加载机制",
+      "pos": [
+        40,
+        560
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 8"
+    },
+    {
+      "id": "gate03",
+      "type": "security",
+      "label": "验收03 两主题可观察",
+      "sublabel": "不同组织 / 可切换 / 模拟标明",
+      "pos": [
+        620,
+        560
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "s04",
+      "type": "backend",
+      "label": "S04 安全存储加载切换",
+      "sublabel": "原要求 9｜独立文件包 / 公共与专属",
+      "pos": [
+        40,
+        820
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 9"
+    },
+    {
+      "id": "gate04",
+      "type": "security",
+      "label": "验收04 真实文件链成立",
+      "sublabel": "持久化 / 切换 / 故障退路",
+      "pos": [
+        620,
+        820
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "s05",
+      "type": "backend",
+      "label": "S05 两维度数据协议",
+      "sublabel": "原要求 10｜系统对象 / 项目指定文件",
+      "pos": [
+        40,
+        1080
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 10"
+    },
+    {
+      "id": "gate05",
+      "type": "security",
+      "label": "验收05 真实数据可读取",
+      "sublabel": "对象正确 / 来源明确 / 错态解释",
+      "pos": [
+        620,
+        1080
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "s06",
+      "type": "backend",
+      "label": "S06 主题导入导出",
+      "sublabel": "原要求 11｜环境A导出 / 环境B重绑定",
+      "pos": [
+        40,
+        1340
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 11"
+    },
+    {
+      "id": "gate06",
+      "type": "security",
+      "label": "验收06 迁移后真实可用",
+      "sublabel": "不带凭据 / 缺依赖可解释",
+      "pos": [
+        620,
+        1340
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "s07",
+      "type": "backend",
+      "label": "S07 默认主题细化强化",
+      "sublabel": "原要求 12｜基架通过后 / 人类思考维护",
+      "pos": [
+        40,
+        1600
+      ],
+      "size": [
+        350,
+        80
+      ],
+      "tag": "原要求 12"
+    },
+    {
+      "id": "gate07",
+      "type": "security",
+      "label": "验收07 日常使用更清楚",
+      "sublabel": "治理执行连续 / 用户观察",
+      "pos": [
+        620,
+        1600
+      ],
+      "size": [
+        350,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "check1",
+      "from": "s01",
+      "to": "gate01",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise1",
+      "from": "gate01",
+      "to": "s01",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          170
+        ],
+        [
+          10,
+          170
+        ],
+        [
+          10,
+          80
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "next1",
+      "from": "gate01",
+      "to": "s02",
+      "label": "验收通过 → 细化 S02",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1040,
+          80
+        ],
+        [
+          1040,
+          220
+        ],
+        [
+          215,
+          220
+        ]
+      ],
+      "labelSegment": 2
+    },
+    {
+      "id": "check2",
+      "from": "s02",
+      "to": "gate02",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise2",
+      "from": "gate02",
+      "to": "s02",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          430
+        ],
+        [
+          10,
+          430
+        ],
+        [
+          10,
+          340
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "next2",
+      "from": "gate02",
+      "to": "s03",
+      "label": "验收通过 → 细化 S03",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1040,
+          340
+        ],
+        [
+          1040,
+          480
+        ],
+        [
+          215,
+          480
+        ]
+      ],
+      "labelSegment": 2
+    },
+    {
+      "id": "check3",
+      "from": "s03",
+      "to": "gate03",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise3",
+      "from": "gate03",
+      "to": "s03",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          690
+        ],
+        [
+          10,
+          690
+        ],
+        [
+          10,
+          600
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "next3",
+      "from": "gate03",
+      "to": "s04",
+      "label": "验收通过 → 细化 S04",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1040,
+          600
+        ],
+        [
+          1040,
+          740
+        ],
+        [
+          215,
+          740
+        ]
+      ],
+      "labelSegment": 2
+    },
+    {
+      "id": "check4",
+      "from": "s04",
+      "to": "gate04",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise4",
+      "from": "gate04",
+      "to": "s04",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          950
+        ],
+        [
+          10,
+          950
+        ],
+        [
+          10,
+          860
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "next4",
+      "from": "gate04",
+      "to": "s05",
+      "label": "验收通过 → 细化 S05",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1040,
+          860
+        ],
+        [
+          1040,
+          1000
+        ],
+        [
+          215,
+          1000
+        ]
+      ],
+      "labelSegment": 2
+    },
+    {
+      "id": "check5",
+      "from": "s05",
+      "to": "gate05",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise5",
+      "from": "gate05",
+      "to": "s05",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          1210
+        ],
+        [
+          10,
+          1210
+        ],
+        [
+          10,
+          1120
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "next5",
+      "from": "gate05",
+      "to": "s06",
+      "label": "验收通过 → 细化 S06",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1040,
+          1120
+        ],
+        [
+          1040,
+          1260
+        ],
+        [
+          215,
+          1260
+        ]
+      ],
+      "labelSegment": 2
+    },
+    {
+      "id": "check6",
+      "from": "s06",
+      "to": "gate06",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise6",
+      "from": "gate06",
+      "to": "s06",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          1470
+        ],
+        [
+          10,
+          1470
+        ],
+        [
+          10,
+          1380
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "next6",
+      "from": "gate06",
+      "to": "s07",
+      "label": "验收通过 → 细化 S07",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1040,
+          1380
+        ],
+        [
+          1040,
+          1520
+        ],
+        [
+          215,
+          1520
+        ]
+      ],
+      "labelSegment": 2
+    },
+    {
+      "id": "check7",
+      "from": "s07",
+      "to": "gate07",
+      "label": "交付结果 / 随时审视",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "revise7",
+      "from": "gate07",
+      "to": "s07",
+      "label": "未通过：停在本段，重审",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          795,
+          1730
+        ],
+        [
+          10,
+          1730
+        ],
+        [
+          10,
+          1640
+        ]
+      ],
+      "labelSegment": 1
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "S01｜原要求 1—5｜验收内容",
+      "items": [
+        "项目一级导航；二级项目列表、主题管理",
+        "搜索、新增、卡片/列表；参考智能体风格",
+        "新建与编辑稿先审；确认后接已有能力，新增字段单列"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "S02｜原要求 6—7｜验收内容",
+      "items": [
+        "至少三类真实采用者：源码、实现方式、截图或访问地址",
+        "比较Vue组合、HTML/Markdown及隔离、存储、双数据与迁移",
+        "现状＋问题＋方案＋建议＋请示；选定当前试验路线"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "S03｜原要求 8｜验收内容",
+      "items": [
+        "技术路线选定后，主题管理呈现默认与调研",
+        "两个样板覆盖项目页面组织；模拟数据醒目标明",
+        "先验空壳结构和交互；真实存储与数据接通留后段"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "S04｜原要求 9｜验收内容",
+      "items": [
+        "独立文件存储，有准确来源、指纹和项目归属",
+        "安全加载与项目选择，切换不串项目，重启可回读",
+        "公共受保护；专属隔离；失败保留可信默认入口"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "S05｜原要求 10｜验收内容",
+      "items": [
+        "项目属性、议题、讨论、决定、任务等系统事实",
+        "项目目录指定JSON、图片、HTML等授权资料",
+        "两主题按协议展示；权限、缓存、宿主交互逐项验证"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "S06｜原要求 11｜验收内容",
+      "items": [
+        "验证两元垒环境间迁移，原项目ID和路径重新绑定",
+        "结构、资源、依赖与逻辑数据需求可迁移",
+        "其他产品运行需兼容协议/适配；迁移失败返回存储或协议评审"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "S07｜原要求 12｜验收内容",
+      "items": [
+        "基架和迁移成立后，再细化蓝图、议题、讨论、决定、任务",
+        "用户提出下一段重点，Codex设计整体与局部页面",
+        "真实连续使用与反馈收敛；协作与Andon继续暂停"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "顺序验收，随时中断",
+      "items": [
+        "S01 → S02 → S03 → S04 → S05 → S06 → S07",
+        "任何阶段发现关键假设失败，停止受影响路径，定位需回看的阶段",
+        "日常汇报：进度＋问题＋计划；图不是已完成状态或未来技术定案"
+      ]
+    }
+  ]
+}

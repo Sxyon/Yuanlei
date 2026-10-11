@@ -1,0 +1,17 @@
+[
+  {
+    "source": "SYS-DB-001-Dashboard系统需求与架构设计.md",
+    "sha256": "b8a9c4fdb517b2ce4a1ece2624006e5b2ff8675c211018dacd41638f0f4fdcba",
+    "archive": "SYS-DB-001-Dashboard系统需求与架构设计.md.txt"
+  },
+  {
+    "source": "DEV-DB-001-Dashboard开发任务与实施约束.md",
+    "sha256": "519ed85dec7ce0f0eed67ef11cb38301fd50028f96cbf2b0269555f40da027e5",
+    "archive": "DEV-DB-001-Dashboard开发任务与实施约束.md.txt"
+  },
+  {
+    "source": "DEV-MG-002-DB-D00设计审阅阅读计划.md",
+    "sha256": "825ed1565dc69027c4871fe09c034acc6b0590873508b53ad04ecd0cf56d8ca5",
+    "archive": "DEV-MG-002-DB-D00设计审阅阅读计划.md.txt"
+  }
+]

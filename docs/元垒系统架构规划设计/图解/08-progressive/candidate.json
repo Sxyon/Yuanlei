@@ -1,0 +1,190 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G08｜项目主题渐进推进与中断评审",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/08-progressive/progressive-review.html"
+  },
+  "lanes": [
+    {
+      "id": "work",
+      "label": "当前阶段：调查与可见实现"
+    },
+    {
+      "id": "review",
+      "label": "证据与关键判断"
+    },
+    {
+      "id": "exception",
+      "label": "随时中断与修订",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "scope",
+    "research",
+    "trial",
+    "evidence",
+    "gate",
+    "next"
+  ],
+  "nodes": [
+    {
+      "id": "scope",
+      "lane": "work",
+      "col": 0,
+      "type": "backend",
+      "label": "本段目标",
+      "sublabel": "只细化当前结果",
+      "width": 155
+    },
+    {
+      "id": "research",
+      "lane": "work",
+      "col": 1,
+      "type": "backend",
+      "label": "调查与候选",
+      "sublabel": "真实实现作依据",
+      "width": 155
+    },
+    {
+      "id": "trial",
+      "lane": "work",
+      "col": 2,
+      "type": "frontend",
+      "label": "小试验与页面",
+      "sublabel": "清楚标识模拟数据",
+      "width": 155
+    },
+    {
+      "id": "evidence",
+      "lane": "review",
+      "col": 2,
+      "type": "database",
+      "label": "核对实际结果",
+      "sublabel": "文件 / 页面 / 协议",
+      "width": 155
+    },
+    {
+      "id": "gate",
+      "lane": "review",
+      "col": 3,
+      "type": "security",
+      "label": "阶段判断",
+      "sublabel": "保留 / 改选 / 暂缓",
+      "width": 155
+    },
+    {
+      "id": "next",
+      "lane": "review",
+      "col": 4,
+      "type": "backend",
+      "label": "细化下一段",
+      "sublabel": "按实际证据重排",
+      "width": 155
+    },
+    {
+      "id": "stop",
+      "lane": "exception",
+      "col": 1,
+      "type": "security",
+      "label": "中断受影响路径",
+      "sublabel": "假设失败或方向变更",
+      "width": 155
+    },
+    {
+      "id": "revise",
+      "lane": "exception",
+      "col": 0,
+      "type": "backend",
+      "label": "调整目标和方案",
+      "sublabel": "记录原因与恢复条件",
+      "width": 155
+    }
+  ],
+  "edges": [
+    {
+      "from": "scope",
+      "to": "research"
+    },
+    {
+      "from": "research",
+      "to": "trial",
+      "label": "做小试"
+    },
+    {
+      "from": "trial",
+      "to": "evidence"
+    },
+    {
+      "from": "evidence",
+      "to": "gate"
+    },
+    {
+      "from": "gate",
+      "to": "next",
+      "label": "本段结果成立",
+      "variant": "emphasis"
+    },
+    {
+      "from": "next",
+      "to": "scope",
+      "role": "return",
+      "route": "up-channel",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "from": "research",
+      "to": "stop",
+      "label": "关键假设失效",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "from": "trial",
+      "to": "stop",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "from": "gate",
+      "to": "stop",
+      "label": "需调整",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "from": "stop",
+      "to": "revise"
+    },
+    {
+      "from": "revise",
+      "to": "scope",
+      "role": "return",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "近端才细化",
+      "items": [
+        "S01 项目入口设计；S02 技术调研与小试",
+        "后继：两主题 → 存储加载 → 数据 → 迁移 → 默认强化"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "汇报与范围",
+      "items": [
+        "每轮：进度 + 问题 + 下一小段计划",
+        "关键选型：现状 + 问题 + 方案 + 建议 + 请示",
+        "图示为管理方向；协作与 Andon 保持暂停"
+      ]
+    }
+  ]
+}
