@@ -1,0 +1,152 @@
+{
+  "artifact": "project-entry.html",
+  "sha256": "11a80610b8c98493909c8af853e28fbf928d06664f4b596db1aa6e270f74bf1c",
+  "browser": "Google Chrome via Playwright",
+  "viewports": [
+    [
+      1440,
+      1000
+    ],
+    [
+      390,
+      844
+    ]
+  ],
+  "checks": [
+    {
+      "name": "four initial cards",
+      "passed": true
+    },
+    {
+      "name": "search returns exact matching project",
+      "passed": true
+    },
+    {
+      "name": "search empty clear action visible",
+      "passed": true
+    },
+    {
+      "name": "table six columns",
+      "passed": true
+    },
+    {
+      "name": "width adjusted",
+      "passed": true
+    },
+    {
+      "name": "width restored",
+      "passed": true
+    },
+    {
+      "name": "empty name rejected",
+      "passed": true
+    },
+    {
+      "name": "slug invalid rejected",
+      "passed": true
+    },
+    {
+      "name": "workdir required",
+      "passed": true
+    },
+    {
+      "name": "date order rejected",
+      "passed": true
+    },
+    {
+      "name": "prototype add DOM readback",
+      "passed": true
+    },
+    {
+      "name": "edit workdir immutable",
+      "passed": true
+    },
+    {
+      "name": "edit retains dates",
+      "passed": true
+    },
+    {
+      "name": "edit DOM readback",
+      "passed": true
+    },
+    {
+      "name": "project theme return retains exact project",
+      "passed": true
+    },
+    {
+      "name": "return exact context",
+      "passed": true
+    },
+    {
+      "name": "view preserved",
+      "passed": true
+    },
+    {
+      "name": "platform theme entry has no stale project",
+      "passed": true
+    },
+    {
+      "name": "many 48 cards",
+      "passed": true
+    },
+    {
+      "name": "loading status visible",
+      "passed": true
+    },
+    {
+      "name": "retry visible",
+      "passed": true
+    },
+    {
+      "name": "retry restores cards",
+      "passed": true
+    },
+    {
+      "name": "stale error keeps cards",
+      "passed": true
+    },
+    {
+      "name": "dark tokens applied",
+      "passed": true
+    },
+    {
+      "name": "mobile platform menu usable",
+      "passed": true
+    },
+    {
+      "name": "mobile no page overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile modal fits",
+      "passed": true
+    },
+    {
+      "name": "mobile themes no overflow",
+      "passed": true
+    },
+    {
+      "name": "table scroll contained on mobile",
+      "passed": true
+    },
+    {
+      "name": "reload resets memory data",
+      "passed": true
+    },
+    {
+      "name": "no product API calls",
+      "passed": true
+    },
+    {
+      "name": "zero page errors",
+      "passed": true
+    },
+    {
+      "name": "index S01 links in valid main DOM",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "network": "localhost prototype only; no product API calls",
+  "scope": "prototype behavior only, not product persistence"
+}

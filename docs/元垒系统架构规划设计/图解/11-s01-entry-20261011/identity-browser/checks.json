@@ -1,0 +1,20 @@
+{
+  "scope": "已授权icon／slug产品字段；P1—P4其他页面未验收",
+  "backend": "独立PostgreSQL schema + 原业务HTTP路由 + 真实MinIO，只有测试身份依赖注入",
+  "browser": "Codex in-app browser",
+  "observed": [
+    "保存BrowserA后只读并保留大小写",
+    "图片上传时保存按钮禁用",
+    "上传后显示仍需保存提示",
+    "保存后刷新GET回读并实际加载64x64图片",
+    "窄屏实测innerWidth354，scrollWidth354，身份字段单列178.551px",
+    "R2内存原型单字符A创建和编辑只读，未调用产品API",
+    "R2图标按钮选择真实本地PNG，DataURL预览实际loaded=true"
+  ],
+  "screenshots": {
+    "desktop.png": "e871d96ca0233b2b607e57a0133f7c5e281f3f95c1c3366402c4409002b01de8",
+    "narrow.png": "bcfa1c05bd6bf9fd2ed1c11fe970bed2736f85af66e9fb1623cfd560da46df06",
+    "design-r2.png": "e2036be80f5f2d66253783e7702bd61907b35134ab1d1e6f443eab8ef0f0227f"
+  },
+  "cleanup": "QA图像对象、隔离schema及临时web QA入口已清理"
+}

@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G10｜P1—P4入口关系 · 待确认设计 R1",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/11-s01-entry-20261011/navigation.html"
+  },
+  "components": [
+    {
+      "id": "entry",
+      "type": "frontend",
+      "label": "P1 项目一级入口",
+      "sublabel": "候选：沿用平台外壳",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        300,
+        80
+      ]
+    },
+    {
+      "id": "list",
+      "type": "frontend",
+      "label": "P2 项目列表",
+      "sublabel": "搜索 / 卡片与列表 / 新增",
+      "pos": [
+        440,
+        40
+      ],
+      "size": [
+        300,
+        80
+      ]
+    },
+    {
+      "id": "space",
+      "type": "frontend",
+      "label": "P1.3 项目工作空间",
+      "sublabel": "现有概览 / 工作台 / 工作",
+      "pos": [
+        840,
+        40
+      ],
+      "size": [
+        300,
+        80
+      ]
+    },
+    {
+      "id": "themes",
+      "type": "frontend",
+      "label": "P4 主题管理占位",
+      "sublabel": "公共 / 专属 / 来源 / 待接通",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        300,
+        80
+      ]
+    },
+    {
+      "id": "form",
+      "type": "frontend",
+      "label": "P3 新建与编辑",
+      "sublabel": "已有属性复用；icon/slug新增",
+      "pos": [
+        440,
+        280
+      ],
+      "size": [
+        300,
+        80
+      ]
+    },
+    {
+      "id": "return",
+      "type": "frontend",
+      "label": "P4 返回项目上下文",
+      "sublabel": "候选：项目ID与原入口保留",
+      "pos": [
+        840,
+        280
+      ],
+      "size": [
+        300,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "entry",
+      "to": "list",
+      "label": "项目列表",
+      "variant": "emphasis"
+    },
+    {
+      "from": "list",
+      "to": "space",
+      "label": "按UUID进入",
+      "variant": "emphasis"
+    },
+    {
+      "from": "entry",
+      "to": "themes",
+      "label": "主题管理"
+    },
+    {
+      "from": "list",
+      "to": "form",
+      "label": "新增 / 编辑"
+    },
+    {
+      "from": "themes",
+      "to": "entry",
+      "label": "返回列表",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "left"
+    },
+    {
+      "from": "space",
+      "to": "return",
+      "label": "主题位置"
+    },
+    {
+      "from": "return",
+      "to": "space",
+      "label": "返回项目",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "平台与项目分层",
+      "items": [
+        "P1仅新增项目入口，保留新建对话、智能体、个人空间等入口。",
+        "P2标题进入现有项目概览，项目资料沿用Workdir。",
+        "P3关闭回列表；保持搜索与视图，不切换项目身份。"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "范围与状态",
+      "items": [
+        "整图为未确认设计，包含计划连接，不能作为当前产品接线证据。",
+        "P4平台进入返回列表，项目进入返回原项目；两入口保持上下文。",
+        "P4不实现主题运行时；S01验收通过后才进入S02。"
+      ]
+    }
+  ]
+}

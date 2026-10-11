@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "DB-G11｜P3保存与回读 · 候选增量流程 R1",
+    "locale": "zh-CN",
+    "output": "docs/元垒系统架构规划设计/图解/11-s01-entry-20261011/save-flow.html",
+    "column_fit": "spread",
+    "viewBox": [
+      1040,
+      660
+    ],
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "P3新建 / 编辑"
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "项目入口",
+      "sublabel": "拟接已有Vue页面"
+    },
+    {
+      "id": "service",
+      "type": "backend",
+      "label": "项目用例",
+      "sublabel": "拟扩充创建请求"
+    },
+    {
+      "id": "owner",
+      "type": "security",
+      "label": "边界校验",
+      "sublabel": "身份 / Workdir"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "事务事实"
+    }
+  ],
+  "messages": [
+    {
+      "id": "save-step-1",
+      "from": "user",
+      "to": "web",
+      "label": "提交名称 / 属性 / Workdir",
+      "variant": "default",
+      "y": 160
+    },
+    {
+      "id": "save-step-2",
+      "from": "web",
+      "to": "service",
+      "label": "新建带request_id；编辑带项目ID",
+      "variant": "emphasis",
+      "y": 196
+    },
+    {
+      "id": "save-step-3",
+      "from": "service",
+      "to": "owner",
+      "label": "校验账号可见性与目录边界",
+      "variant": "security",
+      "y": 232
+    },
+    {
+      "id": "save-step-4",
+      "from": "owner",
+      "to": "service",
+      "label": "通过；失败则拒绝并保留输入",
+      "variant": "return",
+      "y": 268
+    },
+    {
+      "id": "save-step-5",
+      "from": "service",
+      "to": "pg",
+      "label": "同事务写Project与元垒属性",
+      "variant": "emphasis",
+      "y": 304
+    },
+    {
+      "id": "save-step-6",
+      "from": "pg",
+      "to": "service",
+      "label": "提交成功；唯一冲突则回滚",
+      "variant": "return",
+      "y": 340
+    },
+    {
+      "id": "save-step-7",
+      "from": "service",
+      "to": "web",
+      "label": "返回已提交项目身份与设置",
+      "variant": "return",
+      "y": 376
+    },
+    {
+      "id": "save-step-8",
+      "from": "web",
+      "to": "service",
+      "label": "重新读取列表与设置",
+      "variant": "default",
+      "y": 412
+    },
+    {
+      "id": "save-step-9",
+      "from": "service",
+      "to": "pg",
+      "label": "按当前账号读取持久事实",
+      "variant": "default",
+      "y": 448
+    },
+    {
+      "id": "save-step-10",
+      "from": "pg",
+      "to": "service",
+      "label": "项目与属性",
+      "variant": "return",
+      "y": 484
+    },
+    {
+      "id": "save-step-11",
+      "from": "service",
+      "to": "web",
+      "label": "真实回读结果",
+      "variant": "return",
+      "y": 520
+    },
+    {
+      "id": "save-step-12",
+      "from": "web",
+      "to": "user",
+      "label": "展示已保存项目；刷新失败可重试",
+      "variant": "return",
+      "y": 556
+    }
+  ],
+  "cards": [
+    {
+      "dot": "orange",
+      "title": "提案范围",
+      "items": [
+        "图为待确认的目标保存流程；本轮原型仅在内存应用，没有执行这些请求。",
+        "现有创建仅名称与Workdir；完整属性原子创建、icon/slug和列表摘要需最小增量。",
+        "编辑Workdir只读。权限归账号；负责人和管理状态不控制执行。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "失败出口",
+      "items": [
+        "边界、目录或唯一性校验失败则停止写入；表单保留输入，定位错误。",
+        "重复提交保持request_id与原意图，已提交后响应丢失通过幂等重试和回读恢复。",
+        "提交成功但列表回读失败显示已保存、刷新失败；不再执行创建。"
+      ]
+    }
+  ]
+}

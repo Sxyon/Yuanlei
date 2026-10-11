@@ -1,0 +1,16 @@
+{
+  "backend_unit": {
+    "passed": 2874,
+    "skipped": 63,
+    "log_sha256": "9f04f1ca3211718b9f0a92403c1eda811d59627da80849af390499c1c51d9298"
+  },
+  "backend_related_passed": 72,
+  "http_pg_integration_final_passed": 17,
+  "frontend_related_passed": 11,
+  "schema_version": 38,
+  "daily_schema_unchanged": 37,
+  "scope": "icon／slug字段出口；S01整体未验收",
+  "prototype_sha256": "23793108167503a583e35aedc4ebb31bee26dba808e31c53adfd09e8d59368b1",
+  "final_related_log_sha256": "8eaaa1258955d5b448f2328fc41ca002da81a485036d21934fdf97ab7530e8cd",
+  "full_unit_scope": "完整unit运行在最终code/message错误展示调整之前，调整后相关72项回归通过"
+}
