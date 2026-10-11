@@ -28,7 +28,7 @@ const items = computed(() => [
   { label: '概览', icon: LayoutDashboard, name: 'ProjectDashboardComp', active: route.name === 'ProjectDashboardComp' },
   { label: '工作台', icon: Workflow, name: 'ProjectInspectionBoardComp', active: route.name === 'ProjectInspectionBoardComp' },
   { label: '工作', icon: ListChecks, name: 'ProjectWorkTasksView', active: ['ProjectWorkTasksView', 'ProjectWorkTaskView'].includes(route.name) },
-  { label: '项目智能体', icon: Bot, name: 'ProjectAgentsComp', active: ['ProjectAgentsComp', 'ProjectAgentWorkbenchView'].includes(route.name) }
+  { label: '智能体', icon: Bot, name: 'ProjectAgentsComp', active: ['ProjectAgentsComp', 'ProjectAgentWorkbenchView'].includes(route.name) }
 ])
 function toggleNavigation() {
   narrow.value = window.matchMedia('(max-width:700px)').matches
@@ -62,9 +62,8 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
       <nav v-if="enabled && project" class="project-navigation" aria-label="项目工作空间导航">
         <RouterLink v-for="item in items" :key="item.name" :to="{ name: item.name, params: { project_id: projectId } }" :class="{ active: item.active }" :aria-current="item.active ? 'page' : undefined"><component :is="item.icon" :size="18" />{{ item.label }}</RouterLink>
         <RouterLink :to="{ name: 'WorkspaceComp', query: { open: project.workdir_path } }"><Files :size="18" />项目资料</RouterLink>
-        <RouterLink :to="{ name: 'ProjectsComp' }"><ArrowLeft :size="18" />返回项目列表</RouterLink>
+        <RouterLink :to="{ name: 'ProjectsComp' }"><ArrowLeft :size="18" />项目列表</RouterLink>
         <RouterLink :to="{ name: 'ProjectsComp', query: {tab: 'themes', project_id: projectId} }"><Palette :size="18" />主题管理</RouterLink>
-        <p>工作台研讨与确定依据；工作页交付和办理；智能体工作台接收与执行。</p>
       </nav>
       <div class="project-page"><slot /></div>
     </div>
@@ -76,7 +75,7 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
 .project-space-header { display: flex; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--gray-150); min-height: 52px; flex-wrap: wrap; strong { overflow-wrap: anywhere; } select { max-width: 240px; min-width: 0; background: var(--gray-0); color: var(--color-text); border: 1px solid var(--gray-200); border-radius: 6px; padding: 6px; margin-left: auto; } }
 .project-nav-toggle { display: grid; place-items: center; border: 1px solid var(--gray-150); border-radius: 6px; background: var(--gray-0); color: var(--color-text); min-height: 36px; min-width: 36px; cursor: pointer; }
 .project-space-body { display: flex; flex: 1; min-height: 0; min-width: 0; }
-.project-navigation { width: 204px; flex: 0 0 204px; background: var(--gray-25); border-right: 1px solid var(--gray-150); padding: 12px; overflow-y: auto; a { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px; border-radius: 6px; color: var(--color-text); text-decoration: none; } a:hover, a.active { background: var(--main-10); color: var(--main-color); } p { font-size: 12px; color: var(--color-text-secondary); line-height: 1.7; margin-top: 24px; } }
+.project-navigation { width: 168px; flex: 0 0 168px; background: var(--gray-25); border-right: 1px solid var(--gray-150); padding: 12px; overflow-y: auto; a { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px; border-radius: 6px; color: var(--color-text); text-decoration: none; } a:hover, a.active { background: var(--main-10); color: var(--main-color); } p { font-size: 12px; color: var(--color-text-secondary); line-height: 1.7; margin-top: 24px; } }
 .project-page { flex: 1; min-width: 0; overflow: auto; > :deep(*) { min-width: 0; } }
 .project-collapsed .project-navigation { display: none; }
 .project-space-state { padding: 24px; }
