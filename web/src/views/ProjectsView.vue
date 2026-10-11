@@ -47,17 +47,17 @@ onMounted(reload)
         <div class="project-toolbar">
           <span class="count" role="status">{{ hasLoaded ? `${filtered.length} 个项目${management.query ? '匹配搜索' : ''}` : isLoading ? '正在读取项目…' : '' }}</span>
           <a-input-search v-model:value="management.query" allow-clear class="project-search" placeholder="搜索名称、标识、描述、分类或标签" aria-label="搜索项目" />
-          <div class="view-switch" role="group" aria-label="项目展示方式">
-            <a-button :type="management.view === 'cards' ? 'primary' : 'default'" aria-label="卡片视图" :aria-pressed="management.view === 'cards'" @click="management.view = 'cards'"><Grid2X2 :size="16" /></a-button>
-            <a-button :type="management.view === 'list' ? 'primary' : 'default'" aria-label="列表视图" :aria-pressed="management.view === 'list'" @click="management.view = 'list'"><List :size="16" /></a-button>
-          </div>
           <a-popover v-if="management.view === 'list'" trigger="click" placement="bottomRight" title="调整列宽（当前会话）">
             <template #content><div class="width-controls">
               <label v-for="(name, index) in columnNames" :key="name">{{ name }} · {{ management.widths[index] }}px<a-slider v-model:value="management.widths[index]" :min="columnMinimums[index]" :max="index === 0 ? 600 : 320" :aria-label="`${name}列宽`" /></label>
               <a-button size="small" @click="management.widths = [...defaultProjectWidths]">恢复默认列宽</a-button>
             </div></template>
-            <a-button><SlidersHorizontal :size="15" />列宽</a-button>
+            <a-button><SlidersHorizontal :size="15" /></a-button>
           </a-popover>
+          <div class="view-switch" role="group" aria-label="项目展示方式">
+            <a-button :type="management.view === 'cards' ? 'primary' : 'default'" aria-label="卡片视图" :aria-pressed="management.view === 'cards'" @click="management.view = 'cards'"><Grid2X2 :size="16" /></a-button>
+            <a-button :type="management.view === 'list' ? 'primary' : 'default'" aria-label="列表视图" :aria-pressed="management.view === 'list'" @click="management.view = 'list'"><List :size="16" /></a-button>
+          </div>
           <a-button :loading="isLoading" aria-label="刷新项目" @click="reload"><RefreshCw :size="15" /></a-button>
           <a-button type="primary" @click="createOpen = true"><Plus :size="16" />新建项目</a-button>
         </div>
@@ -74,7 +74,7 @@ onMounted(reload)
             </div>
             <p class="project-description" :title="project.description">{{ project.description || '暂无描述' }}</p>
             <div class="card-attributes"><span>{{ typeLabel(project) }}</span><span v-if="project.category" :title="project.category" class="category">{{ project.category }}</span><span class="status-tag">{{ statusLabel(project) }}</span></div>
-            <footer><time :datetime="project.updated_at" :title="project.updated_at">更新于{{ formatRelativeTime(project.updated_at) || '未知' }}</time><a-button type="text" size="small" @click="editing = project">编辑</a-button><RouterLink :to="dashboard(project)" class="entry-link">进入项目</RouterLink></footer>
+            <footer><time :datetime="project.updated_at" :title="project.updated_at">更新于{{ formatRelativeTime(project.updated_at) || '未知' }}</time><a-button type="text" size="small" @click="editing = project" class="project-edit">编辑</a-button><RouterLink :to="dashboard(project)" class="entry-link">进入项目 →</RouterLink></footer>
           </article>
         </div>
         <div v-else-if="hasLoaded" class="table-scroll" role="region" aria-label="项目列表，可横向滚动" tabindex="0">
@@ -87,7 +87,12 @@ onMounted(reload)
               <td>{{ typeLabel(project) }}<small>{{ project.category || '未分类' }}</small></td>
               <td><span class="status-tag">{{ statusLabel(project) }}</span></td><td>{{ ownerLabel(project) }}</td>
               <td><span class="workdir" :title="project.workdir_path">{{ project.workdir_path }}</span><small :title="project.updated_at">更新于{{ formatRelativeTime(project.updated_at) || '未知' }}</small></td>
-              <td><div class="row-actions"><a-button type="link" size="small" @click="editing = project">编辑</a-button><RouterLink :to="dashboard(project)">进入</RouterLink></div></td>
+                <td>
+                  <div class="row-actions">
+                    <a-button type="link" size="small" @click="editing = project">编辑</a-button>
+                    <RouterLink :to="dashboard(project)" class="entry-link">进入</RouterLink>
+                  </div>
+                </td>
             </tr></tbody>
           </table>
         </div>
@@ -113,16 +118,17 @@ onMounted(reload)
 .count { margin-right: auto; font-size: 13px; color: var(--color-text-secondary); }
 .project-search { width: 300px; }
 .view-switch { display: flex; gap: 0; :deep(.ant-btn:first-child) { border-radius: 6px 0 0 6px; } :deep(.ant-btn:last-child) { border-radius: 0 6px 6px 0; } }
-.project-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.project-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 16px; }
 .project-card { display: flex; flex-direction: column; min-width: 0; padding: 20px; border: 1px solid var(--gray-150); border-radius: 8px; background: var(--gray-0); }
 .card-identity, .table-identity { display: flex; gap: 12px; align-items: flex-start; > div { min-width: 0; flex: 1; } }
-.project-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; color: var(--color-text); line-height: 1.6; &:hover { color: var(--main-color); } }
+.project-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; color: var(--color-text); line-height: 1.6; text-decoration: none; &:hover { color: var(--main-color); text-decoration: none; } }
 .project-slug { display: block; overflow-wrap: anywhere; font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
 .project-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; min-height: 44px; font-size: 13px; color: var(--color-text-secondary); line-height: 1.7; margin: 16px 0; }
 .card-attributes { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 20px; .category { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 .status-tag { display: inline-block; padding: 2px 8px; border-radius: 12px; background: var(--gray-100); color: var(--gray-700); font-size: 12px; white-space: nowrap; }
 footer { display: flex; align-items: center; gap: 8px; margin-top: auto; border-top: 1px solid var(--gray-100); padding-top: 12px; time { margin-right: auto; font-size: 12px; color: var(--color-text-secondary); } }
-.entry-link { font-size: 13px; white-space: nowrap; }
+.project-edit { color: var(--main-color);}
+.entry-link { font-size: 13px; white-space: nowrap; color: var(--main-color); text-decoration: none; &:hover { text-decoration: none; } }
 .empty-state { padding: 64px 0; }
 .state-alert { margin-bottom: 20px; }
 .width-controls { width: 240px; label { display: block; color: var(--color-text-secondary); font-size: 12px; } }
@@ -130,7 +136,7 @@ footer { display: flex; align-items: center; gap: 8px; margin-top: auto; border-
 .table-hint { color: var(--color-text-secondary); font-size: 12px; margin: 12px 16px; }
 .project-table { width: 100%; table-layout: fixed; border-collapse: collapse; th { background: var(--gray-25); color: var(--gray-600); font-weight: 500; text-align: left; font-size: 12px; padding: 12px 16px; } td { border-top: 1px solid var(--gray-100); padding: 16px; font-size: 13px; overflow-wrap: anywhere; vertical-align: top; } small { display: block; margin-top: 6px; font-size: 12px; color: var(--color-text-secondary); } }
 .table-description { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary); margin: 6px 0 0; font-size: 12px; }
-.row-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; a { font-size: 13px; } }
+.row-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; > a, :deep(.ant-btn) { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 44px; height: 24px; margin: 0; padding: 0; border: 1px solid transparent; font-size: 13px; line-height: 22px; color: var(--main-color); text-decoration: none; } }
 .workdir { font-size: 12px; }
 .theme-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; p { color: var(--color-text-secondary); margin: 0; } a { max-width: 55%; overflow-wrap: anywhere; } }
 .theme-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
