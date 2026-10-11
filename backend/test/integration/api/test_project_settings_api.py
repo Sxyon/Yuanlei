@@ -68,6 +68,7 @@ async def settings_api():
         manager._initialized = True
         await manager.create_business_tables()
         await manager.create_knowledge_tables()
+        await manager.upgrade_yuanlei_schema_v37_to_v38()
         async with factory() as db:
             db.add(user)
             await db.flush()
@@ -97,6 +98,8 @@ async def test_defaults_and_atomic_settings_persistence(settings_api):
     assert response.status_code == 200, response.text
     values = response.json()["settings"]
     assert values == {
+        "icon": None,
+        "slug": None,
         "work_status": "planned",
         "priority": "none",
         "owner_type": "member",
@@ -439,19 +442,52 @@ async def test_project_attributes_list_and_legacy_defaults_preserve_resources(se
     client, factory, _, _, user, project_id = settings_api
     legacy_id = str(uuid.uuid4())
     async with factory() as db:
-        db.add(Project(id=legacy_id, uid=user.uid, name="无设置旧项目", selection_status="selectable",
-                       directory_mode="managed", workdir_path=f"projects/{legacy_id}"))
+        db.add(
+            Project(
+                id=legacy_id,
+                uid=user.uid,
+                name="无设置旧项目",
+                selection_status="selectable",
+                directory_mode="managed",
+                workdir_path=f"projects/{legacy_id}",
+            )
+        )
         db.add(User(uid="outside", username="outside", password_hash="test", role="user", is_deleted=0))
         await db.flush()
-        db.add(Project(id="outside", uid="outside", name="不可访问", selection_status="selectable",
-                       directory_mode="managed", workdir_path="projects/outside"))
-        db.add(KnowledgeBase(kb_id="kept", name="保留资源", kb_type="milvus", created_by=user.uid,
-                            share_config={"version": 2, "read_scope": None, "manage_scope": None}))
+        db.add(
+            Project(
+                id="outside",
+                uid="outside",
+                name="不可访问",
+                selection_status="selectable",
+                directory_mode="managed",
+                workdir_path="projects/outside",
+            )
+        )
+        db.add(
+            KnowledgeBase(
+                kb_id="kept",
+                name="保留资源",
+                kb_type="milvus",
+                created_by=user.uid,
+                share_config={"version": 2, "read_scope": None, "manage_scope": None},
+            )
+        )
         await db.commit()
-    assert (await client.put(f"/api/projects/{project_id}/knowledge-links", json={"kb_ids": ["kept"]})).status_code == 200
+    assert (
+        await client.put(f"/api/projects/{project_id}/knowledge-links", json={"kb_ids": ["kept"]})
+    ).status_code == 200
     values = (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"]
-    saved = await client.put(f"/api/projects/{project_id}/settings", json={"name": "长期经营", **values,
-        "project_type": "ongoing", "category": "  经营  ", "tags": [" 收入 ", "收入", "", "复盘"]})
+    saved = await client.put(
+        f"/api/projects/{project_id}/settings",
+        json={
+            "name": "长期经营",
+            **values,
+            "project_type": "ongoing",
+            "category": "  经营  ",
+            "tags": [" 收入 ", "收入", "", "复盘"],
+        },
+    )
     assert saved.status_code == 200, saved.text
     readback = (await client.get(f"/api/projects/{project_id}/settings")).json()
     assert readback["settings"] == saved.json()["settings"]
@@ -472,8 +508,15 @@ async def test_project_attributes_list_and_legacy_defaults_preserve_resources(se
     assert renamed.json()["project_type"] == "ongoing" and renamed.json()["category"] == "经营"
     assert renamed.json()["tags"] == ["收入", "复盘"]
     assert (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"] == readback["settings"]
-    for changes in [{"project_type": "enterprise"}, {"tags": ["长" * 31]}, {"tags": [str(i) for i in range(21)]}, {"category": "长" * 51}]:
-        rejected = await client.put(f"/api/projects/{project_id}/settings", json={"name": "不能保存", **values, **changes})
+    for changes in [
+        {"project_type": "enterprise"},
+        {"tags": ["长" * 31]},
+        {"tags": [str(i) for i in range(21)]},
+        {"category": "长" * 51},
+    ]:
+        rejected = await client.put(
+            f"/api/projects/{project_id}/settings", json={"name": "不能保存", **values, **changes}
+        )
         assert rejected.status_code == 422, rejected.text
     async with factory() as db:
         assert (await db.get(Project, project_id)).name == "经营更名"
@@ -484,11 +527,22 @@ async def test_v31_to_v32_migration_retains_old_values_and_reenters(settings_api
     """在旧列形态上执行实际迁移，不推断项目类型。"""
     client, factory, manager, _, user, project_id = settings_api
     values = (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"]
-    saved = await client.put(f"/api/projects/{project_id}/settings", json={"name": "阶段交付旧名", **values,
-        "work_status": "in_progress", "description": "旧内容", "start_date": "2026-10-01", "due_date": "2026-10-20"})
+    saved = await client.put(
+        f"/api/projects/{project_id}/settings",
+        json={
+            "name": "阶段交付旧名",
+            **values,
+            "work_status": "in_progress",
+            "description": "旧内容",
+            "start_date": "2026-10-01",
+            "due_date": "2026-10-20",
+        },
+    )
     assert saved.status_code == 200, saved.text
     async with manager.async_engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE project_settings DROP COLUMN project_type, DROP COLUMN category, DROP COLUMN tags"))
+        await conn.execute(
+            text("ALTER TABLE project_settings DROP COLUMN project_type, DROP COLUMN category, DROP COLUMN tags")
+        )
     await manager.upgrade_yuanlei_schema_v31_to_v32()
     await manager.upgrade_yuanlei_schema_v31_to_v32()
     async with factory() as db:
@@ -517,16 +571,33 @@ async def test_shared_blueprint_hint_uses_visible_directory_binding(settings_api
             ("implicit-peer", user.uid, "implicit", "active"),
             ("deleted-peer", user.uid, "selectable", "deleted"),
         ]:
-            db.add(Project(id=id_, uid=uid, name=id_, selection_status=selection, status=status,
-                           directory_mode="managed", workdir_path=f"projects/{project_id}"))
+            db.add(
+                Project(
+                    id=id_,
+                    uid=uid,
+                    name=id_,
+                    selection_status=selection,
+                    status=status,
+                    directory_mode="managed",
+                    workdir_path=f"projects/{project_id}",
+                )
+            )
         await db.commit()
     base = f"/api/projects/{project_id}/blueprint"
     first = await client.get(base)
     assert first.status_code == 200, first.text
     assert first.json()["shared_workdir"] is False and first.json()["project_type"] == "unspecified"
     async with factory() as db:
-        db.add(Project(id="visible-peer", uid=user.uid, name="共用项目", selection_status="selectable",
-                       directory_mode="linked", workdir_path=f"projects/{project_id}"))
+        db.add(
+            Project(
+                id="visible-peer",
+                uid=user.uid,
+                name="共用项目",
+                selection_status="selectable",
+                directory_mode="linked",
+                workdir_path=f"projects/{project_id}",
+            )
+        )
         await db.commit()
     shared = (await client.get(base)).json()
     assert shared["shared_workdir"] is True and shared["documents"] == []
@@ -542,3 +613,279 @@ async def test_shared_blueprint_hint_uses_visible_directory_binding(settings_api
     async with factory() as db:
         for id_ in [project_id, "visible-peer"]:
             assert (await db.get(Project, id_)).workdir_path == f"projects/{project_id}"
+
+
+async def test_identity_global_case_insensitive_and_immutable(settings_api):
+    client, factory, _, app, user, project_id = settings_api
+    values = (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"]
+    result = await client.put(
+        f"/api/projects/{project_id}/settings",
+        json={"name": "身份", **values, "slug": "A", "icon": "/minio/public/icon.png"},
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["settings"]["slug"] == "A"
+    legacy = {"name": "身份", **{key: value for key, value in values.items() if key not in {"icon", "slug"}}}
+    legacy_result = await client.put(f"/api/projects/{project_id}/settings", json=legacy)
+    assert legacy_result.status_code == 200, legacy_result.text
+    assert legacy_result.json()["settings"]["slug"] == "A"
+    assert legacy_result.json()["settings"]["icon"] == "/minio/public/icon.png"
+    for slug in ["a", "B", None, ""]:
+        result = await client.put(
+            f"/api/projects/{project_id}/settings", json={"name": "不应重命名", **values, "slug": slug}
+        )
+        assert result.status_code == 409, result.text
+    async with factory() as db:
+        assert (await db.get(Project, project_id)).name == "身份"
+        assert (await db.get(ProjectSettings, project_id)).slug == "A"
+        other = User(uid="identity-other", username="identity-other", password_hash="test", role="user", is_deleted=0)
+        db.add(other)
+        await db.flush()
+        second_id = str(uuid.uuid4())
+        db.add(
+            Project(
+                id=second_id,
+                uid=other.uid,
+                name="另一个账号",
+                selection_status="selectable",
+                directory_mode="managed",
+                workdir_path=f"projects/{second_id}",
+            )
+        )
+        await db.commit()
+    app.dependency_overrides[get_required_user] = lambda: other
+    assert (await client.get(f"/api/projects/{project_id}/settings")).status_code == 404
+    second_values = (await client.get(f"/api/projects/{second_id}/settings")).json()["settings"]
+    collision = await client.put(
+        f"/api/projects/{second_id}/settings", json={"name": "未保存", **second_values, "slug": "a"}
+    )
+    assert collision.status_code == 409, collision.text
+    assert collision.json()["detail"] == {"code": "project_slug_conflict", "message": "项目标识已被使用"}
+    async with factory() as db:
+        assert await db.get(ProjectSettings, second_id) is None
+        assert (await db.get(Project, second_id)).name == "另一个账号"
+        first = await db.get(Project, project_id)
+        first.status = "deleted"
+        await db.commit()
+    assert (
+        await client.put(f"/api/projects/{second_id}/settings", json={"name": "未保存", **second_values, "slug": "a"})
+    ).status_code == 409
+    for slug in ["a", "B", None]:
+        async with factory() as db:
+            with pytest.raises(IntegrityError, match="项目标识设定后不可修改"):
+                await db.execute(
+                    text("UPDATE project_settings SET slug=:slug WHERE project_id=:id"),
+                    {"slug": slug, "id": project_id},
+                )
+            await db.rollback()
+
+
+async def test_identity_create_concurrency_replay_and_listing(settings_api, tmp_path, monkeypatch):
+    import asyncio
+    import yuxi.workspace.paths as paths
+
+    client, factory, _, _, user, _ = settings_api
+    monkeypatch.setattr(paths, "get_user_data_dir", lambda: tmp_path)
+    paths.ensure_user_workspace(user.uid)
+    (paths.user_workspace_dir(user.uid) / "identity").mkdir()
+    bodies = [
+        {
+            "request_id": str(uuid.uuid4()),
+            "name": "项目",
+            "workdir": {"mode": "linked", "path": "identity"},
+            "slug": slug,
+            "icon": "/minio/public/demo.png",
+        }
+        for slug in ["MiXeD", "mixed"]
+    ]
+    results = await asyncio.gather(*(client.post("/api/projects", json=body) for body in bodies))
+    assert sorted(result.status_code for result in results) == [200, 409], [r.text for r in results]
+    winner = next(index for index, result in enumerate(results) if result.status_code == 200)
+    body, created = bodies[winner], results[winner].json()
+    repeated = await client.post("/api/projects", json=body)
+    assert repeated.status_code == 200 and repeated.json()["id"] == created["id"]
+    changed = await client.post("/api/projects", json={**body, "icon": "/minio/public/changed.png"})
+    assert changed.status_code == 409
+    listed = (await client.get("/api/projects")).json()
+    rows = listed if isinstance(listed, list) else listed["projects"]
+    item = next(row for row in rows if row["id"] == created["id"])
+    assert item["slug"] == body["slug"] and item["icon"] == body["icon"]
+    async with factory() as db:
+        settings = await db.get(ProjectSettings, created["id"])
+        assert settings.slug == body["slug"] and settings.icon == body["icon"]
+        projects = (await db.scalars(select(Project).where(Project.workdir_path == "identity"))).all()
+        assert len(projects) == 1
+    for slug in ["-A", "A-", "A_B", "含", "a" * 65]:
+        result = await client.post("/api/projects", json={**body, "request_id": str(uuid.uuid4()), "slug": slug})
+        assert result.status_code == 422, result.text
+
+
+async def test_identity_upload_real_object_and_persist(settings_api):
+    from io import BytesIO
+    from urllib.parse import unquote, urlparse
+    from PIL import Image
+    from server.routers.user_router import user_router
+    from yuxi.storage.minio import get_minio_client
+
+    client, factory, _, app, _, project_id = settings_api
+    app.include_router(user_router, prefix="/api")
+    image = BytesIO()
+    Image.new("RGB", (16, 16), "blue").save(image, format="PNG")
+    content = image.getvalue()
+    upload = await client.post("/api/user/upload-image", files={"file": ("project.png", content, "image/png")})
+    assert upload.status_code == 200, upload.text
+    icon = upload.json()["image_url"]
+    object_name = unquote(urlparse(icon).path.split("/public/", 1)[1])
+    minio = get_minio_client().client
+    try:
+        stored = minio.get_object("public", object_name)
+        try:
+            assert stored.read() == content
+        finally:
+            stored.close()
+            stored.release_conn()
+        values = (await client.get(f"/api/projects/{project_id}/settings")).json()["settings"]
+        saved = await client.put(
+            f"/api/projects/{project_id}/settings", json={"name": "图片项目", **values, "icon": icon, "slug": "Image1"}
+        )
+        assert saved.status_code == 200, saved.text
+        async with factory() as db:
+            assert (await db.get(ProjectSettings, project_id)).icon == icon
+        readback = (await client.get(f"/api/projects/{project_id}/settings")).json()
+        assert readback["settings"]["icon"] == saved.json()["settings"]["icon"]
+        bad = await client.post("/api/user/upload-image", files={"file": ("fake.png", b"not an image", "image/png")})
+        assert bad.status_code == 400
+    finally:
+        minio.remove_object("public", object_name)
+
+
+async def test_identity_migration_preserves_legacy_rows(settings_api):
+    _, factory, manager, _, user, project_id = settings_api
+    async with factory() as db:
+        db.add(ProjectSettings(project_id=project_id, owner_type="member", owner_id=user.uid, description="保留旧数据"))
+        await db.commit()
+    async with manager.async_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE project_settings DROP COLUMN icon, DROP COLUMN slug CASCADE"))
+    await manager.upgrade_yuanlei_schema_v37_to_v38()
+    await manager.upgrade_yuanlei_schema_v37_to_v38()
+    async with factory() as db:
+        old = await db.get(ProjectSettings, project_id)
+        assert old.description == "保留旧数据" and old.icon is None and old.slug is None
+
+
+async def test_complete_creation_atomic_readback_and_replay(settings_api, monkeypatch, tmp_path):
+    """完整属性与项目同事务保存，列表批量返回同一身份及有效弱负责人。"""
+    from yuxi.workspace.paths import ensure_user_workspace, user_workspace_dir
+
+    client, factory, _, _, user, _ = settings_api
+    monkeypatch.setattr("yuxi.workspace.paths.get_user_data_dir", lambda: tmp_path)
+    ensure_user_workspace(user.uid)
+    (user_workspace_dir(user.uid) / "s01").mkdir()
+    payload = {
+        "request_id": "complete-intent",
+        "name": "项目" * 100,
+        "workdir": {"mode": "linked", "path": "s01"},
+        "slug": "A",
+        "attributes": {
+            "description": "真实描述",
+            "project_type": "delivery",
+            "category": "产品",
+            "tags": ["里程碑", " 里程碑 "],
+            "work_status": "paused",
+            "priority": "high",
+            "start_date": "2026-10-01",
+            "due_date": "2026-10-11",
+        },
+    }
+    response = await client.post("/api/projects", json=payload)
+    assert response.status_code == 200, response.text
+    pid = response.json()["id"]
+    async with factory() as db:
+        project, setting = await db.get(Project, pid), await db.get(ProjectSettings, pid)
+        assert project.uid == user.uid and project.workdir_path == "s01" and project.status == "active"
+        assert setting.description == "真实描述" and setting.tags == ["里程碑"]
+        assert setting.owner_id == user.uid and setting.owner_type == "member"
+        assert setting.priority == "high" and setting.due_date.isoformat() == "2026-10-11"
+    readback = (await client.get(f"/api/projects/{pid}/settings")).json()
+    assert readback["settings"]["description"] == "真实描述" and readback["settings"]["slug"] == "A"
+    summary = next(p for p in (await client.get("/api/projects")).json() if p["id"] == pid)
+    assert summary["description"] == "真实描述" and summary["work_status"] == "paused"
+    assert summary["owner_name"] == user.username and summary["owner_id"] == user.uid
+    replay = await client.post("/api/projects", json=payload)
+    assert replay.status_code == 200 and replay.json()["id"] == pid
+    without_attributes = {k: v for k, v in payload.items() if k != "attributes"}
+    assert (await client.post("/api/projects", json=without_attributes)).status_code == 409
+    for field, value in [("description", "变化"), ("priority", "urgent"), ("due_date", "2026-10-12")]:
+        changed = {**payload, "attributes": {**payload["attributes"], field: value}}
+        assert (await client.post("/api/projects", json=changed)).status_code == 409
+    defaults_payload = {
+        "request_id": "defaults-intent",
+        "name": "默认项目",
+        "workdir": {"mode": "linked", "path": "s01"},
+    }
+    defaults_created = await client.post("/api/projects", json=defaults_payload)
+    assert defaults_created.status_code == 200
+    defaults_replay = await client.post("/api/projects", json={**defaults_payload, "attributes": {}})
+    assert defaults_replay.status_code == 200 and defaults_replay.json()["id"] == defaults_created.json()["id"]
+    async with factory() as db:
+        member = await db.get(User, user.id)
+        member.is_deleted = 1
+        await db.commit()
+    unavailable = next(p for p in (await client.get("/api/projects")).json() if p["id"] == pid)
+    assert unavailable["owner_name"] is None and unavailable["owner_id"] == user.uid
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"start_date": "2026-10-12", "due_date": "2026-10-11"},
+        {"owner_type": "member", "owner_id": "not-a-member"},
+        {"owner_type": "agent", "owner_id": "unbound-agent"},
+        {"tags": ["长" * 31]},
+    ],
+)
+async def test_complete_creation_invalid_attributes_leave_no_project(settings_api, monkeypatch, tmp_path, attributes):
+    """管理属性拒绝时没有残留Project，不产生半保存。"""
+    from yuxi.workspace.paths import ensure_user_workspace, user_workspace_dir
+
+    client, factory, _, _, user, _ = settings_api
+    monkeypatch.setattr("yuxi.workspace.paths.get_user_data_dir", lambda: tmp_path)
+    ensure_user_workspace(user.uid)
+    (user_workspace_dir(user.uid) / "s01").mkdir()
+    response = await client.post(
+        "/api/projects",
+        json={
+            "request_id": "invalid-complete",
+            "name": "不得残留",
+            "workdir": {"mode": "linked", "path": "s01"},
+            "attributes": attributes,
+        },
+    )
+    assert response.status_code == 422, response.text
+    async with factory() as db:
+        assert await db.scalar(select(Project.id).where(Project.idempotency_key == "invalid-complete")) is None
+    assert (user_workspace_dir(user.uid) / "s01").is_dir()
+
+
+async def test_complete_creation_workdir_rejected_over_http(settings_api, monkeypatch, tmp_path):
+    """真实HTTP路径边界拒绝根、越界、文件和符号链接。"""
+    from yuxi.workspace.paths import ensure_user_workspace, user_workspace_dir
+
+    client, factory, _, _, user, _ = settings_api
+    monkeypatch.setattr("yuxi.workspace.paths.get_user_data_dir", lambda: tmp_path)
+    ensure_user_workspace(user.uid)
+    workspace = user_workspace_dir(user.uid)
+    (workspace / "file").write_text("keep")
+    (workspace / "link").symlink_to(tmp_path, target_is_directory=True)
+    for index, path in enumerate(["/", "../outside", "file", "link", "missing"]):
+        response = await client.post(
+            "/api/projects",
+            json={
+                "request_id": f"bad-path-{index}",
+                "name": "路径拒绝",
+                "workdir": {"mode": "linked", "path": path},
+                "attributes": {},
+            },
+        )
+        assert response.status_code in {400, 404, 422}, response.text
+        async with factory() as db:
+            assert await db.scalar(select(Project.id).where(Project.idempotency_key == f"bad-path-{index}")) is None

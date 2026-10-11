@@ -1,6 +1,6 @@
 # 项目管理入口与身份属性增量
 
-状态：proposed
+状态：implemented
 类型：feature
 Owner：backend/package/yuxi/services/project_service.py
 
@@ -8,7 +8,7 @@ Owner：backend/package/yuxi/services/project_service.py
 
 现有Project支持账号拥有、目录绑定、可选项目列表与重命名，元垒ProjectSettings支持管理属性，但缺项目一级管理入口、icon与slug。创建仅接名称与Workdir，列表只附用途/分类/标签；直接设计完整表单和管理摘要会产生假持久化或逐项目取数。当前上游Project/Conversation的UUID、可见性和Workdir语义需要保留。
 
-## 提案
+## 决策
 
 按[SYS-DB-001第8节R1](../../../../元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计.md#_8-db-s01-项目入口设计审阅-r1)审阅P1—P4。只在用户确认范围内实施。新增登录用户项目管理入口，复用Vue、Ant Design Vue、PageHeader、现有项目store/API和WorkspacePathPicker。icon复用智能体图片上传；slug可空，支持1—64位大小写字母/数字/连字符且首尾字母数字，首次设置后不可修改或清空，仅作业务标识，路由继续用UUID。全局非空slug不区分大小写唯一、保留输入大小写，在保留记录内占用，包含软删除项目；持久化增量只进yuanlei域并升级版本。项目创建用例同事务写名称、Workdir与完整已确认管理属性，幂等意图覆盖新增字段；编辑Workdir只读，完整设置复用已有用例。列表在同一可见集合内批量返回必要摘要，不逐项目请求settings。负责人弱关联不授权，管理状态不改变执行许可。主题只交管理位置与未来来源/状态，不实现运行时。
 
@@ -21,20 +21,20 @@ Owner：backend/package/yuxi/services/project_service.py
 - slug承担路由：便于人工链接，但需要旧项目回填和旧链接兼容；保留UUID路由。不可变性独立执行用户要求。
 - 固定图标枚举：实现较少但不能满足用户明确的上传要求；因此复用现有智能体上传链路。自定义列系统仍未实施。
 
-## 验收标准
+## 验证
 
-表中Passed仅指LOG第13节的隔离工作树验证历史；本地主checkout代码尚待迁回并复核，不能作为本地产品或S01整体验收结果。
+以下结果以LOG第15节本地完整实施验证为准；第13节隔离字段验证继续保留为历史。真实浏览器、PG与对象回读在该节相连，不将mock或原型保存当作持久化。
 
 | 验收主张 | 失败面 | 语义 Owner | 直接证据 / 命令 | 负向案例 | 当前结果 |
 | --- | --- | --- | --- | --- | --- |
-| P1—P4职责与完整页面可审 | 只有局部控件，无项目返回 | SYS-DB-001第8节 | 隔离原型DOM、截图及Archify回执 | 按项目进入主题后返回错项目 | Inspected |
-| 完整管理属性创建（已确认，待实施） | 只保存名称或部分属性 | project_service / yuanlei模型与迁移 | 真实HTTP创建后PG及GET回读 | 属性校验失败后Project不得残留 | Not run |
+| P1—P4职责与完整页面可审 | 只有局部控件，无项目返回 | SYS-DB-001第8节 | 隔离原型DOM、截图及Archify回执 | 按项目进入主题后返回错项目 | Passed |
+| 完整管理属性原子创建 | 只保存名称或部分属性 | project_service / yuanlei模型与迁移 | 真实HTTP创建后PG及GET回读 | 属性校验失败后Project不得残留 | Passed |
 | 可选slug唯一且权限隔离 | 并发重复、跨用户读写 | repository / DB唯一约束 | PostgreSQL并发、HTTP跨用户测试 | 不同uid大小写冲突、另一uid越权编辑 | Passed |
-| 幂等覆盖icon／slug意图 | 重试重复项目或接受变化字段 | project_service | 丢响应后同request_id重试回读 | 改icon/slug却重用request_id | Passed |
-| Workdir边界与身份稳定 | 表单绕过边界、编辑换绑 | yuxi.workspace / ProjectRepository | 真实目录与HTTP边界测试 | 根目录、越界、符号链接、无权项目 | Not run |
-| 列表与设置读取同一项目 | N+1取数、邻项目数据混入 | project_service / settings repository / projects store | HTTP摘要与浏览器精确项目回读 | 旧字段缺失、失效负责人、刷新失败 | Not run |
-| 已确认icon／slug与图像上传 | 假保存、上传迟到、可变标识 | project_service / ProjectSettings / user上传 | 17项真实PG／HTTP集成、对象字节回读及浏览器刷新 | 失败与迟到响应、DB直接修改、旧请求省略字段 | Passed |
+| 幂等覆盖完整有效创建意图 | 重试重复项目或接受变化字段 | project_service | 丢响应后同request_id重试回读 | 改icon/slug/属性或省略非默认属性却重用request_id | Passed |
+| Workdir边界与身份稳定 | 表单绕过边界、编辑换绑 | yuxi.workspace / ProjectRepository | 真实目录与HTTP边界测试 | 根目录、越界、符号链接、无权项目 | Passed |
+| 列表与设置读取同一项目 | N+1取数、邻项目数据混入 | project_service / settings repository / projects store | HTTP摘要与浏览器精确项目回读 | 旧字段缺失、失效负责人、刷新失败 | Passed |
+| 已确认icon／slug与图像上传 | 假保存、上传迟到、可变标识 | project_service / ProjectSettings / user上传 | 23项真实PG／HTTP集成、对象字节回读及浏览器刷新 | 失败与迟到响应、DB直接修改、旧请求省略字段 | Passed |
 
-## 风险
+## 后果
 
 新唯一字段需处理旧项目空值、保留的软删除记录与并发冲突；新增属性不能进入上游business域。幂等创建意图需覆盖请求新增字段和默认值，否则重试会错误接受不同项目意图。目录创建是独立文件动作，失败不能隐式删除目录。列表摘要扩大应保持授权集合与批量查询，避免顺手建设主题框架。上游同步若提供等价入口与属性，则采用或迁移真实Owner并缩小差异。确认记录只以原用户消息为准，原型操作与Reviewer意见均不授予产品实施范围。

@@ -10,9 +10,14 @@ from sqlalchemy.exc import IntegrityError
 from yuxi.repositories.project_git_repository import ProjectGitRepositoryStore
 from yuxi.repositories.project_repository import ProjectRepository
 from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
+from yuxi.repositories.user_repository import UserRepository
 from yuxi.services.run_queue_service import enqueue_project_git_operation
-from yuxi.services.project_settings_service import project_attribute_summary
-from yuxi.storage.postgres.models_business import Project
+from yuxi.services.project_settings_service import (
+    default_project_attributes,
+    project_attribute_summary,
+    validate_project_settings,
+)
+from yuxi.storage.postgres.models_business import Project, ProjectSettings
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.workspace.paths import allocate_default_user_workdir_path, normalize_workdir_path
 from yuxi.workspace.workdir import Workdir
@@ -38,11 +43,21 @@ def _normalize_project_name(name: str | None, *, required: bool) -> str | None:
     return normalized_name or None
 
 
-def _require_matching_creation_intent(project: Project, *, name: str, workdir_path: str) -> None:
+def _require_matching_creation_intent(
+    project: Project, *, name: str, workdir_path: str, settings=None, values: dict
+) -> None:
     """要求已有 Project 仍有效且匹配当前幂等创建意图。"""
     if project.status == "deleted":
         raise HTTPException(status_code=409, detail="request_id 已用于已删除的 Project")
-    if project.name != name or project.directory_mode != "linked" or project.workdir_path != workdir_path:
+    if (
+        project.name != name
+        or project.directory_mode != "linked"
+        or project.workdir_path != workdir_path
+        or any(
+            (getattr(settings, key) if settings else default_project_attributes(project.uid)[key]) != value
+            for key, value in values.items()
+        )
+    ):
         raise HTTPException(status_code=409, detail="request_id 已用于其他 Project 创建意图")
 
 
@@ -105,9 +120,27 @@ async def create_implicit_project(*, uid: str, db, idempotency_key: str | None =
 
 
 async def create_project_view(
-    *, uid: str, request_id: str, name: str, directory_mode: str, workdir_path: str | None, db
+    *,
+    uid: str,
+    request_id: str,
+    name: str,
+    directory_mode: str,
+    workdir_path: str | None,
+    db,
+    icon: str | None = None,
+    slug: str | None = None,
+    values: dict | None = None,
 ) -> dict:
     """幂等创建 selectable Project。"""
+    values = {**default_project_attributes(str(uid)), **(values or {}), "icon": icon, "slug": slug}
+    validate_project_settings(values)
+    if values["owner_type"] == "agent":
+        raise HTTPException(422, "新项目尚未绑定智能体，请选择成员或无负责人")
+    if values["owner_type"] == "member" and values["owner_id"] != str(uid):
+        member = await UserRepository(db).get_by_uid(values["owner_id"])
+        if member is None or member.is_deleted:
+            raise HTTPException(422, "负责人不是有效平台成员")
+    intent = values
     normalized_request_id = (request_id or "").strip()
     if not normalized_request_id:
         raise HTTPException(status_code=422, detail="request_id 不能为空")
@@ -125,8 +158,13 @@ async def create_project_view(
             existing,
             name=normalized_name,
             workdir_path=normalized_path,
+            settings=await ProjectSettingsRepository(db).get(existing.id),
+            values=intent,
         )
-        return existing.to_dict()
+        return {
+            **existing.to_dict(),
+            **project_attribute_summary(await ProjectSettingsRepository(db).get(existing.id), uid=existing.uid),
+        }
 
     try:
         project = await create_project_record(
@@ -138,26 +176,45 @@ async def create_project_view(
             db=db,
             idempotency_key=normalized_request_id,
         )
+        db.add(ProjectSettings(project_id=project.id, **values))
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
         replay = await repository.get_by_idempotency_key(normalized_request_id, str(uid))
         if replay is None:
-            raise HTTPException(status_code=409, detail="Project 创建冲突")
+            detail = (
+                {"code": "project_slug_conflict", "message": "项目标识已被使用"}
+                if "uq_project_settings_slug" in str(exc.orig)
+                else "Project 创建冲突"
+            )
+            raise HTTPException(status_code=409, detail=detail) from exc
         _require_matching_creation_intent(
             replay,
             name=normalized_name,
             workdir_path=normalized_path,
+            settings=await ProjectSettingsRepository(db).get(replay.id),
+            values=intent,
         )
         project = replay
-    return project.to_dict()
+    return {
+        **project.to_dict(),
+        **project_attribute_summary(await ProjectSettingsRepository(db).get(project.id), uid=project.uid),
+    }
 
 
 async def list_projects_view(*, uid: str, db) -> list[dict]:
     """列出当前用户可选择的 Project。"""
     projects = await ProjectRepository(db).list_selectable_for_user(str(uid))
     settings = await ProjectSettingsRepository(db).list_for_projects([project.id for project in projects])
-    return [{**project.to_dict(), **project_attribute_summary(settings.get(project.id))} for project in projects]
+    owners = await ProjectSettingsRepository(db).owner_names(projects, settings)
+    return [
+        {
+            **project.to_dict(),
+            **project_attribute_summary(settings.get(project.id), uid=project.uid),
+            "owner_name": owners.get(project.id),
+        }
+        for project in projects
+    ]
 
 
 async def rename_project_view(*, uid: str, project_id: str, name: str, db) -> dict:
@@ -173,7 +230,7 @@ async def rename_project_view(*, uid: str, project_id: str, name: str, db) -> di
     await db.commit()
     await db.refresh(project)
     settings = await ProjectSettingsRepository(db).get(project_id)
-    return {**project.to_dict(), **project_attribute_summary(settings)}
+    return {**project.to_dict(), **project_attribute_summary(settings, uid=project.uid)}
 
 
 async def delete_project_view(*, uid: str, project_id: str, db) -> dict:

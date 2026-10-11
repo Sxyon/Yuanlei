@@ -1,11 +1,11 @@
 <template>
-  <a-modal :open="open" class="project-settings-modal" :width="900" :footer="null" :closable="false" @cancel="emit('update:open', false)">
+  <a-modal :open="open" class="project-settings-modal" :width="900" :footer="null" :closable="false" @cancel="close">
     <template #title>
       <div class="settings-titlebar">
         <span>项目设置</span>
         <div class="settings-actions">
-          <a-button size="small" @click="emit('update:open', false)">关闭</a-button>
-          <a-button v-if="data && tab !== 'resources'" size="small" type="primary" :loading="saving" @click="save">保存</a-button>
+          <a-button size="small" :disabled="saving || savingLinks || iconUploading" @click="close">关闭</a-button>
+          <a-button v-if="data && tab !== 'resources'" size="small" type="primary" :loading="saving" :disabled="iconUploading" @click="save">保存</a-button>
         </div>
       </div>
     </template>
@@ -23,7 +23,7 @@
           <a-button v-if="!data && !loading" @click="load">重新加载</a-button>
           <div v-if="data">
             <section v-show="tab === 'attributes'">
-              <a-form layout="horizontal" class="attributes-form" :colon="false" label-align="left">
+              <a-form :disabled="saving" layout="horizontal" class="attributes-form" :colon="false" label-align="left">
                 <a-form-item label="状态">
                   <a-select v-model:value="draft.work_status" :options="statuses" />
                 </a-form-item>
@@ -59,9 +59,17 @@
               </a-form>
             </section>
             <section v-show="tab === 'description'">
-              <a-form layout="vertical">
+              <ProjectIdentityFields v-model:icon="draft.icon" v-model:slug="draft.slug" :slug-locked="Boolean(data.settings.slug)" :scope-key="data.project.id" :name="draft.name" :disabled="saving" @uploading="iconUploading = $event" />
+              <a-form :disabled="saving" layout="vertical">
                 <a-form-item label="项目名称" required>
                   <a-input v-model:value="draft.name" :maxlength="255" />
+                </a-form-item>
+                <a-form-item label="项目目录（Workdir）">
+                  <a-input :value="data.project.workdir_path" readonly />
+                  <p class="settings-help">目录绑定沿用当前项目，不支持在设置中换绑；多个项目可共享目录字节。</p>
+                </a-form-item>
+                <a-form-item label="账号归属">
+                  <a-input :value="data.project.uid === user.uid ? user.username : data.project.uid" readonly />
                 </a-form-item>
                 <a-form-item label="项目描述">
                   <a-textarea v-model:value="draft.description" :maxlength="255" show-count :rows="5" />
@@ -102,32 +110,46 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { message } from 'ant-design-vue'
+import { Modal, message } from 'ant-design-vue'
 import { SlidersHorizontal, FileText, FolderGit2, UserRoundMinus } from '@lucide/vue'
 import { projectApi } from '@/apis/project_api'
 import ProjectGitSettingsModal from './ProjectGitSettingsModal.vue'
+import ProjectIdentityFields from './ProjectIdentityFields.vue'
 import FallbackAvatar from './common/FallbackAvatar.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { projectTypes } from '@/utils/projectSelection'
+import { useUserStore } from '@/stores/user'
+import { projectStatuses, projectPriorities } from '@/utils/projectManagement'
 
-const props = defineProps({ open: Boolean, project: { type: Object, default: null } })
+const props = defineProps({ open: Boolean, project: { type: Object, default: null }, initialTab: { type: String, default: 'attributes' } })
 const emit = defineEmits(['update:open', 'saved'])
 const sections = [
   { key: 'attributes', label: '属性', icon: SlidersHorizontal },
   { key: 'description', label: '名称与描述', icon: FileText },
   { key: 'resources', label: '资源', icon: FolderGit2 }
 ]
-const tab = ref('attributes')
+const user = useUserStore()
+const tab = ref(props.initialTab)
 const data = ref(null)
 const draft = reactive({})
 const loading = ref(false)
 const saving = ref(false)
+const iconUploading = ref(false)
 const savingLinks = ref(false)
 const selectedKnowledge = ref([])
 const error = ref('')
 let loadVersion = 0
-const statuses = [ ['planned', '计划中'], ['in_progress', '进行中'], ['paused', '已暂停'], ['completed', '已完成'], ['cancelled', '已取消'] ].map(([value, label]) => ({ value, label }))
-const priorities = [ ['urgent', '紧急'], ['high', '高'], ['medium', '中'], ['low', '低'], ['none', '无优先级'] ].map(([value, label]) => ({ value, label }))
+const statuses = projectStatuses
+const priorities = projectPriorities
+let savedDraft = '', savedKnowledge = ''
+/** 保护管理属性和资源选择的未保存输入。 */
+function close() {
+  if (saving.value || savingLinks.value || iconUploading.value) return
+  const leave = () => emit('update:open', false)
+  if (data.value && (JSON.stringify(draft) !== savedDraft || JSON.stringify(selectedKnowledge.value) !== savedKnowledge)) {
+    Modal.confirm({ title: '放弃未保存的项目设置？', okText: '放弃', cancelText: '继续编辑', onOk: leave })
+  } else leave()
+}
 const ownerOptions = computed(() => [
   { value: JSON.stringify(['none', null]), label: '无负责人', ownerType: 'none' },
   ...[['member', '成员', data.value?.members], ['agent', '智能体', data.value?.agents]].map(([type, label, items]) => ({
@@ -155,13 +177,15 @@ const load = async () => {
   if (!props.open || !projectId) return
   loading.value = true
   data.value = null
+  iconUploading.value = false
   error.value = ''
   try {
     const result = await projectApi.getSettings(projectId)
     if (version !== loadVersion) return
     data.value = result
-    Object.assign(draft, { project_type: 'unspecified', category: null, tags: [] }, result.settings, { name: result.project.name })
+    Object.assign(draft, { icon: '', slug: '', project_type: 'unspecified', category: null, tags: [] }, result.settings, { name: result.project.name })
     selectedKnowledge.value = result.knowledge_links.map((item) => item.kb_id)
+    savedDraft = JSON.stringify(draft); savedKnowledge = JSON.stringify(selectedKnowledge.value)
   } catch (err) {
     if (version === loadVersion) error.value = err.message || '项目设置加载失败'
   } finally {
@@ -171,6 +195,7 @@ const load = async () => {
 
 /** 保存同一项目的完整管理属性并使用后端结果刷新。 */
 const save = async () => {
+  if (saving.value || iconUploading.value) return
   if (!draft.name?.trim()) { error.value = '项目名称不能为空'; return }
   if (draft.owner_type !== 'none' && !draft.owner_id) { error.value = '请选择负责人'; return }
   if (draft.start_date && draft.due_date && draft.start_date > draft.due_date) { error.value = '截止日期不得早于开始日期'; return }
@@ -181,7 +206,7 @@ const save = async () => {
   try {
     const result = await projectApi.saveSettings(projectId, { ...draft, owner_id: draft.owner_type === 'none' ? null : draft.owner_id, start_date: draft.start_date || null, due_date: draft.due_date || null })
     emit('saved', result.project)
-    if (version === loadVersion) { data.value = result; message.success('项目设置已保存') }
+    if (version === loadVersion) { data.value = result; Object.assign(draft, result.settings, { name: result.project.name }); savedDraft = JSON.stringify(draft); message.success('项目设置已保存') }
   } catch (err) { if (version === loadVersion) error.value = err.message || '保存失败' }
   finally { saving.value = false }
 }
@@ -193,13 +218,13 @@ const saveLinks = async () => {
   const version = loadVersion
   try {
     const result = await projectApi.saveKnowledgeLinks(props.project.id, selectedKnowledge.value)
-    if (version === loadVersion) { data.value = result; message.success('知识库关联已保存') }
+    if (version === loadVersion) { data.value = result; savedKnowledge = JSON.stringify(selectedKnowledge.value); message.success('知识库关联已保存') }
   } catch (err) { if (version === loadVersion) error.value = err.message || '关联保存失败' }
   finally { savingLinks.value = false }
 }
 watch(() => [props.open, props.project?.id], () => {
   ++loadVersion
-  if (props.open) { tab.value = 'attributes'; load() }
+  if (props.open) { tab.value = props.initialTab; load() }
 }, { immediate: true })
 </script>
 
@@ -250,7 +275,9 @@ watch(() => [props.open, props.project?.id], () => {
 :global(.project-settings-modal .ant-modal-header) { margin: 0; padding: 18px 24px; border-bottom: 1px solid var(--gray-150); background: var(--gray-0); }
 :global(.project-settings-modal .ant-modal-body) { padding: 0; }
 @media (max-width: 600px) {
-  .settings-layout { grid-template-columns: 120px minmax(0, 1fr); }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); height: min(78vh, 720px); }
+  .settings-sidebar { flex-direction: row; flex-shrink: 0; border-right: 0; border-bottom: 1px solid var(--gray-150); }
+  .settings-nav-item { width: auto; white-space: nowrap; }
   .settings-sidebar { padding: 12px 6px; }
   .settings-nav-item { padding: 6px; gap: 6px; }
   .settings-main { padding: 18px 12px; }

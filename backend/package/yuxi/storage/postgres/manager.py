@@ -25,7 +25,7 @@ from yuxi.utils.singleton import SingletonMeta
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 37
+YUANLEI_SCHEMA_VERSION = 38
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -120,6 +120,8 @@ PROJECT_SETTINGS_SCHEMA_STATEMENTS = (
         owner_type VARCHAR(16) NOT NULL,
         owner_id VARCHAR(80),
         description VARCHAR(255) NOT NULL DEFAULT '',
+        icon VARCHAR(255),
+        slug VARCHAR(64),
         project_type VARCHAR(20) NOT NULL DEFAULT 'unspecified',
         category VARCHAR(50),
         tags JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -141,6 +143,28 @@ PROJECT_SETTINGS_SCHEMA_STATEMENTS = (
     )""",
     """INSERT INTO project_settings (project_id, owner_type, owner_id)
         SELECT id, 'member', uid FROM projects ON CONFLICT (project_id) DO NOTHING""",
+)
+PROJECT_IDENTITY_SCHEMA_STATEMENTS = (
+    "ALTER TABLE project_settings ADD COLUMN IF NOT EXISTS icon VARCHAR(255)",
+    "ALTER TABLE project_settings ADD COLUMN IF NOT EXISTS slug VARCHAR(64)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_project_settings_slug ON project_settings (lower(slug))",
+    """DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint
+        WHERE conname='ck_project_settings_slug' AND conrelid='project_settings'::regclass) THEN
+        ALTER TABLE project_settings ADD CONSTRAINT ck_project_settings_slug CHECK
+        (slug IS NULL OR (length(slug) BETWEEN 1 AND 64 AND slug ~ '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$'));
+        END IF; END $$""",
+    """CREATE OR REPLACE FUNCTION prevent_project_slug_change() RETURNS trigger AS $$
+        BEGIN
+            IF OLD.slug IS NOT NULL AND NEW.slug IS DISTINCT FROM OLD.slug THEN
+                RAISE EXCEPTION '项目标识设定后不可修改' USING ERRCODE='23514', CONSTRAINT='ck_project_slug_immutable';
+            END IF;
+            RETURN NEW;
+        END; $$ LANGUAGE plpgsql""",
+    """DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_trigger
+        WHERE tgname='project_slug_immutable' AND tgrelid='project_settings'::regclass) THEN
+        CREATE TRIGGER project_slug_immutable BEFORE UPDATE OF slug ON project_settings
+        FOR EACH ROW EXECUTE FUNCTION prevent_project_slug_change();
+        END IF; END $$""",
 )
 SCHEMA_VERSION_TABLE = "yuxi_schema_migrations"
 AGENT_RUN_LEASE_SCHEMA_STATEMENTS = (
@@ -1673,6 +1697,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v37_to_v38(self) -> None:
+        """增加项目图片图标与全局唯一、首次设置后锁定的标识。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_IDENTITY_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def upgrade_yuanlei_schema_v36_to_v37(self) -> None:

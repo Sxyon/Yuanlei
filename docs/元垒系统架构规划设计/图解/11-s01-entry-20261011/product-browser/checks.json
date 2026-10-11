@@ -1,0 +1,55 @@
+{
+  "environment": "本地主checkout / codex/dashboard；原生日常Compose API5050/web5173，正常合成账户认证",
+  "prototype_is_not_persistence": true,
+  "checks": [
+    {
+      "item": "P1 导航",
+      "observed": "一级项目入口、PageHeader列表／主题；UUID进入4fde3d1f-5c59-4c9e-9b9a-25ac0f2fb12f/dashboard；项目内返回列表和主题，主题返回同一UUID",
+      "passed": true
+    },
+    {
+      "item": "P2 列表",
+      "observed": "真实项目1条；无匹配搜索0条可清除；卡片与列表切换；列宽键盘320→321、恢复320；长标题截行；空态截图",
+      "passed": true
+    },
+    {
+      "item": "P2 加载／错误",
+      "observed": "浏览器仅临时阻断GET /api/projects：刷新失败保留1条；reload首次失败不报假0；解除后重试骨架加载再恢复1条",
+      "passed": true
+    },
+    {
+      "item": "P3 创建／编辑",
+      "observed": "原生目录组件新建并选择/s01-entry；图标上传、Q大写单字符创建；描述编辑后GET/PG回读；slug readonly；关闭旧设置后新建标签逐实例唯一绑定",
+      "passed": true
+    },
+    {
+      "item": "P4 主题",
+      "observed": "公共／项目专属来源与管理接口未接入，生成／导入禁用；准确返回项目，未实现运行时",
+      "passed": true
+    },
+    {
+      "item": "视觉／窄屏",
+      "observed": "浅／深色目视核对；请求375×812浏览器实际innerWidth341/scrollWidth341；表格1020px局部滚动，新建／编辑单列，dialog340.91/scroll341；已恢复viewport、theme、阻断与原token",
+      "passed": true
+    }
+  ],
+  "proofs": {
+    "persistence": "persistence.json",
+    "cleanup": "cleanup.json"
+  },
+  "screenshots": {
+    "cards-final.png": "5efa48e4837bcd9b97e314dc03f1af68a34f68916f851443bbffe29443b655a4",
+    "cards.png": "bcef155eb0d115e0680a73a0778323283496c86cdfabc596bf04d45086e5e490",
+    "create.png": "5df7e2b8d4298ef027752d166b7f11483173c9890e134e93678d28aa0a9ff9e9",
+    "dark.png": "e3b90ffcb66ff1f34e1a42d3ab1c21c22f2f84ffb20b436b9c048680dcc98950",
+    "empty.png": "aa4104267d9f84624972cf70a2ee4399f90c91baa27aeeed02120ee0b4cc0a56",
+    "first-load-error.png": "b814d1e70dcc31050d955a74ea1ca9998c642e3fa349a63b54b08cd4b5ad9d72",
+    "list.png": "552eed04485b4dd62ec2b3890ecb291603b99bb05028a85f116b14e3bc1c8cc1",
+    "narrow-cards.png": "a7007dca9af312c42e0bed2493805eb411f5db168cabcc8db43928d67d5b45b2",
+    "narrow-create.png": "155fe53c2a18aec7e29e5cf1f9736c262eb0762029dcc893d9e5f629d231abb2",
+    "narrow-edit.png": "468d78bc4d2d968af70944f858e7ba792de0bc03ff310945cd31aef19fdacd45",
+    "narrow-list.png": "d2112e950dcf0fa835d1bf6243ef1b01ae036b71885577b3dc68a9701d9f65bf",
+    "refresh-error.png": "efac9867c339bc715d48c746916f4855b741c52b71f870de822b6d5ab30ffdc4",
+    "themes.png": "054e8496e74dd1c9208d67594e5780f29cf4099a20cc144c3b268aa7e096a853"
+  }
+}

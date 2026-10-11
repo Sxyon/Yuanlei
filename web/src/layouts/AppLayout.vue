@@ -224,6 +224,8 @@ const mainList = computed(() => {
     }
   ]
 
+  items.push({ name: '项目', path: '/projects', exactActive: true, icon: Folders, activeIcon: Folders })
+
   items.push({
     name: '智能体',
     path: '/agent-manage',

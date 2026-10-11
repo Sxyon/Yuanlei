@@ -264,6 +264,7 @@ async def test_history_candidates_only_expose_resolved_directory_shortcuts(monke
 async def test_rename_project_updates_only_active_selectable_project(monkeypatch):
     project = SimpleNamespace(
         name="Old",
+        uid="user-1",
         updated_at=None,
         to_dict=lambda: {"id": "project-1", "name": project.name},
     )
@@ -286,7 +287,19 @@ async def test_rename_project_updates_only_active_selectable_project(monkeypatch
         db=db,
     )
 
-    assert result == {"id": "project-1", "name": "New name", "project_type": "unspecified", "category": None, "tags": []}
+    assert result == {
+        "id": "project-1",
+        "name": "New name",
+        "project_type": "unspecified",
+        "category": None,
+        "tags": [],
+        "icon": None,
+        "slug": None,
+        "description": "",
+        "work_status": "planned",
+        "owner_type": "member",
+        "owner_id": "user-1",
+    }
     assert db.commits == 1
 
 

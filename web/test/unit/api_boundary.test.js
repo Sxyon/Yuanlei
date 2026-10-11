@@ -420,6 +420,8 @@ test('Project 与 Workspace API 按 xhome 契约构造请求', async () => {
     assert.deepEqual(JSON.parse(requests[1].options.body), {
       request_id: 'request-1',
       name: '客户交付',
+      icon: null,
+      slug: null,
       workdir: { mode: 'linked', path: 'clients/acme' }
     })
     assert.equal(

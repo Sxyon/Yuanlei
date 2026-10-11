@@ -268,3 +268,32 @@ DB-G10入口关系使用Archify architecture，最终回执为`nav-final/`；初
 当前阶段：设计确认、归档与本地实施准备；S01整体未验收，S02不进入，协作接入与Andon保持暂停。本轮不需要新的范围确认。归档检查及commit随后记录实际结果。
 
 设计归档检查：工程契约197 decisions／21 features／357 docs通过，checker单元71项通过；`cd docs && pnpm run build`通过（35.59s），42条相关相对链接存在，`git diff --check`通过。全新Reviewer对确认依据、设计约束和隔离证据边界审查通过。受引用identity-browser证据纳入归档，构建产物排除。规定`docker compose exec api uv run --group test pytest test/unit -m "not slow"`因容器`/app/uv.lock`写权限失败；用`--no-sync`复用现有依赖的全量单元正在运行，结果后续登记，不作为设计产品通过依据。此提交只归档文档与原型，产品代码未纳入。
+
+## 15. S01本地完整实施与验收（2026-10-11）
+
+进度：设计及批准记录先提交为`3a0ff83a`（docs(dashboard): 归档 S01 项目入口设计及确认范围）。随后将字段代码逐文件核对迁入当前本地`codex/dashboard`，全部产品开发和日常Compose验证均在此checkout；不继续使用工作树。正式页面采用平台PageHeader、Ant Design Vue、既有样式与WorkspacePathPicker，移除原型说明区，完整实现批准P1—P4。
+
+技术：`project_service`拥有原子完整创建及有效意图幂等，`project_settings_service`拥有验证与设置，repository批量读取摘要及弱负责人名称。icon／slug只增至yuanlei.project_settings，版本37→38，business7／knowledge2保持。数据库lower(slug)唯一索引、格式CHECK与不可变trigger覆盖并发、替代写入和软删除占用。UUID路由、原Workdir边界、权限及管理状态语义保持；新建失败保留草稿和目录。共用新建组件覆盖新旧两个入口；编辑沿用已有设置组件，Workdir／账号只读。
+
+实际执行与证据：
+
+- `docker compose run --rm --no-deps storage-migrator`在本地执行成功；另进程PG回读business7／knowledge2／yuanlei38。规定`uv run --group test`因`/app/uv.lock`权限拒绝；改用现有容器已安装依赖`uv run --no-sync --group test pytest test/unit -m "not slow" -q -p no:cacheprovider --tb=short`最终完整unit：2874通过、63跳过、10条既有warning，380.90s。先前设计归档时运行的2859项仅记基线，不冒充最终代码。
+- `docker compose exec -T api uv run --no-sync --group test pytest test/integration/api/test_project_settings_api.py -q -p no:cacheprovider --tb=short`：23通过，131.55s。真实PG／HTTP覆盖完整属性回读、字段失败无Project残留、全字段意图重试及省略非默认值拒绝、默认空属性等价重试、失效负责人、跨账号／并发大小写冲突、软删除占用、直接DB不可改／清空、迁移重入、MinIO字节与非法图片、根目录／穿越／文件／符号链接／缺失目录。前轮相关111项（88 unit＋23 integration）也通过，但最终23项含幂等补强后重跑。
+- `docker compose exec -T web pnpm run test:unit`：546项首次544通过、2失败，721.33s。失败分别是旧API精确expected未含已批准icon／slug null、旧Workdir guard仍在抽取前组件找Picker；显式更新expected及证明旧入口消费共用组件后检查真实Picker，相关`node --test --test-concurrency=1 test/unit/api_boundary.test.js test/unit/workspace_action_semantics.test.js`21项通过，46.70s。没有宣称修訂后全量一次全绿。其余相关12项通过（20.40s）；最终标签逐实例id修正后，identity／settings两文件10项再次通过（17.64s）。
+- `docker compose exec -T web pnpm run lint:check`通过；最终`pnpm run build`通过（15.82s），既有大包提示保留。相关Python Ruff使用`--no-cache`避开既有缓存目录权限，通过。工程契约197 decisions／21 features／357 docs／40 routers通过，checker单元71通过；最终文档build与相对链接检查、diff空白结果随本节收尾登记。
+
+真实浏览器在原生日常前端，通过正常认证的本轮合成账户创建长标题项目，上传PNG，slug单字符大写Q，选既有Workdir组件创建的s01-entry目录，设置阶段交付／产品／验收标签／暂停／本人责任归属；随后编辑描述。独立进程读PG及正常HTTP GET验证字段，读取MinIO对象逐字节匹配。导航、错误恢复及实际宽度见[结构化检查](图解/11-s01-entry-20261011/product-browser/checks.json)、[持久化回读](图解/11-s01-entry-20261011/product-browser/persistence.json)。暂时阻断GET用于错误检查，未改产品API；深色与viewport随后恢复。日期反转等通过集成验证，本次浏览器未操作日期保存，不冒充视觉动作。
+
+| S01出口 | 结果与直接证据 |
+| --- | --- |
+| P1 一级／二级入口及准确返回 | Passed；原生DOM及真实UUID导航，cards-final／themes截图 |
+| P2 搜索／新增／卡片列表／列宽／长标题／空加载错 | Passed；DOM、列宽320→321及重置、empty／list／first-load-error／refresh-error截图 |
+| P3 全字段真实创建编辑／icon／slug／Workdir归属 | Passed；23集成、PG／HTTP／对象回读，create／narrow-edit截图 |
+| P4 主题管理位置、来源状态与返回 | Passed；公共与专属未接入明确、动作禁用，themes截图 |
+| 视觉、窄屏及独立Review | Passed；浅深色、实际341px无页面横溢；全新Reviewer先发现有效默认意图缺口，修复并补双向负例后通过，测试oracle更新经独立核对 |
+
+问题：无阻塞性剩余项。原有仓库大包及第三方warning保留，容器lock／cache权限导致标准依赖同步命令不可用，已如实记录替代命令；既有worker不健康不是本阶段执行入口依赖，未扩大修改。主题运行时仍明确未接入，属于后续阶段范围。真实合成账号、项目、settings、部门、其Workdir及2个上传对象已按自身命名范围删除并回读验证，用户数据未改；[清理回执](图解/11-s01-entry-20261011/product-browser/cleanup.json)。临时凭据不进入Git。
+
+计划：S01验收通过；S02具备进入前提但本轮未开始，随后按DEV第4节调查与小试，不沿旧T任务领取。协作接入与Andon继续暂停。产品提交记录以本节所在commit为准。
+
+最终收尾：docs build通过（18.73s），53条相关相对文件引用无缺失，`git diff --check`通过。迁移夹具既有7处E501不做无关重排；Ruff最终检查repository／两service／router／HTTP测试与两个service unit文件通过。Decision迁implemented后补齐规范要求的“决策／后果／验证”标题；工程gate再次核对。全新Reviewer最终核对useId标签修正及完整diff，无实质剩余问题；两次测试预期调整保留拒绝后果。临时验收凭据清理完成。

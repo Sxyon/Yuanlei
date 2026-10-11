@@ -23,6 +23,47 @@ class ProjectSettingsRepository:
         rows = await self.db.scalars(select(ProjectSettings).where(ProjectSettings.project_id.in_(project_ids)))
         return {row.project_id: row for row in rows}
 
+    async def owner_names(self, projects, settings: dict[str, ProjectSettings]) -> dict[str, str]:
+        """在可见项目集合批量解析有效弱负责人，失效关联不猜姓名。"""
+        if not projects:
+            return {}
+        member_ids = {
+            settings[p.id].owner_id if p.id in settings else p.uid
+            for p in projects
+            if p.id not in settings or settings[p.id].owner_type == "member"
+        }
+        members = dict(
+            (
+                await self.db.execute(
+                    select(User.uid, User.username).where(User.uid.in_(member_ids), User.is_deleted == 0)
+                )
+            ).all()
+        )
+        agents = {
+            (pid, slug): name
+            for pid, slug, name in (
+                await self.db.execute(
+                    select(ProjectAgent.project_id, Agent.slug, Agent.name)
+                    .join(Agent, ProjectAgent.agent_slug == Agent.slug)
+                    .where(ProjectAgent.project_id.in_([p.id for p in projects]))
+                )
+            ).all()
+        }
+        result = {}
+        for project in projects:
+            setting = settings.get(project.id)
+            kind, identity = (setting.owner_type, setting.owner_id) if setting else ("member", project.uid)
+            name = (
+                members.get(identity)
+                if kind == "member"
+                else agents.get((project.id, identity))
+                if kind == "agent"
+                else None
+            )
+            if name is not None:
+                result[project.id] = name
+        return result
+
     async def members(self) -> list[dict]:
         """仅公开负责人选择所需的成员身份，不返回账号敏感字段。"""
         rows = await self.db.execute(

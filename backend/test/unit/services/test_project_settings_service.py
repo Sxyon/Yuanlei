@@ -67,3 +67,17 @@ def test_project_attributes_normalize_without_changing_calendar():
     validate_project_settings(values)
     assert values["category"] is None and values["tags"] == ["成长", "复盘"]
     assert values["start_date"] is None and values["due_date"] is None
+
+
+@pytest.mark.parametrize("value", ["A", "a", "1", "MiXeD-9", "A" * 64, None, ""])
+def test_slug_preserves_case_and_accepts_one_character(value):
+    from yuxi.services.project_settings_service import normalize_project_slug
+    assert normalize_project_slug(value) == (value or None)
+
+
+@pytest.mark.parametrize("value", ["-A", "A-", "A_B", "项目", "A B", "A" * 65])
+def test_slug_rejects_invalid_identity(value):
+    from yuxi.services.project_settings_service import normalize_project_slug
+    with pytest.raises(HTTPException) as error:
+        normalize_project_slug(value)
+    assert error.value.status_code == 422

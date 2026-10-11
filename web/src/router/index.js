@@ -86,6 +86,11 @@ const router = createRouter({
       ]
     },
     {
+      path: '/projects',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectsComp', component: () => import('../views/ProjectsView.vue'), meta: { requiresAuth: true } }]
+    },
+    {
       path: '/projects/:project_id/work/tasks',
       name: 'ProjectWorkTasks',
       component: AppLayout,

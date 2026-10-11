@@ -21,10 +21,14 @@ test('项目设置与知识库关联保存保持独立的完整请求', async ()
     const saved = await projectApi.saveSettings('p1', values)
     assert.equal(saved.project.name, '服务端名称')
     await projectApi.saveKnowledgeLinks('p1', ['kb1'])
+    await projectApi.createProject({ requestId: 'r1', name: '项目', icon: '/uploaded.png', slug: ' A ', attributes: { description: '创建描述', owner_type: 'none', owner_id: null }, mode: 'linked', path: 'projects/test' })
     assert.deepEqual(requests, [
       { url: '/api/projects/p1/settings', method: 'PUT', body: values },
-      { url: '/api/projects/p1/knowledge-links', method: 'PUT', body: { kb_ids: ['kb1'] } }
+      { url: '/api/projects/p1/knowledge-links', method: 'PUT', body: { kb_ids: ['kb1'] } },
+      { url: '/api/projects', method: 'POST', body: { request_id: 'r1', name: '项目', icon: '/uploaded.png', slug: 'A', attributes: { description: '创建描述', owner_type: 'none', owner_id: null }, workdir: { mode: 'linked', path: 'projects/test' } } }
     ])
+    globalThis.fetch = async () => new Response(JSON.stringify({ detail: { code: 'project_slug_conflict', message: '项目标识已被使用' } }), { status: 409, headers: { 'content-type': 'application/json' } })
+    await assert.rejects(projectApi.createProject({ requestId: 'r2', name: '重复', slug: 'a', mode: 'linked', path: 'projects/test' }), error => error.message === '项目标识已被使用' && error.response.data.detail.code === 'project_slug_conflict')
   } finally {
     globalThis.fetch = previousFetch
     globalThis.localStorage = previousStorage

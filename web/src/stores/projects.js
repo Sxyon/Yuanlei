@@ -1,9 +1,11 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { projectApi } from '@/apis/project_api'
+import { defaultProjectWidths } from '@/utils/projectManagement'
 
 export const useProjectsStore = defineStore('projects', () => {
   const projects = ref([])
+  const management = ref({ query: '', view: 'cards', widths: [...defaultProjectWidths] })
   const isLoading = ref(false)
   const hasLoaded = ref(false)
   const error = ref('')
@@ -38,6 +40,7 @@ export const useProjectsStore = defineStore('projects', () => {
   const reset = () => {
     invalidatePendingLoad()
     projects.value = []
+    management.value = { query: '', view: 'cards', widths: [...defaultProjectWidths] }
     hasLoaded.value = false
   }
 
@@ -61,6 +64,7 @@ export const useProjectsStore = defineStore('projects', () => {
 
   return {
     projects,
+    management,
     isLoading,
     hasLoaded,
     error,

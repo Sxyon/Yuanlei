@@ -1,0 +1,21 @@
+{
+  "project_id": "4fde3d1f-5c59-4c9e-9b9a-25ac0f2fb12f",
+  "slug": "Q",
+  "description": "已编辑：真实持久化回读与导航验收",
+  "project_type": "delivery",
+  "work_status": "paused",
+  "category": "产品",
+  "tags": [
+    "验收"
+  ],
+  "workdir": "s01-entry",
+  "owner_is_creator": true,
+  "http_settings_readback": true,
+  "icon_object_bytes_match": true,
+  "icon_sha256": "265e66bcf35fa62dccf21975a2cf33ac51d33520e6b8b1d53f2a11159fe06886",
+  "schema_versions": {
+    "business": 7,
+    "knowledge": 2,
+    "yuanlei": 38
+  }
+}

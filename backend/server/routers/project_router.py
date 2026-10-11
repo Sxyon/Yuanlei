@@ -67,6 +67,22 @@ class ProjectWorkdirCreate(BaseModel):
     path: str | None = None
 
 
+class ProjectAttributesCreate(BaseModel):
+    """新建项目的可选管理属性，默认责任为创建者。"""
+
+    model_config = ConfigDict(extra="forbid")
+    work_status: Literal["planned", "in_progress", "paused", "completed", "cancelled"] = "planned"
+    priority: Literal["urgent", "high", "medium", "low", "none"] = "none"
+    owner_type: Literal["none", "member"] = "member"
+    owner_id: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str = Field(default="", max_length=255)
+    project_type: Literal["unspecified", "ongoing", "delivery"] = "unspecified"
+    category: str | None = Field(default=None, max_length=50)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    start_date: date | None = None
+    due_date: date | None = None
+
+
 class ProjectCreate(BaseModel):
     """独立 Project 创建请求。"""
 
@@ -75,6 +91,9 @@ class ProjectCreate(BaseModel):
     request_id: str = Field(..., min_length=1, max_length=128)
     name: str
     workdir: ProjectWorkdirCreate
+    attributes: ProjectAttributesCreate | None = None
+    icon: str | None = Field(default=None, max_length=255)
+    slug: str | None = Field(default=None, max_length=64)
 
 
 class ProjectUpdate(BaseModel):
@@ -94,6 +113,8 @@ class ProjectSettingsUpdate(BaseModel):
     priority: Literal["urgent", "high", "medium", "low", "none"]
     owner_type: Literal["none", "member", "agent"]
     owner_id: str | None = Field(default=None, min_length=1, max_length=80)
+    icon: str | None = Field(default=None, max_length=255)
+    slug: str | None = Field(default=None, max_length=64)
     description: str = Field(default="", max_length=255)
     project_type: Literal["unspecified", "ongoing", "delivery"] = "unspecified"
     category: str | None = Field(default=None, max_length=50)
@@ -206,14 +227,32 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
 ):
     """独立创建 managed 或 linked Project。"""
+    values = payload.attributes.model_dump() if payload.attributes is not None else None
+    if (
+        values is not None
+        and "owner_id" not in payload.attributes.model_fields_set
+        and values["owner_type"] == "member"
+    ):
+        values["owner_id"] = str(current_user.uid)
     return await create_project_view(
         uid=str(current_user.uid),
         request_id=payload.request_id,
         name=payload.name,
+        icon=payload.icon,
+        slug=payload.slug,
+        values=values,
         directory_mode=payload.workdir.mode,
         workdir_path=payload.workdir.path,
         db=db,
     )
+
+
+@projects.get("/creation-options")
+async def project_creation_options(current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)):
+    """返回与项目设置一致的弱负责人候选。"""
+    from yuxi.services.project_settings_service import get_project_creation_options
+
+    return await get_project_creation_options(db=db)
 
 
 @projects.get("/history-candidates")
@@ -452,6 +491,9 @@ async def save_project_settings(
 ):
     """保存名称、描述与管理属性。"""
     values = payload.model_dump(exclude={"name"})
+    for field in ("icon", "slug"):
+        if field not in payload.model_fields_set:
+            values.pop(field)
     return await update_project_settings(
         user=current_user, project_id=project_id, name=payload.name, values=values, db=db
     )

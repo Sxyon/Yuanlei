@@ -147,6 +147,11 @@ class ProjectSettings(Base):
 
     __tablename__ = "project_settings"
     __table_args__ = (
+        Index("uq_project_settings_slug", text("lower(slug)"), unique=True),
+        CheckConstraint(
+            "slug IS NULL OR (length(slug) BETWEEN 1 AND 64 AND slug ~ '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$')",
+            name="ck_project_settings_slug",
+        ).ddl_if(dialect="postgresql"),
         CheckConstraint("project_type IN ('unspecified', 'ongoing', 'delivery')", name="ck_project_settings_type"),
         CheckConstraint(
             "work_status IN ('planned', 'in_progress', 'paused', 'completed', 'cancelled')",
@@ -164,6 +169,8 @@ class ProjectSettings(Base):
     )
 
     project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    icon = Column(String(255), nullable=True)
+    slug = Column(String(64), nullable=True)
     work_status = Column(String(20), nullable=False, default="planned", server_default="planned")
     priority = Column(String(16), nullable=False, default="none", server_default="none")
     owner_type = Column(String(16), nullable=False, default="member")
@@ -178,6 +185,8 @@ class ProjectSettings(Base):
     def to_dict(self) -> dict:
         """序列化管理属性，日期保持无时区日历语义。"""
         return {
+            "icon": normalize_public_minio_url(self.icon),
+            "slug": self.slug,
             "work_status": self.work_status,
             "priority": self.priority,
             "owner_type": self.owner_type,

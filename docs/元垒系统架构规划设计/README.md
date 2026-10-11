@@ -19,7 +19,7 @@
 | CA-G07 | <a href="图解/07-collaboration-tasks/collaboration-frozen-tasks.html" target="_blank" rel="noopener">协作冻结后继任务</a> | 重启前提、C1—C6及第二渠道的真实依赖 | DEV-CA-001、LOG-CA-001；当前不领取 |
 | DB-G08 | 渐进推进流程候选 | 当前段调查、试验、阶段判断和中断 | 校验未通过，暂无交付图；文字规则见DEV |
 | DB-G09 | <a href="图解/10-stage-relations-20261011/stage-acceptance.html" target="_blank" rel="noopener">S01—S07推进与验收关系</a> | 七段顺序、原要求1—12映射、验收出口与未通过重审 | 当前推进图；非完成状态或远期技术定案 |
-| DB-G10/11 | <a href="图解/11-s01-entry-20261011/project-entry.html" target="_blank" rel="noopener">S01 P1—P4原型与关系/保存序列</a> | 页面布局、点击关系、字段缺口与候选原子保存 | SYS-DB-001第8节；P1—P4已确认，产品待本地实施验收 |
+| DB-G10/11 | <a href="图解/11-s01-entry-20261011/project-entry.html" target="_blank" rel="noopener">S01 P1—P4原型与关系/保存序列</a> | 页面布局、点击关系、字段缺口与候选原子保存 | SYS-DB-001第8节；P1—P4本地产品已实施验收；LOG第15节 |
 
 整体关系图之外，页面布局和模块理念见SYS-DB-002。数值图表属于项目大屏的数据表现，不由Archify代替实现。
 
@@ -57,4 +57,4 @@
 
 暂停与新设计保留原已实现增量，未执行产品回滚、数据库清理或业务配置变更。
 
-当前S01的P1—P4已确认，落地修订由SYS第8.8节拥有，原用户确认和本地开发纠正见LOG第14节。先归档设计，再在当前本地checkout实施与验收；S02仍以S01通过为入口。
+当前S01的P1—P4已确认，落地修订由SYS第8.8节拥有，原用户确认和本地开发纠正见LOG第14节。设计先归档为3a0ff83a，产品随后在当前本地主checkout完成实施与验收，见SYS第8.9节及LOG第15节；S01已通过，S02尚未开始。

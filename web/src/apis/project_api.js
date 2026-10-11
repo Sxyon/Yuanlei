@@ -3,6 +3,8 @@ import { apiDelete, apiGet, apiPost, apiPut, buildQuery } from './base'
 const gitRequest = (payload) => ({ ...payload, request_id: payload.request_id || crypto.randomUUID() })
 
 export const projectApi = {
+  getCreationOptions: () => apiGet('/api/projects/creation-options'),
+
   getSettings: (projectId) => apiGet(`/api/projects/${projectId}/settings`),
 
   saveSettings: (projectId, payload) => apiPut(`/api/projects/${projectId}/settings`, payload),
@@ -12,10 +14,13 @@ export const projectApi = {
 
   getProjects: () => apiGet('/api/projects'),
 
-  createProject: ({ requestId, name, mode, path = null }) =>
+  createProject: ({ requestId, name, mode, path = null, icon = null, slug = null, attributes }) =>
     apiPost('/api/projects', {
       request_id: requestId,
       name,
+      icon: icon || null,
+      slug: slug?.trim() || null,
+      ...(attributes ? { attributes } : {}),
       workdir: {
         mode,
         ...(mode === 'linked' && path ? { path: String(path).replace(/^\/+/, '') } : {})

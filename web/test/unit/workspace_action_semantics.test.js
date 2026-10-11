@@ -18,7 +18,9 @@ test('工作区上传菜单暴露展开状态和菜单语义', () => {
 })
 
 test('项目创建目录选择器包含尚未绑定的项目目录', () => {
-  const source = readSource('../../src/components/ProjectSelectionSection.vue')
+  const entry = readSource('../../src/components/ProjectSelectionSection.vue')
+  assert.match(entry, /<ProjectCreateModal/)
+  const source = readSource('../../src/components/ProjectCreateModal.vue')
   const pickerStart = source.indexOf('<WorkspacePathPicker')
   const picker = source.slice(pickerStart, source.indexOf('/>', pickerStart) + 2)
 

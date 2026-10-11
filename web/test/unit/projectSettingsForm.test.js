@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
-import { after, before, test } from 'node:test'
+import { after, before, beforeEach, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, reactive, ssrContextKey } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
 import { message } from 'ant-design-vue'
 import { createServer } from 'vite'
 
@@ -12,6 +13,7 @@ before(async () => {
   ;({ default: View } = await vite.ssrLoadModule('/src/components/ProjectSettingsModal.vue'))
   ;({ projectApi: api } = await vite.ssrLoadModule('/src/apis/project_api.js'))
 })
+beforeEach(() => setActivePinia(createPinia()))
 after(async () => { await vite?.close(); delete globalThis.localStorage })
 
 const renderer = createRenderer({
@@ -131,4 +133,22 @@ test('长期项目无日期可保存属性，失败保留类型分类标签与�
   assert.deepEqual(state().draft.tags, ['收入'])
   assert.deepEqual(state().selectedKnowledge, ['原资源'])
   assert.match(state().error, /保存失败/)
+})
+
+test('上传期间不能保存，切换项目解除旧上传等待且草稿采用新项目', async t => {
+  t.mock.method(api, 'getSettings', async id => result(id))
+  const submit = t.mock.method(api, 'saveSettings', () => { throw new Error('上传期间不应保存') })
+  const props = reactive({ open: true, project: { id: 'first' } })
+  const state = mount(t, props)
+  await settle()
+  state().iconUploading = true
+  state().draft.icon = '/pending.png'
+  await state().save()
+  assert.equal(state().saving, false)
+  assert.equal(state().draft.icon, '/pending.png')
+  assert.equal(submit.mock.callCount(), 0)
+  props.project = { id: 'second' }
+  await settle()
+  assert.equal(state().iconUploading, false)
+  assert.equal(state().draft.name, 'second')
 })

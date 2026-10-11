@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { LayoutDashboard, Workflow, ListChecks, Bot, Files, PanelLeft } from '@lucide/vue'
+import { LayoutDashboard, Workflow, ListChecks, Bot, Files, PanelLeft, ArrowLeft, Palette } from '@lucide/vue'
 import { useProjectsStore } from '@/stores/projects'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useUserStore } from '@/stores/user'
@@ -62,6 +62,8 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
       <nav v-if="enabled && project" class="project-navigation" aria-label="项目工作空间导航">
         <RouterLink v-for="item in items" :key="item.name" :to="{ name: item.name, params: { project_id: projectId } }" :class="{ active: item.active }" :aria-current="item.active ? 'page' : undefined"><component :is="item.icon" :size="18" />{{ item.label }}</RouterLink>
         <RouterLink :to="{ name: 'WorkspaceComp', query: { open: project.workdir_path } }"><Files :size="18" />项目资料</RouterLink>
+        <RouterLink :to="{ name: 'ProjectsComp' }"><ArrowLeft :size="18" />返回项目列表</RouterLink>
+        <RouterLink :to="{ name: 'ProjectsComp', query: {tab: 'themes', project_id: projectId} }"><Palette :size="18" />主题管理</RouterLink>
         <p>工作台研讨与确定依据；工作页交付和办理；智能体工作台接收与执行。</p>
       </nav>
       <div class="project-page"><slot /></div>

@@ -141,45 +141,12 @@
     </ActionDropdown>
   </section>
 
-  <a-modal
-    v-model:open="createModalOpen"
-    title="新建项目"
-    width="640px"
-    ok-text="创建并选择"
-    cancel-text="取消"
-    :confirm-loading="creatingProject"
-    :ok-button-props="{ disabled: !canCreateProject }"
-    @ok="handleCreateProject"
-  >
-    <div class="project-form">
-      <label class="project-form-field">
-        <span>项目名称</span>
-        <a-input
-          v-model:value="projectName"
-          :maxlength="PROJECT_NAME_MAX_LENGTH"
-          autofocus
-          placeholder="例如：产品发布计划"
-          @press-enter="canCreateProject && handleCreateProject()"
-        />
-      </label>
-
-      <div class="project-form-field">
-        <span>项目目录</span>
-        <WorkspacePathPicker
-          v-model="linkedPath"
-          :active="createModalOpen"
-          :disabled="creatingProject"
-          :suggested-folder-name="projectName"
-          include-unbound-project-dirs
-          @folder-created="handleFolderCreated"
-        />
-      </div>
-    </div>
-  </a-modal>
+  <ProjectCreateModal v-model:open="createModalOpen" :initial-path="linkedPath" select-after-create @created="addAndSelectProject" />
 </template>
 
 <script setup>
 import ProjectFilters from './ProjectFilters.vue'
+import ProjectCreateModal from './ProjectCreateModal.vue'
 import ActionDropdown from '@/components/common/ActionDropdown.vue'
 import ActionTrigger from '@/components/common/ActionTrigger.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -197,13 +164,10 @@ import {
   Search
 } from '@lucide/vue'
 import { projectApi } from '@/apis/project_api'
-import WorkspacePathPicker from '@/components/WorkspacePathPicker.vue'
 import { useProjectsStore } from '@/stores/projects'
 import {
   AUTO_PROJECT_ID,
-  PROJECT_NAME_MAX_LENGTH,
   filterProjects,
-  fillProjectNameFromFolder,
   formatRelativeTime
 } from '@/utils/projectSelection'
 
@@ -226,9 +190,6 @@ const projectSearchInput = ref(null)
 const historySearchInput = ref(null)
 const dropdownView = ref('projects')
 const createModalOpen = ref(false)
-const creatingProject = ref(false)
-const projectName = ref('')
-const projectCreationRequestId = ref('')
 const linkedPath = ref('')
 const historyQuery = ref('')
 const historyCandidates = ref([])
@@ -238,15 +199,9 @@ let historySearchTimer = null
 let projectSearchFocusTimer = null
 let historyRequestVersion = 0
 
-const requestId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-
 const getErrorMessage = (error, fallback) =>
-  error?.response?.data?.detail || error?.message || fallback
+  error?.response?.data?.detail?.message || error?.message || fallback
 
-const canCreateProject = computed(() => Boolean(projectName.value.trim() && linkedPath.value))
 const isAutoOrEmpty = computed(() => !props.modelValue || props.modelValue === AUTO_PROJECT_ID)
 const currentProject = computed(() =>
   projects.value.find((project) => project.id === props.modelValue)
@@ -285,35 +240,8 @@ const loadProjects = async () => {
 
 const openCreateModal = (selectedPath = '') => {
   dropdownOpen.value = false
-  projectName.value = ''
-  projectCreationRequestId.value = requestId()
   linkedPath.value = selectedPath
   createModalOpen.value = true
-}
-
-const handleCreateProject = async () => {
-  if (!canCreateProject.value) return
-  creatingProject.value = true
-  try {
-    const project = await projectApi.createProject({
-      requestId: projectCreationRequestId.value,
-      name: projectName.value.trim(),
-      mode: 'linked',
-      path: linkedPath.value
-    })
-    addAndSelectProject(project)
-    createModalOpen.value = false
-    message.success('项目已创建')
-  } catch (error) {
-    message.error(getErrorMessage(error, '项目创建失败'))
-  } finally {
-    creatingProject.value = false
-  }
-}
-
-/** 文件夹创建成功后与项目名称互补：名称为空时用文件夹名补齐，已有输入保持不变。 */
-const handleFolderCreated = ({ name } = {}) => {
-  projectName.value = fillProjectNameFromFolder(projectName.value, name)
 }
 
 const openHistoryView = () => {
