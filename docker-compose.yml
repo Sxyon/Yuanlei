@@ -101,7 +101,7 @@ services:
     command: uv run --no-sync --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050 --reload --reload-dir /app/server --reload-dir /app/package --timeout-graceful-shutdown 5
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5050/api/system/ready || exit 1"]
+      test: ["CMD-SHELL", "exec curl -fsS --max-time 10 http://localhost:5050/api/system/ready"]
       interval: 30s
       timeout: 15s
       retries: 8
@@ -171,7 +171,7 @@ services:
     command: watchfiles --filter python "python -m server.worker_main" /app/server /app/package
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "uv run --no-sync --no-dev arq --check server.worker_main.WorkerSettings"]
+      test: ["CMD-SHELL", "exec python -m arq --check server.worker_health.WorkerHealthSettings"]
       interval: 10s
       timeout: 10s
       retries: 6
@@ -335,9 +335,9 @@ services:
         source: ${YUXI_STATE_DIR:-./docker/volumes}/neo4j/logs
         target: /logs
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u ${NEO4J_USERNAME:-neo4j} -p ${NEO4J_PASSWORD:-0123456789} 'RETURN 1;' >/dev/null || exit 1"]
-      interval: 20s
-      timeout: 10s
+      test: ["CMD-SHELL", "exec cypher-shell -a bolt://localhost:7687 -u ${NEO4J_USERNAME:-neo4j} -p ${NEO4J_PASSWORD:-0123456789} 'RETURN 1;' >/dev/null"]
+      interval: 60s
+      timeout: 90s
       retries: 5
       start_period: 30s
     environment:

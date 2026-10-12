@@ -34,3 +34,5 @@
 - [项目设置与资源管理](project-settings-resources.md)：部分实现；项目设置与弱关联已接入，任务 Git 生命周期待实现。
 
 - [模型输出上限与截断](model-output-limits.md)：模型默认额度、调用覆盖与截断失败语义。
+
+- [Worker 健康检查轻量装配](worker-health-probe.md)：上游缺陷修复；复用 ARQ 心跳并回收超时检查进程。

@@ -120,7 +120,7 @@ def test_api_healthcheck_uses_readiness_in_development_and_production():
 
         assert compose["services"]["api"]["healthcheck"]["test"] == [
             "CMD-SHELL",
-            "curl -f http://localhost:5050/api/system/ready || exit 1",
+            "exec curl -fsS --max-time 10 http://localhost:5050/api/system/ready",
         ]
 
 
@@ -131,7 +131,7 @@ def test_worker_healthcheck_uses_arq_health_contract_in_development_and_producti
 
         assert compose["services"]["worker"]["healthcheck"]["test"] == [
             "CMD-SHELL",
-            "uv run --no-sync --no-dev arq --check server.worker_main.WorkerSettings",
+            "exec python -m arq --check server.worker_health.WorkerHealthSettings",
         ]
 
 
