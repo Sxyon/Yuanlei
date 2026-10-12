@@ -1,0 +1,722 @@
+{
+  "purpose": "Frozen S02 research; not execution instructions or product implementation evidence",
+  "researchHead": "d2bf7134f8db227f64360be2b5bea848555747ca",
+  "archivingHead": "592b6e510bc5049c9dbe24c75199c7b9dae10fb9",
+  "files": [
+    {
+      "original": "SYS-DB-003-项目主题技术调研与最小接入试验.md",
+      "archive": "归档/2026-10-12-DB-S02技术调研/SYS-DB-003-项目主题技术调研与最小接入试验.md",
+      "sha256Before": "afd527fb0366ac2675e70228e52ef4acf9b7484ae6a09b028ef13c2064f49efd",
+      "sha256Archived": "82c5c3d6f5929958879ff0c06fc67df371f040bb486e61ac5e034059f77fb691",
+      "changedOnArchive": true
+    },
+    {
+      "original": "图解/12-s02-20261011/selection-source-evidence.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/selection-source-evidence.json",
+      "sha256Before": "a725cf33b941a1a0b4aa8720f905dd437e421594db908219b9319be0fdf80c2f",
+      "sha256Archived": "a725cf33b941a1a0b4aa8720f905dd437e421594db908219b9319be0fdf80c2f",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/lowcode-vue-route.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/lowcode-vue-route.json",
+      "sha256Before": "9a4d5d1eba9019e9c252b913c47e321be2ed81a3bc9baca250d01f7c59acc21e",
+      "sha256Archived": "9a4d5d1eba9019e9c252b913c47e321be2ed81a3bc9baca250d01f7c59acc21e",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/browser-checks.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/browser-checks.json",
+      "sha256Before": "b9666c754b2c7501758176baabc9380567ee1071c9e27ee0ffcd20c3b9920206",
+      "sha256Archived": "b9666c754b2c7501758176baabc9380567ee1071c9e27ee0ffcd20c3b9920206",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-architecture.finalize-summary.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-architecture.finalize-summary.json",
+      "sha256Before": "85e741265dc2f732946d436b2630efa825d116dfd30143919153e96ce8c4bd78",
+      "sha256Archived": "85e741265dc2f732946d436b2630efa825d116dfd30143919153e96ce8c4bd78",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-route-r3.delivery.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-route-r3.delivery.json",
+      "sha256Before": "5c4ff2d74057e26536bc299d4c9b0bdfa9106be72aef9dc98a83586a5ba21434",
+      "sha256Archived": "5c4ff2d74057e26536bc299d4c9b0bdfa9106be72aef9dc98a83586a5ba21434",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-architecture.finalize.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-architecture.finalize.json",
+      "sha256Before": "d5c732bd035961402bfc8008088d8a8112feca48f1ae2d15174156a737489481",
+      "sha256Archived": "d5c732bd035961402bfc8008088d8a8112feca48f1ae2d15174156a737489481",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/tiny-generation.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/tiny-generation.json",
+      "sha256Before": "ef74da5dd38af8c1d5dc3e49f813ba590150c8180096e5c6dbbdadd49b7460e3",
+      "sha256Archived": "ef74da5dd38af8c1d5dc3e49f813ba590150c8180096e5c6dbbdadd49b7460e3",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/narrow.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/narrow.png",
+      "sha256Before": "a4047925a2023fcafa11a7df3103ab373e7b3f9f55f87d892b1616103101cb43",
+      "sha256Archived": "a4047925a2023fcafa11a7df3103ab373e7b3f9f55f87d892b1616103101cb43",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-candidate.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-candidate.json",
+      "sha256Before": "731aef140a65c62cb4e1d569b8b5b186ca95c1485818120647cae275d8fcd9fb",
+      "sha256Archived": "731aef140a65c62cb4e1d569b8b5b186ca95c1485818120647cae275d8fcd9fb",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-architecture.browser-check.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-architecture.browser-check.json",
+      "sha256Before": "db1e4c3f4da687b85f4f0a8f3092b9609458c951c2e6c352d8a1235727d4cdb1",
+      "sha256Archived": "db1e4c3f4da687b85f4f0a8f3092b9609458c951c2e6c352d8a1235727d4cdb1",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/candidate.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/candidate.json",
+      "sha256Before": "7e211055de63b2ad644c74c518a322920d0296ad09360f3f5cf50edb963a4bc7",
+      "sha256Archived": "7e211055de63b2ad644c74c518a322920d0296ad09360f3f5cf50edb963a4bc7",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/candidate-survey.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/candidate-survey.json",
+      "sha256Before": "2389aac71f1a2ff6afd75a55bf0c5cef615f38c57a0943b5563a88cab9d02592",
+      "sha256Archived": "2389aac71f1a2ff6afd75a55bf0c5cef615f38c57a0943b5563a88cab9d02592",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/default-overview.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/default-overview.png",
+      "sha256Before": "b084eeb01b22d907aa33c24a5f8ca0b39da526bbda65be52192fae36c186ee6d",
+      "sha256Archived": "b084eeb01b22d907aa33c24a5f8ca0b39da526bbda65be52192fae36c186ee6d",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/tiny-build.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/tiny-build.json",
+      "sha256Before": "83f04bd0deacb53593729dfbc86f762f77e3d08f7f5de1bd3f7e9be502cda680",
+      "sha256Archived": "83f04bd0deacb53593729dfbc86f762f77e3d08f7f5de1bd3f7e9be502cda680",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/research.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/research.png",
+      "sha256Before": "698aeda65bc9144a3bd218a8c6e491e459c1a2c1b0ba5e9ca4d099308b742300",
+      "sha256Archived": "698aeda65bc9144a3bd218a8c6e491e459c1a2c1b0ba5e9ca4d099308b742300",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/closure-r3.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/closure-r3.json",
+      "sha256Before": "07fc3840c486839ccc6fe3452724fc5478998e45a0058b3fce64e88f241bcb54",
+      "sha256Archived": "07fc3840c486839ccc6fe3452724fc5478998e45a0058b3fce64e88f241bcb54",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/selection-first-screen.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/selection-first-screen.json",
+      "sha256Before": "a1f06fa8b2d2d0dd48c343c71868db52e8a0ebba0238f8242082912727ccc7dd",
+      "sha256Archived": "a1f06fa8b2d2d0dd48c343c71868db52e8a0ebba0238f8242082912727ccc7dd",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/publication-check.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/publication-check.json",
+      "sha256Before": "b309b8604ab82e2a2eaeb1fd10e4e5bce8563dcc2ea6aae51e44125302e7dd61",
+      "sha256Archived": "b309b8604ab82e2a2eaeb1fd10e4e5bce8563dcc2ea6aae51e44125302e7dd61",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-architecture.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-architecture.html",
+      "sha256Before": "54fb7bd5026bde0106c4d20bf9e03151ce877badf672fb082ccf5b8d39ad05a7",
+      "sha256Archived": "54fb7bd5026bde0106c4d20bf9e03151ce877badf672fb082ccf5b8d39ad05a7",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-route-r3.browser-check.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-route-r3.browser-check.json",
+      "sha256Before": "7810fad4f6d88d790eedc838f56cd4fde1e84c2f2d398583eb59f8eb88b7bcbc",
+      "sha256Archived": "7810fad4f6d88d790eedc838f56cd4fde1e84c2f2d398583eb59f8eb88b7bcbc",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-negative-checks.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-negative-checks.json",
+      "sha256Before": "e3caf08668e3240e396f247272801c809538cd2e6221c4ff27355224ede75273",
+      "sha256Archived": "e3caf08668e3240e396f247272801c809538cd2e6221c4ff27355224ede75273",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/tiny-peer-packages.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/tiny-peer-packages.json",
+      "sha256Before": "b1f4e3fe9d575cda24f2d9e86c4d042572cb7aa541f5d3725638cee7056bd718",
+      "sha256Archived": "b1f4e3fe9d575cda24f2d9e86c4d042572cb7aa541f5d3725638cee7056bd718",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/tiny-package.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/tiny-package.json",
+      "sha256Before": "852a93be76569de337aca1f7aa7841bcdf216b096ed7bbc98db4296fe9848542",
+      "sha256Archived": "852a93be76569de337aca1f7aa7841bcdf216b096ed7bbc98db4296fe9848542",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/original-cases-current-evidence.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/original-cases-current-evidence.json",
+      "sha256Before": "a0961820c5570a85823dae1fcc21b19dd433b0793c9ce530a9f831f672cea51c",
+      "sha256Archived": "a0961820c5570a85823dae1fcc21b19dd433b0793c9ce530a9f831f672cea51c",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-route-r3.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-route-r3.html",
+      "sha256Before": "226b81acf118df7beebe6beedaedb3493533d3315c5098e6e439f69591088302",
+      "sha256Archived": "226b81acf118df7beebe6beedaedb3493533d3315c5098e6e439f69591088302",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/case-pages.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/case-pages.json",
+      "sha256Before": "f3dec79cf57c043cc4b185108766fdeb6c4e8d0d0687cf53287fd0b3e5fc0e9c",
+      "sha256Archived": "f3dec79cf57c043cc4b185108766fdeb6c4e8d0d0687cf53287fd0b3e5fc0e9c",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-route-r3.finalize-summary.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-route-r3.finalize-summary.json",
+      "sha256Before": "622c0c64bae1f415c02df73f2663fd2b28fc77a1507fdf659c0897c78bc8f90e",
+      "sha256Archived": "622c0c64bae1f415c02df73f2663fd2b28fc77a1507fdf659c0897c78bc8f90e",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-architecture.delivery.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-architecture.delivery.json",
+      "sha256Before": "d1b70688b8a4bde0121776a65959062c8d65f2ca9f41d2da855da9307d5d0064",
+      "sha256Archived": "d1b70688b8a4bde0121776a65959062c8d65f2ca9f41d2da855da9307d5d0064",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/source-evidence.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/source-evidence.json",
+      "sha256Before": "2def3e417a34cb7eca1418f9403379f7f1dbe1382cbfe21b2466800173e655b0",
+      "sha256Archived": "2def3e417a34cb7eca1418f9403379f7f1dbe1382cbfe21b2466800173e655b0",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/theme-route-r3.finalize.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-route-r3.finalize.json",
+      "sha256Before": "a6926cb95f0928e6eb3999054b5b83bb65d035f35325e24eecd52a406ac2e45d",
+      "sha256Archived": "a6926cb95f0928e6eb3999054b5b83bb65d035f35325e24eecd52a406ac2e45d",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/case-jupyterlab.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/case-jupyterlab.png",
+      "sha256Before": "cc87aadcd1c39fcbe4f261156602e0f39164936adff88b0b2b6a9a07554487e1",
+      "sha256Archived": "cc87aadcd1c39fcbe4f261156602e0f39164936adff88b0b2b6a9a07554487e1",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/browser-check.cjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/browser-check.cjs",
+      "sha256Before": "20049796353395a509118e9e91b22028f2ec85904864d6788eae84a1d841d29a",
+      "sha256Archived": "20049796353395a509118e9e91b22028f2ec85904864d6788eae84a1d841d29a",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/link-check.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/link-check.json",
+      "sha256Before": "910fdc0aaaa638339e745c849c92e427109f47173ff14d8aa29a5abc577fe980",
+      "sha256Archived": "910fdc0aaaa638339e745c849c92e427109f47173ff14d8aa29a5abc577fe980",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/host-detail.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/host-detail.png",
+      "sha256Before": "991430130a0aa91c9510378e6c1758af8abbd30f35c2ef096e11d2bdb0014d7b",
+      "sha256Archived": "991430130a0aa91c9510378e6c1758af8abbd30f35c2ef096e11d2bdb0014d7b",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/selection-refs.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/selection-refs.json",
+      "sha256Before": "b83b4b9efc7fadea2d5889812bf9e7fe04dc1d0c45f89e3782a9e4037d53892f",
+      "sha256Archived": "b83b4b9efc7fadea2d5889812bf9e7fe04dc1d0c45f89e3782a9e4037d53892f",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-checks.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-checks.json",
+      "sha256Before": "e52b582140fb133f966231c735e35932f0d1e62a9be1fb17a2abacbbd75970b3",
+      "sha256Archived": "e52b582140fb133f966231c735e35932f0d1e62a9be1fb17a2abacbbd75970b3",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/link-check-r2.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/link-check-r2.json",
+      "sha256Before": "5d6a63a13fa2d9c2f6f476010274b7df3eda59294b670e781a6f9de81a065cf7",
+      "sha256Archived": "5d6a63a13fa2d9c2f6f476010274b7df3eda59294b670e781a6f9de81a065cf7",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/link-check-r3.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/link-check-r3.json",
+      "sha256Before": "1b763397563d9d29ce8e4fac470e7c1699c920c3967765df202e18466ca2f210",
+      "sha256Archived": "1b763397563d9d29ce8e4fac470e7c1699c920c3967765df202e18466ca2f210",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/publication-check-r3.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/publication-check-r3.json",
+      "sha256Before": "edb9589fcca1bf3a0404a71018edc38271ede1f2e8cefdb27897c360a8cc708b",
+      "sha256Archived": "edb9589fcca1bf3a0404a71018edc38271ede1f2e8cefdb27897c360a8cc708b",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-packages.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-packages.json",
+      "sha256Before": "a042e799be0b4023e96c405231bb33e2e5a268b787e24e548a96d7c6e31bdb45",
+      "sha256Archived": "a042e799be0b4023e96c405231bb33e2e5a268b787e24e548a96d7c6e31bdb45",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/default-workbench.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/default-workbench.png",
+      "sha256Before": "7e13d73ddd4d3a254fcd7631c0c2b6b0a791cfa31a5dd44efc3743237f4d4c06",
+      "sha256Archived": "7e13d73ddd4d3a254fcd7631c0c2b6b0a791cfa31a5dd44efc3743237f4d4c06",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.html",
+      "sha256Before": "ded03c4db544e93feae10eff79fd8e5e1d0176d531a18b9a26c092fe9ef4c998",
+      "sha256Archived": "ded03c4db544e93feae10eff79fd8e5e1d0176d531a18b9a26c092fe9ef4c998",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.1440x900.light.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.1440x900.light.png",
+      "sha256Before": "16a75e5b565c815df8544b38a4b56004d6d70762fd907462fe064be940bf4b79",
+      "sha256Archived": "16a75e5b565c815df8544b38a4b56004d6d70762fd907462fe064be940bf4b79",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.2048x1320.dark.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.2048x1320.dark.png",
+      "sha256Before": "aa32bbd16a9492b5840cd3c803b5c9dfd2147ff9cda0c1872b87045482d55861",
+      "sha256Archived": "aa32bbd16a9492b5840cd3c803b5c9dfd2147ff9cda0c1872b87045482d55861",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.1440x900.dark.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.1440x900.dark.png",
+      "sha256Before": "36286432de529a6f5b79040771b3840e453ef827e5d410982236118daa4a7323",
+      "sha256Archived": "36286432de529a6f5b79040771b3840e453ef827e5d410982236118daa4a7323",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.2048x1320.light.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.2048x1320.light.png",
+      "sha256Before": "8c523c3da33743b3a299e710823da31bb261697818135198d956889f7c8f193e",
+      "sha256Archived": "8c523c3da33743b3a299e710823da31bb261697818135198d956889f7c8f193e",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/r3-visual-check/theme-route-r3.visual-check.json",
+      "sha256Before": "1571a359c0a777afa73f5c3c28a01a39c6abdc7310b030e752ff0ecbdbc59c34",
+      "sha256Archived": "1571a359c0a777afa73f5c3c28a01a39c6abdc7310b030e752ff0ecbdbc59c34",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/App.vue",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/App.vue",
+      "sha256Before": "41911df1b860cd515b79c285db62083a667274d503e0353c6f2558dd0cffaa70",
+      "sha256Archived": "41911df1b860cd515b79c285db62083a667274d503e0353c6f2558dd0cffaa70",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/definition.test.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/definition.test.mjs",
+      "sha256Before": "f4e3efc1299759f0c6286fc242072bcfd81442153d8b7525f70ad6451763a1a4",
+      "sha256Archived": "f4e3efc1299759f0c6286fc242072bcfd81442153d8b7525f70ad6451763a1a4",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/index.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/index.html",
+      "sha256Before": "93c4dc353d2bd130b1a0b4ab50c1470c701a1eaca9df5f23e9135807c853b5ab",
+      "sha256Archived": "93c4dc353d2bd130b1a0b4ab50c1470c701a1eaca9df5f23e9135807c853b5ab",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/main.js",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/main.js",
+      "sha256Before": "8cce7eb400795e8089a5922391a90f5148ec373c6dedcc727c8c2a3dc978e0ba",
+      "sha256Archived": "8cce7eb400795e8089a5922391a90f5148ec373c6dedcc727c8c2a3dc978e0ba",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/server.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/server.mjs",
+      "sha256Before": "e17e145b20bb1b8f95c39a621261797dbe71374965ae2b0006685ab112f53129",
+      "sha256Archived": "e17e145b20bb1b8f95c39a621261797dbe71374965ae2b0006685ab112f53129",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/definition.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/definition.mjs",
+      "sha256Before": "2cfe56b011aa07dca4bf72f04600fd16a81e1f309266d61efdb1a474ba76b9fb",
+      "sha256Archived": "2cfe56b011aa07dca4bf72f04600fd16a81e1f309266d61efdb1a474ba76b9fb",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-browser/browser-checks.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-browser/browser-checks.json",
+      "sha256Before": "655d14dc4dab1eaa5039d8c5ebf6a3dfa18c409633ff055e7f58156fed18928d",
+      "sha256Archived": "655d14dc4dab1eaa5039d8c5ebf6a3dfa18c409633ff055e7f58156fed18928d",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-browser/narrow.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-browser/narrow.png",
+      "sha256Before": "61f94211f51625b9357933977de7cd691d979c67cf7f0aad8030f022ac1901df",
+      "sha256Archived": "61f94211f51625b9357933977de7cd691d979c67cf7f0aad8030f022ac1901df",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-browser/default-overview.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-browser/default-overview.png",
+      "sha256Before": "5b2bc5d2a8b9ca3e5404dd57b072ba7e52c47d8024044a679f4a938ff21c9f6e",
+      "sha256Archived": "5b2bc5d2a8b9ca3e5404dd57b072ba7e52c47d8024044a679f4a938ff21c9f6e",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-browser/research.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-browser/research.png",
+      "sha256Before": "85af9ac7c140fbd7cc64b872753f3357ee3849afb75e1929278c11c6ae57edba",
+      "sha256Archived": "85af9ac7c140fbd7cc64b872753f3357ee3849afb75e1929278c11c6ae57edba",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-browser/host-detail.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-browser/host-detail.png",
+      "sha256Before": "a7e3a7a7b8b63019723aea9bf7d386e5b66fe350cc66b045b1f8416bffcb067b",
+      "sha256Archived": "a7e3a7a7b8b63019723aea9bf7d386e5b66fe350cc66b045b1f8416bffcb067b",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/reuse-browser/default-workbench.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/reuse-browser/default-workbench.png",
+      "sha256Before": "2d0ed7481608bf3addba2b362f0828a897ee3d3e56e196bf65b90c2edd6a29ff",
+      "sha256Archived": "2d0ed7481608bf3addba2b362f0828a897ee3d3e56e196bf65b90c2edd6a29ff",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-browser/b-target-files.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-browser/b-target-files.png",
+      "sha256Before": "833077e0f8600f1b8ddd17efff96e211d146f46c305f1e1fc79c90d52b6ef5e9",
+      "sha256Archived": "833077e0f8600f1b8ddd17efff96e211d146f46c305f1e1fc79c90d52b6ef5e9",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-browser/browser-checks.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-browser/browser-checks.json",
+      "sha256Before": "430cd3ae6159a08910e4c8b3b46b11188831da35347c94a4e88bc9b8b07d8f16",
+      "sha256Archived": "430cd3ae6159a08910e4c8b3b46b11188831da35347c94a4e88bc9b8b07d8f16",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-browser/b-imported-research.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-browser/b-imported-research.png",
+      "sha256Before": "554c3e935315cc296eacc55601640e0da9dea980aa81aad3d28a1f5868034416",
+      "sha256Archived": "554c3e935315cc296eacc55601640e0da9dea980aa81aad3d28a1f5868034416",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-browser/narrow.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-browser/narrow.png",
+      "sha256Before": "604d36dacec0297bcfb74956923f50ab31a3d218427fafc0e9218b9ee951d6c8",
+      "sha256Archived": "604d36dacec0297bcfb74956923f50ab31a3d218427fafc0e9218b9ee951d6c8",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/chain-browser/a-persisted-default.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/chain-browser/a-persisted-default.png",
+      "sha256Before": "f13c396fe115764a650ea63dcfbbbbdedfa3a7e5e5ac52ffab0d8a79792a9896",
+      "sha256Archived": "f13c396fe115764a650ea63dcfbbbbdedfa3a7e5e5ac52ffab0d8a79792a9896",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/visual-check/theme-architecture.visual-check.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/visual-check/theme-architecture.visual-check.html",
+      "sha256Before": "b1d5246de95605401d0c6e4483b37d233871ab54dacbd37dd48e032f3c822977",
+      "sha256Archived": "b1d5246de95605401d0c6e4483b37d233871ab54dacbd37dd48e032f3c822977",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/visual-check/theme-architecture.visual-check.1440x900.dark.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/visual-check/theme-architecture.visual-check.1440x900.dark.png",
+      "sha256Before": "183fabfd518b3442feb5cfc69a6ad63a8ea072accce55688a033b23cb01c654d",
+      "sha256Archived": "183fabfd518b3442feb5cfc69a6ad63a8ea072accce55688a033b23cb01c654d",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/visual-check/theme-architecture.visual-check.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/visual-check/theme-architecture.visual-check.json",
+      "sha256Before": "0449711039d082494a09e26b78357b9dd0c688b81b4af4efc92a798d5a1b07f7",
+      "sha256Archived": "0449711039d082494a09e26b78357b9dd0c688b81b4af4efc92a798d5a1b07f7",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/visual-check/theme-architecture.visual-check.2048x1320.light.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/visual-check/theme-architecture.visual-check.2048x1320.light.png",
+      "sha256Before": "e35574673772d9abae369d812d4530cf0548bf87da4a1e9ca763e01636ccc544",
+      "sha256Archived": "e35574673772d9abae369d812d4530cf0548bf87da4a1e9ca763e01636ccc544",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/visual-check/theme-architecture.visual-check.1440x900.light.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/visual-check/theme-architecture.visual-check.1440x900.light.png",
+      "sha256Before": "2001847e86f75ccfe0b5fc8b51ec3cb0fafa103550b2acbb41ff5cfd13144fe3",
+      "sha256Archived": "2001847e86f75ccfe0b5fc8b51ec3cb0fafa103550b2acbb41ff5cfd13144fe3",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/visual-check/theme-architecture.visual-check.2048x1320.dark.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/visual-check/theme-architecture.visual-check.2048x1320.dark.png",
+      "sha256Before": "f37bd1458465dc14fa3d50f87f76132bf86e0e4596aaed49ba70620ff1f3a37f",
+      "sha256Archived": "f37bd1458465dc14fa3d50f87f76132bf86e0e4596aaed49ba70620ff1f3a37f",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/App.vue",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/App.vue",
+      "sha256Before": "972ea1b4de130079e8e8a170718aa534c30fb45c10e1c8c9e2e06ea130253ea2",
+      "sha256Archived": "972ea1b4de130079e8e8a170718aa534c30fb45c10e1c8c9e2e06ea130253ea2",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/index.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/index.html",
+      "sha256Before": "2de1e74c6ddb47eedf3b6fe6cd624754208f82efa1d3eb8714542168a18c5658",
+      "sha256Archived": "2de1e74c6ddb47eedf3b6fe6cd624754208f82efa1d3eb8714542168a18c5658",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/fetch-formkit.py",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/fetch-formkit.py",
+      "sha256Before": "a67b534ebc98ad0e26813b94d60d5b1928e7581de919621736797f83c348df3e",
+      "sha256Archived": "a67b534ebc98ad0e26813b94d60d5b1928e7581de919621736797f83c348df3e",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/tiny-generate.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/tiny-generate.mjs",
+      "sha256Before": "10b9d07cfc9b1ce0719698d708654cf54fda2a304e7186d82947f3ee7d17216f",
+      "sha256Archived": "10b9d07cfc9b1ce0719698d708654cf54fda2a304e7186d82947f3ee7d17216f",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/schema.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/schema.mjs",
+      "sha256Before": "3abd1a47f23c0d975d6217718c17b72bf2f793b62fcda081f51f4aa2a96e9a88",
+      "sha256Archived": "3abd1a47f23c0d975d6217718c17b72bf2f793b62fcda081f51f4aa2a96e9a88",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/schema.test.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/schema.test.mjs",
+      "sha256Before": "50c1cfadf1f40872f42feeb49667b857e94828d5684e498ad9de58c661a25659",
+      "sha256Archived": "50c1cfadf1f40872f42feeb49667b857e94828d5684e498ad9de58c661a25659",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/ThemeBlock.vue",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/ThemeBlock.vue",
+      "sha256Before": "31d65af153702dc958e7905ab479a21defc1effd24c96ec6c54059df085616d0",
+      "sha256Archived": "31d65af153702dc958e7905ab479a21defc1effd24c96ec6c54059df085616d0",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/main.js",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/main.js",
+      "sha256Before": "8cce7eb400795e8089a5922391a90f5148ec373c6dedcc727c8c2a3dc978e0ba",
+      "sha256Archived": "8cce7eb400795e8089a5922391a90f5148ec373c6dedcc727c8c2a3dc978e0ba",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/tiny.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/tiny.html",
+      "sha256Before": "1c75e4819edb541f7d017ce6322ff9bfd55bfa16c28364aa62d2191a13bfc90a",
+      "sha256Archived": "1c75e4819edb541f7d017ce6322ff9bfd55bfa16c28364aa62d2191a13bfc90a",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/server.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/server.mjs",
+      "sha256Before": "78794f991624554610d393214dc4080c0aee8117ca7c95b7dee03681c7255b32",
+      "sha256Archived": "78794f991624554610d393214dc4080c0aee8117ca7c95b7dee03681c7255b32",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/browser-check.cjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/browser-check.cjs",
+      "sha256Before": "0800b70d2ee118661ee0f1acafec1882a23e311837880c74957743250b333f0f",
+      "sha256Archived": "0800b70d2ee118661ee0f1acafec1882a23e311837880c74957743250b333f0f",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/TinyGenerated.vue",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/TinyGenerated.vue",
+      "sha256Before": "aa1651130310d06870d42cd5c615403776690ac40969a652770c433aa78de9c6",
+      "sha256Archived": "aa1651130310d06870d42cd5c615403776690ac40969a652770c433aa78de9c6",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/tiny-main.js",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/tiny-main.js",
+      "sha256Before": "216f8b9758d590e178e7defefedfba35f74c9693e13b412ba4947de6616dd743",
+      "sha256Archived": "216f8b9758d590e178e7defefedfba35f74c9693e13b412ba4947de6616dd743",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/reuse/tiny-schema.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/reuse/tiny-schema.json",
+      "sha256Before": "7eab38ad1a837f5f6cf0733f6d7e769271568ff25e5b4da411a2040fb83270d7",
+      "sha256Archived": "7eab38ad1a837f5f6cf0733f6d7e769271568ff25e5b4da411a2040fb83270d7",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/App.vue",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/App.vue",
+      "sha256Before": "acd104d21ff3e9486e0d70fdcadb55d1761c65d34bc4861dbf062102abddb54b",
+      "sha256Archived": "acd104d21ff3e9486e0d70fdcadb55d1761c65d34bc4861dbf062102abddb54b",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/run.py",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/run.py",
+      "sha256Before": "ecb9ea47b15a966cf1ba1dc3ceba9615dbec76d9b54bf47ced60c170e5b506b4",
+      "sha256Archived": "ecb9ea47b15a966cf1ba1dc3ceba9615dbec76d9b54bf47ced60c170e5b506b4",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/index.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/index.html",
+      "sha256Before": "cd86ffc9699222dfe254c0e206e23899e4fc4cfac851a7566131356b61483eda",
+      "sha256Archived": "cd86ffc9699222dfe254c0e206e23899e4fc4cfac851a7566131356b61483eda",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/negative.py",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/negative.py",
+      "sha256Before": "c08af71067b938283370df61a8038989c1b616183cecef63883f0cb42dd8dd04",
+      "sha256Archived": "c08af71067b938283370df61a8038989c1b616183cecef63883f0cb42dd8dd04",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/browser.cjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/browser.cjs",
+      "sha256Before": "1c5be08b05df7f90f81a7a4c111e84ece37d7624f4b068e7ad62f4eca3bde411",
+      "sha256Archived": "1c5be08b05df7f90f81a7a4c111e84ece37d7624f4b068e7ad62f4eca3bde411",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/ThemeBlock.vue",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/ThemeBlock.vue",
+      "sha256Before": "b7a5e9f60fc18b433705d4735ae8a5149b5b1f0d8733a504b14ab47a414310cb",
+      "sha256Archived": "b7a5e9f60fc18b433705d4735ae8a5149b5b1f0d8733a504b14ab47a414310cb",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/api.py",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/api.py",
+      "sha256Before": "310d56bde113e57efe9a2344829b8b095c5b4d0cb649ea0aef59a7114de8cace",
+      "sha256Archived": "310d56bde113e57efe9a2344829b8b095c5b4d0cb649ea0aef59a7114de8cace",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/main.js",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/main.js",
+      "sha256Before": "8cce7eb400795e8089a5922391a90f5148ec373c6dedcc727c8c2a3dc978e0ba",
+      "sha256Archived": "8cce7eb400795e8089a5922391a90f5148ec373c6dedcc727c8c2a3dc978e0ba",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/style.css",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/style.css",
+      "sha256Before": "db975356ab7cc9d69a46cdb173335658724ef08bf47ff4667f589113789229cc",
+      "sha256Archived": "db975356ab7cc9d69a46cdb173335658724ef08bf47ff4667f589113789229cc",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/chain/server.mjs",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/chain/server.mjs",
+      "sha256Before": "975e71c9b3c50ffab808c1b60f573d0a2f9708082921ff525ea49901fc7092ca",
+      "sha256Archived": "975e71c9b3c50ffab808c1b60f573d0a2f9708082921ff525ea49901fc7092ca",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/fixtures/metrics.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/fixtures/metrics.json",
+      "sha256Before": "99a1747e5ef6a2a2cc43191f65adf51588c6d5fc83a4317821f75c43b4fcea00",
+      "sha256Archived": "99a1747e5ef6a2a2cc43191f65adf51588c6d5fc83a4317821f75c43b4fcea00",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/fixtures/sample.png",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/fixtures/sample.png",
+      "sha256Before": "f9e39a4adefb3505f4fd6a9ef88cc790118f0b1ca9897cd6a52d1738989751c4",
+      "sha256Archived": "f9e39a4adefb3505f4fd6a9ef88cc790118f0b1ca9897cd6a52d1738989751c4",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/fixtures/notes.md",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/fixtures/notes.md",
+      "sha256Before": "3992fb4ab894681fef90fc234f2aa0adc2bc2b603e07e073c5e03c379301a65b",
+      "sha256Archived": "3992fb4ab894681fef90fc234f2aa0adc2bc2b603e07e073c5e03c379301a65b",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/fixtures/report.html",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/fixtures/report.html",
+      "sha256Before": "57d1fbbfe69175dfcffbe0d9206bc4a5c95c5dcf9e2b54112e324d073994a34e",
+      "sha256Archived": "57d1fbbfe69175dfcffbe0d9206bc4a5c95c5dcf9e2b54112e324d073994a34e",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/fixtures/system.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/fixtures/system.json",
+      "sha256Before": "54a8c2be7b26845f5d6f3b15c0baade045b11cf7c391632604f1f42e6eebe110",
+      "sha256Archived": "54a8c2be7b26845f5d6f3b15c0baade045b11cf7c391632604f1f42e6eebe110",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/themes/research.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/themes/research.json",
+      "sha256Before": "16b8e42ee24add9f17c9a85ebe4d1d3bddb95d80e5575be7c398c386a6c10191",
+      "sha256Archived": "16b8e42ee24add9f17c9a85ebe4d1d3bddb95d80e5575be7c398c386a6c10191",
+      "changedOnArchive": false
+    },
+    {
+      "original": "图解/12-s02-20261011/experiment/themes/default.json",
+      "archive": "归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/themes/default.json",
+      "sha256Before": "cdadda961eddf4d53b67d77d6850cc6b3291f5298b901cfdef89125273dfd5b1",
+      "sha256Archived": "cdadda961eddf4d53b67d77d6850cc6b3291f5298b901cfdef89125273dfd5b1",
+      "changedOnArchive": false
+    }
+  ],
+  "allowedArchiveChanges": "Only report archive banner/title and inbound relative links; research artifact bytes unchanged"
+}

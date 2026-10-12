@@ -1,0 +1,25 @@
+{
+  "cases": [
+    "unknown_component",
+    "arbitrary_api",
+    "wrong_data_shape",
+    "duplicate_page",
+    "unregistered_layout",
+    "raw_size",
+    "member_count",
+    "expanded_size",
+    "not_zip",
+    "zip_symlink",
+    "required_file_missing",
+    "asset_manifest_path",
+    "undeclared_asset",
+    "wrong_png",
+    "active_html",
+    "html_external_navigation",
+    "wrong_json",
+    "file_size"
+  ],
+  "count": 18,
+  "activeSelectionUnchanged": true,
+  "scope": "Real isolated HTTP; synthetic identity; production endpoints not tested"
+}

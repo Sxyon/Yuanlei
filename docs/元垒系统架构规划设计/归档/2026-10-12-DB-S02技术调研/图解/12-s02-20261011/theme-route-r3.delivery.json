@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2bed6336-ec8f-47cc-b41d-ba8c6451baec",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/12-s02-20261011/r3-candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/12-s02-20261011/theme-route-r3.html",
+  "specification": {
+    "sha256": "731aef140a65c62cb4e1d569b8b5b186ca95c1485818120647cae275d8fcd9fb",
+    "bytes": 5588
+  },
+  "artifact": {
+    "sha256": "226b81acf118df7beebe6beedaedb3493533d3315c5098e6e439f69591088302",
+    "bytes": 762274
+  }
+}

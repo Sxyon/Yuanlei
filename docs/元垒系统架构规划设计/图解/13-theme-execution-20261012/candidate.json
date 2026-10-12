@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G13｜项目主题已采纳执行结构（产品未实施）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/13-theme-execution-20261012/theme-execution.html"
+  },
+  "components": [
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "M1 平台外壳",
+      "sublabel": "Vue Router／可信办理与返回",
+      "pos": [
+        40,
+        270
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "binding",
+      "type": "database",
+      "label": "M7 项目选择",
+      "sublabel": "PG版本引用／文件绑定／代号",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "loader",
+      "type": "security",
+      "label": "M2 包加载校验",
+      "sublabel": "Pydantic契约／ABI／SHA-256",
+      "pos": [
+        390,
+        270
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "package",
+      "type": "database",
+      "label": "M6 主题包发布",
+      "sublabel": "受保护文件卷／不可变ZIP",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "view",
+      "type": "frontend",
+      "label": "M3 Vue主题页面",
+      "sublabel": "原生组件注册／布局与内容",
+      "pos": [
+        740,
+        270
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "broker",
+      "type": "security",
+      "label": "M4 宿主数据适配",
+      "sublabel": "固定查询／Project当前身份",
+      "pos": [
+        740,
+        490
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "owners",
+      "type": "backend",
+      "label": "M5 原业务Owner",
+      "sublabel": "Project／治理／正式工作任务",
+      "pos": [
+        390,
+        490
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "业务 PostgreSQL",
+      "sublabel": "真实状态／权限与审计",
+      "pos": [
+        390,
+        710
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "files",
+      "type": "backend",
+      "label": "M8 指定项目文件",
+      "sublabel": "Workdir／逻辑名目标重绑定",
+      "pos": [
+        740,
+        710
+      ],
+      "size": [
+        205,
+        72
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "shell-binding",
+      "to": "binding",
+      "label": "读取选择",
+      "from": "shell"
+    },
+    {
+      "id": "shell-loader",
+      "to": "loader",
+      "label": "选择主题",
+      "from": "shell"
+    },
+    {
+      "id": "package-loader",
+      "to": "loader",
+      "label": "读取包",
+      "from": "package"
+    },
+    {
+      "id": "loader-view",
+      "to": "view",
+      "label": "校验后渲染",
+      "from": "loader"
+    },
+    {
+      "id": "view-broker",
+      "to": "broker",
+      "label": "声明取数",
+      "from": "view"
+    },
+    {
+      "id": "broker-owners",
+      "to": "owners",
+      "label": "业务授权",
+      "from": "broker"
+    },
+    {
+      "id": "owners-pg",
+      "to": "pg",
+      "label": "查询事实",
+      "from": "owners"
+    },
+    {
+      "id": "broker-files",
+      "to": "files",
+      "label": "文件授权",
+      "from": "broker"
+    },
+    {
+      "id": "view-shell",
+      "from": "view",
+      "to": "shell",
+      "label": "业务导航与准确返回",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [
+        [
+          990,
+          306
+        ],
+        [
+          990,
+          20
+        ],
+        [
+          10,
+          20
+        ],
+        [
+          10,
+          306
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "已采纳的加载与宿主分责",
+      "items": [
+        "Vue / Vite / Ant Design Vue与固定可信组件；JSON组织页面，不执行用户代码",
+        "平台拥有Project、授权和返回；主题拥有导航、布局、别名与资源组合",
+        "业务办理沿原Owner，显示名不改变状态或对象身份"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "已采纳的保存与双数据边界",
+      "items": [
+        "受保护服务文件域保存不可变ZIP；PG保存来源、版本、Project绑定",
+        "完整文件发布先于DB登记，激活检查权限与generation，不覆盖已发布版本",
+        "系统数据走原业务适配；指定文件走Project授权与当前Workdir边界"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "S03—S06工作交接",
+      "items": [
+        "S03六页/契约/模拟适配 → S04候选/版本/持久选择",
+        "S05真实业务与文件 → S06原字节导入、目标授权及文件重绑定",
+        "无文件需求的主题可不绑资料；自由JS与任意跨产品运行非首批范围"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "当前状态与唯一执行依据",
+      "items": [
+        "2026-10-12用户已采纳R3；本图是实施结构，不表示产品能力已接线",
+        "DEV-DB-002拥有工作步骤，LOG拥有用户确认与阶段事实",
+        "S02报告与试验已归档仅追溯；S03未开工，协作/Andon继续暂停"
+      ]
+    }
+  ]
+}

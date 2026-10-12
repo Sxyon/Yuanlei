@@ -1,0 +1,10 @@
+{
+  "command": "S02_REUSE_DEPS=<isolated dependency directory> node experiment/reuse/server.mjs --tiny-build",
+  "vite": "8.2.2",
+  "exitCode": 1,
+  "milliseconds": 232,
+  "result": "Failed",
+  "reason": "Rollup failed to resolve import vue-i18n from TinyGenerated.vue",
+  "runtime": "Not run",
+  "scope": "Default single SFC output; not all generator plugins or full generated application"
+}

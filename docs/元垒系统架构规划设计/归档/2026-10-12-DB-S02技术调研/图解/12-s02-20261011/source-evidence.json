@@ -1,0 +1,105 @@
+{
+  "scope": "Frozen implementation samples; current official docs and screenshots have separate versions",
+  "sources": [
+    {
+      "repo": "grafana/grafana",
+      "tag": "v11.6.0",
+      "commit": "d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e",
+      "path": "packages/grafana-runtime/src/components/PluginPage.tsx",
+      "url": "https://github.com/grafana/grafana/blob/d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e/packages/grafana-runtime/src/components/PluginPage.tsx",
+      "bytes": 1004,
+      "sha256": "fb688dedea3e476066395284dfd6d8d61344ea6ec6f49a45d828588b68907e2f",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "grafana/grafana",
+      "tag": "v11.6.0",
+      "commit": "d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e",
+      "path": "public/app/features/plugins/plugin_loader.ts",
+      "url": "https://github.com/grafana/grafana/blob/d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e/public/app/features/plugins/plugin_loader.ts",
+      "bytes": 7127,
+      "sha256": "2a95b1df6e52ac67ed99dbf819fe01eef41f839ce8cb50736bd1808f634f5998",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "grafana/grafana",
+      "tag": "v11.6.0",
+      "commit": "d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e",
+      "path": "public/app/features/dashboard/components/DashExportModal/DashboardExporter.ts",
+      "url": "https://github.com/grafana/grafana/blob/d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e/public/app/features/dashboard/components/DashExportModal/DashboardExporter.ts",
+      "bytes": 9890,
+      "sha256": "6c25ef2393b76e9a868a5f5b50e4b157252cae40fe7a6189111e169a5420520e",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "appsmithorg/appsmith",
+      "tag": "v1.66",
+      "commit": "535792f96afc978a75c053e037caeabc9a5d833b",
+      "path": "app/client/src/widgets/CustomWidget/component/index.tsx",
+      "url": "https://github.com/appsmithorg/appsmith/blob/535792f96afc978a75c053e037caeabc9a5d833b/app/client/src/widgets/CustomWidget/component/index.tsx",
+      "bytes": 9453,
+      "sha256": "2a9830df3d845864706d1b407477bd82482f3720591ac082cc4f68f3ba879513",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "appsmithorg/appsmith",
+      "tag": "v1.66",
+      "commit": "535792f96afc978a75c053e037caeabc9a5d833b",
+      "path": "app/client/src/widgets/CustomWidget/widget/index.tsx",
+      "url": "https://github.com/appsmithorg/appsmith/blob/535792f96afc978a75c053e037caeabc9a5d833b/app/client/src/widgets/CustomWidget/widget/index.tsx",
+      "bytes": 14077,
+      "sha256": "9d43d76df6554dc08a6ea5c1bdcc0c3b1ed93da82c1742ff37dd40f31d146dca",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "appsmithorg/appsmith",
+      "tag": "v1.66",
+      "commit": "535792f96afc978a75c053e037caeabc9a5d833b",
+      "path": "app/server/appsmith-server/src/main/java/com/appsmith/server/imports/internal/ImportServiceCEImpl.java",
+      "url": "https://github.com/appsmithorg/appsmith/blob/535792f96afc978a75c053e037caeabc9a5d833b/app/server/appsmith-server/src/main/java/com/appsmith/server/imports/internal/ImportServiceCEImpl.java",
+      "bytes": 39776,
+      "sha256": "fed5652ea2dce1968da845e09b034c634f131b22cd20ccfb19dd263a0248311a",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "appsmithorg/appsmith",
+      "tag": "v1.66",
+      "commit": "535792f96afc978a75c053e037caeabc9a5d833b",
+      "path": "app/server/appsmith-server/src/main/java/com/appsmith/server/exports/internal/ExportServiceCEImpl.java",
+      "url": "https://github.com/appsmithorg/appsmith/blob/535792f96afc978a75c053e037caeabc9a5d833b/app/server/appsmith-server/src/main/java/com/appsmith/server/exports/internal/ExportServiceCEImpl.java",
+      "bytes": 18800,
+      "sha256": "157fcabdda6454eb6296da8d522b2320c541e4317aa20c973bb853ee216c7ac8",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "jupyterlab/jupyterlab",
+      "tag": "v4.4.10",
+      "commit": "a4e885ce990eedc5e71c81fbc0122da7c34d6ba4",
+      "path": "packages/htmlviewer/src/widget.tsx",
+      "url": "https://github.com/jupyterlab/jupyterlab/blob/a4e885ce990eedc5e71c81fbc0122da7c34d6ba4/packages/htmlviewer/src/widget.tsx",
+      "bytes": 10088,
+      "sha256": "e1c29f0fa490db292004296556c9b493b6d2a99f1516eda22bfea56e5c02efb7",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "jupyterlab/jupyterlab",
+      "tag": "v4.4.10",
+      "commit": "a4e885ce990eedc5e71c81fbc0122da7c34d6ba4",
+      "path": "packages/rendermime/src/renderers.ts",
+      "url": "https://github.com/jupyterlab/jupyterlab/blob/a4e885ce990eedc5e71c81fbc0122da7c34d6ba4/packages/rendermime/src/renderers.ts",
+      "bytes": 48022,
+      "sha256": "67000b3d1353dfebb214a15f9daaf014ce9803c41fd7ba4e792b84fd7fb0cbe7",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    },
+    {
+      "repo": "jupyterlab/jupyterlab",
+      "tag": "v4.4.10",
+      "commit": "a4e885ce990eedc5e71c81fbc0122da7c34d6ba4",
+      "path": "packages/services/src/contents/index.ts",
+      "url": "https://github.com/jupyterlab/jupyterlab/blob/a4e885ce990eedc5e71c81fbc0122da7c34d6ba4/packages/services/src/contents/index.ts",
+      "bytes": 53881,
+      "sha256": "92acd19e87245d4c36f954772524a995b9719a16fb4dbdf61301e22d2b4a0cf0",
+      "inspection": "Source inspected; tag dereferenced through official GitHub API; not claimed latest"
+    }
+  ]
+}

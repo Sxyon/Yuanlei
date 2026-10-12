@@ -1,0 +1,40 @@
+{
+  "project": {
+    "id": "fixture-a",
+    "name": "城市能源研究 · 合成项目",
+    "description": "观察两套组织方式如何使用同一组系统事实。"
+  },
+  "topics": [
+    {
+      "id": "topic-1",
+      "title": "区域储能的技术可行性",
+      "state": "研讨中"
+    }
+  ],
+  "discussions": [
+    {
+      "id": "discussion-1",
+      "title": "比较成本与峰谷调节证据",
+      "state": "未形成决定"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision-1",
+      "title": "先验证合成样本",
+      "state": "已批准（夹具）"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "整理两种方案的差异",
+      "state": "进行中"
+    },
+    {
+      "id": "task-2",
+      "title": "核对数据来源",
+      "state": "待办理"
+    }
+  ]
+}

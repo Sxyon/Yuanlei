@@ -1,0 +1,69 @@
+{
+  "fixtureProject": "城市能源研究 · 合成项目",
+  "initialTheme": "Dashboard",
+  "scriptBlocked": true,
+  "noLeakRequest": true,
+  "imageWidth": 320,
+  "objectReturn": "topics/topic-1 -> research/课题脉络",
+  "markdownScriptBlocked": true,
+  "markdownHasScriptNodes": 0,
+  "markdownLiteral": "<script>window.markdownExecuted=true</script>",
+  "hostReturn": "fixture-a -> research/证据资料",
+  "http": [
+    {
+      "url": "/_lab/system?project=fixture-a",
+      "status": 200,
+      "hash": null,
+      "body": "{\n  \"project\": {\n    \"id\": \"fixture-a\",\n    \"name\": \"城市能源研究 · 合成项目\",\n    \"description\": \"观察两套组织方式如何使用同一组系统事实。\"\n  },\n  \"topics\": [\n    {\n      \"id\": \"topic-1\",\n      \"title\": \"区域储能的技术可行性\",\n      \"state\": \"研讨中\"\n    }\n  ],\n  \"discussions\": [\n    {\n      \"id\": \"discussion-1\",\n      \"title\": \"比较成本与峰谷调节证据\",\n      \"state\": \"未形成决定\"\n    }\n  ],\n  \"decisions\": [\n    {\n      \"id\": \"decision-1\",\n      \"title\": \"先验证合成样本\",\n      \"state\": \"已批准（夹具）\"\n    }\n  ],\n  \"tasks\": [\n    {\n      \"id\": \"task-1\",\n      \"title\": \"整理两种方案的差异\",\n      \"state\": \"进行中\"\n    },\n    {\n      \"id\": \"task-2\",\n      \"title\": \"核对数据来源\",\n      \"state\": \"待办理\"\n    }\n  ]\n}\n"
+    },
+    {
+      "url": "/_lab/system?project=fixture-b",
+      "status": 403,
+      "hash": null,
+      "body": "{\"error\":\"project_scope_denied\"}"
+    },
+    {
+      "url": "/_lab/file?project=fixture-a&alias=metrics",
+      "status": 200,
+      "hash": "99a1747e5ef6a2a2cc43191f65adf51588c6d5fc83a4317821f75c43b4fcea00",
+      "body": "{\"source\":\"synthetic-file\",\"samples\":24,\"estimate\":0.76}\n"
+    },
+    {
+      "url": "/_lab/file?project=fixture-a&alias=secret",
+      "status": 403,
+      "hash": null,
+      "body": "{\"error\":\"file_not_declared\"}"
+    },
+    {
+      "url": "/_lab/file?project=fixture-a&alias=metrics&path=../secret",
+      "status": 403,
+      "hash": null,
+      "body": "{\"error\":\"file_not_declared\"}"
+    },
+    {
+      "url": "/_lab/file?project=fixture-b&alias=metrics",
+      "status": 403,
+      "hash": null,
+      "body": "{\"error\":\"project_scope_denied\"}"
+    }
+  ],
+  "symlink": {
+    "status": 403,
+    "body": {
+      "error": "file_boundary_denied"
+    }
+  },
+  "write": {
+    "status": 405,
+    "body": {
+      "error": "read_only"
+    }
+  },
+  "narrowOverflow": false,
+  "formkitModules": [
+    "@formkit_vue.js"
+  ],
+  "literalExpression": "$get(secret)",
+  "pageErrors": [],
+  "claimScope": "Actual @formkit/vue 2.1.2 schema composition with custom ThemeBlock; synthetic HTTP, real Vue/Vite/build/browser/file bytes/CSP; no product auth, PostgreSQL, restart binding or cross-instance import"
+}

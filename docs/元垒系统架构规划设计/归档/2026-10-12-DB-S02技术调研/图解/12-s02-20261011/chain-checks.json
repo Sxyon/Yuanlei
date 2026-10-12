@@ -1,0 +1,59 @@
+{
+  "pgReadback": {
+    "digest": "7d508c5071885a9fac463ee9ff55c314fd6782f0129414e5405d9e7f5699f3e8",
+    "generation": 1,
+    "sameWorkdirOtherProjectBound": false
+  },
+  "editing": {
+    "newVersionStored": true,
+    "activeVersionUnchanged": true,
+    "sameVersionDifferentBytesRejected": true
+  },
+  "negativeHttp": [
+    "project_denied",
+    "file_not_declared",
+    "arbitrary_path_denied",
+    "stale_selection",
+    "selection_conflict",
+    "binding_required",
+    "file_boundary_or_type:path",
+    "file_boundary_or_type:symlink"
+  ],
+  "packageRejections": [
+    "componentAbi:2",
+    "zip_path_traversal",
+    "duplicate_member",
+    "embedded_project_id"
+  ],
+  "publishFailure": {
+    "blobWithoutDbReference": true,
+    "retryReusedVerifiedBlob": true,
+    "activeSelectionUnchanged": true
+  },
+  "integrityRejected": true,
+  "restart": {
+    "sameDefinitionDigestGeneration": true,
+    "postgresAndFileVolume": true
+  },
+  "migration": {
+    "samePackageDigest": true,
+    "identitiesBindingsNotExported": true,
+    "importDoesNotActivate": true,
+    "sourcePathRejected": true,
+    "targetProject": "b-energy",
+    "targetFileSha256": "a1c8362a7297b2cd60da186ffb868cbc8f036e2f2a73164b86039af8ce537e12",
+    "targetFileData": {
+      "environment": "B",
+      "samples": 37
+    },
+    "packagedLogoByteMatch": true
+  },
+  "optionalContent": {
+    "systemOnlyThemeWithoutProjectFilesOrAssets": true
+  },
+  "scope": "Real FastAPI/Pydantic/asyncpg/PostgreSQL16, immutable ZIP/files, current Workdir/no-follow, restart/export/import; synthetic header identity and business DTO; no production routes/schema/Agent/tool/backup/load test",
+  "digests": {
+    "default": "7d508c5071885a9fac463ee9ff55c314fd6782f0129414e5405d9e7f5699f3e8",
+    "research": "5d6c2aa71b380e9d486232343505bcb9ad01301c8f7016451f928e3e6e36cebc"
+  }
+}

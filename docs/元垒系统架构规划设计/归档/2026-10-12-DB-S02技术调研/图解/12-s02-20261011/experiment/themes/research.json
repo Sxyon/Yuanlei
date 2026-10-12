@@ -1,0 +1,56 @@
+{
+  "id": "research",
+  "version": "0.1-lab",
+  "name": "课题调研",
+  "topicLabel": "课题",
+  "layout": "reading",
+  "pages": [
+    {
+      "id": "research",
+      "title": "课题脉络",
+      "blocks": [
+        {
+          "type": "markdown",
+          "binding": "notes",
+          "title": "研究说明"
+        },
+        {
+          "type": "records",
+          "binding": "topics",
+          "title": "课题列表"
+        },
+        {
+          "type": "records",
+          "binding": "discussions",
+          "title": "论证讨论"
+        },
+        {
+          "type": "records",
+          "binding": "decisions",
+          "title": "研究结论"
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "title": "证据资料",
+      "blocks": [
+        {
+          "type": "json",
+          "binding": "metrics",
+          "title": "指定指标文件"
+        },
+        {
+          "type": "image",
+          "binding": "image",
+          "title": "资料图片"
+        },
+        {
+          "type": "html",
+          "binding": "report",
+          "title": "试验报告"
+        }
+      ]
+    }
+  ]
+}

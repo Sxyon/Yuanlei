@@ -1,0 +1,446 @@
+{
+  "retrieved_utc": "2026-10-11T16:30:33.385078+00:00",
+  "method": "GitHub public repository metadata and latest published release; stars/forks measure attention, not adoption or quality",
+  "repositories": [
+    {
+      "repo": "grafana/grafana",
+      "url": "https://github.com/grafana/grafana",
+      "default_branch": "main",
+      "stars": 77249,
+      "forks": 14837,
+      "archived": false,
+      "pushed_at": "2026-10-11T15:14:03Z",
+      "license_api": {
+        "key": "agpl-3.0",
+        "name": "GNU Affero General Public License v3.0",
+        "spdx_id": "AGPL-3.0",
+        "url": "https://api.github.com/licenses/agpl-3.0",
+        "node_id": "MDc6TGljZW5zZTE="
+      },
+      "release": {
+        "tag_name": "v13.2.3",
+        "published_at": "2026-09-29T09:02:18Z",
+        "html_url": "https://github.com/grafana/grafana/releases/tag/v13.2.3",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "appsmithorg/appsmith",
+      "url": "https://github.com/appsmithorg/appsmith",
+      "default_branch": "release",
+      "stars": 41048,
+      "forks": 4800,
+      "archived": false,
+      "pushed_at": "2026-10-11T15:36:26Z",
+      "license_api": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "release": {
+        "tag_name": "v2.5.0",
+        "published_at": "2026-10-09T15:59:16Z",
+        "html_url": "https://github.com/appsmithorg/appsmith/releases/tag/v2.5.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "jupyterlab/jupyterlab",
+      "url": "https://github.com/jupyterlab/jupyterlab",
+      "default_branch": "main",
+      "stars": 15353,
+      "forks": 4128,
+      "archived": false,
+      "pushed_at": "2026-10-09T12:16:06Z",
+      "license_api": {
+        "key": "bsd-3-clause",
+        "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+        "spdx_id": "BSD-3-Clause",
+        "url": "https://api.github.com/licenses/bsd-3-clause",
+        "node_id": "MDc6TGljZW5zZTU="
+      },
+      "release": {
+        "tag_name": "v4.7.0a2",
+        "published_at": "2026-09-21T17:11:41Z",
+        "html_url": "https://github.com/jupyterlab/jupyterlab/releases/tag/v4.7.0a2",
+        "prerelease": true
+      }
+    },
+    {
+      "repo": "directus/directus",
+      "url": "https://github.com/directus/directus",
+      "default_branch": "main",
+      "stars": 38403,
+      "forks": 4966,
+      "archived": false,
+      "pushed_at": "2026-10-09T21:45:12Z",
+      "license_api": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "release": {
+        "tag_name": "v12.5.0",
+        "published_at": "2026-10-07T18:44:06Z",
+        "html_url": "https://github.com/directus/directus/releases/tag/v12.5.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "opentiny/tiny-engine",
+      "url": "https://github.com/opentiny/tiny-engine",
+      "default_branch": "develop",
+      "stars": 2783,
+      "forks": 479,
+      "archived": false,
+      "pushed_at": "2026-08-28T02:35:01Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v2.11.0",
+        "published_at": "2026-07-14T08:54:13Z",
+        "html_url": "https://github.com/opentiny/tiny-engine/releases/tag/v2.11.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "baidu/amis",
+      "url": "https://github.com/baidu/amis",
+      "default_branch": "master",
+      "stars": 18890,
+      "forks": 2735,
+      "archived": false,
+      "pushed_at": "2026-03-18T14:07:40Z",
+      "license_api": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "release": {
+        "tag_name": "6.13.0",
+        "published_at": "2025-08-12T03:24:54Z",
+        "html_url": "https://github.com/baidu/amis/releases/tag/6.13.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "alibaba/lowcode-engine",
+      "url": "https://github.com/alibaba/lowcode-engine",
+      "default_branch": "main",
+      "stars": 15875,
+      "forks": 2743,
+      "archived": false,
+      "pushed_at": "2025-03-10T09:37:14Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v1.3.2",
+        "published_at": "2024-02-23T02:06:13Z",
+        "html_url": "https://github.com/alibaba/lowcode-engine/releases/tag/v1.3.2",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "alibaba/formily",
+      "url": "https://github.com/alibaba/formily",
+      "default_branch": "formily_next",
+      "stars": 12589,
+      "forks": 1598,
+      "archived": false,
+      "pushed_at": "2025-06-21T01:46:14Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v2.3.6",
+        "published_at": "2025-05-15T09:53:46Z",
+        "html_url": "https://github.com/alibaba/formily/releases/tag/v2.3.6",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "eclipsesource/jsonforms",
+      "url": "https://github.com/eclipsesource/jsonforms",
+      "default_branch": "master",
+      "stars": 2743,
+      "forks": 422,
+      "archived": false,
+      "pushed_at": "2026-10-09T07:32:45Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v3.8.0",
+        "published_at": "2026-06-16T08:30:51Z",
+        "html_url": "https://github.com/eclipsesource/jsonforms/releases/tag/v3.8.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "formkit/formkit",
+      "url": "https://github.com/formkit/formkit",
+      "default_branch": "master",
+      "stars": 4774,
+      "forks": 207,
+      "archived": false,
+      "pushed_at": "2026-07-24T19:21:10Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v2.1.2",
+        "published_at": "2026-07-24T19:27:27Z",
+        "html_url": "https://github.com/formkit/formkit/releases/tag/v2.1.2",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "xaboy/form-create",
+      "url": "https://github.com/xaboy/form-create",
+      "default_branch": "next",
+      "stars": 7106,
+      "forks": 1105,
+      "archived": false,
+      "pushed_at": "2026-10-08T09:07:37Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v3.3.0",
+        "published_at": "2026-05-16T05:51:09Z",
+        "html_url": "https://github.com/xaboy/form-create/releases/tag/v3.3.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "GrapesJS/grapesjs",
+      "url": "https://github.com/GrapesJS/grapesjs",
+      "default_branch": "dev",
+      "stars": 26297,
+      "forks": 4650,
+      "archived": false,
+      "pushed_at": "2026-10-06T07:20:33Z",
+      "license_api": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "release": {
+        "tag_name": "v0.23.6",
+        "published_at": "2026-08-26T12:24:19Z",
+        "html_url": "https://github.com/GrapesJS/grapesjs/releases/tag/v0.23.6",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "puckeditor/puck",
+      "url": "https://github.com/puckeditor/puck",
+      "default_branch": "main",
+      "stars": 13458,
+      "forks": 992,
+      "archived": false,
+      "pushed_at": "2026-10-09T16:18:42Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v0.23.0",
+        "published_at": "2026-08-07T09:47:30Z",
+        "html_url": "https://github.com/puckeditor/puck/releases/tag/v0.23.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "ToolJet/ToolJet",
+      "url": "https://github.com/ToolJet/ToolJet",
+      "default_branch": "main",
+      "stars": 41075,
+      "forks": 5497,
+      "archived": false,
+      "pushed_at": "2026-10-10T11:43:03Z",
+      "license_api": {
+        "key": "agpl-3.0",
+        "name": "GNU Affero General Public License v3.0",
+        "spdx_id": "AGPL-3.0",
+        "url": "https://api.github.com/licenses/agpl-3.0",
+        "node_id": "MDc6TGljZW5zZTE="
+      },
+      "release": {
+        "tag_name": "v3.20.243-lts",
+        "published_at": "2026-10-09T14:43:28Z",
+        "html_url": "https://github.com/ToolJet/ToolJet/releases/tag/v3.20.243-lts",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "Budibase/budibase",
+      "url": "https://github.com/Budibase/budibase",
+      "default_branch": "master",
+      "stars": 28332,
+      "forks": 2232,
+      "archived": false,
+      "pushed_at": "2026-10-11T16:12:35Z",
+      "license_api": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "release": {
+        "tag_name": "v3.49.0-cloud.3",
+        "published_at": "2026-10-09T14:13:44Z",
+        "html_url": "https://github.com/Budibase/budibase/releases/tag/v3.49.0-cloud.3",
+        "prerelease": true
+      }
+    },
+    {
+      "repo": "FlowFuse/node-red-dashboard",
+      "url": "https://github.com/FlowFuse/node-red-dashboard",
+      "default_branch": "main",
+      "stars": 355,
+      "forks": 85,
+      "archived": false,
+      "pushed_at": "2026-10-09T17:22:04Z",
+      "license_api": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "release": {
+        "tag_name": "v1.33.0",
+        "published_at": "2026-10-06T14:18:44Z",
+        "html_url": "https://github.com/FlowFuse/node-red-dashboard/releases/tag/v1.33.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "streamlit/streamlit",
+      "url": "https://github.com/streamlit/streamlit",
+      "default_branch": "develop",
+      "stars": 45941,
+      "forks": 4419,
+      "archived": false,
+      "pushed_at": "2026-10-11T08:13:05Z",
+      "license_api": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "release": {
+        "tag_name": "1.65.0",
+        "published_at": "2026-10-02T21:40:41Z",
+        "html_url": "https://github.com/streamlit/streamlit/releases/tag/1.65.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "holoviz/panel",
+      "url": "https://github.com/holoviz/panel",
+      "default_branch": "main",
+      "stars": 5795,
+      "forks": 639,
+      "archived": false,
+      "pushed_at": "2026-10-10T00:12:50Z",
+      "license_api": {
+        "key": "bsd-3-clause",
+        "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+        "spdx_id": "BSD-3-Clause",
+        "url": "https://api.github.com/licenses/bsd-3-clause",
+        "node_id": "MDc6TGljZW5zZTU="
+      },
+      "release": {
+        "tag_name": "v1.9.4",
+        "published_at": "2026-08-17T12:33:32Z",
+        "html_url": "https://github.com/holoviz/panel/releases/tag/v1.9.4",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "gradio-app/gradio",
+      "url": "https://github.com/gradio-app/gradio",
+      "default_branch": "main",
+      "stars": 43713,
+      "forks": 3621,
+      "archived": false,
+      "pushed_at": "2026-10-09T18:51:53Z",
+      "license_api": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "release": {
+        "tag_name": "gradio@6.30.0",
+        "published_at": "2026-10-08T22:21:51Z",
+        "html_url": "https://github.com/gradio-app/gradio/releases/tag/gradio%406.30.0",
+        "prerelease": false
+      }
+    },
+    {
+      "repo": "plotly/dash",
+      "url": "https://github.com/plotly/dash",
+      "default_branch": "dev",
+      "stars": 24446,
+      "forks": 2329,
+      "archived": false,
+      "pushed_at": "2026-10-09T21:04:04Z",
+      "license_api": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "release": {
+        "tag_name": "v4.5.0rc0",
+        "published_at": "2026-09-21T23:23:40Z",
+        "html_url": "https://github.com/plotly/dash/releases/tag/v4.5.0rc0",
+        "prerelease": true
+      }
+    }
+  ]
+}

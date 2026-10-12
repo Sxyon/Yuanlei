@@ -2,9 +2,7 @@
 
 记录日期：2026-10-10。分支：`codex/dashboard`。提交：`3c5ee33c64f82fcb5214f29e7b7198730bdeed55`。本文唯一维护 Dashboard 任务状态与执行事实；需求见 SYS-DB-001，任务范围见 DEV-DB-001。
 
-当前方向与状态见第10节：2026-10-11改为项目主题渐进推进。第1—9节保留此前时点证据和反馈，不继续按其旧DB-D00/T01—13领取。
-
-顺序验收与最新图稿交付见第11节：S01至S07依次验收，S02前期只可准备资料。第10节事实保留，不能据其近端任务表推定阶段并行实施。
+当前状态读第20节：2026-10-12用户采纳S02 R3并要求执行指南及调研归档；技术采纳、试验事实、阶段验收与产品实现分别记录。第1—19节是对应时点历史，第17—19节调查材料已归档，旧“待确认/待审阅”不成为当前任务。S03产品开发未启动，协作与Andon暂停。
 
 ## 0. 目录集成时点与状态口径
 
@@ -297,3 +295,117 @@ DB-G10入口关系使用Archify architecture，最终回执为`nav-final/`；初
 计划：S01验收通过；S02具备进入前提但本轮未开始，随后按DEV第4节调查与小试，不沿旧T任务领取。协作接入与Andon继续暂停。产品提交记录以本节所在commit为准。
 
 最终收尾：docs build通过（18.73s），53条相关相对文件引用无缺失，`git diff --check`通过。迁移夹具既有7处E501不做无关重排；Ruff最终检查repository／两service／router／HTTP测试与两个service unit文件通过。Decision迁implemented后补齐规范要求的“决策／后果／验证”标题；工程gate再次核对。全新Reviewer最终核对useId标签修正及完整diff，无实质剩余问题；两次测试预期调整保留拒绝后果。临时验收凭据清理完成。
+
+## 16. S01用户验收与S02正式领取（2026-10-11）
+
+确认依据：本轮用户明确“S01 已由我验收通过，评分 **76/100：基本能用，审美较差**”。该结论覆盖S01，不重新开展S01；分数与审美反馈作为后续设计改进依据，不以此前Agent自测替代用户评价。
+
+本轮开始核实：HEAD `d2bf7134`，最近提交`c0cd0c85`、`1161f347`；`git status --short`无输出，当前本地工作空间干净。最新样式提交纳入现状调查，旧`3c5ee33c`只作历史。
+
+用户授权DB-S02调查、方案比较、隔离合成数据小试与推荐，直接在当前工作空间开展；不使用worktree。阶段止于技术评审与阶段验收，S03—S07未授权启动；协作接入与Andon继续暂停。技术方向确认与试验结果分别登记，研究结论和试验通过不构成用户批准。
+
+## 17. S02研究、小试与待评审出口（2026-10-11—12）
+
+进度：当前本地主checkout开展S02，未使用worktree、未修改产品web/backend或Schema；S01不重做，协作接入与Andon保持暂停。研究稿为[SYS-DB-003 R1](归档/2026-10-12-DB-S02技术调研/SYS-DB-003-项目主题技术调研与最小接入试验.md)，整体图DB-G12，默认/调研主题小试位于图解/12-s02-20261011；SYS第9节、DEV第4/5节及README引用同一附件，不另造并行规划。
+
+目标与设计：固定HEAD `d2bf7134f8db227f64360be2b5bea848555747ca`，核对可信Vue管理概览、静态HTML大屏、主题管理占位、治理/工作API及thread授权Viewer。Grafana v11.6.0、Appsmith v1.66、JupyterLab v4.4.10官方tag解引用并读实际源码，来源/commit/字节指纹见source-evidence；官方截图与动态演示版本分开。Grafana/Appsmith本机浏览器导航超时，JupyterLite只到Loading，case-pages如实保留；官方截图可访问，不声明三个平台真实部署/迁移/授权测试。大树批量拉取遇网络IncompleteRead，改用固定路径的官方原始源码读，所引用十份源码均成功读取，不据缺失树推断事实。
+
+技术与证据：独立Vite root绑定回环5188，使用当前web Vue/Vite/plugin依赖，系统与授权是fixture-a合成夹具；HTTP、文件字节、Blob、浏览器与现有dashboardFrame CSP是真实执行。未调用产品数据接口、日常项目或真实账号权限。两主题各两页组织不同；对象ID不随“议题/课题”改变；准确详情和宿主返回由DOM核对。metrics SHA-256响应与独立文件读重算一致，PNG320px；越项目/未声明文件/路径参数/符号链接拒绝并核对原因，POST405只读。结构校验初次九项，独立Review修补后十项含正确原因负例。HTML危险探针绕过后端validator只验证CSP/sandbox第二道边界，未测试iframe自身导航，不主张危险内容可通过产品导入。
+
+实际命令与结果：
+
+- `node docs/元垒系统架构规划设计/图解/12-s02-20261011/experiment/server.mjs --build`：Passed，初次504ms；文件后缀修订后构建420ms，产物在系统临时目录，不入Git。`node --test docs/元垒系统架构规划设计/图解/12-s02-20261011/experiment/definition.test.mjs`：初次9通过，修补后10通过。
+- 运行环境提供的`S02_PLAYWRIGHT_MODULE`加`node docs/元垒系统架构规划设计/图解/12-s02-20261011/browser-check.cjs`：Passed，DOM/HTTP/error/hash/文件/390px结果见checkout文件`图解/12-s02-20261011/browser-checks.json`，四页桌面及窄屏截图同目录。Playwright默认缓存浏览器版本不存在，复用已装Chrome运行，没有安装依赖。
+- Archify `finalize architecture .../candidate.json .../theme-architecture.html --quality showcase --json`：首稿返回线几何失败，修复后validate/deliver/check/browser-check全通过；`visual-check .../theme-architecture.html --out-dir .../visual-check --json`通过。1440浅色关系图和调研页已目视检查，其余截图为浏览器捕获，未逐张据此宣称美学通过。图是待确认推荐设计，没有伪装成真实代码接线。
+- `docker compose exec -T api uv run --group test pytest test/unit -m 'not slow'`：Failed，`/app/uv.lock`写权限拒绝。替代命令`docker compose exec -T api uv run --no-sync --group test pytest test/unit -m 'not slow' -q -p no:cacheprovider --tb=short`：2874通过、63跳过、10条既有warning，425.56s。全量单元不证明主题产品接通。
+- 工程契约首次因proposed证据结果中文枚举失败，按规范改为Inspected/Passed；checker单元71项通过。最终gate/docs build/链接/diff与全新独立Reviewer结果收尾补记。
+
+| 阶段判断维度 | 当前状态 | 确认依据与限制 |
+| --- | --- | --- |
+| 研究与推荐可审 | 已提交R1 | 三类真实采用者、统一比较及模块职责；不是用户确认 |
+| 最小试验 | 自测Passed | 直接证据支持隔离验例；真实产品授权、存储和迁移Not run |
+| 用户技术方向确认 | 待确认 | 本轮原用户消息授权调查/推荐，没有批准最终路线 |
+| 用户S02阶段验收 | 待验收 | 用户可分别判断研究完整性与试验出口，不以自测冒充验收 |
+| S03产品实施 | 未启动 | DEV提出默认/调研各三页待确认范围，未开始开发 |
+
+问题：最终组件词汇与三页样板表达力、项目级指定文件入口、库发布/停用、依赖兼容与真实路由返回仍待后段证据。推荐受控定义＋可信Vue组件，生成包首批无自带JS；复杂办理回原宿主。若核心样板必须执行生成JS或桥必须扩权，停止受影响路径回S02，恢复条件是收窄能力并有负向试验。迁移与持久包建议保持proposed。
+
+计划：收尾审查后提交“现状＋问题＋方案＋建议＋请示”；等待用户技术方向确认和S02阶段验收，分别记录原消息/稿版本/范围。未确认不启动S03；S04—S07只保留顺序目标。
+
+收尾修订：独立Reviewer指出iframe标签“无导航”过度主张、records允许绑定单个project导致数组操作错误，以及Markdown布尔只记录未断言。逐项修复标签与类型校验，新增正确原因负例，并补原script字面文本/无script节点/未执行断言；定义测试最终10通过，浏览器重新生成证据。实验源码和夹具不纳入VitePress扫描/复制；修复前docs因notes探针SSR失败，排除后build通过19.03s，回读dist确认无experiment/browser脚本且图稿字节指纹一致，机器回执publication-check.json。相对链接按CommonMark尖括号解析修正后76条无缺失，diff空白检查通过。未扩大ignoreDeadLinks。最终文档build与独立Review结论随后补记。
+
+最终收尾（2026-10-12）：全新无开发上下文Reviewer独立重跑10项结构测试、回读最终浏览器证据与发布目录，并重新下载十份固定commit官方源码计算指纹，全部匹配。三项实质问题已修复，无剩余实质问题；Reviewer不替用户技术确认或S02阶段验收。实验最终构建276ms，主题产品未接入。工程gate198 decisions／21 features／360 docs通过，checker71项通过；修复发布边界后docs build19.03s通过，收尾重跑17.92s通过，最终74条相对文件引用无缺失，diff空白检查通过；所有结果与限制保持分别记录。收尾重跑工程gate及checker、链接与diff均通过，S02用户阶段验收仍待反馈。当前修改留在本地工作空间供技术评审，未启动S03。
+
+## 18. S02选型证据与成熟模块复用补充 R2（2026-10-12）
+
+用户尚未查看R1，要求先证明原三个值得比较、是否广泛充分调研及主流采用，广泛找优秀方案且优先匹配现有架构，直接迁移成熟模块优于重写。该反馈是补充研究要求，不是技术方向确认或阶段验收。HEAD仍为d2bf7134，本轮原工作空间继续推进，未创建worktree、未修改web/backend或产品依赖，S03—S07未启动；S01验收结论不变，协作与Andon暂停。
+
+进度：SYS-DB-003升R2，第2.0节公开筛选20公开源码候选＋3商业对照，记录技术栈、许可、维护快照、成本及后排原因；全部初筛不等于逐个完整源码审计/运行验证。20个包括Grafana、Appsmith、JupyterLab、Directus、TinyEngine、amis、LowCodeEngine、Formily、JSON Forms、FormKit、form-create、GrapesJS、Puck、ToolJet、Budibase、FlowFuse Dashboard、Streamlit、Panel、Gradio与Dash；商业对照Retool、Builder.io、Storyblok只看官方公开接口，不接账号或部署。原三例是机制抽样，此前不能宣称广泛优选；原三例保留专长参照，Vue路径增加Directus/TinyEngine与模块复用比较。
+
+证据：AWS使用方文档支持Managed Grafana和SageMaker JupyterLab，Google Cloud官方源码支持Workbench JupyterLab；Appsmith支持Strapi/GSK/Allround等厂商公布具名部署，不能推导其他平台普遍嵌入其renderer。Directus/TinyEngine厂商案例与独立采用严格分开；stars是关注度，不当装机量。官方GitHub API快照candidate-survey、首筛README/LICENSE读取selection-first-screen、固定tag→commit selection-refs、源码地址/bytes/SHA256 selection-source-evidence及较新原例回执original-cases-current-evidence均留在原图解目录。原例最新版本复核Grafana13.2.3、Appsmith2.5.0、JupyterLab稳定4.6.4；旧Grafana路径404后定位当前importPluginModule Owner，失败不当证据。Directus平台MSCL与SDK MIT、GrapesJS核心BSD3、Budibase不同package许可如实区分。
+
+真实复用试验：FormKit Vue2.1.2官方10包SHA-512校验，使用当前Vue/Vite及可信ThemeBlock，替代组件组合；最终34模块构建365ms通过，JS302552字节，相对R1增加90228字节未压缩（无性能benchmark）。六类业务组件、有限定义、导航、授权和文件协议仍自写，不能称完整主题引擎迁移。`node --test .../experiment/definition.test.mjs .../experiment/reuse/schema.test.mjs`共13通过；真实Chrome回执reuse-browser/browser-checks.json观察真实库模块、两主题四页、准确返回、HTTP负例、文件hash、symlink/405、CSP和390px；文案$get(secret)真实DOM保留字面文本，原生Schema字段拒绝。截图研究页已目视检查，不能据此给产品审美验收。
+
+关键假设失败与中断：TinyEngine2.11.0官方出码包及18个Babel闭包包校验，默认genSFCWithDefaultPlugin成功输出593字节最小合成SFC，源码未改。`server.mjs --tiny-build`在当前Vite8.2.2构建失败（232ms、exit1），缺vue-i18n；输出还调用I18nInjectionKey.lowcode()。浏览器Not run。已即时说明影响并停止“默认单页输出直接放入当前宿主”的路径，没有加空桥冒充成功。恢复条件是模板/插件或真实宿主适配、重新构建与运行、同一业务/边界验例通过；不据此判定所有TinyEngine出码方式不可行。低层API缺参数报错只作调用配置问题记录，不作为淘汰证据。Tiny构建覆盖临时产物后已重跑FormKit构建恢复。
+
+工具问题：两次npm安装长时间无进展，停止自身进程；HTTPS ping通过不代表install通过。改取官方registry固定元数据/tarball并校验完整性，不运行生命周期脚本；没有修改产品package/lock。临时依赖不纳Git，复现变量与入口见附件第2.6节。
+
+建议：保留受控定义＋可信Vue的候选架构，但不锁定外部引擎或实验DSL。优先现有Vue/Ant Design Vue与业务组件、成熟内容库；FormKit此次组合收益有限，暂不引入整库；TinyEngine留作需要适配后复测的出码备选；Directus保留模块/面板职责借鉴，不直接替换平台。S03待确认范围增加复用与自建理由验收，不能自造通用低代码引擎。SYS/DEV/README和proposed决策引用同一R2，不另造规划。
+
+计划及阶段出口：用户要求补充后才审，当前技术方向待确认、S02阶段验收待定、S03未启动。新独立Reviewer不继承开发上下文，已独立下载44份成功源码回执全部bytes/hash匹配、重跑13项结构测试；指出组合收益夸大/字面量DOM证据/模块URL含本地路径/官方Vue FAQ入口等缺口，逐项修正。最终材料与工程gate、文档构建、链接及diff复核结果随后补记；Review不替用户确认。
+
+末轮补充：LowCodeEngine官方Vue画布FAQ进一步指向KNXCloud社区Vue renderer，已按固定commit读取README并记录指纹，作为原候选家族额外路径保留；没有运行，不能因默认React整体淘汰。最终13项结构测试、工程gate198 decisions／21 features／360 docs、checker71项、76条相对文件引用及diff检查通过；文档build18.80s通过（末轮文字修订后再构建）。独立Reviewer回读产物确认无experiment/cjs、DB-G12源/发布字节一致，Tiny原始SFC指纹匹配，浏览器回执不含本地模块路径。
+
+R2最终收尾：独立Reviewer结论无剩余实质问题；追加社区Vue路线又独立下载固定commit README，bytes/hash匹配，官方与社区、未知与实测边界准确。末轮npm run build误在仓库根执行，因不存在package.json而ENOENT失败；回docs目录重跑成功20.61s，既有chunk-size与npm配置warning不当失败。76条相对文件引用与diff检查通过，工作仍未提交。技术方向确认与用户S02阶段验收继续待定，不以Review通过代替。
+
+## 19. S02完整路线与后段贯通论证 R3（2026-10-12）
+
+用户指出R2没有承担S02确定方向/技术路线的责任，要求本轮衡量S03—S06的完整支持，后段用于按方案实施及验证效果，不能投入后再发现必要机制完全不可用、整体退回重规划。记录为本轮研究修订要求，不是批准任一路线或S02验收。HEAD重新核对仍d2bf7134；工作空间已有前两轮研究改动，本轮部分文件被外部暂存，未修改或恢复Git索引，未提交。未用worktree、未改产品web/backend/Schema/依赖，协作与Andon暂停，S03—S07未启动。
+
+目标与设计：SYS-DB-003 R3第5节给确定推荐，Vue原生可信组件注册＋受控JSON/资源，FastAPI/Pydantic校验，独立受保护文件卷不可变ZIP，PG yuanlei来源/版本/Project绑定，既有业务Owner＋Workdir指定文件，原字节导出/兼容ABI导入后目标重新授权绑定。20公开源码＋3商业筛选继续作选型依据，FormKit/Tiny不是当前运行时。具体生产DDL/界面/工具留后段实施，运行/保存/数据/迁移方式本轮已明确；支持限制、备选切换代价、剩余实施/质量问题和S03六页出口见同一附件，不建立平行主规划。DB-G12 R3更新加载/保存/通信/宿主关系，源码未接入产品。
+
+隔离试验：使用现有yuanlei-api镜像的FastAPI0.141.1/Pydantic2.13.4/asyncpg0.31.0及当前仓库Workdir/静态validator，专用Docker network和PostgreSQL16容器，两独立s02_a/s02_b数据库、两API进程/文件域，只暴露本机5190/5191；Vue5192。相同PG进程不当成两套正式元垒部署。身份X-Lab-Actor、Project行、业务DTO与办理详情均合成；真正执行HTTP、PG事务/外键/版本唯一约束、文件fsync/原子无覆盖发布、ZIP/hash、Workdir读取、API重启与A→B导入，日常网络/Project/账号不接。
+
+直接结果：两主题各两页加载/切换/准确返回；PG SELECT回读绑定digest/generation，编辑存0.2版本但旧选择不变，同version不同bytes409；同Workdir另一Project不自动启用，之后独立启用system-only主题且无需文件/包资产。DB前故障点503留下无引用完整blob，PG无版本行，重试复用字节并保留旧选择。坏包409，A API重启后定义/hash/generation一致。A原字节ZIP导出至B保持digest，包不结构化携合成身份/路径，B导入仍unbound，源Project/路径拒绝，目标映射后PG/HTTP读取B环境37样本及hash，包内PNG原字节匹配。此结论不保证任意用户文案/资源自动脱敏。
+
+负例与浏览器：chain-checks记录8类HTTP拒绝及4类包拒绝；chain-negative-checks补18项正确原因负例（未知组件/API字段/类型/页/布局、raw/expanded大小/成员量/非ZIP/ZIP symlink、未声明asset、必要文件缺失/资产manifest路径、PNG/JSON/静态HTML脚本与外部href、文件大小），失败保持旧选择。实际Vue原生动态组件DOM显示B Project与B资料、PNG320、宿主准确返回、刷新读持久绑定，延迟A响应释放后仍显示B；390px无横向溢出，pageerror为空。Markdown另用浏览器fulfilled合成探针核对外链/图片/script不产生活动节点/外部请求，不把这份probe当服务器真实读取证据。JSON/PNG/静态HTML的服务器字节/PG路径有独立回读。
+
+实际命令与修复：`python3 .../experiment/chain/run.py`首次因响应头大小写断言失败，改为不区分大小写；随后通过。独立Review指出版本入库及故障后的True缺少oracle，补独立PG/完整theme断言；添加版本唯一约束/409后重跑通过。ZIPInfo原默认STORED让expanded负例误撞raw大小，改显式DEFLATED并重跑，最终18负例通过；重复成员探针有预期zipfile warning。浏览器初次被过宽/A代理误接/App.vue而404，改^/A/与^/B/；延迟route提前unroute导致已处理错误，补等待route完成；窄屏Markdown长文溢出补内容换行，回执通过。Vue最初构建620ms，补scope/样式后498ms，最终构建结果收尾补记。
+
+环境与复现：过程中本试验三个容器被删除，network仍存在；本执行端与独立Reviewer均未执行该次清理，原因未确认，未据此认定路线失败或数据恢复通过。重新创建专用空PG、从独立持久文件域运行完整试验通过。刚创建PG时createdb遇未就绪，run.py补pg_isready后继续；不修改日常服务。复现源码/环境前置条件见SYS第4.1节，试验源及危险夹具排除文档站点发布。实验临时数据/容器只用于S02，收尾会停止并清理自己命名的容器/network，保留研究回执和合成截图。
+
+工程与Review：全新无开发上下文s02_route_review核对完整需求、源码/方案、只读PG/HTTP/ZIP hash和范围，未发现需推翻运行/保存/迁移的架构阻塞；反馈oracle、压缩负例、scope快照、旧R2一致性及HTML href证据已修补。Archify R3 finalize四gate通过，visual-check浅/深双尺寸捕获通过；1440浅色关系图已目视，返回线外圈清晰，不宣称所有捕获均已人工审美通过。最终工程gate、docs build/链接/diff及Review收尾结论另补。
+
+当前阶段：R3完整推荐已交准备，用户技术方向确认待定、S02阶段验收待定，S03尚未启动。后段实施/生产权限、正式迁移、Agent工具/模型质量、备份与容量验证仍未完成；这些都有既定方案落点，不再保留主运行时/文件授权/迁移办法待选。请示只涉及首批生成自由度和兼容元垒迁移的产品边界，常规技术选择由Codex承担。
+
+R3最终收尾：全新独立Reviewer结论通过、无剩余实质问题，未发现需推翻贯通推荐的架构阻塞；不替用户方向确认/S02验收。18项真实HTTP负例和最终浏览器重跑通过，Markdown探针到达/未执行另有明确断言；Vue最终19模块构建401ms通过。工程gate198 decisions／21 features／360 docs、checker71项、既有结构13项通过，79条相对文件引用无缺失，工作树/暂存diff空白检查通过；docs build24.10s及末轮26.85s通过，既有chunk/config warning保留。发布回读确认无experiment/cjs、R3图字节一致、四张贯通截图已复制。已目视R3整体图及B目标资料页，不代替产品审美验收。最后日志/构建时长文字更新后重建另记；本轮独立容器与network清理仅针对yuanlei-s02-chain命名域，合成临时文件保留供复现，未改日常服务或Git索引。
+
+末轮文本重建23.05s通过；专用A/B/PG容器与network已清理，5192本轮Vue服务已关闭；确认相对HEAD的非docs差异为空。源/回执/截图与合成临时文件保留，索引不改、产品不动，S02用户两项判断仍待定。
+
+## 20. 技术采纳、执行指南及S02归档（2026-10-12）
+
+原用户消息：“采纳方案，生成后续执行的方案指南（细化规划，避免假大空，要能提供工作指引的方案文档），归档标记本次的调研内容，避免调研信息对后续任务造成误判、污染等不良影响。”对应前轮S02 R3完整推荐，明确采纳Vue原生/受控包、受保护不可变ZIP＋PG绑定、原业务与Project授权Workdir、兼容ABI原字节导入并目标重绑定及首批自由度边界。技术方向确认不再待选；本轮授权文档/归档，未执行S03产品开发，也不重复请示已采纳技术。
+
+| 维度 | 本轮状态与依据 |
+| --- | --- |
+| 用户技术方向确认 | 已采纳，原消息及S02 R3对应关系见上段 |
+| 隔离试验 | 已自测Passed，前轮真实协议/PG/文件/DOM与模拟边界保留归档 |
+| 用户实验阶段验收 | 本条消息未另给独立试验验收结论，不用技术采纳或归档追加评分/产品验收 |
+| 研究资料 | 收尾归档，只追溯选型与当时试验，不再作为当前执行任务 |
+| 后续产品实施 | S03—S07均未启动；当前DEV-DB-002是后续工作指引，不是完成报告 |
+
+最新HEAD已变为592b6e510bc5049c9dbe24c75199c7b9dae10fb9（健康检查修复），已读其diff并确认主题主要Owner未被替换；S02实验基线d2bf7134只作历史记录。工作树原有暂存研究资料。本轮只针对本任务研究报告/图解和研究决策做git mv归档，更新其必要索引路径，保留其他暂存内容；没有新worktree/提交或产品、账号、数据库、日常运行目录改动。
+
+执行指南为[DEV-DB-002](DEV-DB-002-项目主题实施指南.md)：明确当前授权、模块Owner、生产包字段/组件/数据/返回契约、S03六页逐步工作、S04实体/提交顺序/接口/恢复、S05原业务与文件接入、S06两正式环境迁移、Agent受限维护、S07体验观察以及每段拒绝集/交接/命令。方案与范围沿已采纳R3，常规命名/配额依consumer实现，不把实验代码/字段/限额直接变成生产契约；本指南不创建平行主规划。
+
+归档位于[2026-10-12-DB-S02技术调研](归档/2026-10-12-DB-S02技术调研/README.md)，102份研究报告/代码/回执/图/截图原路径与SHA-256在archive-manifest；只有报告归档提示及相对导航变化，101份研究artifact字节不变。研究提案另入decisions/archived，新增产品尚未实现但技术已采纳的proposed实施记录。当前图DB-G13表明已采纳目标、产品未实施；旧DB-G12及其receipt冻结在归档，不能改旧HTML伪造当前校验。
+
+污染控制：当前README/SYS/DEV/审阅入口指向执行指南；旧候选、待确认、lab权限/表/阈值及失效命令仅在明确历史位置；站点排除归档experiment、脚本、机器JSON回执，保留报告和图/截图阅读。归档报告的历史待确认并非当前技术状态，LOG本节拥有当前确认；后续不默认运行归档服务。
+
+本轮验证计划：当前/归档相对链接、归档指纹/索引、站点发布边界、Archify当前图的自动gate与当前状态标识、工程契约/checker单元、docs build、完整暂存/工作树diff检查及全新独立Reviewer。实际收尾结果随后补记；不重跑产品链路冒充新的主题实现。
+
+收尾验证：工程gate通过（200 decisions／22 yuanlei features／365 docs），checker71项通过（2.649s）；94条当前/归档相对文件引用无缺失，archive-manifest102项现指纹匹配，101份原始artifact未变。docs build首次因归档README用Markdown链接静态HTML被当成缺失页面失败，改为与现有图入口一致的a标签后22.81s通过；原有npm配置与大chunk提示保留。独立回读dist：新指南与历史报告存在，旧当前研究页/图目录不存在，归档experiment/脚本/JSON未发布，当前图/历史图/目标资料截图与checkout原字节一致。
+
+DB-G13 Archify finalize四gate及浅深双尺寸visual-check通过；1440浅色整体图已目视，模块/数据授权/返回线可读，未宣称所有截图已人工审美通过。根.gitattributes只给归档12/theme-*.html沿用原生成器的行尾空白例外，保留历史HTML及receipt字节；其余空白校验不变，工作树与暂存git diff --check均通过。全新Reviewer指出SYS/DEV两个当前待选残留及Agent阶段归属已修正：后继Agent工具领取须在S06出口明确范围，不提前纳入S03—S06验收。当前指南/导航不再引导继续旧选型。
+
+本轮仅文档、归档及站点发布边界调整；未执行产品主题测试、未把前轮试验报告成新产品完成、未新增依赖/Schema/服务或提交。全新独立theme_guide_review最终结论通过，无剩余实质问题；不替用户阶段验收。补记后的文档构建23.10s通过；最终Review结论写入后再重建发布页，避免站点遗漏收尾状态。

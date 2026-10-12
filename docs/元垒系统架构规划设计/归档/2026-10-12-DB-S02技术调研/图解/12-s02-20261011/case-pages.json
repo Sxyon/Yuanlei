@@ -1,0 +1,20 @@
+[
+  {
+    "name": "grafana",
+    "url": "https://play.grafana.org",
+    "error": "page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://play.grafana.org/\", waiting until \"domcontentloaded\"\u001b[22m\n"
+  },
+  {
+    "name": "appsmith",
+    "url": "https://app.appsmith.com/app/data-grid/page1-6597ff5559aa5450e0eb4eb9",
+    "error": "page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://app.appsmith.com/app/data-grid/page1-6597ff5559aa5450e0eb4eb9\", waiting until \"domcontentloaded\"\u001b[22m\n"
+  },
+  {
+    "name": "jupyterlab",
+    "url": "https://jupyter.org/try-jupyter/lab/",
+    "finalURL": "https://jupyter.org/try-jupyter/lab/",
+    "title": "JupyterLite",
+    "body": "Loading JupyterLite...",
+    "evidence": "Public live example; version not inferred from demo"
+  }
+]

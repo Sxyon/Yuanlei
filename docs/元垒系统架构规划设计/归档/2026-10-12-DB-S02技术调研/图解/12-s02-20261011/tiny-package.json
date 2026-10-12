@@ -1,0 +1,32 @@
+{
+  "name": "@opentiny/tiny-engine-dsl-vue",
+  "version": "2.11.0",
+  "dist": {
+    "shasum": "0e73a484f48467310491847fed285cce199c77b5",
+    "tarball": "https://registry.npmjs.org/@opentiny/tiny-engine-dsl-vue/-/tiny-engine-dsl-vue-2.11.0.tgz",
+    "fileCount": 8,
+    "integrity": "sha512-DQUBjHwZfxIYA1qZIRrZJPk45hRsUb1D67iXFq3ZAAxF7+iyWV5UYwgQbWawy0Hqad+Isw1cz5I4dPDLT5pJ7Q==",
+    "signatures": [
+      {
+        "sig": "MEYCIQDzONcNeoAZcwOEQ/tnmx98BmYCfQ8Dl3d79CpKBVx8/AIhAPqNv553ERSFyAYi9JMVdq/JQzJTpxzomS7AlRBGCcdG",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "unpackedSize": 9732691
+  },
+  "dependencies": {
+    "vue": "^3.4.15",
+    "@vue/shared": "^3.3.4",
+    "@vue/compiler-sfc": "3.2.45",
+    "vue-eslint-parser": "8.3.0",
+    "@opentiny/tiny-engine-utils": "2.11.0",
+    "@opentiny/tiny-engine-builtin-component": "2.11.0"
+  },
+  "peerDependencies": {
+    "eslint": "^8.57.1",
+    "@babel/parser": "^7.18.13",
+    "@babel/traverse": "^7.18.13",
+    "@babel/generator": "^7.18.13"
+  },
+  "verified": true
+}

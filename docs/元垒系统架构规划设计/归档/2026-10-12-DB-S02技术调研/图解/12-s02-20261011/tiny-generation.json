@@ -1,0 +1,12 @@
+{
+  "package": "@opentiny/tiny-engine-dsl-vue",
+  "version": "2.11.0",
+  "method": "genSFCWithDefaultPlugin with official defaults; synthetic literals; no generated code edited",
+  "bytes": 593,
+  "sha256": "aa1651130310d06870d42cd5c615403776690ac40969a652770c433aa78de9c6",
+  "importsVueI18n": true,
+  "requiresLowcodeInjection": true,
+  "directHostCompatible": false,
+  "runtime": "Not run: default output depends on unavailable host context",
+  "build": "Failed: current Vite cannot resolve vue-i18n"
+}

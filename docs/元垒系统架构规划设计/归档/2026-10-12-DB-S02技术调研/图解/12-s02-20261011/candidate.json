@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G12｜S02推荐候选：主题加载、保存与宿主关系（待确认）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/12-s02-20261011/theme-architecture.html"
+  },
+  "components": [
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "M1 平台外壳",
+      "sublabel": "项目身份／返回位置",
+      "pos": [
+        40,
+        270
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "binding",
+      "type": "database",
+      "label": "M7 项目选择",
+      "sublabel": "绑定版本与待绑定状态",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "loader",
+      "type": "security",
+      "label": "M2 加载校验",
+      "sublabel": "来源／版本／组件白名单",
+      "pos": [
+        390,
+        270
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "package",
+      "type": "database",
+      "label": "M6 主题文件包",
+      "sublabel": "公共受保护／项目候选",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "view",
+      "type": "frontend",
+      "label": "M3 主题页面",
+      "sublabel": "可信组件／隔离静态内容",
+      "pos": [
+        740,
+        270
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "broker",
+      "type": "security",
+      "label": "M4 宿主数据入口",
+      "sublabel": "固定项目／逻辑数据需求",
+      "pos": [
+        740,
+        490
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "owners",
+      "type": "backend",
+      "label": "M5 业务与办理",
+      "sublabel": "鉴权／准确对象／原操作",
+      "pos": [
+        390,
+        490
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "业务事实",
+      "sublabel": "项目／议题／决定／任务",
+      "pos": [
+        390,
+        710
+      ],
+      "size": [
+        205,
+        72
+      ]
+    },
+    {
+      "id": "files",
+      "type": "backend",
+      "label": "指定项目文件",
+      "sublabel": "Workdir边界／文件白名单",
+      "pos": [
+        740,
+        710
+      ],
+      "size": [
+        205,
+        72
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "shell-binding",
+      "to": "binding",
+      "label": "读取选择",
+      "from": "shell"
+    },
+    {
+      "id": "shell-loader",
+      "to": "loader",
+      "label": "选择主题",
+      "from": "shell"
+    },
+    {
+      "id": "package-loader",
+      "to": "loader",
+      "label": "读取包",
+      "from": "package"
+    },
+    {
+      "id": "loader-view",
+      "to": "view",
+      "label": "校验后渲染",
+      "from": "loader"
+    },
+    {
+      "id": "view-broker",
+      "to": "broker",
+      "label": "声明取数",
+      "from": "view"
+    },
+    {
+      "id": "broker-owners",
+      "to": "owners",
+      "label": "业务授权",
+      "from": "broker"
+    },
+    {
+      "id": "owners-pg",
+      "to": "pg",
+      "label": "查询事实",
+      "from": "owners"
+    },
+    {
+      "id": "broker-files",
+      "to": "files",
+      "label": "文件授权",
+      "from": "broker"
+    },
+    {
+      "id": "view-shell",
+      "from": "view",
+      "to": "shell",
+      "label": "业务导航与准确返回",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [
+        [
+          990,
+          306
+        ],
+        [
+          990,
+          20
+        ],
+        [
+          10,
+          20
+        ],
+        [
+          10,
+          306
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "M1—M3｜页面组织与加载",
+      "items": [
+        "宿主保留项目身份、全局导航与离开入口",
+        "主题组织Dashboard、工作台、议题、决定与任务",
+        "显示别名保持稳定业务类型；生成内容仅使用有限定义"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "M4—M5｜两类数据与返回",
+      "items": [
+        "系统数据由原service/repository鉴权，原业务操作在宿主执行",
+        "文件按逻辑名重新绑定到Project Workdir中的指定文件",
+        "准确对象及返回页由宿主保留，不接受任意URL或项目ID"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "M6—M7｜保存与迁移候选",
+      "items": [
+        "包携带页面定义、资源、版本、依赖、来源和字节指纹",
+        "公共发布资源只读；项目候选可编辑，生效版本独立绑定",
+        "导入新环境重新授权身份与路径；默认待绑定，不自动启用"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "验证范围",
+      "items": [
+        "本图表示推荐设计；产品加载、存储和数据入口尚未实施",
+        "小试证明Vue/Vite、两主题、HTTP夹具、静态CSP和返回",
+        "真实产品授权、PG绑定、重启和异环境导入由后段验证"
+      ]
+    }
+  ]
+}
