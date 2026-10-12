@@ -1,0 +1,2103 @@
+{
+  "package": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "Asset": {
+        "additionalProperties": false,
+        "description": "包内资源声明，不携项目文件路径。",
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "mediaType": {
+            "enum": [
+              "application/json",
+              "image/png"
+            ],
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "mediaType",
+          "sha256"
+        ],
+        "title": "Asset",
+        "type": "object"
+      },
+      "DiscussionBinding": {
+        "additionalProperties": false,
+        "description": "选定议题的讨论，不定义全局讨论集合。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "const": "discussions",
+            "title": "Resource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource"
+        ],
+        "title": "DiscussionBinding",
+        "type": "object"
+      },
+      "DiscussionBlock": {
+        "additionalProperties": false,
+        "description": "选定议题的只读讨论。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "discussion",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/DiscussionBinding"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding"
+        ],
+        "title": "DiscussionBlock",
+        "type": "object"
+      },
+      "ImageBlock": {
+        "additionalProperties": false,
+        "description": "PNG资料和必要的等价描述。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "image",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/ResourceBinding"
+          },
+          "alt": {
+            "minLength": 1,
+            "title": "Alt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding",
+          "alt"
+        ],
+        "title": "ImageBlock",
+        "type": "object"
+      },
+      "JsonBlock": {
+        "additionalProperties": false,
+        "description": "资料JSON，与主题定义分开消费。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "json",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/ResourceBinding"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding"
+        ],
+        "title": "JsonBlock",
+        "type": "object"
+      },
+      "Manifest": {
+        "additionalProperties": false,
+        "description": "可携主题包清单，身份和绑定由宿主另行提供。",
+        "properties": {
+          "formatVersion": {
+            "maximum": 1,
+            "minimum": 1,
+            "title": "Formatversion",
+            "type": "integer"
+          },
+          "componentAbi": {
+            "maximum": 1,
+            "minimum": 1,
+            "title": "Componentabi",
+            "type": "integer"
+          },
+          "theme": {
+            "const": "theme.json",
+            "title": "Theme",
+            "type": "string"
+          },
+          "source": {
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "files": {
+            "additionalProperties": {
+              "enum": [
+                "application/json",
+                "image/png"
+              ],
+              "type": "string"
+            },
+            "propertyNames": {
+              "minLength": 1
+            },
+            "title": "Files",
+            "type": "object"
+          },
+          "assets": {
+            "additionalProperties": {
+              "$ref": "#/$defs/Asset"
+            },
+            "propertyNames": {
+              "minLength": 1
+            },
+            "title": "Assets",
+            "type": "object"
+          }
+        },
+        "required": [
+          "formatVersion",
+          "componentAbi",
+          "theme",
+          "source",
+          "files",
+          "assets"
+        ],
+        "title": "Manifest",
+        "type": "object"
+      },
+      "Page": {
+        "additionalProperties": false,
+        "description": "有限页面布局，不携CSS或组件代码。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "layout": {
+            "enum": [
+              "overview",
+              "reading",
+              "full"
+            ],
+            "title": "Layout",
+            "type": "string"
+          },
+          "blocks": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "discussion": "#/$defs/DiscussionBlock",
+                  "image": "#/$defs/ImageBlock",
+                  "json": "#/$defs/JsonBlock",
+                  "records": "#/$defs/RecordsBlock",
+                  "summary": "#/$defs/SummaryBlock",
+                  "topic": "#/$defs/TopicBlock"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SummaryBlock"
+                },
+                {
+                  "$ref": "#/$defs/RecordsBlock"
+                },
+                {
+                  "$ref": "#/$defs/TopicBlock"
+                },
+                {
+                  "$ref": "#/$defs/DiscussionBlock"
+                },
+                {
+                  "$ref": "#/$defs/JsonBlock"
+                },
+                {
+                  "$ref": "#/$defs/ImageBlock"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Blocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "layout",
+          "blocks"
+        ],
+        "title": "Page",
+        "type": "object"
+      },
+      "PageEvent": {
+        "additionalProperties": false,
+        "description": "选择当前包内页面。",
+        "properties": {
+          "kind": {
+            "const": "page",
+            "title": "Kind",
+            "type": "string"
+          },
+          "pageId": {
+            "minLength": 1,
+            "title": "Pageid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "pageId"
+        ],
+        "title": "PageEvent",
+        "type": "object"
+      },
+      "ProjectBinding": {
+        "additionalProperties": false,
+        "description": "当前项目摘要。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "const": "project",
+            "title": "Resource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource"
+        ],
+        "title": "ProjectBinding",
+        "type": "object"
+      },
+      "RecordsBinding": {
+        "additionalProperties": false,
+        "description": "固定业务集合及可读选择范围。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "topics",
+              "decisions",
+              "workTasks"
+            ],
+            "title": "Resource",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "selectedTopic"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource",
+          "scope"
+        ],
+        "title": "RecordsBinding",
+        "type": "object"
+      },
+      "RecordsBlock": {
+        "additionalProperties": false,
+        "description": "同类型业务对象集合的受控表现。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "records",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/RecordsBinding"
+          },
+          "variant": {
+            "enum": [
+              "list",
+              "table",
+              "selector",
+              "compactSelector",
+              "conclusions",
+              "attention",
+              "history"
+            ],
+            "title": "Variant",
+            "type": "string"
+          },
+          "statuses": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding",
+          "variant"
+        ],
+        "title": "RecordsBlock",
+        "type": "object"
+      },
+      "ResourceBinding": {
+        "additionalProperties": false,
+        "description": "声明的文件或包内资源alias。",
+        "properties": {
+          "kind": {
+            "enum": [
+              "file",
+              "asset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "alias": {
+            "minLength": 1,
+            "title": "Alias",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "alias"
+        ],
+        "title": "ResourceBinding",
+        "type": "object"
+      },
+      "SummaryBlock": {
+        "additionalProperties": false,
+        "description": "项目摘要或目标说明。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "summary",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/ProjectBinding"
+          },
+          "variant": {
+            "enum": [
+              "counts",
+              "description"
+            ],
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding",
+          "variant"
+        ],
+        "title": "SummaryBlock",
+        "type": "object"
+      },
+      "Theme": {
+        "additionalProperties": false,
+        "description": "独立主题定义，显示名不改议题类型。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "topicLabel": {
+            "minLength": 1,
+            "title": "Topiclabel",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/$defs/Page"
+            },
+            "minItems": 1,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "topicLabel",
+          "pages"
+        ],
+        "title": "Theme",
+        "type": "object"
+      },
+      "TopicBinding": {
+        "additionalProperties": false,
+        "description": "当前选定议题。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "const": "selectedTopic",
+            "title": "Resource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource"
+        ],
+        "title": "TopicBinding",
+        "type": "object"
+      },
+      "TopicBlock": {
+        "additionalProperties": false,
+        "description": "选定议题的问题和预期产出。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "topic",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/TopicBinding"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding"
+        ],
+        "title": "TopicBlock",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "已解析包的定义契约，ZIP边界由后继parser拥有。",
+    "properties": {
+      "manifest": {
+        "$ref": "#/$defs/Manifest"
+      },
+      "theme": {
+        "$ref": "#/$defs/Theme"
+      }
+    },
+    "required": [
+      "manifest",
+      "theme"
+    ],
+    "title": "ThemePackage",
+    "type": "object"
+  },
+  "loadedPackage": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "Asset": {
+        "additionalProperties": false,
+        "description": "包内资源声明，不携项目文件路径。",
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "mediaType": {
+            "enum": [
+              "application/json",
+              "image/png"
+            ],
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "mediaType",
+          "sha256"
+        ],
+        "title": "Asset",
+        "type": "object"
+      },
+      "DiscussionBinding": {
+        "additionalProperties": false,
+        "description": "选定议题的讨论，不定义全局讨论集合。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "const": "discussions",
+            "title": "Resource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource"
+        ],
+        "title": "DiscussionBinding",
+        "type": "object"
+      },
+      "DiscussionBlock": {
+        "additionalProperties": false,
+        "description": "选定议题的只读讨论。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "discussion",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/DiscussionBinding"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding"
+        ],
+        "title": "DiscussionBlock",
+        "type": "object"
+      },
+      "ImageBlock": {
+        "additionalProperties": false,
+        "description": "PNG资料和必要的等价描述。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "image",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/ResourceBinding"
+          },
+          "alt": {
+            "minLength": 1,
+            "title": "Alt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding",
+          "alt"
+        ],
+        "title": "ImageBlock",
+        "type": "object"
+      },
+      "JsonBlock": {
+        "additionalProperties": false,
+        "description": "资料JSON，与主题定义分开消费。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "json",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/ResourceBinding"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding"
+        ],
+        "title": "JsonBlock",
+        "type": "object"
+      },
+      "Manifest": {
+        "additionalProperties": false,
+        "description": "可携主题包清单，身份和绑定由宿主另行提供。",
+        "properties": {
+          "formatVersion": {
+            "maximum": 1,
+            "minimum": 1,
+            "title": "Formatversion",
+            "type": "integer"
+          },
+          "componentAbi": {
+            "maximum": 1,
+            "minimum": 1,
+            "title": "Componentabi",
+            "type": "integer"
+          },
+          "theme": {
+            "const": "theme.json",
+            "title": "Theme",
+            "type": "string"
+          },
+          "source": {
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "files": {
+            "additionalProperties": {
+              "enum": [
+                "application/json",
+                "image/png"
+              ],
+              "type": "string"
+            },
+            "propertyNames": {
+              "minLength": 1
+            },
+            "title": "Files",
+            "type": "object"
+          },
+          "assets": {
+            "additionalProperties": {
+              "$ref": "#/$defs/Asset"
+            },
+            "propertyNames": {
+              "minLength": 1
+            },
+            "title": "Assets",
+            "type": "object"
+          }
+        },
+        "required": [
+          "formatVersion",
+          "componentAbi",
+          "theme",
+          "source",
+          "files",
+          "assets"
+        ],
+        "title": "Manifest",
+        "type": "object"
+      },
+      "Page": {
+        "additionalProperties": false,
+        "description": "有限页面布局，不携CSS或组件代码。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "layout": {
+            "enum": [
+              "overview",
+              "reading",
+              "full"
+            ],
+            "title": "Layout",
+            "type": "string"
+          },
+          "blocks": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "discussion": "#/$defs/DiscussionBlock",
+                  "image": "#/$defs/ImageBlock",
+                  "json": "#/$defs/JsonBlock",
+                  "records": "#/$defs/RecordsBlock",
+                  "summary": "#/$defs/SummaryBlock",
+                  "topic": "#/$defs/TopicBlock"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SummaryBlock"
+                },
+                {
+                  "$ref": "#/$defs/RecordsBlock"
+                },
+                {
+                  "$ref": "#/$defs/TopicBlock"
+                },
+                {
+                  "$ref": "#/$defs/DiscussionBlock"
+                },
+                {
+                  "$ref": "#/$defs/JsonBlock"
+                },
+                {
+                  "$ref": "#/$defs/ImageBlock"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Blocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "layout",
+          "blocks"
+        ],
+        "title": "Page",
+        "type": "object"
+      },
+      "PageEvent": {
+        "additionalProperties": false,
+        "description": "选择当前包内页面。",
+        "properties": {
+          "kind": {
+            "const": "page",
+            "title": "Kind",
+            "type": "string"
+          },
+          "pageId": {
+            "minLength": 1,
+            "title": "Pageid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "pageId"
+        ],
+        "title": "PageEvent",
+        "type": "object"
+      },
+      "ProjectBinding": {
+        "additionalProperties": false,
+        "description": "当前项目摘要。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "const": "project",
+            "title": "Resource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource"
+        ],
+        "title": "ProjectBinding",
+        "type": "object"
+      },
+      "RecordsBinding": {
+        "additionalProperties": false,
+        "description": "固定业务集合及可读选择范围。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "topics",
+              "decisions",
+              "workTasks"
+            ],
+            "title": "Resource",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "selectedTopic"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource",
+          "scope"
+        ],
+        "title": "RecordsBinding",
+        "type": "object"
+      },
+      "RecordsBlock": {
+        "additionalProperties": false,
+        "description": "同类型业务对象集合的受控表现。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "records",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/RecordsBinding"
+          },
+          "variant": {
+            "enum": [
+              "list",
+              "table",
+              "selector",
+              "compactSelector",
+              "conclusions",
+              "attention",
+              "history"
+            ],
+            "title": "Variant",
+            "type": "string"
+          },
+          "statuses": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding",
+          "variant"
+        ],
+        "title": "RecordsBlock",
+        "type": "object"
+      },
+      "ResourceBinding": {
+        "additionalProperties": false,
+        "description": "声明的文件或包内资源alias。",
+        "properties": {
+          "kind": {
+            "enum": [
+              "file",
+              "asset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "alias": {
+            "minLength": 1,
+            "title": "Alias",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "alias"
+        ],
+        "title": "ResourceBinding",
+        "type": "object"
+      },
+      "SummaryBlock": {
+        "additionalProperties": false,
+        "description": "项目摘要或目标说明。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "summary",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/ProjectBinding"
+          },
+          "variant": {
+            "enum": [
+              "counts",
+              "description"
+            ],
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding",
+          "variant"
+        ],
+        "title": "SummaryBlock",
+        "type": "object"
+      },
+      "Theme": {
+        "additionalProperties": false,
+        "description": "独立主题定义，显示名不改议题类型。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "topicLabel": {
+            "minLength": 1,
+            "title": "Topiclabel",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/$defs/Page"
+            },
+            "minItems": 1,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "topicLabel",
+          "pages"
+        ],
+        "title": "Theme",
+        "type": "object"
+      },
+      "TopicBinding": {
+        "additionalProperties": false,
+        "description": "当前选定议题。",
+        "properties": {
+          "kind": {
+            "const": "business",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource": {
+            "const": "selectedTopic",
+            "title": "Resource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "resource"
+        ],
+        "title": "TopicBinding",
+        "type": "object"
+      },
+      "TopicBlock": {
+        "additionalProperties": false,
+        "description": "选定议题的问题和预期产出。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "region": {
+            "enum": [
+              "summary",
+              "main",
+              "aside"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageEvent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "const": "topic",
+            "title": "Type",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/$defs/TopicBinding"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "region",
+          "type",
+          "binding"
+        ],
+        "title": "TopicBlock",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "description": "宿主加载DTO，来源引用独立于作者主题ID及可携ZIP。",
+    "properties": {
+      "manifest": {
+        "$ref": "#/$defs/Manifest"
+      },
+      "theme": {
+        "$ref": "#/$defs/Theme"
+      },
+      "reference": {
+        "minLength": 1,
+        "title": "Reference",
+        "type": "string"
+      },
+      "digest": {
+        "pattern": "^[a-f0-9]{64}$",
+        "title": "Digest",
+        "type": "string"
+      }
+    },
+    "required": [
+      "manifest",
+      "theme",
+      "reference",
+      "digest"
+    ],
+    "title": "LoadedThemePackage",
+    "type": "object"
+  },
+  "navigation": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "ObjectEvent": {
+        "additionalProperties": false,
+        "description": "打开宿主确认归属的准确业务对象。",
+        "properties": {
+          "kind": {
+            "const": "object",
+            "title": "Kind",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "topic",
+              "decision",
+              "workTask"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "objectType",
+          "id"
+        ],
+        "title": "ObjectEvent",
+        "type": "object"
+      },
+      "PageEvent": {
+        "additionalProperties": false,
+        "description": "选择当前包内页面。",
+        "properties": {
+          "kind": {
+            "const": "page",
+            "title": "Kind",
+            "type": "string"
+          },
+          "pageId": {
+            "minLength": 1,
+            "title": "Pageid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "pageId"
+        ],
+        "title": "PageEvent",
+        "type": "object"
+      },
+      "SelectTopicEvent": {
+        "additionalProperties": false,
+        "description": "改变当前议题选择。",
+        "properties": {
+          "kind": {
+            "const": "selectTopic",
+            "title": "Kind",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "SelectTopicEvent",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "object": "#/$defs/ObjectEvent",
+        "page": "#/$defs/PageEvent",
+        "selectTopic": "#/$defs/SelectTopicEvent"
+      },
+      "propertyName": "kind"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/PageEvent"
+      },
+      {
+        "$ref": "#/$defs/ObjectEvent"
+      },
+      {
+        "$ref": "#/$defs/SelectTopicEvent"
+      }
+    ]
+  },
+  "project": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "ProjectCounts": {
+        "additionalProperties": false,
+        "description": "组件实际消费的完整聚合计数。",
+        "properties": {
+          "topics": {
+            "minimum": 0,
+            "title": "Topics",
+            "type": "integer"
+          },
+          "workTasks": {
+            "minimum": 0,
+            "title": "Worktasks",
+            "type": "integer"
+          },
+          "approvedDecisions": {
+            "minimum": 0,
+            "title": "Approveddecisions",
+            "type": "integer"
+          },
+          "blockedTasks": {
+            "minimum": 0,
+            "title": "Blockedtasks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "topics",
+          "workTasks",
+          "approvedDecisions",
+          "blockedTasks"
+        ],
+        "title": "ProjectCounts",
+        "type": "object"
+      },
+      "ProjectDto": {
+        "additionalProperties": true,
+        "description": "项目摘要保留原项目身份。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "title": "ProjectDto",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "项目摘要与Owner聚合的明确计数。",
+    "properties": {
+      "project": {
+        "$ref": "#/$defs/ProjectDto"
+      },
+      "counts": {
+        "$ref": "#/$defs/ProjectCounts"
+      }
+    },
+    "required": [
+      "project",
+      "counts"
+    ],
+    "title": "ProjectInput",
+    "type": "object"
+  },
+  "topics": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "TopicDto": {
+        "additionalProperties": true,
+        "description": "议题投影，纳入与研讨进展分别保留。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "expected_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Outcome"
+          },
+          "admission_status": {
+            "title": "Admission Status",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "summary",
+          "expected_outcome",
+          "admission_status",
+          "progress"
+        ],
+        "title": "TopicDto",
+        "type": "object"
+      }
+    },
+    "items": {
+      "$ref": "#/$defs/TopicDto"
+    },
+    "type": "array"
+  },
+  "decisions": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "DecisionDto": {
+        "additionalProperties": true,
+        "description": "决定投影，可没有来源议题。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          },
+          "conclusion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conclusion"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "topic_id",
+          "conclusion",
+          "rationale",
+          "status",
+          "revision_number"
+        ],
+        "title": "DecisionDto",
+        "type": "object"
+      }
+    },
+    "items": {
+      "$ref": "#/$defs/DecisionDto"
+    },
+    "type": "array"
+  },
+  "workTasks": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "WorkTaskDto": {
+        "additionalProperties": true,
+        "description": "正式任务投影，保留冻结来源版本。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          },
+          "source_decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Decision Id"
+          },
+          "source_decision_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Decision Revision"
+          },
+          "number": {
+            "minLength": 1,
+            "title": "Number",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "topic_id",
+          "source_decision_id",
+          "source_decision_revision",
+          "number",
+          "description",
+          "status"
+        ],
+        "title": "WorkTaskDto",
+        "type": "object"
+      }
+    },
+    "items": {
+      "$ref": "#/$defs/WorkTaskDto"
+    },
+    "type": "array"
+  },
+  "selectedTopic": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "description": "议题投影，纳入与研讨进展分别保留。",
+    "properties": {
+      "id": {
+        "minLength": 1,
+        "title": "Id",
+        "type": "string"
+      },
+      "project_id": {
+        "minLength": 1,
+        "title": "Project Id",
+        "type": "string"
+      },
+      "title": {
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      },
+      "summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Summary"
+      },
+      "expected_outcome": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Expected Outcome"
+      },
+      "admission_status": {
+        "title": "Admission Status",
+        "type": "string"
+      },
+      "progress": {
+        "title": "Progress",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "project_id",
+      "title",
+      "summary",
+      "expected_outcome",
+      "admission_status",
+      "progress"
+    ],
+    "title": "TopicDto",
+    "type": "object"
+  },
+  "discussions": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "DiscussionDto": {
+        "additionalProperties": true,
+        "description": "只读讨论投影，内容固定属于topic_id。",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "topic_id": {
+            "minLength": 1,
+            "title": "Topic Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "author_name": {
+            "title": "Author Name",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "topic_id",
+          "content",
+          "author_name",
+          "created_at"
+        ],
+        "title": "DiscussionDto",
+        "type": "object"
+      }
+    },
+    "items": {
+      "$ref": "#/$defs/DiscussionDto"
+    },
+    "type": "array"
+  },
+  "resource": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "资源字节的类型、大小与指纹。",
+    "properties": {
+      "mediaType": {
+        "enum": [
+          "application/json",
+          "image/png"
+        ],
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "size": {
+        "minimum": 0,
+        "title": "Size",
+        "type": "integer"
+      },
+      "sha256": {
+        "pattern": "^[a-f0-9]{64}$",
+        "title": "Sha256",
+        "type": "string"
+      }
+    },
+    "required": [
+      "mediaType",
+      "size",
+      "sha256"
+    ],
+    "title": "ResourceMetadata",
+    "type": "object"
+  },
+  "sourceRevision": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "description": "正式任务当次依据的只读投影，原snapshot字段可保留。",
+    "properties": {
+      "decision_id": {
+        "minLength": 1,
+        "title": "Decision Id",
+        "type": "string"
+      },
+      "revision_number": {
+        "minimum": 1,
+        "title": "Revision Number",
+        "type": "integer"
+      },
+      "conclusion": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Conclusion"
+      }
+    },
+    "required": [
+      "decision_id",
+      "revision_number",
+      "conclusion"
+    ],
+    "title": "DecisionSourceRevision",
+    "type": "object"
+  }
+}

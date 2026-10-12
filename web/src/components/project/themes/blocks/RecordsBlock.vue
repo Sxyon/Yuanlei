@@ -1,0 +1,32 @@
+<script setup>
+import { computed } from 'vue'
+import BusinessStatus from '../BusinessStatus.vue'
+const props = defineProps({ block: { type: Object, required: true }, result: { type: Object, required: true }, selectedTopicId: { type: String, default: '' }, topicLabel: { type: String, default: '议题' }, query: { type: Object, default: () => ({}) }, resourceIndex: { type: Array, default: () => [] } })
+const emit = defineEmits(['navigate', 'query'])
+const objectType = computed(() => ({ topics: 'topic', decisions: 'decision', workTasks: 'workTask' })[props.block.binding.resource])
+const items = computed(() => {
+  let list = props.result.value.filter(item => !props.block.statuses.length || props.block.statuses.includes(item.status || item.progress))
+  if (props.block.variant === 'table') list = list.filter(item => item.title.toLocaleLowerCase().includes((props.query.search || '').toLocaleLowerCase()) && (!props.query.progress || item.progress === props.query.progress))
+  if (props.block.variant === 'attention') list = [...list].sort((a, b) => Number(b.status === 'blocked') - Number(a.status === 'blocked'))
+  return list
+})
+function open(item, type = objectType.value) { emit('navigate', { kind: 'object', objectType: type, id: item.id }) }
+function change(key, value) { emit('query', { ...props.query, [key]: value, offset: 0 }) }
+const related = (name, id) => (props.result.related?.[name] || []).filter(item => item.topic_id === id && (name !== 'decisions' || item.status === 'approved'))
+</script>
+<template>
+  <div v-if="block.variant === 'compactSelector'" class="theme-resource-index"><label>当前{{ topicLabel }}<select :value="selectedTopicId" :aria-label="`选择当前${topicLabel}`" @change="emit('navigate', { kind: 'selectTopic', id: $event.target.value })"><option v-for="item in items" :key="item.id" :value="item.id">{{ item.title }}</option></select></label><div v-for="item in resourceIndex" :key="item.alias + item.kind" class="theme-section-line"><h3>{{ item.title }}</h3><small>{{ item.kind === 'file' ? '指定项目文件' : '包内资源' }} · {{ item.mediaType }}</small></div><p class="theme-meta">资料由声明的 alias 读取；当前议题只提供阅读上下文，不代表逐议题文件绑定。</p></div>
+  <div v-else-if="block.variant === 'selector'" class="theme-choices" :aria-label="`选择${topicLabel}`">
+    <button v-for="item in items" :key="item.id" class="theme-choice" :aria-pressed="selectedTopicId === item.id" :data-select="item.id" @click="emit('navigate', { kind: 'selectTopic', id: item.id })"><strong>{{ item.title }}</strong><p>{{ item.summary }}</p><BusinessStatus :value="item.progress" /></button>
+  </div>
+  <template v-else-if="block.variant === 'table'">
+    <div class="theme-toolbar"><label>搜索<input :value="query.search" aria-label="搜索议题标题" placeholder="搜索标题" @input="change('search', $event.target.value)" /></label><label>进展<select :value="query.progress || ''" aria-label="筛选议题进展" @change="change('progress', $event.target.value)"><option value="">全部</option><option value="open">研讨中</option><option value="decided">已形成决策</option></select></label></div>
+    <div class="theme-table-wrap" tabindex="0" role="region" aria-label="议题列表，可横向滚动"><table class="theme-table"><thead><tr><th scope="col">{{ topicLabel }}</th><th scope="col">纳入／进展</th><th scope="col">决定</th><th scope="col">正式任务</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><button class="theme-link" :data-object-key="`topic:${item.id}`" @click="open(item)">{{ item.title }}</button><p class="theme-meta">{{ item.summary }}</p></td><td><BusinessStatus :value="item.admission_status" /><p><BusinessStatus :value="item.progress" /></p></td><td><button v-for="decision in related('decisions', item.id)" :key="decision.id" class="theme-link" :data-object-key="`decision:${decision.id}`" @click="open(decision, 'decision')">{{ decision.title }}</button><span v-if="!related('decisions', item.id).length">尚无</span></td><td><button v-for="task in related('workTasks', item.id)" :key="task.id" class="theme-link" :data-object-key="`workTask:${task.id}`" @click="open(task, 'workTask')">{{ task.title }}</button><span v-if="!related('workTasks', item.id).length">尚无</span></td></tr></tbody></table></div>
+  </template>
+  <details v-else-if="block.variant === 'history'"><summary>查看历史决定（{{ items.length }}）</summary><article v-for="item in items" :key="item.id" class="theme-row"><button class="theme-link" :data-object-key="`decision:${item.id}`" @click="open(item)">{{ item.title }}</button><BusinessStatus :value="item.status" /><p>{{ item.conclusion }}</p></article></details>
+  <template v-else>
+    <article v-for="item in items" :key="item.id" class="theme-row"><div class="theme-row-heading"><button class="theme-link" :data-object-key="`${objectType}:${item.id}`" @click="open(item)">{{ item.title }}</button><BusinessStatus :value="item.status || item.progress" /></div><p>{{ item.summary || item.description || item.conclusion }}</p><p v-if="item.number" class="theme-meta">{{ item.number }}</p><template v-if="block.variant === 'conclusions'"><div class="theme-section-line"><small>判断依据</small><p>{{ item.rationale || '尚无理由说明。' }}</p><p v-if="!item.topic_id">无来源议题 · 项目级决定</p><button v-else class="theme-link" @click="emit('navigate', { kind: 'object', objectType: 'topic', id: item.topic_id })">查看来源{{ topicLabel }} →</button></div></template></article>
+  </template>
+  <p v-if="!items.length" class="theme-empty" role="status">当前筛选没有记录，请调整条件或查看其他范围。</p>
+  <div v-if="block.variant === 'table' && result.pagination && result.pagination.total > result.pagination.limit" class="theme-toolbar theme-pagination"><span>共 {{ result.pagination.total }} 条</span><button :disabled="result.pagination.offset === 0" @click="emit('query', { ...query, offset: Math.max(0, result.pagination.offset - result.pagination.limit) })">上一页</button><button :disabled="result.pagination.offset + result.pagination.limit >= result.pagination.total" @click="emit('query', { ...query, offset: result.pagination.offset + result.pagination.limit })">下一页</button></div>
+</template>

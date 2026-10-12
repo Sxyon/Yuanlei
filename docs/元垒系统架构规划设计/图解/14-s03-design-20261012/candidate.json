@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G14｜S03 R1 页面、对象与返回候选设计",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/14-s03-design-20261012/page-relations.html"
+  },
+  "components": [
+    {
+      "id": "nav",
+      "type": "frontend",
+      "label": "M0/M1 项目与主题导航",
+      "sublabel": "隔离预览 · 不绑定真实项目",
+      "pos": [
+        40,
+        260
+      ],
+      "size": [
+        210,
+        72
+      ]
+    },
+    {
+      "id": "default",
+      "type": "frontend",
+      "label": "默认 D/W/L 三页",
+      "sublabel": "日常摘要 / 工作台 / 议题列表",
+      "pos": [
+        375,
+        50
+      ],
+      "size": [
+        210,
+        72
+      ]
+    },
+    {
+      "id": "host",
+      "type": "frontend",
+      "label": "M2 同一 ThemeHost",
+      "sublabel": "有限布局 · 固定可信组件",
+      "pos": [
+        375,
+        260
+      ],
+      "size": [
+        210,
+        72
+      ]
+    },
+    {
+      "id": "research",
+      "type": "frontend",
+      "label": "调研 R/E/C 三页",
+      "sublabel": "课题脉络 / 证据 / 正式结论",
+      "pos": [
+        375,
+        470
+      ],
+      "size": [
+        210,
+        72
+      ]
+    },
+    {
+      "id": "detail",
+      "type": "frontend",
+      "label": "M3 准确对象详情",
+      "sublabel": "议题 / 决定 / 正式任务",
+      "pos": [
+        710,
+        260
+      ],
+      "size": [
+        210,
+        72
+      ]
+    },
+    {
+      "id": "data",
+      "type": "frontend",
+      "label": "M4 合成数据适配",
+      "sublabel": "同一身份与外键 · 明确模拟",
+      "pos": [
+        40,
+        470
+      ],
+      "size": [
+        210,
+        72
+      ]
+    },
+    {
+      "id": "return",
+      "type": "frontend",
+      "label": "M5 返回上下文",
+      "sublabel": "原页面 / 选择 / 筛选 / 滚动",
+      "pos": [
+        710,
+        470
+      ],
+      "size": [
+        210,
+        72
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "enter",
+      "from": "nav",
+      "to": "host",
+      "label": "切换上下文"
+    },
+    {
+      "id": "d",
+      "from": "default",
+      "to": "host",
+      "label": "独立定义"
+    },
+    {
+      "id": "r",
+      "from": "research",
+      "to": "host",
+      "label": "独立定义"
+    },
+    {
+      "id": "objects",
+      "from": "host",
+      "to": "detail",
+      "label": "类型与对象引用"
+    },
+    {
+      "id": "adapter",
+      "from": "data",
+      "to": "host",
+      "label": "同一业务 DTO",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "capture",
+      "from": "detail",
+      "to": "return",
+      "label": "保存来源"
+    },
+    {
+      "id": "restore",
+      "from": "return",
+      "to": "host",
+      "label": "恢复原页",
+      "fromSide": "left",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "候选设计，待用户确认",
+      "items": [
+        "六页共用宿主，显示名称不改变业务类型。",
+        "平台工作／资料／列表入口保持可达。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "数据与失败边界",
+      "items": [
+        "Project + 包 digest + generation + 查询上下文隔离迟到响应。",
+        "加载、空数据、缺文件、未绑定、无权和错误分别呈现。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "阶段边界",
+      "items": [
+        "S03 只读合成详情；S05 才进入真实办理页。",
+        "S04 存储与绑定尚未开工；协作和 Andon 暂停。"
+      ]
+    }
+  ]
+}

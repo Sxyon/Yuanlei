@@ -1,0 +1,159 @@
+{
+  "id": "default",
+  "version": "1.0.0",
+  "name": "默认 · 日常管理",
+  "topicLabel": "议题",
+  "pages": [
+    {
+      "id": "dashboard",
+      "title": "Dashboard",
+      "description": "先看需要关注的正式工作，再核对议题与决定。",
+      "layout": "overview",
+      "blocks": [
+        {
+          "id": "counts",
+          "type": "summary",
+          "title": "当前业务摘要",
+          "region": "summary",
+          "binding": {
+            "kind": "business",
+            "resource": "project"
+          },
+          "variant": "counts"
+        },
+        {
+          "id": "attention",
+          "type": "records",
+          "title": "需要关注的工作",
+          "region": "main",
+          "binding": {
+            "kind": "business",
+            "resource": "workTasks",
+            "scope": "project"
+          },
+          "variant": "attention",
+          "action": {
+            "kind": "page",
+            "pageId": "workbench"
+          }
+        },
+        {
+          "id": "topics",
+          "type": "records",
+          "title": "当前议题",
+          "region": "main",
+          "binding": {
+            "kind": "business",
+            "resource": "topics",
+            "scope": "project"
+          },
+          "variant": "list",
+          "action": {
+            "kind": "page",
+            "pageId": "topics"
+          }
+        },
+        {
+          "id": "decisions",
+          "type": "records",
+          "title": "近期有效决定",
+          "region": "aside",
+          "binding": {
+            "kind": "business",
+            "resource": "decisions",
+            "scope": "project"
+          },
+          "variant": "list",
+          "statuses": [
+            "approved"
+          ]
+        },
+        {
+          "id": "goal",
+          "type": "summary",
+          "title": "项目目标",
+          "region": "aside",
+          "binding": {
+            "kind": "business",
+            "resource": "project"
+          },
+          "variant": "description"
+        }
+      ]
+    },
+    {
+      "id": "workbench",
+      "title": "工作台",
+      "description": "选择议题，查看讨论上下文与关联正式任务。",
+      "layout": "reading",
+      "blocks": [
+        {
+          "id": "selector",
+          "type": "records",
+          "title": "选择议题",
+          "region": "aside",
+          "binding": {
+            "kind": "business",
+            "resource": "topics",
+            "scope": "project"
+          },
+          "variant": "selector"
+        },
+        {
+          "id": "discussion",
+          "type": "discussion",
+          "title": "讨论上下文",
+          "region": "main",
+          "binding": {
+            "kind": "business",
+            "resource": "discussions"
+          }
+        },
+        {
+          "id": "work",
+          "type": "records",
+          "title": "关联正式任务",
+          "region": "main",
+          "binding": {
+            "kind": "business",
+            "resource": "workTasks",
+            "scope": "selectedTopic"
+          },
+          "variant": "list"
+        },
+        {
+          "id": "decisions",
+          "type": "records",
+          "title": "关联决定",
+          "region": "main",
+          "binding": {
+            "kind": "business",
+            "resource": "decisions",
+            "scope": "selectedTopic"
+          },
+          "variant": "list"
+        }
+      ]
+    },
+    {
+      "id": "topics",
+      "title": "议题列表",
+      "description": "按议题查看纳入状态、研讨进展和对象关联。",
+      "layout": "full",
+      "blocks": [
+        {
+          "id": "topics",
+          "type": "records",
+          "title": "议题与关联",
+          "region": "main",
+          "binding": {
+            "kind": "business",
+            "resource": "topics",
+            "scope": "project"
+          },
+          "variant": "table"
+        }
+      ]
+    }
+  ]
+}

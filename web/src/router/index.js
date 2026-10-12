@@ -91,6 +91,11 @@ const router = createRouter({
       children: [{ path: '', name: 'ProjectsComp', component: () => import('../views/ProjectsView.vue'), meta: { requiresAuth: true } }]
     },
     {
+      path: '/projects/theme-preview',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectThemePreviewView', component: () => import('../views/ProjectThemePreviewView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
       path: '/projects/:project_id/work/tasks',
       name: 'ProjectWorkTasks',
       component: AppLayout,

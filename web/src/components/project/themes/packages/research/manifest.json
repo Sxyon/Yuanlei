@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "componentAbi": 1,
+  "theme": "theme.json",
+  "source": "平台样板 · 合成预览，未绑定真实项目",
+  "files": {
+    "survey": "application/json"
+  },
+  "assets": {
+    "distribution": {
+      "path": "assets/survey.png",
+      "mediaType": "image/png",
+      "sha256": "695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb"
+    }
+  }
+}

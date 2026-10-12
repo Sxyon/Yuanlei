@@ -98,7 +98,7 @@ onMounted(reload)
         </div>
       </template>
       <section v-else class="theme-management">
-        <div class="theme-toolbar"><p>主题管理位置 · 尚未接入</p><RouterLink v-if="themeProject" :to="dashboard(themeProject)">返回项目：{{ themeProject.name }}</RouterLink><a-button v-else @click="changeTab(tabs[0])">返回项目列表</a-button></div>
+        <div class="theme-toolbar"><p>主题管理位置 · 尚未接入</p><RouterLink :to="{ name: 'ProjectThemePreviewView' }">预览两套主题（合成数据）</RouterLink><RouterLink v-if="themeProject" :to="dashboard(themeProject)">返回项目：{{ themeProject.name }}</RouterLink><a-button v-else @click="changeTab(tabs[0])">返回项目列表</a-button></div>
         <a-alert v-if="themeProjectId && !themeProject && hasLoaded && !error" type="warning" show-icon message="该项目不存在或已无权访问，请重新选择项目。" />
         <div class="theme-grid">
           <article class="theme-location"><Palette :size="22" /><h2>公共主题</h2><p>未来在这里管理内置主题与个人公共主题，供多个项目选择。</p><dl><dt>来源</dt><dd>平台内置、个人维护 / 手动导入</dd><dt>当前状态</dt><dd>管理接口未接入</dd></dl><p class="help">后续阶段验证加载、资源与迁移；本阶段只保留管理位置。</p><a-button disabled>导入公共主题（后续阶段）</a-button></article>

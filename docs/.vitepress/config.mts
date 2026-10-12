@@ -16,7 +16,7 @@ export default defineConfig({
     const diagrams = '元垒系统架构规划设计/图解'
     await cp(join(siteConfig.srcDir, diagrams), join(siteConfig.outDir, diagrams), {
       recursive: true,
-      filter: (source) => !source.includes('/12-s02-20261011/experiment') && !source.endsWith('/12-s02-20261011/browser-check.cjs') && !source.endsWith('.json') && !source.endsWith('.md')
+      filter: (source) => !source.includes('/12-s02-20261011/experiment') && !source.endsWith('/12-s02-20261011/browser-check.cjs') && !source.endsWith('/14-s03-design-20261012/verify-prototype.mjs') && !source.endsWith('.json') && !source.endsWith('.md')
     })
     const archive = '元垒系统架构规划设计/归档'
     await cp(join(siteConfig.srcDir, archive), join(siteConfig.outDir, archive), {

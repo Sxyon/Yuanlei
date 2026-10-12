@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "685e2b85-dc6e-44d7-9373-6b6a7e738a26",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/14-s03-design-20261012/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/14-s03-design-20261012/page-relations.html",
+  "specification": {
+    "sha256": "1975d98730623f9f5a28a06d58e4b55b49f30d671b3cbf75f3ee4622443ac2b4",
+    "bytes": 3761
+  },
+  "artifact": {
+    "sha256": "676b24eda9e41fd09cc5e2dfe18ad3ff1a04f5c415678d6b4532185e7a1c0d5b",
+    "bytes": 756613
+  }
+}
