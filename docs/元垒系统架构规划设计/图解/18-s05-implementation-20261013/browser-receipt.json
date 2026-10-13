@@ -1,0 +1,2279 @@
+{
+  "baseline": "3c996109",
+  "checks": [
+    "隔离运行进程实际执行分页前状态过滤：closed",
+    "隔离运行进程实际执行分页前状态过滤：done",
+    "实际选择默认主题，摘要显示24个真实议题",
+    "工作建议不混入正式任务",
+    "默认Dashboard全部真实binding正常",
+    "原正式任务页保留准确冻结来源版本",
+    "原页面办理状态并由真实HTTP回读",
+    "返回同一主题Dashboard并刷新实际任务状态",
+    "默认工作台读取准确已选议题讨论",
+    "切议题读取该议题真实空讨论，不串上一对象",
+    "议题点击进入原准确对象页面",
+    "返回保留主题页面及搜索条件",
+    "返回恢复宿主实际滚动位置",
+    "议题真实分页可读后续记录",
+    "同一真实项目选择调研主题，组织不同而议题身份一致",
+    "项目指定JSON来自当前Project Workdir",
+    "授权包内PNG真实字节在浏览器解码",
+    "修改文件后刷新，真实HTTP字节与独立文件及指纹一致",
+    "缺文件明确missing，清除旧资料",
+    "实际文件类型错误可理解且不冒充空资料",
+    "符号链接拒绝已完成而非刷新加载中",
+    "符号链接拒绝并清空旧主题内容",
+    "恢复后的文件先由独立HTTP字节读确认",
+    "文件恢复后显式重读恢复真实资料",
+    "决定进入原准确可信详情",
+    "原决定页返回调研主题原页面",
+    "换真实绑定版本后旧响应不能恢复调研主题内容",
+    "迟到真实旧项目响应不能覆盖新项目",
+    "深色模式由原平台主题store实际启用",
+    "真实调研主题375px无宿主横向溢出",
+    "失权错误已完成读取且不保留旧宿主",
+    "切换为另一真实账号后无权Project清空旧业务",
+    "浏览器脚本错误0"
+  ],
+  "requests": [
+    {
+      "path": "/api/system/info",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "query": "?limit=100&offset=0",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "query": "?project_id=4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "query": "?project_id=4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-versions/28b988a7-6bcd-482f-ad55-0c7a04261a45",
+      "query": "?project_id=4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/summary",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/summary",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/agents",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235/executions",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/delegations",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235/executions",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "query": "?limit=100&offset=0",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/agents",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/delegations",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235",
+      "query": "",
+      "method": "PATCH",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/agents",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235/executions",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks/43037541-3c7b-4c72-b7ed-610e20bd3235",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/summary",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20&topic_id=61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/a995861c-cb7f-41c1-ae7b-2c7dc9ddc8ce/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20&topic_id=a995861c-cb7f-41c1-ae7b-2c7dc9ddc8ce",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=a995861c-cb7f-41c1-ae7b-2c7dc9ddc8ce",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20&topic_id=61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20&search=23",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/3a9b1a75-ec14-4c67-8d2c-b00a0c58f5f9",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint/history",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics",
+      "query": "?include_archived=true",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/delegations",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/agents",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20&search=23",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=20&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "query": "?project_id=4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "query": "?project_id=4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-versions/5e4dd16a-86ee-4c47-a1ca-06721458309c",
+      "query": "?project_id=4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=61cc3b15-e5d9-49e5-8244-179215689f7e&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 404
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 422
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 403
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/assets",
+      "query": "?expected_generation=37&alias=distribution",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme/files",
+      "query": "?expected_generation=37&alias=survey",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=superseded&statuses=revoked",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions/d8d8f1cc-4f00-4a6e-a905-d38c9958982e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint/history",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics",
+      "query": "?include_archived=true",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/agents",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/delegations",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/3a9b1a75-ec14-4c67-8d2c-b00a0c58f5f9/timeline",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/3a9b1a75-ec14-4c67-8d2c-b00a0c58f5f9/followup",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions/d8d8f1cc-4f00-4a6e-a905-d38c9958982e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=superseded&statuses=revoked",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=61cc3b15-e5d9-49e5-8244-179215689f7e&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics/61cc3b15-e5d9-49e5-8244-179215689f7e/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/work/tasks-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/decisions-page",
+      "query": "?offset=0&limit=20&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/summary",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "query": "?limit=100&offset=0",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics/64e0dd00-dd35-4210-be31-ada313a85e64",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics/64e0dd00-dd35-4210-be31-ada313a85e64/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=64e0dd00-dd35-4210-be31-ada313a85e64&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "query": "?limit=100&offset=0",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics/64e0dd00-dd35-4210-be31-ada313a85e64",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics/64e0dd00-dd35-4210-be31-ada313a85e64/comments-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/topics-page",
+      "query": "?offset=0&limit=20",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/governance/decisions-page",
+      "query": "?offset=0&limit=20&topic_id=64e0dd00-dd35-4210-be31-ada313a85e64&statuses=approved",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/d28e3b3d-167a-400e-931e-4c2b243ff7ed/theme",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/governance/board",
+      "query": "",
+      "method": "GET",
+      "status": 404
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/blueprint",
+      "query": "",
+      "method": "GET",
+      "status": 404
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/dashboard",
+      "query": "",
+      "method": "GET",
+      "status": 404
+    },
+    {
+      "path": "/api/chat/threads",
+      "query": "?limit=100&offset=0",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/4ee8849e-0c1b-4628-8860-541c4bcded02/theme",
+      "query": "",
+      "method": "GET",
+      "status": 404
+    },
+    {
+      "path": "/api/projects",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "query": "",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "sourceHashes": {
+    "web/src/apis/project_theme_api.js": "3ae3cd0180751aa4ae9cdedc1f67abdaa1c43809153f623dd30bc9f0b5fbf305",
+    "web/src/components/project/themes/ThemeHost.vue": "184eea09285c6214ac8f48aa617dae9d5df97912328a93916b6fc3ff131bbdda",
+    "web/src/components/project/ProjectThemePanel.vue": "60cfbdd2485c5f81b447a49385df1d3838e14e129ccea4b1b0c37d07f6983dd6",
+    "web/src/utils/projectThemeReturn.js": "bbdd7f7a0c3a31493c0f302b1fead6af4a6118dd3b78552464beda92b5fcd28b",
+    "backend/package/yuxi/services/project_theme_service.py": "0c7d2368be0e136e933a3b385bdc50da47b91d5985bcfa2fbe958ad55d9fd792",
+    "backend/package/yuxi/services/governance_service.py": "6ed325fec5277ef9c862443cc5a428868a1ffe75771188fda91c48f426026670",
+    "backend/package/yuxi/repositories/governance_repository.py": "269e89b0f51913321ea5f4b5a60a790d22f55eb679d6a917a41d3b04e8a6c6a3",
+    "backend/package/yuxi/repositories/project_work_repository.py": "1eead745aaedb8516588333ffb8e27c29625e9f81440e79b71da5545b0d4398f",
+    "backend/package/yuxi/services/project_work_service.py": "c7024f419bbdfc9036574c19974f6eef749ca9ef6dabe94e0bad7de53ff07e2d",
+    "backend/server/routers/project_theme_router.py": "169720c48d32158c2e3cd5052a44544b17aeedf4cb878c2eaf9cbc83aa865421",
+    "backend/server/routers/governance_router.py": "5e4d336938c218d2f317e93753c72c9f67cbb47cdba883beebb4636fc48a5cd4",
+    "backend/server/routers/project_work_router.py": "507690b8c37798bcb95e0babef38d74a47e17d14a57d452836fcc125ef078c4c",
+    "web/src/apis/governance_board_api.js": "4b12ba5c837d4870b3f2a088c45c6c4b71d84745bec0d1218b2b705374b9444d",
+    "web/src/apis/project_work_api.js": "2f95627483eef480a2c63277bd903efababfacb8cea4f32079840290d9b7a3f0",
+    "web/src/components/project/themes/blocks/RecordsBlock.vue": "4d0104ffa7eca5830a867f14462a4751a666e4417e451c4abd767df3800f1198",
+    "web/src/components/project/themes/blocks/DiscussionBlock.vue": "ef1903641c0d5e3ddbc15f1b303f5e8de3e0753268d669cf6b6f46c5c2b2fd4b",
+    "web/src/components/project/themes/ThemeBlockFrame.vue": "02237d75aded2fe70e53a072695e3ada6b0cf30805846740b5f565e57a25c243",
+    "web/src/components/project/ProjectThemeSelection.vue": "6b7137e89933a0d46d20484dae6134401b0eb7eb1d1a6023151649c7d2c1d05f",
+    "web/src/views/ProjectDashboardView.vue": "065c3c86ec6a8fc7469ec2eb034833216e6496b0edd429a7dc4ecc06de97eb1b",
+    "web/src/views/ProjectInspectionBoardView.vue": "9ea487a6fce1fdc0e752a6e193c70f138c966fcc59af9b8716a7ba29a2037b74",
+    "web/src/views/ProjectWorkTaskView.vue": "c70c7594985c42a0468b365538ae1afda13cbe81c3c86b727c4fb930ecf90edd",
+    "backend/test/e2e/mutate_project_theme_file.py": "f76f9cfd4bff06085c8f048e541b10934292ae0ea9f7aa717c3e0bbcf87a8fd5",
+    "backend/test/e2e/seed_project_theme_live.py": "b8bb8d92beace6a13486f82ba9787d2276887406ec51ae6aab51f1320c9c4b0a",
+    "web/test/browser/projectThemeLive.mjs": "aba8b32fbb74b45cbbbd17f1071c79846f8ac3c6e3b69b3678dadfffa9c886b5"
+  },
+  "fileEvidence": {
+    "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+    "generation": 37,
+    "alias": "survey",
+    "sha256": "65dd66f0057a5bcc34973100af454e728afb945fdd0978b7c28ef6658d08d64f",
+    "size": 43,
+    "mediaType": "application/json"
+  },
+  "objects": {
+    "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+    "secondProjectId": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+    "topicId": "61cc3b15-e5d9-49e5-8244-179215689f7e",
+    "selectedTopicId": "3a9b1a75-ec14-4c67-8d2c-b00a0c58f5f9",
+    "decisionId": "d8d8f1cc-4f00-4a6e-a905-d38c9958982e",
+    "workTaskId": "43037541-3c7b-4c72-b7ed-610e20bd3235"
+  }
+}

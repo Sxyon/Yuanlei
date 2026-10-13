@@ -2,6 +2,7 @@
   <div class="inspection-page">
     <PageHeader :title="pageTitle" :loading="loading" show-border>
       <template #actions>
+        <a-button v-if="themeOrigin" size="small" @click="router.push(themeOrigin)">返回项目主题</a-button>
         <a-button
           size="small"
           @click="router.push({ name: 'ProjectDashboardComp', params: { project_id: projectId } })"
@@ -716,6 +717,8 @@
 </template>
 
 <script setup>
+import { themeReturnTarget } from '@/utils/projectThemeReturn'
+
 import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { blueprintTemplates, blueprintTemplateContent } from '@/utils/blueprintTemplates'
 import TopicHistoryPanel from '@/components/project/TopicHistoryPanel.vue'
@@ -852,6 +855,7 @@ const visibleTopics = computed(() =>
   allTopics.value.filter((t) => (showArchivedTopics.value || !t.archived_at) && (topicFilter.value === 'all' || t.admission_status === topicFilter.value) && `${t.title} ${t.summary || ''}`.toLocaleLowerCase().includes(topicSearch.value.trim().toLocaleLowerCase()))
 )
 const selectableTopics = computed(() => allTopics.value.filter((t) => !t.archived_at))
+const themeOrigin = computed(() => themeReturnTarget(route.query.theme_return, user.uid, projectId.value))
 const selectedTopicDecisions = computed(() => (board.value.governance?.decisions || []).filter(d => d.topic_id === selectedTopicId.value && d.status === 'approved'))
 const selectedTopicWorks = computed(() => formalWorks.value.filter(w => w.topic_id === selectedTopicId.value || selectedTopicDecisions.value.some(d => d.id === w.source_decision_id)))
 const selectedTopicSuggestions = computed(() => (board.value.governance?.tasks || []).filter(t => t.topic_id === selectedTopicId.value || selectedTopicDecisions.value.some(d => d.id === t.decision_id)))

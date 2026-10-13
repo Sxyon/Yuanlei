@@ -6,11 +6,13 @@ import ThemeObjectDetail from './ThemeObjectDetail.vue'
 import { themeComponentRegistry } from './registry'
 import { createContextGate, validateComponentInput, validateLoadedPackage, validateNavigation, validateResource, validateSourceRevision } from './contract'
 
-const props = defineProps({ themePackage: { type: Object, required: true }, projectId: { type: String, required: true }, projectLabel: { type: String, default: '' }, userId: { type: String, required: true }, bindingGeneration: { type: Number, default: 0 }, adapter: { type: Object, required: true }, paused: { type: Boolean, default: false }, simulation: { type: Boolean, default: false } })
+const props = defineProps({ themePackage: { type: Object, required: true }, projectId: { type: String, required: true }, projectLabel: { type: String, default: '' }, userId: { type: String, required: true }, bindingGeneration: { type: Number, default: 0 }, adapter: { type: Object, required: true }, paused: { type: Boolean, default: false }, simulation: { type: Boolean, default: false }, initialContext: { type: Object, default: null }, openBusiness: { type: Function, default: null } })
+const emit = defineEmits(['context-invalid'])
 const pack = shallowRef(null), definitionError = ref(''), pageId = ref(''), selectedTopicId = ref('')
 const results = shallowRef({}), queries = ref({}), detail = shallowRef(null), detailEvent = ref(null)
 const content = ref(null), mobileOpen = ref(false), navigationError = ref('')
 const gate = createContextGate()
+let pendingRestore = null
 let controller, scopeKey = '', knownTopics = [], returnContext = null
 const page = computed(() => pack.value?.theme.pages.find(item => item.id === pageId.value))
 const regions = computed(() => page.value?.layout === 'reading' ? ['summary', 'aside', 'main'] : ['summary', 'main', 'aside'])
@@ -36,7 +38,7 @@ async function receive(response, block, context) {
   const related = {}
   for (const [resource, items] of Object.entries(response.related || {})) related[resource] = validateComponentInput(resource, items, context)
   const contextTopic = response.contextTopic ? validateComponentInput('selectedTopic', response.contextTopic, context) : undefined
-  return { state: response.state, value, related, contextTopic, pagination: response.pagination }
+  return { state: response.state, value, related, contextTopic, pagination: response.pagination, relatedCounts: response.relatedCounts }
 }
 
 /** 整页共享一次上下文token；只在相同授权范围的查询刷新保留上次列表。 */
@@ -57,7 +59,7 @@ async function loadPage(retain = false) {
   const requests = new Map()
   await Promise.all(blocks.map(async block => {
     try {
-      const query = { offset: 0, limit: 20, search: '', progress: '', ...queries.value[queryKey(block, token.pageId)] }
+      const query = { offset: 0, limit: 20, search: '', progress: '', ...queries.value[queryKey(block, token.pageId)], statuses: block.statuses || [] }
       const key = JSON.stringify([block.binding, query])
       if (!requests.has(key)) requests.set(key, props.adapter.read(block.binding, { ...token, query }, signal))
       const response = await requests.get(key)
@@ -67,12 +69,19 @@ async function loadPage(retain = false) {
       results.value = { ...results.value, [block.id]: result }
       if (block.binding.resource === 'topics' && ['ready', 'empty'].includes(result.state)) {
         knownTopics = result.value.map(item => item.id)
-        if (!knownTopics.includes(selectedTopicId.value)) selectedTopicId.value = knownTopics[0] || ''
+        if (!selectedTopicId.value) selectedTopicId.value = knownTopics[0] || ''
       }
     } catch (cause) {
+      if (gate.isCurrent(token) && cause.contextInvalid) { cancel(); results.value = {}; knownTopics = []; selectedTopicId.value = ''; emit('context-invalid', cause.message); return }
       if (gate.isCurrent(token)) results.value = { ...results.value, [block.id]: { state: 'error', message: cause.message || '读取失败' } }
     }
   }))
+  await nextTick()
+  if (pendingRestore && gate.isCurrent(token) && content.value) {
+    content.value.scrollTop = pendingRestore.top || 0
+    Array.from(content.value.querySelectorAll('[data-object-key]')).find(node => node.dataset.objectKey === pendingRestore.focusKey)?.focus({ preventScroll: true })
+    pendingRestore = null
+  }
   return token
 }
 
@@ -99,10 +108,11 @@ async function openObject(event) {
     for (const [name, items] of Object.entries(response.related || {})) related[name] = validateComponentInput(name, items, token)
     if ((related.topics || []).some(item => item.id !== value.topic_id) || (related.decisions || []).some(item => item.id !== value.source_decision_id)) throw new Error('详情关联对象与来源引用不一致')
     const sourceRevision = response.sourceRevision ? validateSourceRevision(response.sourceRevision, value) : null
+    if (props.openBusiness) { props.openBusiness(event, { ...returnContext, ...snapshot() }); return }
     detail.value = { ...response, value, related, sourceRevision }
     await nextTick()
     if (gate.isCurrent(token)) { content.value.scrollTop = 0; content.value.querySelector('[data-return]')?.focus({ preventScroll: true }) }
-  } catch (cause) { if (gate.isCurrent(token)) detail.value = { state: 'error', message: cause.message } }
+  } catch (cause) { if (gate.isCurrent(token) && cause.contextInvalid) { cancel(); results.value = {}; detail.value = null; detailEvent.value = null; emit('context-invalid', cause.message) } else if (gate.isCurrent(token)) detail.value = { state: 'error', message: cause.message } }
 }
 
 /** 返回原页只接受宿主捕获的上下文，不解析返回URL。 */
@@ -146,6 +156,7 @@ function componentProps(block) {
   const input = { result: results.value[block.id]?.previous || results.value[block.id] }
   if (['summary', 'records', 'image'].includes(block.type)) input.block = block
   if (['records', 'topic', 'discussion'].includes(block.type)) input.topicLabel = pack.value.theme.topicLabel
+  if (block.type === 'discussion') input.query = queries.value[queryKey(block)] || { offset: 0, limit: 20 }
   if (block.type === 'records') Object.assign(input, { selectedTopicId: selectedTopicId.value, resourceIndex: resourceIndex.value, query: queries.value[queryKey(block)] || { offset: 0, limit: 20, search: '', progress: '' } })
   return input
 }
@@ -154,31 +165,50 @@ function componentProps(block) {
 function componentEvents(block) {
   const events = {}
   if (['records', 'topic', 'discussion'].includes(block.type)) events.navigate = navigate
-  if (block.type === 'records') events.query = value => changeQuery(block, value)
+  if (['records', 'discussion'].includes(block.type)) events.query = value => changeQuery(block, value)
   if (block.type === 'image') events.retry = () => loadPage()
   return events
 }
 
 watch(() => [props.themePackage, props.projectId, props.userId, props.bindingGeneration, props.adapter], () => {
-  cancel(); definitionError.value = ''; detail.value = null; detailEvent.value = null; returnContext = null
+  cancel(); pendingRestore = null; definitionError.value = ''; detail.value = null; detailEvent.value = null; returnContext = null
   const sameProject = scopeKey && JSON.parse(scopeKey)[0] === props.userId && JSON.parse(scopeKey)[1] === props.projectId
   const samePackage = sameProject && JSON.parse(scopeKey)[2] === props.themePackage.digest && JSON.parse(scopeKey)[4] === props.themePackage.reference
+  const sameSelection = samePackage && JSON.parse(scopeKey)[3] === props.bindingGeneration
   const previousPage = pageId.value
   const previousQueries = queries.value
-  if (!sameProject) selectedTopicId.value = ''
-  knownTopics = []; results.value = {}; queries.value = samePackage ? previousQueries : {}; scopeKey = ''
+  if (!sameSelection) selectedTopicId.value = ''
+  knownTopics = []; results.value = {}; queries.value = sameSelection ? previousQueries : {}; scopeKey = ''
   try {
     pack.value = validateLoadedPackage(props.themePackage)
-    pageId.value = samePackage && pack.value.theme.pages.some(item => item.id === previousPage) ? previousPage : pack.value.theme.pages[0].id
+    pageId.value = sameSelection && pack.value.theme.pages.some(item => item.id === previousPage) ? previousPage : pack.value.theme.pages[0].id
+    const initial = props.initialContext
+    if (initial && initial.userId === props.userId && initial.projectId === props.projectId && initial.packageRef === pack.value.reference && initial.digest === pack.value.digest && initial.bindingGeneration === props.bindingGeneration && pack.value.theme.pages.some(item => item.id === initial.pageId)) {
+      pageId.value = initial.pageId; selectedTopicId.value = initial.selectedTopicId || ''; queries.value = initial.queries || {}; pendingRestore = initial
+    }
     void loadPage()
   } catch (cause) { pack.value = null; definitionError.value = cause.message }
 }, { immediate: true })
+watch(selectedTopicId, (next, previous) => {
+  if (!previous || next === previous) return
+  for (const current of pack.value?.theme.pages || []) for (const block of current.blocks) {
+    if (block.binding.resource === 'discussions' || block.binding.scope === 'selectedTopic') {
+      const key = queryKey(block, current.id)
+      if (queries.value[key]) queries.value[key] = { ...queries.value[key], offset: 0 }
+    }
+  }
+}, { flush: 'sync' })
 watch([pageId, selectedTopicId, () => props.paused], () => {
   if (props.paused) { cancel(); results.value = {}; return }
   if (!detailEvent.value) void loadPage()
 }, { flush: 'sync' })
 onUnmounted(cancel)
-defineExpose({ navigate, selectedTopicId, pageId })
+/** 原办理离开或显式刷新都捕获当前宿主上下文，数据仍在返回后重读。 */
+function captureContext() {
+  if (!pack.value) return null
+  return { ...snapshot(), queries: Object.fromEntries(Object.entries(queries.value).map(([key, query]) => [key, { ...query }])), top: content.value?.scrollTop || 0, focusKey: returnContext?.focusKey || '' }
+}
+defineExpose({ navigate, selectedTopicId, pageId, captureContext })
 </script>
 
 <template>

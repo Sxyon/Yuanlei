@@ -651,3 +651,72 @@ async def create_report(
         db=db,
         user=current_user,
     )
+
+
+@governance.get("/projects/{project_id}/governance/summary")
+async def business_summary(project_id: str, db=Depends(get_db), user=Depends(get_required_user)):
+    """原业务摘要适配。"""
+    from yuxi.services.governance_service import get_project_business_summary
+
+    return await get_project_business_summary(project_id=project_id, db=db, user=user)
+
+
+@governance.get("/projects/{project_id}/governance/topics-page")
+async def topics_page(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    search: str = Query("", max_length=512),
+    progress: Literal["", "open", "decided", "closed"] = "",
+    statuses: list[Literal["open", "decided", "closed"]] = Query(default=[]),
+    db=Depends(get_db),
+    user=Depends(get_required_user),
+):
+    """先筛选后分页的原议题查询。"""
+    from yuxi.services.governance_service import page_governance_topics
+
+    return await page_governance_topics(
+        project_id=project_id,
+        db=db,
+        user=user,
+        offset=offset,
+        limit=limit,
+        search=search,
+        progress=progress,
+        statuses=statuses,
+    )
+
+
+@governance.get("/projects/{project_id}/governance/decisions-page")
+async def decisions_page(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    topic_id: str | None = None,
+    statuses: list[Literal["draft", "approved", "superseded", "revoked"]] = Query(default=[]),
+    db=Depends(get_db),
+    user=Depends(get_required_user),
+):
+    """原决策状态及准确议题范围。"""
+    from yuxi.services.governance_service import page_governance_decisions
+
+    return await page_governance_decisions(
+        project_id=project_id, db=db, user=user, offset=offset, limit=limit, topic_id=topic_id, statuses=statuses
+    )
+
+
+@governance.get("/projects/{project_id}/governance/topics/{topic_id}/comments-page")
+async def comments_page(
+    project_id: str,
+    topic_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db=Depends(get_db),
+    user=Depends(get_required_user),
+):
+    """按准确议题读取有界讨论。"""
+    from yuxi.services.governance_service import page_governance_comments
+
+    return await page_governance_comments(
+        project_id=project_id, topic_id=topic_id, db=db, user=user, offset=offset, limit=limit
+    )

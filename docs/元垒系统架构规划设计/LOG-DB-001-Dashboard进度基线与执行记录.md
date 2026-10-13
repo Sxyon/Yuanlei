@@ -598,3 +598,77 @@ S05接续：复用准确授权版本加载及Project binding generation，把S04
 原用户消息：“提交commit，维护本次内容”。授权将本轮S04设计、真实存储／维护／项目选择、正式迁移、失败恢复、验收证据及现有SYS／DEV／LOG作为一次本地提交；不包含推送、S04阶段通过或S05启动。提交前HEAD仍50b8bc2b2dc54246141798940db860a62a1fa924；核对完整99文件均属本专项，暂存内容与工作树的差异仅为本段最终README／LOG补记，合并这些已审阅更新后提交。
 
 沿用第26节已执行的全量、最终92项相关测试、真实浏览器／PG／文件与联合恢复及全新独立Review，不因提交重复改代码或扩大阶段。再核浏览器冻结源码摘要与当前文件、两原ZIP和恢复回执一致；提交收尾运行工程gate、检查器、文档构建及补丁检查。本地提交不带运行数据库、私有合成session／密钥、完整备份或构建产物。最终commit ID及工作树状态由Git回读及交付回复提供，避免在本提交文档中记录循环自引用hash。
+
+## 28. DB-S05领取与依赖核对（2026-10-13）
+
+原用户授权本轮在当前工作空间推进S05：真实项目经已选主题读取自身业务和指定文件，进入原业务办理并返回；S04为初步完成、未经严格验收，后续联合验证反推S03／S04。此授权覆盖常规API接线及阻塞缺陷最小修复；新的页面组织、核心操作或重大权限／持久化／架构变化仍交用户判断。S04完整重审不作为开工前置，S06、主题Agent、协作与Andon不领取。
+
+起点HEAD为3c996109，分支codex/dashboard，Git工作树干净。S04实际已提交版本／来源／绑定／加载及包内资源；ProjectThemePanel仍明确使用S04占位适配。版本读取、来源锁→Project锁、generation重查和Workdir no-follow可复用；指定文件实际读取及原业务有界分页须接续。S03六页和SYS第10节R1组织保持；准确对象宿主和返回按既定关系接线。目标是固定绑定→原API事实→准确原宿主→恢复同一主题上下文，验收由真实HTTP／PG／字节／DOM拥有。当前仅领取及源码核对，不登记S05完成或S04严格通过。
+
+计划：先核依赖并补文件读取（字节／边界负例）；再补原业务有界查询与固定适配（分页／跨对象HTTP）；再接可信宿主返回及正式入口（DOM／迟到）；最后隔离贯通、全新Review和SYS／DEV／LOG交接。每段按实际结果补记，非阻塞问题留本LOG联合审查。
+
+### 28.1 实际接线与真实使用
+
+既定六页组织、两份原ZIP、formatVersion 1／componentAbi 1及S04持久模型保持；无新表、schema版本变化、通用写代理或新增格式组件。正式使用入口为真实项目“概览→项目主题→选择／更换主题”，两主题沿同一选择／加载／ThemeHost机制消费原业务。独立预览仍明确合成；内置调研PNG是明确标固定示例的有权包资源，不当作项目访谈结果。
+
+项目摘要沿Project与ProjectSettings；原治理Owner补有界议题／决定／准确议题讨论，原ProjectWork Owner补正式任务分页。repository在分页前执行搜索、进展和原状态过滤，计数／offset／limit与数据库对应；议题表格用当前页真实关联数进入原宿主查看完整关系，避免无界批量关联。正式工作与建议分表，讨论始终按准确topic_id查询，主题不提供URL、SQL、身份或批准状态。分页后客户端仍可包装展示，但不能据当前页推断整个对象域。
+
+指定文件入口沿S04来源→Project锁、当前version／generation重查及Workdir逐段no-follow读取；只接受alias及generation，拒绝额外path／identity参数。已绑定JSON和第三份合法定义的指定PNG均读取实际字节；包内PNG按来源／版本声明读取。服务端从同一字节生成类型／大小／指纹，客户端独立核验；未选主题、未绑定、未声明、缺失、无权、类型／容量／路径错误、旧绑定分开。文件读取不创建Conversation。
+
+对象先由原API重新核身份／Project，再进入原议题／决定工作台或正式任务页；原页继续执行权限、状态和来源快照用例，页头补“返回项目主题”。返回令牌只存当前浏览器上下文，固定生成当前Project主题路由；返回和同范围刷新重读事实后恢复页面／选择／查询／滚动／焦点，换账号／Project／version／generation清除旧内容。成功读取前后核绑定；原业务404再次核范围，区分对象缺失与读取中Project失权，迟到DTO与错误均不能回填。
+
+本轮工程已实现，上述实际路径已在合成隔离环境观察和回读；S04仍为初步完成、未经严格验收，系统／业务逻辑／实际使用的联合审查仍待后续用户安排，不登记系统整体验收或S06启动。
+
+### 28.2 贯通证据与实际命令
+
+真实TCP integration使用独立schema、两合成账号及三个Project，原JWT／用户依赖、原router／服务／PG／文件真实执行，仅替换连接与文件根；测试结束收回自身schema及临时目录。浏览器使用具名独立数据库与文件根、完整原router，所有平台请求逐字节转发到隔离真实HTTP，不stub业务、身份、权限或把失败改200。该证据进程不启动worker／lifespan，本轮不宣称证明主实例readiness或Agent执行链路；业务及文件读取／原页面办理按当前S05范围验证。
+
+浏览器最终33项Passed，366次真实平台HTTP、脚本错误0，24份相关生产及证据源码指纹与当前文件一致。覆盖实际UI选默认→真实摘要／正式任务→原任务页保存in_progress→HTTP回读→返回同Dashboard刷新；默认工作台准确讨论、切议题真实空讨论；列表搜索／翻页→准确议题页→返回恢复搜索／滚动；同Project UI切调研并绑指定JSON，读取课题／讨论／资料／正式结论及授权PNG；原决定页查看并回原研究结论；修改文件至35样本并独立核字节／指纹、缺失／类型／symlink明确错误与恢复；当前版本状态过滤负例、换版本／Project后迟到DTO拒绝、375px平台真实深色及换账号失权清空。浏览器回执不是整系统或用户审美验收。
+
+独立只读SQL／HTTP／文件回读核最终两绑定version／generation（第一39、第二1）、原ZIP摘要、每个asset成员与指定文件字节／类型／长度／指纹；正式任务确为in_progress，source_decision_revision=2及HTTP source snapshot与对应SQL revision相同。最终25议题、1正式任务、1工作建议、0Conversation；另一账号对两项目五类入口10次404且无业务内容。回执见[浏览器](图解/18-s05-implementation-20261013/browser-receipt.json)、[PG／HTTP／文件](图解/18-s05-implementation-20261013/pg-http-file-receipt.json)；<a href="图解/18-s05-implementation-20261013/live-flow.html" target="_blank" rel="noopener">DB-G19</a>的candidate／flow-final／visual分别保留规范、最终四gate与捕获证据。
+
+| 实际命令／检查 | 结果与边界 |
+| --- | --- |
+| docker compose exec -T -e UV_NO_SYNC=1 api uv run --group test pytest test/unit -m "not slow" -q -p no:cacheprovider --tb=short | 2921 Passed、63原有Skipped，347.17s；收尾局部修正以以下相关集合回验 |
+| docker compose exec -T -e UV_NO_SYNC=1 api uv run --group test pytest test/integration/api/test_project_themes_api.py test/unit/test_project_theme_packages.py test/unit/test_project_theme_contract.py -q --tb=short -p no:cacheprovider | 最终62 Passed，67.31s；16真实TCP integration＋18包边界＋28契约；ZIP重复成员负例1条预期warning |
+| docker compose exec -T web pnpm run test:unit | 首次555 Passed；最终含新增回归557 Passed、0失败／跳过，411.78s |
+| docker compose exec -T web node --test test/unit/projectThemeHost.test.js test/unit/projectThemeLive.test.js test/unit/projectThemeContract.test.js | 收尾当前源码10 Passed，6.14s；独立Reviewer另复验10 Passed，原有Vite HMR端口占用提示不计失败 |
+| docker compose exec -T web pnpm run lint:check；docker compose exec -T web pnpm run build | 已实际通过，构建保留原有大chunk提示；文档收尾后最终只读回验另补记 |
+| node web/test/browser/projectThemeLive.mjs（配置私有合成session、runtime Playwright及隔离HTTP／输出目录） | 最终33检查／366平台HTTP／脚本错误0，原页面办理与返回、错误恢复、权限／迟到证据；运行服务已重启到当前源码并实际核状态过滤 |
+| docker exec -i yuanlei-s05-evidence python -m test.e2e.verify_project_theme_live < browser-receipt.json（本段图解目录文件） | 最终SQL／HTTP／ZIP成员／文件独立回读Passed；具名隔离库guard，私有凭据不输出；Reviewer独立同命令Passed |
+| Archify finalize workflow --repo-root . --quality showcase --out-dir flow-final；visual-check --require-provenance --out-dir visual | 四gate Passed，4张浅／深捕获及测量Passed；目视与自动证据分开登记 |
+| uvx --offline ruff check（本段变更的repository、governance／theme service、routers及测试脚本） | 新增／改动部分Passed；project_work_service旧update_source有HEAD已存在的1条E501，保持原代码、不作无关格式化；本轮新函数独立检查无新增问题 |
+
+工程gate、71项检查器、相对链接／发布字节、docs build、截图目视及最终全新Review收尾由本节后续补记，不将未执行项写成Passed。未commit／push，起点及当前HEAD均3c996109；观察到暂存区已存在本任务中间版本，保留现有暂存、工作树及收尾差异，不自动覆盖或提交。
+
+### 28.3 前段反查、失败修正与联合审查边界
+
+阻塞真实使用的S03问题：议题目录翻页／搜索时，当前页不含已选议题会自动改选另一议题，导致讨论上下文错误。修为目录变化不替用户改选；准确对象读取判定缺失或失权，独立回归与真实翻页／返回验证已覆盖。S04主题刷新会重建Host并丢页面／查询／选择；同用户、Project、version／generation范围先捕获再重读恢复，换范围仍清空，文件刷新与宿主返回已回验。这些是本轮实际依赖修复，不扩大成S03／S04完整验收。
+
+证据缺陷：隔离uvicorn无自动重载，新增状态筛选虽有当前源码摘要，旧运行进程仍忽略参数。Reviewer用真实HTTP发现后，只重启本任务隔离容器；直接核closed／done为真实空集，再完整重跑33项浏览器及SQL／HTTP／字节回读。源码摘要不能代替运行语义证据。测试准备曾误用topic_code／建议source_channel字段与解析错误码，浏览器曾有选择器、加载等待、初始化token覆盖和深色设置问题；均按原契约和真实平台修正，未放宽产品权限、文件guard或失败响应。
+
+环境观察保留：macOS宿主直接unlink／symlink／重建经Docker挂载后，一次错误恢复仍收到真实file_denied 403，原因未确定；原[历史失败截图](图解/18-s05-implementation-20261013/historical-host-file-recovery-failure.png)只标历史，不当最终成功。改用隔离Linux服务同一POSIX挂载中的受guard合成文件操作，保留完整缺失、symlink、类型错误和恢复验例并通过。未削弱no-follow，也未宣称跨OS目录项同步即时可靠；后续联合使用验证继续追踪。原位字节更新已真实通过。
+
+非阻塞联合审查项：原项目概览RouterLink按同路由匹配，主题query下aria-current仍可能表达概览激活，建议后续按view核导航语义；内置调研PNG虽已明确固定示例标识，仍需用户实际使用检验能否避免误认项目结果。大数据／高并发、授权及绑定重核额外成本未做性能基准，正式部署与外部服务／worker／Agent链路不在本轮证据范围。
+
+S06实际交接由DEV-DB-002第6.1节拥有：原formatVersion 1／componentAbi 1、固定业务binding、包资源与Workdir alias／目标重新绑定、权限失效及准确宿主返回验例；不带身份、业务数据、宿主路径或浏览器返回令牌。S06未启动，主题Agent、正式跨实例导入导出、协作、Andon未实施；S04保持初步完成、未经严格验收，待后续系统／业务／使用联合审查。
+
+### 28.4 文档与独立Review收尾
+
+最终web只读lint与build通过，保留原有chunk提示；工程gate通过202 decisions／23 features／369 docs，检查器71 Passed。变更Markdown相对链接126处无缺失；默认1440、调研资料1440、真实深色375及DB-G19浅色图已目视核查，布局与示例标签可读。首次docs build发现LOG新增独立HTML链接被VitePress按文档页解析，改为与SYS／README相同的静态HTML链接写法后重建；不关闭死链检查。最终构建与发布字节核对结果随后补记。
+
+修正静态链接后docs build最终Passed（20.11s）；10份发布HTML／PNG与Owner文件逐字节SHA相同，输出无本段JSON／py／mjs／md。最终变更Python ruff与git diff HEAD --check通过，旧E501边界同28.2。独立Review结论在本段补记后再冻结文档构建。
+
+最终全新独立Reviewer s05_independent_review以不继承开发上下文的需求／规范／完整HEAD diff审查，三项阻塞分别关闭：分页隐式改选、旧运行进程证据、决策gate格式。独立10项宿主回归、状态过滤HTTP、最终SQL／HTTP／文件回读及浏览器24份源码摘要、跨账号10次拒绝均一致；核全量557／2921及相关62日志、docs构建和发布字节。结论为S05工程交付范围通过，无剩余实质问题；不代表S03／S04完整验收、系统联合验收或S06启动。Reviewer未改文件／暂存／提交／推送。当前工作空间保留本轮改动及现有index，未commit／push，HEAD仍3c996109。
+
+## 29. S05真实使用反馈：主题与项目工作台入口错位（2026-10-13）
+
+用户反馈：项目绑定主题后，只能在“项目概览→项目主题”内看主题工作台，原项目工作台没有变化，要求定位规划／开发与需求是否错位。本轮只读定位，不改项目绑定、业务行或产品代码；HEAD仍3c996109，保留全部工作树及index内容。
+
+真实页面复现：同一有权Project在主题页显示默认1.0.0及绑定generation 1，内部工作台显示原议题和决定；项目二级“工作台”仍进入原inspection页并显示原蓝图／议题与决策／建议／督查栏目。页面可加载、绑定已生效，故障属于入口和作用域，而非主题保存失败。公开记录不保存用户Project身份、业务正文或凭据。
+
+源码因果：ProjectDashboardView只在view=theme挂ProjectThemePanel；ProjectLayout仍固定概览／inspection工作台导航；ProjectInspectionBoardView没有主题加载，只新增来源返回支持。S04提交已经形成该挂载，S05延续并接入真实数据，未把主题选定传播到项目主导航。SYS第1节要求主题覆盖工作台，第10.1节要求替换二级导航三页；第11／12节又描述独立项目主题位置与原宿主。这一落地范围冲突未在设计／实现／Review中明确解决。S04页面确认能支持当时位置，不能据此推定用户撤销项目级主题目标。
+
+验收缺口：第28节证据真实证明主题内部数据／资源与原对象办理返回，浏览器从概览主动打开主题，再点内部工作台；没有断言绑定后从项目主导航、项目列表进入及直接inspection入口是否采用主题组织。测试通过未证明项目级入口效果。此前“S05工程交付范围通过”保留为历史Reviewer结论；当前产品目标存在入口错位，S05需补闭环，不能据旧结论登记整体完成或进入S06。
+
+推荐方向：主题成为项目日常阅读与导航的有效组织，原治理页保留准确对象办理／必要管理能力并明确入口职责；读取与办理仍共用既有权限、状态和审计。下一稿须整体展示项目主导航、主题三页、原办理入口、直达旧链接和返回／故障路径，再据用户判断实施。仅改名、重定向所有inspection或删除原治理界面均不足以闭合场景。本轮诊断不授权新布局／核心操作实施；S04仍初步完成未经严格验收，S06未启动。

@@ -228,3 +228,23 @@ async def select(project_id: str, body: SelectionInput, svc=Depends(service)):
 async def project_asset(project_id: str, alias: str, expected_generation: int = Query(ge=1), svc=Depends(service)):
     """每次重新授权Project及当前版本，旧选择资源请求明确拒绝。"""
     return asset_response(await svc.project_resource(project_id, expected_generation), alias)
+
+
+@project_themes.get("/projects/{project_id}/theme/files")
+async def project_file(
+    project_id: str, request: Request, alias: str, expected_generation: int = Query(ge=1), svc=Depends(service)
+):
+    """仅接受绑定alias，浏览器不能补入路径或身份。"""
+    if set(request.query_params) - {"alias", "expected_generation"}:
+        raise ThemeError("file_query", "项目文件读取只接受alias与当前选择修订")
+    raw, media, digest = await svc.project_file(project_id, expected_generation, alias)
+    return Response(
+        raw,
+        media_type=media,
+        headers={
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+            "X-Theme-Sha256": digest,
+            "X-Theme-Size": str(len(raw)),
+        },
+    )

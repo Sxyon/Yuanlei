@@ -208,13 +208,25 @@ S04页面与关键操作的R1已确认稿由[SYS第11节](SYS-DB-001-Dashboard�
 
 1. 为每个实际页面binding建立固定宿主适配，保留现有API分页、错误及对象类型；核对当前代码拥有哪些查询，新增有界聚合只放对应业务service，避免N＋1/全量扫描。组件仍只收展示DTO，不接SQL或任意URL。
 2. 提供Project资源GET：认证→Project可见性→当前绑定/generation→alias→Workdir普通文件读取/类型/限额→MIME、size、hash或原因。拒绝自由path/query补充路径，不使用thread Viewer创造Conversation。每次请求授权，不能靠第一次预览或hash缓存代替。
-3. 将JSON/PNG/Markdown/静态HTML组件接真实授权响应。返回no-store/private及适当nosniff；图片Blob释放，Markdown/HTML遵守第3节内容边界；文件变更以新hash/刷新呈现，缺文件与权限错误显式显示。
+3. 将六页实际消费的JSON/PNG组件接真实授权响应；其他格式由真实需求及既有内容边界判断。返回no-store/private及适当nosniff；图片Blob释放，Markdown/HTML遵守第3节内容边界；文件变更以新hash/刷新呈现，缺文件与权限错误显式显示。
 4. 将对象入口接现有ProjectInspectionBoardComp的topic_id/decision_id和正式任务路由，讨论保留topic上下文；原业务用例重新查Project归属，返回上下文不接受任意URL。若权限失效清空旧内容并回可信项目入口；不展示旧缓存为可用事实。
 5. 在隔离真实HTTP/PG/浏览器中创建合成Project、议题/讨论/决定/正式任务，跨两个主题读取、分页、进入准确详情和返回；修改指定文件后重新读取并对账hash；延迟旧请求、切Project/版本、取消/失权后检查没有串数据。
 
 拒绝集至少包括另一用户/Project对象、错topic讨论、工作建议冒充正式任务、未声明alias、路径穿越/符号链接任意组件、错MIME/超限/缺文件、旧generation、未知组件/事件及任意返回URL。业务操作按原权限与状态限制验证，不增加批准/撤销等“演示成功”接口。
 
 出口：六页所需逻辑需求均有真实路径或明确非首批范围；模拟标识只留在独立预览，正式页不混入fixture；原Owner的授权/状态仍最终执行。交给S06的是实际format/ABI、资源与逻辑需求、两类数据权限/错误/返回验例，不输出身份/凭据打包方案。
+
+### 6.1 当前接线与S06实际交接
+
+六页组织继续由SYS第10节R1拥有，真实业务／资源与返回落点见SYS第12节。分页由原治理与正式工作Owner增加有界用例，议题标题搜索／进展及议题／决定／正式任务状态过滤在数据库分页前执行；讨论按准确topic_id分页，任务只读取正式表。议题表格用当前页关联数进入原宿主查看完整对象，不批量装载全项目。当前目录页不能否定已经选择的议题；筛选／翻页只改变目录，准确议题读取拥有缺失与权限结论。
+
+指定文件GET只接受声明alias及当前generation，沿S04来源→Project锁重查绑定，使用Workdir实际类型／容量／no-follow读取；包内资源仍按有权来源／版本声明读取。响应元数据在服务端生成、宿主按字节独立校验；缺文件、未绑定、无权、类型和旧绑定原因分开，错误不伪装为空集合。指定JSON及指定PNG均有真实路径与负例，不创建Conversation。
+
+原议题／决定／正式任务页的可信返回令牌只存浏览器上下文；目的地址由平台固定生成。返回或同范围刷新重新加载业务，匹配user／Project／reference／digest／generation才恢复page／选择／query／滚动／焦点；切Project／版本／绑定或失权清旧内容。业务API的404会再核当前绑定，区分对象缺失与Project已失权。
+
+S06收到formatVersion=1、componentAbi=1的原ZIP契约及manifest.files／assets声明；原字节版本、资源SHA和项目文件要求均从已授权当前定义读取。目标实例建立自身来源／版本身份，并重新授权Project、选择版本和绑定每个alias；用户、Project ID、宿主路径、绑定generation、业务行与返回令牌留在各自宿主。JSON／PNG实际类型、8 MiB成员／文件限额及PNG解码预算由当前parser／Workdir用例拥有，迁移继续按真实Owner核对，不能把本轮测试样本当永久容量承诺。
+
+交接验例：同Project分别选默认／调研读取同一业务；包内asset与指定文件字节／元数据一致；跨用户／Project、错议题、未声明／未绑alias、旧generation、路径／symlink、类型／容量／缺失拒绝；进入原对象办理后回同主题页及选择／查询／滚动，切版本／Project或迟到响应不能恢复旧内容。实际命令与边界见LOG第28节；这是S06输入，不是S06已实施或整系统验收。
 
 ## 7. S06：原字节导出、导入预览与目标重绑定
 

@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import (
@@ -38,6 +38,121 @@ class GovernanceRepository:
 
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
+
+    async def page_topics(self, *, project_id, uid, offset, limit, search, progress, statuses):
+        """按可见Project先筛选再分页，关联计数仅覆盖当前页议题。"""
+        query = (
+            select(GovernanceTopic)
+            .join(Project, Project.id == GovernanceTopic.project_id)
+            .where(
+                Project.id == project_id,
+                Project.uid == uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+                GovernanceTopic.deleted_at.is_(None),
+                GovernanceTopic.archived_at.is_(None),
+            )
+        )
+        if search:
+            query = query.where(GovernanceTopic.title.icontains(search, autoescape=True))
+        if progress:
+            query = query.where(GovernanceTopic.progress == progress)
+        if statuses:
+            query = query.where(GovernanceTopic.progress.in_(statuses))
+        total = await self.db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = list(
+            await self.db.scalars(
+                query.order_by(GovernanceTopic.created_at, GovernanceTopic.id).offset(offset).limit(limit)
+            )
+        )
+        counts = {row.id: {"decisions": 0, "workTasks": 0} for row in rows}
+        for name, model in (("decisions", GovernanceDecision), ("workTasks", ProjectWorkTask)):
+            filters = [model.project_id == project_id, model.topic_id.in_(counts)]
+            if name == "decisions":
+                filters += [model.deleted_at.is_(None), model.status == "approved"]
+            values = await self.db.execute(
+                select(model.topic_id, func.count()).where(*filters).group_by(model.topic_id)
+            )
+            for topic_id, count in values:
+                counts[topic_id][name] = count
+        return rows, total, counts
+
+    async def page_decisions(self, *, project_id, uid, offset, limit, topic_id, statuses):
+        """保持决策状态及Project归属，在数据库中分页。"""
+        query = (
+            select(GovernanceDecision)
+            .join(Project, Project.id == GovernanceDecision.project_id)
+            .where(
+                Project.id == project_id,
+                Project.uid == uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+                GovernanceDecision.deleted_at.is_(None),
+            )
+        )
+        if topic_id:
+            query = query.where(GovernanceDecision.topic_id == topic_id)
+        if statuses:
+            query = query.where(GovernanceDecision.status.in_(statuses))
+        total = await self.db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = list(
+            await self.db.scalars(
+                query.order_by(GovernanceDecision.created_at.desc(), GovernanceDecision.id).offset(offset).limit(limit)
+            )
+        )
+        return rows, total
+
+    async def page_comments(self, *, project_id, uid, topic_id, offset, limit):
+        """讨论查询同时绑定Project与准确议题。"""
+        query = (
+            select(GovernanceTopicComment)
+            .join(GovernanceTopic, GovernanceTopic.id == GovernanceTopicComment.topic_id)
+            .join(Project, Project.id == GovernanceTopic.project_id)
+            .where(
+                Project.id == project_id,
+                Project.uid == uid,
+                Project.status == "active",
+                Project.selection_status == "selectable",
+                GovernanceTopic.id == topic_id,
+                GovernanceTopic.deleted_at.is_(None),
+            )
+        )
+        total = await self.db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = list(
+            await self.db.scalars(
+                query.order_by(GovernanceTopicComment.created_at.desc(), GovernanceTopicComment.id)
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+        return rows, total
+
+    async def project_counts(self, *, project_id, uid):
+        """独立汇总原对象状态，正式任务不读取工作建议表。"""
+        result = {}
+        for name, model, filters in (
+            ("topics", GovernanceTopic, [GovernanceTopic.deleted_at.is_(None), GovernanceTopic.archived_at.is_(None)]),
+            (
+                "approvedDecisions",
+                GovernanceDecision,
+                [GovernanceDecision.deleted_at.is_(None), GovernanceDecision.status == "approved"],
+            ),
+            ("workTasks", ProjectWorkTask, []),
+            ("blockedTasks", ProjectWorkTask, [ProjectWorkTask.status == "blocked"]),
+        ):
+            result[name] = await self.db.scalar(
+                select(func.count())
+                .select_from(model)
+                .join(Project, Project.id == model.project_id)
+                .where(
+                    Project.id == project_id,
+                    Project.uid == uid,
+                    Project.status == "active",
+                    Project.selection_status == "selectable",
+                    *filters,
+                )
+            )
+        return result
 
     async def add_topic(
         self,

@@ -14,11 +14,12 @@ test('第三份独立定义复用同宿主；旧选择/项目数据与错误不�
     const { default: Host } = await vite.ssrLoadModule('/src/components/project/themes/ThemeHost.vue')
     const definition = { manifest: { formatVersion: 1, componentAbi: 1, theme: 'theme.json', source: '独立测试消费者', files: {}, assets: {} }, theme: { id: 'third-consumer', version: '1.0', name: '第三个独立消费者', topicLabel: '战略规划', pages: [{ id: 'read', title: '自定义阅读页', description: '证明宿主不识别两个主题ID', layout: 'reading', blocks: [{ id: 'selector', title: '选择', type: 'records', region: 'aside', variant: 'selector', binding: { kind: 'business', resource: 'topics', scope: 'project' } }, { id: 'topic', title: '问题', type: 'topic', region: 'main', binding: { kind: 'business', resource: 'selectedTopic' } }] }, { id: 'other', title: '另一页', description: '有限导航', layout: 'full', blocks: [{ id: 'topics', title: '目录', type: 'records', region: 'main', variant: 'list', binding: { kind: 'business', resource: 'topics', scope: 'project' } }] }] }, reference: 'fixture-third', digest: 'a'.repeat(64) }
     const topic = (project, suffix) => ({ id: `${project}-${suffix}`, project_id: project, title: `${project} ${suffix}`, summary: '摘要', expected_outcome: '预期', admission_status: 'canonical', progress: 'open' })
+    let visibleTopics = null
     const pending = []
     let defer = true
     const adapter = {
       read(binding, context) {
-        if (binding.resource === 'topics') return Promise.resolve({ state: 'ready', value: [topic(context.projectId, 'first'), topic(context.projectId, 'second')] })
+        if (binding.resource === 'topics') return Promise.resolve({ state: 'ready', value: visibleTopics || [topic(context.projectId, 'first'), topic(context.projectId, 'second')] })
         if (!context.selectedTopicId) return Promise.resolve({ state: 'unbound', message: '请先选择' })
         if (!defer) return Promise.resolve({ state: 'ready', value: topic(context.projectId, context.selectedTopicId.endsWith('first') ? 'first' : 'second') })
         return new Promise((resolve, reject) => pending.push({ context, resolve, reject }))
@@ -98,6 +99,15 @@ test('第三份独立定义复用同宿主；旧选择/项目数据与错误不�
       assert.equal(state().pageId, 'read'); assert.equal(state().selectedTopicId, 'project-b-first')
       assert.equal(state().results.topic.state, 'ready')
     }
+    defer = false
+    visibleTopics = [topic('project-b', 'third')]
+    state().queries = { '["read","selector"]': { offset: 20, limit: 20 } }
+    await state().loadPage()
+    assert.equal(state().selectedTopicId, 'project-b-first', '目录分页没有当前议题时仍保留准确选择')
+    assert.equal(state().results.topic.value.id, 'project-b-first', '讨论/详情继续绑定原议题，不从当前页推断选择')
+    await state().navigate({ kind: 'page', pageId: 'other' })
+    await waitFor(() => state().results.topics?.state === 'ready')
+    assert.equal(state().selectedTopicId, 'project-b-first', '切到另一目录页不重置准确选择')
     await state().navigate({ kind: 'page', pageId: 'other' }); assert.equal(state().pageId, 'other')
   } finally { app?.unmount(); await vite.close() }
 })

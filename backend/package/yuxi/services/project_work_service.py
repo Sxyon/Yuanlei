@@ -755,3 +755,15 @@ async def add_comment(
     )
     await db.commit()
     return _comment_data(row)
+
+
+async def page_tasks(*, db, user, project_id, offset, limit, topic_id=None, statuses=()):
+    """有界正式任务列表保留原DTO和议题归属。"""
+    await require_project(db, user, project_id)
+    if topic_id:
+        from yuxi.services.governance_service import get_governance_topic
+
+        await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=user)
+    repo = ProjectWorkRepository(db, project_id=project_id, uid=str(user.uid))
+    rows, total = await repo.page_tasks(offset=offset, limit=limit, topic_id=topic_id, statuses=statuses)
+    return {"items": [task_data(row) for row in rows], "pagination": {"offset": offset, "limit": limit, "total": total}}

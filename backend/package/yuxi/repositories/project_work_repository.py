@@ -419,6 +419,21 @@ class ProjectWorkRepository:
         )
         return list(rows)
 
+    async def page_tasks(self, *, offset, limit, topic_id=None, statuses=()):
+        """正式任务按现有可见性查询分页，不混入工作建议。"""
+        query = self._visible_task_query()
+        if topic_id:
+            query = query.where(ProjectWorkTask.topic_id == topic_id)
+        if statuses:
+            query = query.where(ProjectWorkTask.status.in_(statuses))
+        total = await self.db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = list(
+            await self.db.scalars(
+                query.order_by(ProjectWorkTask.created_at.desc(), ProjectWorkTask.id).offset(offset).limit(limit)
+            )
+        )
+        return rows, total
+
     async def add_issue(
         self, *, task_id: str, sequence: int, title: str, description: str | None, created_by: str
     ) -> ProjectWorkIssue:

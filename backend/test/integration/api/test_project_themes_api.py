@@ -20,6 +20,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from server.routers.project_theme_router import project_themes
+from server.routers.governance_router import governance
+from server.routers.project_work_router import project_work
 from server.utils.auth_middleware import get_db
 from yuxi.services.project_theme_service import install_builtin_themes
 from yuxi.storage.postgres.manager import PostgresManager
@@ -64,6 +66,8 @@ async def live_theme(tmp_path, monkeypatch):
     manager._initialized = True
     app = FastAPI()
     app.include_router(project_themes, prefix="/api")
+    app.include_router(governance, prefix="/api")
+    app.include_router(project_work, prefix="/api")
 
     async def sessions():
         """请求各自使用真实事务，错误回滚、成功提交。"""
@@ -718,3 +722,184 @@ async def test_resource_waiting_for_source_lock_rechecks_project_generation(live
             )
         ).first()
         assert bound.version_id == default["id"] and bound.generation == 2
+
+
+async def test_project_file_bytes_errors_and_binding_scope(live_theme):
+    """读取只认当前alias，独立字节与协议metadata一致。"""
+    env = live_theme
+    _, version, _ = await create_publish(env, archive="research")
+    a, b = env.projects[:2]
+    body = {"version_id": version["id"], "files": {"survey": "/data.json"}, "expected_generation": 0}
+    assert (await env.client.put(f"/api/projects/{a.id}/theme", json=body)).status_code == 200
+    path = f"/api/projects/{a.id}/theme/files"
+    query = {"expected_generation": 1, "alias": "survey"}
+    r = await env.client.get(path, params=query)
+    assert r.content == env.root.joinpath("data.json").read_bytes()
+    assert r.headers["x-theme-sha256"] == hashlib.sha256(r.content).hexdigest()
+    assert r.headers["x-theme-size"] == str(len(r.content))
+    assert r.headers["content-type"] == "application/json"
+    assert r.headers["cache-control"] == "no-store, private"
+    assert r.headers["x-content-type-options"] == "nosniff"
+    env.root.joinpath("data.json").write_bytes(b'{"samples":25}')
+    refreshed = await env.client.get(path, params=query)
+    assert refreshed.content == b'{"samples":25}'
+    assert refreshed.headers["x-theme-sha256"] != r.headers["x-theme-sha256"]
+    for params, headers, code in (
+        ({**query, "path": "/data.json"}, None, "file_query"),
+        ({**query, "alias": "../../data.json"}, None, "file_alias"),
+        ({**query, "expected_generation": 2}, None, "binding_conflict"),
+        (query, env.headers[1], "project_denied"),
+    ):
+        failure = await env.client.get(path, params=params, headers=headers)
+        assert failure.json()["detail"]["code"] == code
+        assert b"samples" not in failure.content
+    missing_binding = await env.client.get(f"/api/projects/{b.id}/theme/files", params=query)
+    assert missing_binding.json()["detail"]["code"] == "binding_unbound"
+    env.root.joinpath("data.json").unlink()
+    failure = await env.client.get(path, params=query)
+    assert failure.json()["detail"]["code"] == "file_missing"
+    env.root.joinpath("data.json").symlink_to(env.root / "bad.json")
+    failure = await env.client.get(path, params=query)
+    assert failure.json()["detail"]["code"] in {"file_denied", "file_boundary"}
+    env.root.joinpath("data.json").unlink()
+    env.root.joinpath("data.json").write_bytes(b"not-json")
+    failure = await env.client.get(path, params=query)
+    assert failure.json()["detail"]["code"] == "invalid_json"
+    env.root.joinpath("data.json").write_bytes(b'{"samples":12}')
+    async with env.db() as db:
+        await db.execute(text("UPDATE project_theme_bindings SET files='{}'::jsonb WHERE project_id=:id"), {"id": a.id})
+        await db.commit()
+    failure = await env.client.get(path, params=query)
+    assert failure.json()["detail"]["code"] == "file_unbound"
+    async with env.db() as db:
+        await db.execute(
+            text("UPDATE project_theme_bindings SET files=CAST(:files AS jsonb) WHERE project_id=:id"),
+            {"id": a.id, "files": json.dumps({"survey": "/../bad.json"})},
+        )
+        await db.commit()
+    failure = await env.client.get(path, params=query)
+    assert failure.json()["detail"]["code"] == "file_boundary"
+
+
+async def test_live_business_pages_scope_filter_comments_and_formal_tasks(live_theme):
+    """真实HTTP创建原业务，SQL独立核对分页与准确对象。"""
+    env = live_theme
+    a, b = env.projects[:2]
+    base = f"/api/projects/{a.id}"
+    topics = []
+    for index in range(24):
+        r = await env.client.post(
+            base + "/governance/topics",
+            json={"title": f"分页议题 {index:02d}", "summary": "合成业务", "source_channel": "project"},
+        )
+        assert r.status_code == 200, r.text
+        topics.append(r.json())
+    other = await env.client.post(
+        f"/api/projects/{b.id}/governance/topics", json={"title": "另一项目", "source_channel": "project"}
+    )
+    assert other.status_code == 200, other.text
+    other_id = other.json()["id"]
+    first_id = topics[0]["id"]
+    for title in ["准确讨论一", "准确讨论二"]:
+        r = await env.client.post(base + f"/governance/topics/{first_id}/comments", json={"content": title})
+        assert r.status_code == 200, r.text
+    decision = await env.client.post(
+        base + "/governance/decisions", json={"title": "真实草案", "conclusion": "待办理", "topic_id": first_id}
+    )
+    assert decision.status_code == 200, decision.text
+    assert (await env.client.put(base + "/work/code", json={"code": "S05"})).status_code == 200
+    assert (await env.client.put(base + f"/work/topics/{first_id}/code", json={"code": "CHK"})).status_code == 200
+    work = await env.client.post(base + "/work/tasks", json={"title": "正式工作", "topic_id": first_id})
+    assert work.status_code == 200, work.text
+    suggestion = await env.client.post(base + "/governance/tasks", json={"title": "工作建议", "topic_id": first_id})
+    assert suggestion.status_code == 200, suggestion.text
+    r = await env.client.get(base + "/governance/topics-page", params={"offset": 20, "limit": 20})
+    assert r.status_code == 200, r.text
+    assert len(r.json()["items"]) == 4 and r.json()["pagination"]["total"] == 24
+    assert all(item["project_id"] == a.id for item in r.json()["items"])
+    r = await env.client.get(base + "/governance/topics-page", params={"search": "23", "limit": 1})
+    assert [item["id"] for item in r.json()["items"]] == [topics[23]["id"]]
+    assert r.json()["pagination"]["total"] == 1
+    r = await env.client.get(base + "/governance/summary")
+    assert r.json()["counts"] == {"topics": 24, "approvedDecisions": 0, "workTasks": 1, "blockedTasks": 0}
+    async with env.db() as db:
+        assert (
+            await db.scalar(text("SELECT count(*) FROM governance_topics WHERE project_id=:id"), {"id": a.id})
+            == r.json()["counts"]["topics"]
+        )
+    r = await env.client.get(base + "/work/tasks-page")
+    assert [item["id"] for item in r.json()["items"]] == [work.json()["id"]]
+    assert suggestion.json()["id"] not in str(r.json())
+    r = await env.client.get(base + f"/governance/topics/{first_id}/comments-page", params={"limit": 1})
+    assert r.json()["contextTopic"]["id"] == first_id
+    assert r.json()["pagination"]["total"] == 2 and len(r.json()["items"]) == 1
+    assert r.json()["items"][0]["topic_id"] == first_id
+    for endpoint, status in (("/governance/topics-page", "closed"), ("/work/tasks-page", "done")):
+        filtered = await env.client.get(base + endpoint, params={"statuses": status})
+        assert filtered.json()["items"] == [] and filtered.json()["pagination"]["total"] == 0
+    filtered = await env.client.get(base + "/work/tasks-page", params=[("statuses", "todo"), ("statuses", "blocked")])
+    assert filtered.json()["items"][0]["id"] == work.json()["id"]
+    assert filtered.json()["pagination"]["total"] == 1
+    wrong_topic = await env.client.get(base + f"/governance/topics/{topics[1]['id']}/comments-page")
+    assert wrong_topic.json()["items"] == []
+    assert wrong_topic.json()["contextTopic"]["id"] == topics[1]["id"]
+    for path in (
+        f"/governance/topics/{other_id}/comments-page",
+        f"/governance/topics/{other_id}",
+        f"/work/tasks-page?topic_id={other_id}",
+        f"/governance/decisions-page?topic_id={other_id}",
+    ):
+        r = await env.client.get(base + path)
+        assert r.status_code == 404, r.text
+    for path in ("/governance/summary", "/governance/topics-page", "/governance/decisions-page", "/work/tasks-page"):
+        assert (await env.client.get(base + path, headers=env.headers[1])).status_code == 404
+    for params in ({"limit": 101}, {"offset": -1}, {"progress": "approved"}):
+        assert (await env.client.get(base + "/governance/topics-page", params=params)).status_code == 422
+    r = await env.client.get(base + "/governance/decisions-page", params={"statuses": "approved"})
+    assert r.json()["items"] == [] and r.json()["pagination"]["total"] == 0
+
+
+async def test_bound_png_actual_bytes_and_type_no_conversation(live_theme):
+    """第三份合法定义读取指定PNG，类型按实际解码且不创建会话。"""
+    env = live_theme
+    source, _, raw = await create_publish(env, archive="research")
+    pack = (await env.client.get(f"/api/theme-sources/{source['id']}/candidate")).json()["package"]
+    pack["theme"]["version"] = "s05-file-png"
+    pack["manifest"]["files"] = {"chart": "image/png"}
+    pack["theme"]["pages"][1]["blocks"][1] = {
+        "id": "chart",
+        "type": "image",
+        "title": "实际指定PNG",
+        "region": "main",
+        "binding": {"kind": "file", "alias": "chart"},
+        "alt": "当前项目文件",
+    }
+    r = await env.client.put(
+        f"/api/theme-sources/{source['id']}/definition",
+        json={"expected_revision": 1, "manifest": pack["manifest"], "theme": pack["theme"]},
+    )
+    assert r.status_code == 200, r.text
+    version = await env.client.post(f"/api/theme-sources/{source['id']}/publish", json={"expected_revision": 2})
+    assert version.status_code == 200, version.text
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        png = archive.read(pack["manifest"]["assets"]["distribution"]["path"])
+    env.root.joinpath("chart.png").write_bytes(png)
+    base = f"/api/projects/{env.projects[0].id}/theme"
+    r = await env.client.put(
+        base, json={"version_id": version.json()["id"], "expected_generation": 0, "files": {"chart": "/chart.png"}}
+    )
+    assert r.status_code == 200, r.text
+    query = {"alias": "chart", "expected_generation": 1}
+    r = await env.client.get(base + "/files", params=query)
+    assert r.content == png == env.root.joinpath("chart.png").read_bytes()
+    assert r.headers["content-type"] == "image/png"
+    assert r.headers["x-theme-size"] == str(len(png))
+    assert r.headers["x-theme-sha256"] == hashlib.sha256(png).hexdigest()
+    env.root.joinpath("chart.png").write_bytes(b"{}")
+    r = await env.client.get(base + "/files", params=query)
+    assert r.json()["detail"]["code"] == "invalid_png"
+    env.root.joinpath("chart.png").write_bytes(b"x" * (8 * 1024 * 1024 + 1))
+    r = await env.client.get(base + "/files", params=query)
+    assert r.json()["detail"]["code"] == "file_limit" and r.status_code == 413
+    async with env.db() as db:
+        assert await db.scalar(text("SELECT count(*) FROM conversations")) == 0

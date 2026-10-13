@@ -1,0 +1,109 @@
+{
+  "browserChecks": 33,
+  "projects": [
+    {
+      "id": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "versionId": "5e4dd16a-86ee-4c47-a1ca-06721458309c",
+      "generation": 39,
+      "packageSha256": "4747c05a6073ffc648fd1b5a171547b591b1a2dde9ce8eb57efba904088c54e0",
+      "resources": [
+        {
+          "kind": "file",
+          "alias": "survey",
+          "sha256": "65dd66f0057a5bcc34973100af454e728afb945fdd0978b7c28ef6658d08d64f",
+          "size": 43
+        },
+        {
+          "kind": "asset",
+          "alias": "distribution",
+          "sha256": "695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb",
+          "size": 18509
+        }
+      ]
+    },
+    {
+      "id": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+      "versionId": "5e4dd16a-86ee-4c47-a1ca-06721458309c",
+      "generation": 1,
+      "packageSha256": "4747c05a6073ffc648fd1b5a171547b591b1a2dde9ce8eb57efba904088c54e0",
+      "resources": [
+        {
+          "kind": "file",
+          "alias": "survey",
+          "sha256": "8dfb0e7a91d453bd060c85ebc3d0ed670285c52dbb9e8f255de81e0c1bd89ab1",
+          "size": 46
+        },
+        {
+          "kind": "asset",
+          "alias": "distribution",
+          "sha256": "695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb",
+          "size": 18509
+        }
+      ]
+    }
+  ],
+  "negativeChecks": [
+    {
+      "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "endpoint": "/theme",
+      "status": 404
+    },
+    {
+      "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "endpoint": "/governance/summary",
+      "status": 404
+    },
+    {
+      "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "endpoint": "/governance/topics-page",
+      "status": 404
+    },
+    {
+      "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "endpoint": "/governance/decisions-page",
+      "status": 404
+    },
+    {
+      "projectId": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+      "endpoint": "/work/tasks-page",
+      "status": 404
+    },
+    {
+      "projectId": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+      "endpoint": "/theme",
+      "status": 404
+    },
+    {
+      "projectId": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+      "endpoint": "/governance/summary",
+      "status": 404
+    },
+    {
+      "projectId": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+      "endpoint": "/governance/topics-page",
+      "status": 404
+    },
+    {
+      "projectId": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+      "endpoint": "/governance/decisions-page",
+      "status": 404
+    },
+    {
+      "projectId": "d28e3b3d-167a-400e-931e-4c2b243ff7ed",
+      "endpoint": "/work/tasks-page",
+      "status": 404
+    }
+  ],
+  "task": {
+    "project_id": "4ee8849e-0c1b-4628-8860-541c4bcded02",
+    "status": "in_progress",
+    "source_decision_id": "d8d8f1cc-4f00-4a6e-a905-d38c9958982e",
+    "source_decision_revision": 2
+  },
+  "counts": {
+    "governance_topics": 25,
+    "project_work_tasks": 1,
+    "governance_tasks": 1,
+    "conversations": 0
+  }
+}

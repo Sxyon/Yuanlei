@@ -1523,3 +1523,62 @@ async def list_governance_decisions(
         }
         for row in rows
     ]
+
+
+async def get_project_business_summary(*, project_id, db, user):
+    """读取当前项目摘要及准确业务计数。"""
+    project = await _require_project(project_id=project_id, db=db, user=user)
+    from yuxi.repositories.project_settings_repository import ProjectSettingsRepository
+    from yuxi.services.project_settings_service import project_attribute_summary
+
+    settings = await ProjectSettingsRepository(db).get(project_id)
+    return {
+        "project": {**project.to_dict(), **project_attribute_summary(settings, uid=project.uid)},
+        "counts": await GovernanceRepository(db).project_counts(project_id=project_id, uid=str(user.uid)),
+    }
+
+
+async def page_governance_topics(*, project_id, db, user, offset, limit, search, progress, statuses):
+    """有界列表沿用议题DTO，关联数指向原可信详情。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    rows, total, counts = await GovernanceRepository(db).page_topics(
+        project_id=project_id,
+        uid=str(user.uid),
+        offset=offset,
+        limit=limit,
+        search=search,
+        progress=progress,
+        statuses=statuses,
+    )
+    return {
+        "items": [_serialize_topic(row) for row in rows],
+        "relatedCounts": counts,
+        "pagination": {"offset": offset, "limit": limit, "total": total},
+    }
+
+
+async def page_governance_decisions(*, project_id, db, user, offset, limit, topic_id, statuses):
+    """分页决策保留原状态，限定议题必须属于本项目。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    if topic_id:
+        await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=user)
+    rows, total = await GovernanceRepository(db).page_decisions(
+        project_id=project_id, uid=str(user.uid), offset=offset, limit=limit, topic_id=topic_id, statuses=statuses
+    )
+    return {
+        "items": [_serialize_decision(row) for row in rows],
+        "pagination": {"offset": offset, "limit": limit, "total": total},
+    }
+
+
+async def page_governance_comments(*, project_id, topic_id, db, user, offset, limit):
+    """核议题归属后读取其讨论页，空串也保留准确上下文。"""
+    topic = await get_governance_topic(project_id=project_id, topic_id=topic_id, db=db, user=user)
+    rows, total = await GovernanceRepository(db).page_comments(
+        project_id=project_id, uid=str(user.uid), topic_id=topic_id, offset=offset, limit=limit
+    )
+    return {
+        "items": [_serialize_topic_comment(row) for row in rows],
+        "contextTopic": topic,
+        "pagination": {"offset": offset, "limit": limit, "total": total},
+    }

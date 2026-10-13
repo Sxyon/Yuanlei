@@ -1,0 +1,275 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G19｜S05真实数据与原宿主返回",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/18-s05-implementation-20261013/live-flow.html",
+    "repository": {
+      "url": "git@github:Sxyon/Yuanlei.git",
+      "revision": "3c996109118617c18b7e6623dfd0b24299c87bfd",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "M1／M2 项目与可信主题宿主"
+    },
+    {
+      "id": "biz",
+      "label": "M3 原业务与持久事实"
+    },
+    {
+      "id": "files",
+      "label": "M4 两类受授权资源"
+    },
+    {
+      "id": "fail",
+      "label": "M5 故障与恢复",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "entry",
+    "host",
+    "adapter",
+    "service",
+    "pg",
+    "original"
+  ],
+  "nodes": [
+    {
+      "id": "entry",
+      "lane": "ui",
+      "col": 0,
+      "type": "frontend",
+      "label": "M1 项目选择",
+      "sublabel": "S04版本与绑定",
+      "width": 156,
+      "sources": [
+        {
+          "path": "web/src/components/project/ProjectThemeSelection.vue"
+        }
+      ]
+    },
+    {
+      "id": "host",
+      "lane": "ui",
+      "col": 1,
+      "type": "frontend",
+      "label": "M2 主题宿主",
+      "sublabel": "两种组织／同一语义",
+      "width": 156,
+      "sources": [
+        {
+          "path": "web/src/components/project/themes/ThemeHost.vue"
+        }
+      ]
+    },
+    {
+      "id": "original",
+      "lane": "ui",
+      "col": 4,
+      "type": "frontend",
+      "label": "M6 原办理页面",
+      "sublabel": "准确对象／原权限审计",
+      "width": 156,
+      "sources": [
+        {
+          "path": "web/src/components/project/ProjectThemePanel.vue"
+        }
+      ]
+    },
+    {
+      "id": "adapter",
+      "lane": "biz",
+      "col": 1,
+      "type": "backend",
+      "label": "M3 固定适配",
+      "sublabel": "逻辑binding／无任意请求",
+      "width": 156,
+      "sources": [
+        {
+          "path": "web/src/apis/project_theme_api.js"
+        }
+      ]
+    },
+    {
+      "id": "service",
+      "lane": "biz",
+      "col": 2,
+      "type": "backend",
+      "label": "原业务用例",
+      "sublabel": "Project／议题／正式任务",
+      "width": 156,
+      "sources": [
+        {
+          "path": "backend/package/yuxi/services/governance_service.py"
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "lane": "biz",
+      "col": 3,
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "业务及状态的事实源",
+      "width": 156,
+      "sources": [
+        {
+          "path": "backend/package/yuxi/repositories/governance_repository.py"
+        }
+      ]
+    },
+    {
+      "id": "authorize",
+      "lane": "files",
+      "col": 1,
+      "type": "security",
+      "label": "M4 当前授权",
+      "sublabel": "来源／Project／generation",
+      "width": 156,
+      "sources": [
+        {
+          "path": "backend/package/yuxi/services/project_theme_service.py"
+        }
+      ]
+    },
+    {
+      "id": "zip",
+      "lane": "files",
+      "col": 2,
+      "type": "database",
+      "label": "包内asset",
+      "sublabel": "版本ZIP声明／指纹",
+      "width": 156,
+      "sources": [
+        {
+          "path": "backend/package/yuxi/themes/packages.py"
+        }
+      ]
+    },
+    {
+      "id": "workdir",
+      "lane": "files",
+      "col": 3,
+      "type": "database",
+      "label": "指定文件alias",
+      "sublabel": "Workdir逐段no-follow",
+      "width": 156,
+      "sources": [
+        {
+          "path": "backend/package/yuxi/workspace/workdir.py"
+        }
+      ]
+    },
+    {
+      "id": "error",
+      "lane": "fail",
+      "col": 0,
+      "type": "security",
+      "label": "M5 明确拒绝",
+      "sublabel": "失权清空／文件原因",
+      "width": 156,
+      "sources": [
+        {
+          "path": "web/src/components/project/themes/ThemeHost.vue"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "entry",
+      "to": "host",
+      "label": "准确加载"
+    },
+    {
+      "from": "host",
+      "to": "adapter",
+      "label": "逻辑读取"
+    },
+    {
+      "from": "adapter",
+      "to": "service",
+      "label": "固定API"
+    },
+    {
+      "from": "service",
+      "to": "pg",
+      "label": "有界查询"
+    },
+    {
+      "from": "pg",
+      "to": "original",
+      "label": "原状态办理"
+    },
+    {
+      "from": "host",
+      "to": "original",
+      "label": "选择准确对象",
+      "route": "auto",
+      "role": "main"
+    },
+    {
+      "from": "original",
+      "to": "host",
+      "label": "回原页并重读",
+      "role": "return",
+      "route": "auto"
+    },
+    {
+      "from": "adapter",
+      "to": "authorize",
+      "label": "资源读取"
+    },
+    {
+      "from": "authorize",
+      "to": "zip",
+      "label": "声明asset"
+    },
+    {
+      "from": "authorize",
+      "to": "workdir",
+      "label": "绑定文件",
+      "route": "auto"
+    },
+    {
+      "from": "authorize",
+      "to": "error",
+      "label": "边界失败",
+      "role": "error",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "top"
+    },
+    {
+      "from": "error",
+      "to": "host",
+      "label": "重新读取／选择",
+      "role": "return",
+      "route": "auto"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "当前范围",
+      "items": [
+        "基线HEAD与当前工作树接线；实际通过状态由LOG及回执拥有。",
+        "正式页读取真实业务；独立合成预览保留明确标识。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "返回与边界",
+      "items": [
+        "同账号、Project、版本及绑定范围才恢复页面／选择／查询／滚动。",
+        "S04初步完成未经严格验收；本轮联合验证不扩大为系统验收。"
+      ]
+    }
+  ]
+}

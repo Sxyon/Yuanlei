@@ -1,8 +1,22 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './base'
+import { apiGet, apiPost, apiPut, apiDelete, buildQuery } from './base'
 
 const projectPath = (projectId) => `/api/projects/${encodeURIComponent(projectId)}`
 
+/** 重复状态参数沿原API枚举解析，分页前过滤。 */
+function pageQuery(query) {
+  const { statuses = [], ...params } = query
+  const search = new URLSearchParams(buildQuery(params))
+  statuses.forEach(status => search.append('statuses', status))
+  return search
+}
+
 export const governanceBoardApi = {
+  businessSummary: (projectId, signal) => apiGet(`${projectPath(projectId)}/governance/summary`, { signal, cache: 'no-store' }),
+  topicsPage: (projectId, query, signal) => apiGet(`${projectPath(projectId)}/governance/topics-page?${pageQuery(query)}`, { signal, cache: 'no-store' }),
+  decisionsPage: (projectId, query, signal) => apiGet(`${projectPath(projectId)}/governance/decisions-page?${pageQuery(query)}`, { signal, cache: 'no-store' }),
+  commentsPage: (projectId, topicId, query, signal) => apiGet(`${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}/comments-page?${buildQuery(query)}`, { signal, cache: 'no-store' }),
+  topic: (projectId, topicId, signal) => apiGet(`${projectPath(projectId)}/governance/topics/${encodeURIComponent(topicId)}`, { signal, cache: 'no-store' }),
+
   /** 读取单个 Project 的督查板只读视图。 */
   getProjectBoard(projectId) {
     return apiGet(`/api/projects/${encodeURIComponent(projectId)}/governance/board`)

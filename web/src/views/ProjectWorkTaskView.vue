@@ -1,7 +1,7 @@
 <template>
   <div class="work-task-page">
     <PageHeader :title="task?.title || '项目工作'" :loading="loading" show-border>
-      <template #actions><a-button size="small" @click="returnToSource">{{ returnPath ? '返回来源' : '工作列表' }}</a-button><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
+      <template #actions><a-button v-if="themeOrigin" size="small" @click="router.push(themeOrigin)">返回项目主题</a-button><a-button size="small" @click="returnToSource">{{ returnPath ? '返回来源' : '工作列表' }}</a-button><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
     </PageHeader>
     <main class="work-task-content">
       <a-spin v-if="loading && !task" class="work-task-state" />
@@ -264,6 +264,8 @@
 </template>
 
 <script setup>
+import { themeReturnTarget } from '@/utils/projectThemeReturn'
+
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
@@ -284,6 +286,7 @@ import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 const route = useRoute()
 const router = useRouter()
 const user = useUserStore()
+const themeOrigin = computed(() => themeReturnTarget(route.query.theme_return, user.uid, String(route.params.project_id)))
 const returnPath = computed(() => {
   const current = route.fullPath
   const back = router.options.history.state.back

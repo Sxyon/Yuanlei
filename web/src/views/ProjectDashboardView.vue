@@ -20,7 +20,7 @@
           <button type="button" :aria-pressed="business" @click="setView(true)">业务大屏</button>
           <button type="button" :aria-pressed="themeSelected" @click="router.replace({query:{...route.query,view:'theme'}})">项目主题</button><span>管理概览发现待办；业务大屏用于观察，办理进入工作详情。</span>
         </div>
-        <ProjectThemePanel v-if="themeSelected" :project-id="projectId" />
+        <ProjectThemePanel v-if="themeSelected" :project-id="projectId" :project-label="board.project?.name || ''" />
         <template v-else-if="!business">
         <div v-if="boardLoading && !board.project" class="dashboard-state" role="status"><a-spin /><p>正在读取管理概览…</p></div>
         <a-alert

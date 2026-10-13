@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import hashlib
 import json
 import os
 import re
@@ -225,7 +226,9 @@ class ProjectThemeService:
         """来源→Project锁后重查选择，拒绝等待期间已切换的资源请求。"""
         await self.project(project_id)
         bound = await self.repo.binding(project_id)
-        if bound is None or bound["generation"] != expected_generation:
+        if bound is None:
+            raise ThemeError("binding_unbound", "当前项目尚未选择主题", 409)
+        if bound["generation"] != expected_generation:
             raise ThemeError("binding_conflict", "项目主题选择已变化，请重新读取", 409)
         loaded, _ = await self.version(bound["version_id"], project_id)
         await self.project(project_id, lock=True)
@@ -237,6 +240,37 @@ class ProjectThemeService:
         ):
             raise ThemeError("binding_conflict", "项目主题选择已变化，请重新读取", 409)
         return loaded["parsed"]
+
+    async def project_file(self, project_id, expected_generation, alias):
+        """固定当前绑定后读取声明文件，锁内保证选择与字节属于同一上下文。"""
+        parsed = await self.project_resource(project_id, expected_generation)
+        media = parsed.definition.manifest.files.get(alias)
+        if media is None:
+            raise ThemeError("file_alias", "当前版本未声明此项目文件alias", 404)
+        bound = await self.repo.binding(project_id)
+        path = bound["files"].get(alias)
+        if path is None:
+            raise ThemeError("file_unbound", "指定项目文件尚未绑定", 409)
+        project = await self.project(project_id)
+        raw = await asyncio.to_thread(self.read_project_file, project, path, media)
+        return raw, media, hashlib.sha256(raw).hexdigest()
+
+    @staticmethod
+    def read_project_file(project, path, media):
+        """复用Workdir逐段no-follow；明确区分缺失、边界与实际类型失败。"""
+        try:
+            workdir = Workdir.open_existing(str(project.uid), project.workdir_path)
+            raw = workdir.read_file(path, MAX_MEMBER_BYTES)
+            validate_resource(raw, media)
+            return raw
+        except FileNotFoundError as exc:
+            raise ThemeError("file_missing", "指定项目文件不存在", 404) from exc
+        except FileTransferLimitError as exc:
+            raise ThemeError("file_limit", "指定项目文件超过8 MiB", 413) from exc
+        except PermissionError as exc:
+            raise ThemeError("file_denied", "指定项目文件无权读取", 403) from exc
+        except (OSError, ValueError) as exc:
+            raise ThemeError("file_boundary", "指定项目文件不在安全的普通文件边界或读取失败", 409) from exc
 
     async def select(self, project_id, version_id, files, expected_generation):
         """来源→Project固定锁顺序，后端generation拒绝过期选择。"""

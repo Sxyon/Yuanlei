@@ -1,7 +1,14 @@
-import { apiGet, apiPost, apiPut, apiRequest } from './base'
+import { apiGet, apiPost, apiPut, apiRequest, buildQuery } from './base'
 
 /** 独立项目工作任务。 */
 export const projectWorkApi = {
+  tasksPage: (projectId, query, signal) => {
+    const { statuses = [], ...params } = query
+    const search = new URLSearchParams(buildQuery(params))
+    statuses.forEach(status => search.append('statuses', status))
+    return apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks-page?${search}`, { signal, cache: 'no-store' })
+  },
+
   topicFeedback: (projectId, taskId, resultId, payload) => apiPost(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/topic-feedback`, payload),
   blueprintPreview: (projectId, taskId, resultId, name) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/blueprint-preview?name=${encodeURIComponent(name)}`),
   blueprintFeedback: (projectId, taskId, resultId, payload) => apiPut(`/api/projects/${encodeURIComponent(projectId)}/work/tasks/${encodeURIComponent(taskId)}/results/${encodeURIComponent(resultId)}/blueprint-feedback`, payload),

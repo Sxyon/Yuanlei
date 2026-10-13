@@ -4,7 +4,7 @@ from datetime import date
 from urllib.parse import quote
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -524,4 +524,20 @@ async def add_issue_comment(
         task_id=task_id,
         issue_id=issue_id,
         content=payload.content,
+    )
+
+
+@project_work.get("/projects/{project_id}/work/tasks-page")
+async def tasks_page(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    topic_id: str | None = None,
+    statuses: list[Literal["todo", "in_progress", "blocked", "done", "cancelled"]] = Query(default=[]),
+    db=Depends(get_db),
+    user=Depends(get_required_user),
+):
+    """原正式工作有界查询。"""
+    return await work.page_tasks(
+        db=db, user=user, project_id=project_id, offset=offset, limit=limit, topic_id=topic_id, statuses=statuses
     )

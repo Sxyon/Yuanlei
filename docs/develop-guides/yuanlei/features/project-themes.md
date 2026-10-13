@@ -1,6 +1,6 @@
 # 项目主题的可信多页运行时
 
-状态：S03同宿主预览及S04持久版本、维护和项目选择已实施；S04阶段效果验收待用户，业务及项目文件内容接通留S05。
+状态：S03同宿主预览、S04持久版本／维护／选择及S05真实业务／文件／原宿主返回已接入；S04初步完成、未经严格验收，本轮证据及待联合审查范围由LOG拥有。
 类型：新增能力
 主要 Owner：[已采纳主题实施方案](../decisions/proposed/2026-10-12-project-theme-implementation.md)
 
@@ -8,7 +8,7 @@
 
 同一主题机制需要承载日常管理和课题调研两种项目页面组织，同时保留议题、决定和正式任务的身份、关系及后端语义。为两个样例各写一套页面宿主，会在存储、数据和迁移接入时分叉；让上传页面执行任意脚本或自行拼请求，会破坏平台数据与授权边界。
 
-S03提供独立平台预览及两个包样例，全部业务和资料明确模拟。主题按受控JSON定义编排平台可信Vue组件，组件输入、导航与资源引用经过纯契约；正式项目可明确选择S04持久版本；可信原项目入口保留，业务及指定文件内容仍标待S05。
+S03提供独立平台预览及两个包样例，全部业务和资料明确模拟。主题按受控JSON定义编排平台可信Vue组件，组件输入、导航与资源引用经过纯契约；正式项目可明确选择S04持久版本；可信原项目入口保留，正式业务与指定文件由固定适配读取，独立预览继续明确标合成。
 
 ## 必须保留的业务语义
 
@@ -19,13 +19,13 @@ S03提供独立平台预览及两个包样例，全部业务和资料明确模�
 
 ## 与 Yuxi 的边界
 
-AppLayout、PageHeader、平台明暗token与现有项目入口继续拥有外壳。原治理和ProjectWork Owner拥有业务DTO、历史依据及最终授权；Workdir拥有后续指定文件的安全读取边界。元垒在这些Owner旁增加纯主题契约、有限组件与ThemeHost，不向原静态HTML视图授予数据bridge。
+AppLayout、PageHeader、平台明暗token与现有项目入口继续拥有外壳。原治理和ProjectWork Owner拥有业务DTO、历史依据及最终授权；Workdir拥有指定文件的安全读取边界。元垒在这些Owner旁增加纯主题契约、有限组件与ThemeHost，不向原静态HTML视图授予数据bridge。
 
 包加载器返回已校验manifest／theme与原包字节digest；业务适配器提供固定read／readObject及资源字节。S04版本加载与S05真实业务／资源在此接口替换当前样例来源，页面定义和组件无需重建。S04生产parser、来源授权、不可变发布与数据库绑定由实际服务、文件域及PG约束拥有，取舍见[存储决策](../decisions/implemented/2026-10-13-project-theme-storage.md)。源停用保留旧加载，安全撤回拒绝加载且保留绑定；任何故障不能隐式改选内置版本。
 
 ## 稳定集成点
 
-纯Pydantic契约拥有可携定义、宿主加载DTO、组件投影、资源元数据和有限导航；生成Schema供前端加载边界消费。ThemeHost按同一协议渲染，原业务Owner继续拥有真实状态。加载reference独立于作者theme.id及digest，S04使用已授权版本引用替换样例引用；S05的业务和文件适配沿当前Project及原DTO接线。
+纯Pydantic契约拥有可携定义、宿主加载DTO、组件投影、资源元数据和有限导航；生成Schema供前端加载边界消费。ThemeHost按同一协议渲染，原业务Owner继续拥有真实状态。加载reference独立于作者theme.id及digest，S04使用已授权版本引用替换样例引用；S05的业务和文件适配沿当前Project及原DTO接线，原业务有界分页保持身份／状态和议题归属；返回令牌只保存阅读上下文，原宿主继续拥有办理。
 
 ## 上游依赖
 
@@ -45,3 +45,5 @@ AppLayout、PageHeader、平台明暗token与现有项目入口继续拥有外�
 
 - [已采纳主题实施方案](../decisions/proposed/2026-10-12-project-theme-implementation.md)：S03当前子范围与后继未交付边界分别登记。
 - 纯契约与输入Owner：`backend/package/yuxi/services/project_theme_contract.py`；消费路径为 `web/src/components/project/themes/ThemeHost.vue`，真实浏览器验例为 `web/test/browser/projectThemes.mjs`。
+
+- [真实数据与可信返回接通决策](../decisions/implemented/2026-10-13-project-theme-live-data.md)：固定业务适配、有界查询、绑定alias文件读取和原宿主返回的取舍及验证边界。
