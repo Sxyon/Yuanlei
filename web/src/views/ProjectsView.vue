@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { Grid2X2, List, Plus, RefreshCw, SlidersHorizontal, Palette, FolderOpen } from '@lucide/vue'
+import { Grid2X2, List, Plus, RefreshCw, SlidersHorizontal } from '@lucide/vue'
+import ProjectThemeManager from '@/components/project/ProjectThemeManager.vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectCreateModal from '@/components/ProjectCreateModal.vue'
 import ProjectSettingsModal from '@/components/ProjectSettingsModal.vue'
@@ -18,7 +19,6 @@ const tabs = [{key: 'projects', label: '项目列表'}, {key: 'themes', label: '
 const filtered = computed(() => searchManagedProjects(projects.value, management.value.query))
 const createOpen = ref(false), editing = ref(null)
 const themeProjectId = computed(() => String(route.query.project_id || ''))
-const themeProject = computed(() => projects.value.find(p => p.id === themeProjectId.value))
 const columnNames = ['项目 / 描述', '类型 / 分类', '管理状态', '负责人', 'Workdir / 更新时间']
 const columnMinimums = [240, 100, 100, 100, 100]
 const tableWidth = computed(() => management.value.widths.reduce((sum, w) => sum + w, 100))
@@ -97,14 +97,7 @@ onMounted(reload)
           </table>
         </div>
       </template>
-      <section v-else class="theme-management">
-        <div class="theme-toolbar"><p>主题管理位置 · 尚未接入</p><RouterLink :to="{ name: 'ProjectThemePreviewView' }">预览两套主题（合成数据）</RouterLink><RouterLink v-if="themeProject" :to="dashboard(themeProject)">返回项目：{{ themeProject.name }}</RouterLink><a-button v-else @click="changeTab(tabs[0])">返回项目列表</a-button></div>
-        <a-alert v-if="themeProjectId && !themeProject && hasLoaded && !error" type="warning" show-icon message="该项目不存在或已无权访问，请重新选择项目。" />
-        <div class="theme-grid">
-          <article class="theme-location"><Palette :size="22" /><h2>公共主题</h2><p>未来在这里管理内置主题与个人公共主题，供多个项目选择。</p><dl><dt>来源</dt><dd>平台内置、个人维护 / 手动导入</dd><dt>当前状态</dt><dd>管理接口未接入</dd></dl><p class="help">后续阶段验证加载、资源与迁移；本阶段只保留管理位置。</p><a-button disabled>导入公共主题（后续阶段）</a-button></article>
-          <article class="theme-location"><FolderOpen :size="22" /><h2>项目专属主题</h2><a-select :value="themeProjectId || undefined" :options="projects.map(p => ({value:p.id,label:p.name}))" :loading="isLoading" show-search option-filter-prop="label" allow-clear placeholder="选择项目" aria-label="主题所属项目" @change="selectThemeProject" /><p>选定项目后，未来在此维护该项目的专属主题。</p><dl><dt>来源</dt><dd>项目智能体候选、手动导入</dd><dt>当前状态</dt><dd>管理接口未接入</dd></dl><p class="help">{{ themeProject ? `当前项目：${themeProject.name}` : '请先选择项目；不会自动启用主题。' }}</p><a-button disabled>生成 / 导入专属主题（后续阶段）</a-button></article>
-        </div>
-      </section>
+      <ProjectThemeManager v-else :project-id="themeProjectId" :projects="projects" @project="selectThemeProject" />
     </main>
     <ProjectCreateModal v-model:open="createOpen" @created="created" />
     <ProjectSettingsModal :open="Boolean(editing)" :project="editing" initial-tab="description" @update:open="!$event && (editing = null)" @saved="saved" />

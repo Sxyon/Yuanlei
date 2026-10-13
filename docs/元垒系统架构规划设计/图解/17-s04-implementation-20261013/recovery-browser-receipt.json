@@ -1,0 +1,156 @@
+{
+  "restoredSelection": {
+    "projectId": "b2d2374e-7068-43cf-b3a2-f8920c5227f1",
+    "versionId": "a58ffc18-adf4-44a8-ab87-33dc6188188e",
+    "sourceId": "85123df4-76d5-493f-b917-716501571e51",
+    "digest": "3916f5cef24e4ccf9f038122752d36aef6f0ceaf00f9bd4a237acb03749890a3",
+    "generation": 6
+  },
+  "exactVersionAndDigest": true,
+  "pngDecoded": true,
+  "fileContentsPendingS05": true,
+  "responsive375": true,
+  "scriptErrors": [],
+  "requests": [
+    {
+      "path": "/api/system/info",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/dashboard",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/blueprint",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/theme",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/governance/board",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/dashboard",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/blueprint",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/theme",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/governance/board",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/theme/assets",
+      "status": 200
+    }
+  ]
+}

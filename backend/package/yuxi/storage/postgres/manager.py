@@ -19,13 +19,14 @@ from yuxi.storage.postgres.models_business import (
 )
 from yuxi.storage.postgres.models_business import Base as BusinessBase
 from yuxi.storage.postgres.models_knowledge import Base as KnowledgeBase
+from yuxi.themes.schema import PROJECT_THEME_SCHEMA_STATEMENTS
 from yuxi.utils import logger
 from yuxi.utils.singleton import SingletonMeta
 
 AGENT_RUN_TERMINAL_STATUS_SQL = ", ".join(f"'{status}'" for status in AGENT_RUN_TERMINAL_STATUSES)
 BUSINESS_SCHEMA_VERSION = 7
 KNOWLEDGE_SCHEMA_VERSION = 2
-YUANLEI_SCHEMA_VERSION = 38
+YUANLEI_SCHEMA_VERSION = 39
 PROJECT_GIT_ACTION_SCHEMA_STATEMENTS = (
     """CREATE TABLE IF NOT EXISTS project_git_actions (
         id VARCHAR(64) PRIMARY KEY, uid VARCHAR(64) NOT NULL, project_id VARCHAR(64) NOT NULL,
@@ -1697,6 +1698,13 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             for statement in USER_INBOX_OCCURRENCE_SCHEMA_STATEMENTS:
+                await conn.execute(text(statement))
+
+    async def upgrade_yuanlei_schema_v38_to_v39(self) -> None:
+        """新增主题来源、不可变版本、项目绑定及维护历史。"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            for statement in PROJECT_THEME_SCHEMA_STATEMENTS:
                 await conn.execute(text(statement))
 
     async def upgrade_yuanlei_schema_v37_to_v38(self) -> None:

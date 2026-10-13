@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G18｜S04 项目选择与故障出口 · R1待确认",
+    "output": "docs/元垒系统架构规划设计/图解/16-s04-design-20261012/project-selection.html",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "维护与项目界面"
+        },
+        "backend": {
+          "label": "平台服务"
+        },
+        "security": {
+          "label": "授权与校验"
+        },
+        "database": {
+          "label": "持久状态"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "choose",
+      "label": "项目选择"
+    },
+    {
+      "id": "save",
+      "label": "授权与持久保存"
+    },
+    {
+      "id": "recover",
+      "label": "失败与恢复",
+      "variant": "exception"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "entry",
+      "lane": "choose",
+      "col": 0,
+      "type": "frontend",
+      "label": "P3 当前项目",
+      "sublabel": "读取现有选择",
+      "width": 132
+    },
+    {
+      "id": "version",
+      "lane": "choose",
+      "col": 1,
+      "type": "frontend",
+      "label": "选择发布版本",
+      "sublabel": "只看有权来源",
+      "width": 132
+    },
+    {
+      "id": "mapping",
+      "lane": "choose",
+      "col": 2,
+      "type": "frontend",
+      "label": "指定文件映射",
+      "sublabel": "声明 alias 全部绑定",
+      "width": 132
+    },
+    {
+      "id": "preview",
+      "lane": "choose",
+      "col": 3,
+      "type": "frontend",
+      "label": "预览与确认",
+      "sublabel": "业务合成仅隔离预览",
+      "width": 132
+    },
+    {
+      "id": "auth",
+      "lane": "save",
+      "col": 3,
+      "type": "security",
+      "label": "重新授权并校验",
+      "sublabel": "来源＋Project＋文件",
+      "width": 132
+    },
+    {
+      "id": "commit",
+      "lane": "save",
+      "col": 4,
+      "type": "database",
+      "label": "锁项目后提交",
+      "sublabel": "expectedGeneration 匹配",
+      "width": 132
+    },
+    {
+      "id": "load",
+      "lane": "save",
+      "col": 5,
+      "type": "backend",
+      "label": "回读并真实加载",
+      "sublabel": "绑定／ZIP／资源一致",
+      "width": 132
+    },
+    {
+      "id": "invalid",
+      "lane": "recover",
+      "col": 3,
+      "type": "security",
+      "label": "拒绝并保留原选择",
+      "sublabel": "无权／路径／损坏",
+      "width": 132
+    },
+    {
+      "id": "conflict",
+      "lane": "recover",
+      "col": 4,
+      "type": "frontend",
+      "label": "显示新选择再确认",
+      "sublabel": "旧 generation 不覆盖",
+      "width": 132
+    },
+    {
+      "id": "failure",
+      "lane": "recover",
+      "col": 5,
+      "type": "frontend",
+      "label": "保留可信项目入口",
+      "sublabel": "缺包／撤回；不改绑定",
+      "width": 132
+    }
+  ],
+  "mainPath": [
+    "entry",
+    "version",
+    "mapping",
+    "preview",
+    "auth",
+    "commit",
+    "load"
+  ],
+  "edges": [
+    {
+      "id": "entry-version",
+      "from": "entry",
+      "to": "version",
+      "label": "打开目录",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "version-mapping",
+      "from": "version",
+      "to": "mapping",
+      "label": "准确版本",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "mapping-preview",
+      "from": "mapping",
+      "to": "preview",
+      "label": "校验映射",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "preview-auth",
+      "from": "preview",
+      "to": "auth",
+      "label": "保存选择",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "auth-commit",
+      "from": "auth",
+      "to": "commit",
+      "label": "校验通过",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "commit-load",
+      "from": "commit",
+      "to": "load",
+      "label": "提交成功",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "auth-invalid",
+      "from": "auth",
+      "to": "invalid",
+      "label": "失败",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "commit-conflict",
+      "from": "commit",
+      "to": "conflict",
+      "label": "冲突",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "load-failure",
+      "from": "load",
+      "to": "failure",
+      "label": "加载失败",
+      "role": "error",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "S04 页面数据边界",
+      "items": [
+        "正式主题页面读取真实定义和包内资源；业务及项目文件内容显示待 S05 接通。",
+        "候选及版本的隔离预览可以显示明确标识的合成业务；不保存预览选择。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "并发与返回",
+      "items": [
+        "提交后从 PG 回读准确版本及 generation；两个共目录项目保持独立绑定。",
+        "冲突重新读取当前选择，用户决定再提交；退出返回最初可信项目入口。"
+      ]
+    }
+  ]
+}

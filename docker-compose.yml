@@ -58,6 +58,7 @@ services:
     user: "1000:1000"
     volumes:
       - ./backend/server:/app/server
+      - theme-sources:/app/theme-sources
       - ./backend/package:/app/package
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi/git-state
@@ -197,6 +198,7 @@ services:
     user: "0:0"
     volumes:
       - ./backend/package:/app/package:ro
+      - theme-sources:/app/theme-sources
       - type: bind
         source: ${YUXI_STATE_DIR:-./docker/volumes}/yuxi
         target: /app/legacy-saves
@@ -581,6 +583,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  theme-sources:
   postgres-data:
 
 networks:

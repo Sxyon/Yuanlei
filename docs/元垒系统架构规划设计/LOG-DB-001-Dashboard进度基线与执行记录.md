@@ -493,3 +493,108 @@ DB-G13 Archify finalize四gate及浅深双尺寸visual-check通过；1440浅色�
 ## 24. S03提交授权（2026-10-12）
 
 用户明确要求“提交一次commit记录S03工作内容”，授权在codex/dashboard基于52bc6cd5将本轮设计、前端样板、纯契约／Schema、包样例、验证证据及Owner文档作为一次本地提交。此授权更新第22节实施交付时的“不提交”状态，不包含推送、S04实施或暂停专项恢复。提交前核对完整86文件范围，浏览器冻结源码指纹仍全部一致；代码沿用第22节已执行的全量及收尾证据，新增反馈仅为文档记录。
+
+## 25. DB-S04接续核实与R1设计领取（2026-10-12）
+
+原用户当轮要求：基于50b8bc2b2dc54246141798940db860a62a1fa924，在当前工作空间推进S04；核最新HEAD／工作树／S03并保留其他任务修改，先交来源、候选、发布版本、项目选择的整体关系图、维护与选择页面稿，关键页面确认后实施。沿S02／S03契约实现真实受保护文件、yuanlei持久身份／迁移、生产ZIP解析、候选发布、真实维护／选择／加载、明确S05数据边界和失败恢复；隔离账号／项目以HTTP、PG、文件字节、DOM回读验证，全新Reviewer审查。范围外为真实业务写入、正式跨实例迁移、主题生成Agent及协作／Andon；S04由用户判断通过后再进S05。这条消息授权S04推进，不等于确认尚未交付的R1页面。
+
+任务类型：feature；风险为文件／权限／持久化及恢复，本轮止于设计审阅。可验证目标、非目标及阶段边界由SYS第11节和本轮原需求拥有；生产验收必须升级真实HTTP／PG／文件／DOM，原型结果单独登记。
+
+### 25.1 基线与真实Owner
+
+HEAD正是指定完整SHA，起始工作树干净，在同一checkout工作；未reset、切分支或创建worktree，保留其他任务改动的要求持续有效。读取根、backend／web／docs及专项指令、ARCHITECTURE、Spec Loop、工程信任、测试／贡献、隔离运行及fork规范，当前README、SYS-DB-001、DEV-DB-001、DEV-DB-002（第3、5节）、DEV-MG-001及LOG第20—24节。S03用户可视化确认与提交授权分别由第23／24节拥有，当前S04进入由本轮原消息拥有。
+
+| 接续事实 | 当前核实与缺口 |
+| --- | --- |
+| 纯契约与Schema | project_theme_contract拥有包、加载DTO、组件投影、资源与有限导航；format／ABI=1。来源reference独立于theme.id及ZIP digest；不内置生产配额 |
+| 两份正式包 | 默认ZIP 1,152 bytes／展开4,132 bytes／2成员／3页10块；调研ZIP 18,137 bytes／展开23,218 bytes／3成员／3页11块。容器纯模型校验、成员与资源hash及宿主展开文件逐字节一致，指纹见s03-baseline.json |
+| 同一ThemeHost | 消费已校验定义、固定注册表和read／readObject端口；上下文含用户／项目／reference／digest／bindingGeneration，页面、选择、查询迟到响应隔离 |
+| 加载与资源 | bundledThemes为静态样例加载器，load返回manifest／theme／reference／digest，readAsset使用声明alias；syntheticAdapter仅在独立合成预览消费 |
+| 未交付S04 | 生产ZIP parser、来源／候选／版本／项目绑定、theme-sources卷、真实维护API／UI与恢复用例均不存在；受信任样例检查器不作为生产parser |
+| 实际接入Owner | ProjectsView现有主题管理占位；ProjectDashboardView已有可信概览／工作台。ProjectRepository拥有active selectable可见性／行锁，Workdir／Workspace拥有scope及no-follow。yuanlei Schema当前38，后续增量从该版本接续 |
+| 日常运行环境 | Compose api／worker／postgres等健康，web运行。只读核查与纯契约回验使用现有容器；持久化验证将使用隔离环境，不迁移日常数据 |
+
+### 25.2 R1交付、推荐与待确认范围
+
+当前设计Owner为[SYS第11节R1](SYS-DB-001-Dashboard系统需求与架构设计.md#_11-db-s04-主题维护与项目选择设计审阅-r1)。P1—P5覆盖来源目录、候选／版本维护、准确项目选择与文件映射、正式主题位置与故障退路、按需对账与部署恢复说明；DB-G16关系、DB-G17发布序列、DB-G18项目选择均为目标图。M9沿S03同宿主，不复制研究App或重写主题。
+
+推荐候选保存／发布／项目选择分步提交；内置只读，显式复制创建新来源和出处；个人公共限当前用户项目，专属限所属项目。停用阻止新发布／新选择但既有绑定继续加载，安全撤回须原因并阻止加载且保留原绑定。正式主题页真实读取定义与包内资源，业务及项目文件内容标“待S05接通”；隔离预览才使用明确标识的合成adapter。准确UUID与hash按需追溯。R1页面／核心操作待用户确认，未改产品代码／Schema／Compose，未形成真实选择或生产存储交付。
+
+指南补候选快照的revision及完整文件后提交引用、生产ZIP实际展开累计限额与JSON重复键／PNG实际类型检查、停用／撤回区别和发布互斥对账；具体实现名与阈值保留真实Owner决定。修订已有SYS／DEV／README与已采纳proposed decision，没有另建主规划。核心Vue／受控包／独立文件域／PG绑定路线未变；组织授权、跨实例迁移、生成Agent与协作／Andon不扩展。
+
+### 25.3 本轮验证与限制
+
+S03最小纯契约测试28 Passed（0.25s），原容器pytest cache目录权限警告保留。第一次运行样例检查脚本误指容器不存在的样例目录，因“未找到主题包样例”失败；改为传入当前宿主包字节到容器纯契约验证，再独立回读宿主ZIP／展开文件／hash，两份均一致。未向日常运行域复制或写主题文件。当前样例容量仅作为后续阈值测定输入，不声称生产容量已验证。
+
+三图最终Archify validate／deliver／strict check／browser-check均Passed。发布图初稿桌面投影文字过小、画布高宽比和图例空间不合格，按测量保留完整时序收紧画布和消息间距，最终sequence-final回执拥有当前字节；项目选择图收紧节点宽度后通过。失败回执不作为完成证据。
+
+隔离原型Chrome DOM69项Passed／平台HTTP请求0／脚本错误0，回执冻结prototype SHA；覆盖内置只读、复制入口、维护与发布分离、专属来源目录、同目录两项目独立演示绑定、九类状态、四尺寸（1440／1024／768／375）浅深五页面无整页溢出。首次验证因测试脚本未展开异常工具details超时，修正脚本点击展开后通过；不缩减验例。该结果只证明稿内交互与边界文案，不证明真实权限／PG／发布／重启。截图、图稿目视与文档gate、独立Review结果随后补记。
+
+生产存储／迁移／授权／发布中断／选择并发／重启及联合备份恢复均Not run：当前处于页面设计确认前。前端产品lint／unit／build和后端全量Not run：web/backend产品代码未改，本轮仅最小契约接续回验。S04真实验收将在确认后隔离实施，需最终HTTP／PG／ZIP字节及浏览器证据；本轮不报告S04通过。
+
+收尾补记：工程gate Passed（200 decisions／23 features／366 docs），检查器71项Passed；同源前端Schema与容器当前纯模型独立导出比较一致。docs build初次27.34s及发布边界修正后23.20s Passed，原有大chunk提示保留。修正站点复制筛选，排除本轮验证脚本；127条当前文档／图解本地文件引用无缺失，四份HTML发布字节与源文件一致，机器JSON与脚本未发布。首次相对链接脚本未去除Markdown尖括号，误报已有历史目标缺失；修正解析后通过，未改历史链接或放宽缺失检查。
+
+全新独立s04_design_review首轮退回两项：内置只读稿仍显示修改按钮，项目选择不随版本刷新alias／准确目标。修正内置替换／停用／撤回入口；增加来源操作确认区、撤回及恢复原因、准确来源及影响；项目版本选择按合成manifest驱动有文件／无文件要求，换版本清空旧映射，显示准确目标名称／版本／来源并拒绝未绑文件的演示提交。增加真实DOM断言；digest复用明确限同来源文件域，使来源锁覆盖发布及孤儿清理。最新原型回执与前述69项旧版分开，最终结果及Reviewer复核随后补记。
+
+目视已检查1440浅色目录、候选与发布提示、375深色项目选择、DB-G16关系及DB-G17发布序列：入口与提交分离、窄屏纵向布局和原绑定说明可辨。三图visual-check共12张浅深双尺寸截图与自动浏览器测量Passed，人工目视只覆盖上述具名图，不宣称全部截图或用户审美通过。当前仅文档、隔离设计稿与站点发布筛选变化；未提交、未推送，HEAD仍为指定基线。
+
+最终设计Review：全新s04_design_review复核原两项及路径确认摘要，全部关闭，无剩余实质问题。最新原型80项DOM Passed／HTTP0／脚本0，SHA为1550ca74f67269b5333a5d5429717bf50d6a5b2fc612b9c038eb01ce60eb6640；原型源码与回执再次回读一致。实际路径输入即时更新确认摘要且保持焦点，缺映射的演示提交不改变原绑定。DB-G18默认生成器图例的Agent措辞已改成平台服务／持久状态／授权校验，selection-final四gate Passed，机制和范围未变；未新增Agent。Reviewer结论只证明设计包可审，不替用户确认或阶段通过。最终工程gate和检查器71项再跑Passed。一次在仓库根误执行pnpm run build因没有package.json失败，已回docs目录执行；最终文档发布与回读结果随后补记。
+
+R1最终证据入口：原型browser/receipt.json拥有80项及冻结SHA；DB-G16根finalize、DB-G17 sequence-final、DB-G18 selection-final拥有最终四gate，三图visual、visual-sequence、visual-selection-final拥有当前HTML的12张捕获及自动浏览器证据。已目视DB-G18最终图例及选择／失败分支；旧失败回执及旧图例截图已从本轮交付清理，失败原因保留在本LOG。docs目录第三次构建228.37s Passed；LOG补记、最终图例和当前原型的发布字节由link-publication-check.json重新回读，机器证据与脚本继续不发布。git diff --check Passed，修改仅本任务文档／图稿／站点筛选。R1仍待用户确认，不改产品源码和日常数据库，不提交，不进入S05。
+
+## 26. S04 R1确认与实施领取（2026-10-13）
+
+原用户消息：“确认页面，开始实施”。确认对象为第25节及SYS第11节R1的P1—P5入口、候选维护／发布、准确项目选择／alias、停用与撤回影响、故障／对账和S04数据边界。授权在当前工作空间沿既定S02／S03路线实施S04，不进入S05业务写入、正式跨实例迁移、主题生成Agent或暂停协作／Andon。基线HEAD仍为50b8bc2b2dc54246141798940db860a62a1fa924，工作树仅保留上一轮本专项文档／图稿；不reset或另建worktree。用户阶段通过仍由后续真实效果审阅拥有。
+
+实施按受保护文件及正式迁移／生产parser与发布／真实管理和选择加载／隔离HTTP、PG、字节、DOM及恢复证据推进；每步从最小检查扩至实际失败／恢复链路。源码、数据库约束、文件及实际验证判断完成，指南按缺陷修正，不作固定命名或研究数字的完成oracle。
+
+
+### 26.1 真实Owner、边界与维护入口
+
+沿S02受保护ZIP／PG引用和S03纯契约落地，未重选技术或重写两份主题。生产parser／store进入yuxi.themes，来源可见性和持久引用由project_theme_repository拥有，用例与提交由project_theme_service拥有，路由只做HTTP适配。两份内置原ZIP字节与S03相同；安装进平台包数据，按平台来源身份保存，不以作者theme.id或hash授予权限。候选上传／JSON编辑、隔离预览、发布、版本历史、停用／安全撤回／恢复及来源对账接入原“项目→主题管理”。项目选择与原Dashboard“项目主题”消费同一ThemeHost和可替换加载器；未创建主题专用运行分支或复制研究宿主。
+
+正式迁移YUANLEI_SCHEMA_VERSION 38→39加入来源、不可变版本、Project绑定及维护历史；沿现有yuanlei逻辑域，不变更business 7／knowledge 2。来源UUID持久授权，原ZIP摘要检验字节；数据库版本行拒绝UPDATE／DELETE，唯一source／version拒绝同版异内容。候选revision与Project generation分别防旧修改和旧选择；两个共Workdir项目以Project主键独立绑定。Compose主题命名卷仅API／migrator挂载，Agent和worker不持有。发布完整fsync／无覆盖link后提交PG；失败不改绑定，完整孤儿或临时残留由来源锁内引用重查后清理。复制先持久化空来源身份再保存候选，复制失败可沿已授权来源诊断、重上传或对账。
+
+正式主题页只读取真实定义、包内资源和准确Project选择，业务及指定文件内容明确“待S05接通”；隔离预览业务持续标合成。选择后校验当前Project归属、逐段no-follow、普通JSON／PNG及容量，映射只保存alias／项目内路径。缺包／损坏／撤回保留原version／generation及原因；可信原项目入口可达，无自动回写内置主题。项目资源在来源→Project锁后重查generation，等待中改选明确409。
+
+### 26.2 隔离验收、失败与收尾
+
+真实TCP集成用合成部门／账号／Project、独立PG schema及独立主题／Workdir根，JWT和原用户依赖真实执行，只替换数据库连接；已有Project数据先建立，再执行38→39两次并核保留。用HTTP回读、独立SQL和文件字节验证跨用户／项目拒绝、项目专属复制归属、同版冲突、候选修改不改旧版本、并发revision／选择、sameWorkdir独立、alias斜杠／中文／__proto__、路径穿越／symlink、真实类型及容量、缺包／篡改／撤回／恢复、PG约束和数据库失败孤儿。真实子进程停在生产fsync后link前再SIGKILL，临时文件不是可加载新版本，来源对账可清理，旧文件／版本仍准确。
+
+生产ZIP实际展开计量修复stdlib依声明长度截断的风险：独立篡改local／central header令stdlib只返回{}的压缩包，生产parser仍在实际展开member_limit拒绝。资源实际PNG解码／像素预算，JSON重复键／非有限值、ZIP重复成员／特殊类型／路径／指纹及压缩方式都有正确原因负例。实测两原包1152／18137压缩字节、4132／23218展开字节；四近8MiB JSON资源包34347压缩／33549959展开字节通过，约0.20秒，峰值RSS102796KiB；超压缩和超展开分别archive_limit／expanded_limit。配额为当前生产Owner限额，不承诺无限容量或沿用lab阈值。
+
+独立部署证据使用专用数据库和文件根，不复制日常账号／项目。完整真实router入口供浏览器请求，前端请求逐字节转发到隔离真实HTTP，未stub来源／版本／用户或把错误改200；该证据服务不启动worker／lifespan，不声称证明主实例readiness。正式日常migrator执行前核旧切换标志及非终态Run，均无待切换工作；迁移退出0，API／worker重建后健康，独立schema版本回读7／2／39。隔离旧实例身份迁移先因缺quiescence证明拒绝；停止隔离API后按正式机制运行一次性migrator成功，三条合成旧Project保留，两内置源准确，再次执行幂等。
+
+首轮全新独立Reviewer真实复现三项P2：复制候选PG失败出现无身份目录，旧资源等待来源锁后返回过期PNG，未保存编辑可发布旧候选。分别改为先提交来源身份、固定来源→Project锁后重查绑定、dirty候选禁止预览／发布并在动作端校验；补真实PG失败、真实锁等待并发和DOM未保存负例。全新Reviewer已复核关闭三项P2，并独立运行复制失败和旧资源等待两条真实负例（2 Passed，11.54s）；未发现新否决项，最终恢复／文档收尾再复核。
+
+真实浏览器首次资源请求把base apiGet返回Response当Blob，导致错误MIME；修为读取Response字节及Content-Type，真实PNG解码通过。添加深色375px时reload后导航折叠，测试点击隐藏“证据资料”超时；改为先打开主题导航，不改产品结果。一次focused命令误指不存在的契约测试目录，未收集；重运行中修改store源码使inspect源码行缓存漂移，中断例StopIteration（54通过／1失败）；冻结源码后包含真实中断在内92项全部通过。首次后端全量在API重建时退出137，随后完整重跑通过，未将中断算成功。
+
+| 实际命令／检查 | 结果 |
+| --- | --- |
+| docker compose exec -T -e UV_NO_SYNC=1 api uv run --group test pytest test/unit -m "not slow" -q -p no:cacheprovider --tb=short | 全量2917 Passed、63原有Skipped、7 subtests，186.51s；后续修复以当前相关集合回验 |
+| docker compose exec -T -e UV_NO_SYNC=1 api uv run --group test pytest test/unit/test_project_theme_packages.py test/unit/test_project_theme_contract.py test/integration/api/test_project_themes_api.py test/unit/services/test_storage_migration.py -q -p no:cacheprovider --tb=short | 最终92 Passed（parser18／契约28／真实TCP integration13／migration33），59.86s；ZIP重复项负例产生一条预期warning |
+| docker compose exec -T web pnpm run test:unit | 全量555 Passed／0失败／0跳过；最后一次304.81s |
+| docker compose exec -T web pnpm run lint:check、pnpm run build | 首次及收尾通过；build保留既有大chunk提示，新增浏览器脚本已通过只读lint |
+| uvx --offline ruff check（本段新增parser／store／service／repository／router／scripts／tests） | 最终Passed；API镜像未安装ruff，使用本机已缓存ruff；仅格式化本段新文件 |
+| python3 scripts/verify_engineering_contracts.py、python3 -m unittest scripts.test_verify_engineering_contracts | 实施初次Passed；最终文档收尾随后补记 |
+
+### 26.3 交接与未领取范围
+
+运行维护参考由[主题文件维护与恢复](../advanced/project-theme-storage.md)拥有，实际取舍由[已实施决策](../develop-guides/yuanlei/decisions/implemented/2026-10-13-project-theme-storage.md)拥有。实测[容量回执](图解/17-s04-implementation-20261013/capacity-receipt.json)、[真实浏览器回执](图解/17-s04-implementation-20261013/browser-receipt.json)、[联合备份恢复回执](图解/17-s04-implementation-20261013/recovery-receipt.json)用于复查字节及绑定；截图只证明外观。最终源码冻结、浏览器和恢复收尾结果在本节补记。
+
+S05接续：复用准确授权版本加载及Project binding generation，把S04明确待接的业务read／readObject换为原真实API；指定文件每次读取重新做Project授权、Workdir no-follow、实际类型／容量和generation，不将绑定通过当永久权限；办理进入准确原对象Owner并核返回。S04不创建真实业务写入、跨实例主题导入／导出API、主题Agent或协作／Andon。完整恢复演练是同实例数据备份恢复副本，不冒充S06迁移。当前源码未提交或推送，用户决定S04阶段通过前不进入S05。
+
+
+最终浏览器：`node web/test/browser/projectThemeStorage.mjs`（配置私有合成session、runtime Playwright及隔离HTTP）24项Passed、18次主题HTTP、脚本错误0；当前service／parser／API／三页面源码hash与回执一致。覆盖真实来源复制、未保存编辑不能预览／发布且无publish请求、候选保存／预览／发布、准确选择及reload、迟到实际候选响应不能回填已切来源、1024／768／375px、真实PNG及深色窄屏、明确S05未接通。最终1440px与深色375px截图已目视核对；新增只读`node web/test/browser/projectThemeRecovery.mjs`在恢复副本验证相同准确版本／generation／digest、PNG浏览器解码和文件待接，35次真实GET、脚本错误0，375px截图核查。
+
+最终联合恢复：只停本任务隔离API，pg_dump完整专用PG、复制受保护主题根及合成Workdir，恢复到独立新库／文件根／HTTP进程，保留该实例身份与签名配置。当前浏览器version ID为a58ffc18-adf4-44a8-ab87-33dc6188188e、generation 6，SQL与HTTP一致；原ZIP摘要3916f5cef24e4ccf9f038122752d36aef6f0ceaf00f9bd4a237acb03749890a3及PNG摘要695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb回读一致，第二个共目录项目alias映射保留。维护入口检查9来源、fault 0、invalid binding 0；原隔离服务重新启动后继续可读。私有完整备份／凭据保留在被忽略运行域，不提交Git，公开回执只含合成身份和摘要。演练未覆盖主机断电、外部数据库部署恢复或S06跨实例主题迁移，这些不写成通过。
+
+文档收尾：首次工程gate因新decision使用“决定／替代与后果”而未满足既定标题失败，修为“决策／替代方案／后果”后通过，201 decisions／23 features／368 docs／41 routers／325 web sources；检查器71 Passed。docs `pnpm run build`通过（26.32s，现有chunk提示），最后LOG更新后重建。`git diff HEAD --check`Passed；两份内置包再独立逐字节比对S03原包一致。日常`/api/system/health`为ok、`/api/system/ready`为ready且postgres／redis／worker及所需组件正常；该状态只证明接流量条件，业务事实以本段HTTP／PG／文件／DOM证据为准。最终文档和恢复回执已交Reviewer收尾复核，阶段仍待用户判定。
+
+最终独立Review：全新s04_implementation_review完整审需求／规范／diff HEAD及证据，首轮三项P2修复后关闭；最终独立回读恢复HTTP／SQL／ZIP和数据库备份摘要，与browser及recovery回执一致，恢复浏览器只读35 GET和PNG／窄屏证据一致，无剩余实质问题，建议工程交付通过。最终文档重建19.84s成功、当前gate／lint／diff检查通过。Review不替用户效果与阶段判断；HEAD仍50b8bc2b，未commit／push，未进入S05，按原授权保留当前工作空间修改。
+
+## 27. S04本地提交授权与维护（2026-10-13）
+
+原用户消息：“提交commit，维护本次内容”。授权将本轮S04设计、真实存储／维护／项目选择、正式迁移、失败恢复、验收证据及现有SYS／DEV／LOG作为一次本地提交；不包含推送、S04阶段通过或S05启动。提交前HEAD仍50b8bc2b2dc54246141798940db860a62a1fa924；核对完整99文件均属本专项，暂存内容与工作树的差异仅为本段最终README／LOG补记，合并这些已审阅更新后提交。
+
+沿用第26节已执行的全量、最终92项相关测试、真实浏览器／PG／文件与联合恢复及全新独立Review，不因提交重复改代码或扩大阶段。再核浏览器冻结源码摘要与当前文件、两原ZIP和恢复回执一致；提交收尾运行工程gate、检查器、文档构建及补丁检查。本地提交不带运行数据库、私有合成session／密钥、完整备份或构建产物。最终commit ID及工作树状态由Git回读及交付回复提供，避免在本提交文档中记录循环自引用hash。

@@ -29,6 +29,7 @@ from server.routers.project_blueprint_router import project_blueprints
 from server.routers.project_dashboard_router import project_dashboard
 from server.routers.project_document_router import project_documents
 from server.routers.project_router import projects
+from server.routers.project_theme_router import project_themes
 from server.routers.project_work_router import project_work
 from server.routers.project_work_execution_router import project_work_executions
 from server.routers.user_inbox_router import user_inbox
@@ -50,6 +51,7 @@ router.include_router(agent_invocation_call_router)  # /api/agent-invocation/age
 router.include_router(agent_invocation_channel_router)  # /api/agent-invocation/channel/*
 router.include_router(agent_invocation_eval_router)  # /api/agent-invocation/eval/*
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
+router.include_router(project_themes)
 router.include_router(projects)  # /api/projects* 项目创建与选择
 router.include_router(project_work)  # /api/projects/{id}/work/* 独立项目工作任务
 router.include_router(project_work_executions)  # /api/projects/{id}/work/tasks/*/executions 与 Agent 工作台

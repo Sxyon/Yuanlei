@@ -16,7 +16,7 @@ export default defineConfig({
     const diagrams = '元垒系统架构规划设计/图解'
     await cp(join(siteConfig.srcDir, diagrams), join(siteConfig.outDir, diagrams), {
       recursive: true,
-      filter: (source) => !source.includes('/12-s02-20261011/experiment') && !source.endsWith('/12-s02-20261011/browser-check.cjs') && !source.endsWith('/14-s03-design-20261012/verify-prototype.mjs') && !source.endsWith('.json') && !source.endsWith('.md')
+      filter: (source) => !source.includes('/12-s02-20261011/experiment') && !source.endsWith('/12-s02-20261011/browser-check.cjs') && !source.endsWith('/14-s03-design-20261012/verify-prototype.mjs') && !source.endsWith('/16-s04-design-20261012/verify-prototype.mjs') && !source.endsWith('.json') && !source.endsWith('.md')
     })
     const archive = '元垒系统架构规划设计/归档'
     await cp(join(siteConfig.srcDir, archive), join(siteConfig.outDir, archive), {
@@ -85,6 +85,7 @@ export default defineConfig({
         text: '项目管理',
         items: [
           { text: '项目工作台与治理', link: '/intro/project-workbench' },
+          { text: '主题文件维护与恢复', link: '/advanced/project-theme-storage' },
           { text: '项目 Git 操作快速入门', link: '/intro/project-git' },
         ]
       },

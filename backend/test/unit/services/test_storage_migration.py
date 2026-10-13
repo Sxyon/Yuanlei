@@ -13,6 +13,15 @@ from yuxi.storage_migrations.v071_workdirs import (
 )
 
 
+@pytest.fixture(autouse=True)
+def builtin_themes(monkeypatch):
+    """纯迁移编排测试不访问真实包；真实初始化由PG/HTTP验例覆盖。"""
+    async def install(_):
+        """隔离新增文件副作用。"""
+        return None
+    monkeypatch.setattr(storage_migration, "install_builtin_themes", install)
+
+
 class _Session:
     def __init__(self, calls: list[object] | None = None):
         self.calls = calls
@@ -41,6 +50,7 @@ async def test_storage_migration_reads_legacy_schema_before_cutover(monkeypatch)
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business_tables"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge_tables"),
@@ -114,6 +124,7 @@ async def test_storage_migration_rejects_v071_schema_without_quiescence_proof(mo
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
@@ -163,6 +174,7 @@ async def test_current_schema_skips_schema_ddl(monkeypatch):
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
@@ -226,6 +238,7 @@ async def test_yuanlei_v1_is_upgraded_and_versioned_only_after_success(monkeypat
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
@@ -336,6 +349,7 @@ async def test_yuanlei_v2_is_upgraded_to_project_agents_without_replaying_v1(mon
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
@@ -454,6 +468,7 @@ async def test_yuanlei_v3_is_upgraded_to_agent_sandboxes_without_replaying_earli
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
@@ -571,6 +586,7 @@ async def test_yuanlei_v4_is_upgraded_to_coding_credentials_without_replaying_ea
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
@@ -687,6 +703,7 @@ async def test_yuanlei_v5_is_upgraded_to_coding_sessions_without_replaying_earli
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v1_to_v2=lambda: _record(calls, "upgrade_yuanlei_v1_v2"),
         upgrade_yuanlei_schema_v2_to_v3=lambda: _record(calls, "upgrade_yuanlei_v2_v3"),
@@ -803,6 +820,7 @@ async def test_yuanlei_v20_is_upgraded_to_inbox_occurrences(monkeypatch):
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         upgrade_yuanlei_schema_v20_to_v21=lambda: _record(calls, "upgrade_yuanlei_v20_v21"),
         upgrade_yuanlei_schema_v21_to_v22=lambda: _record(calls, "upgrade_yuanlei_v21_v22"),
@@ -909,6 +927,7 @@ async def test_supported_business_schema_is_converged_and_versioned_as_current(m
         ),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
@@ -963,6 +982,7 @@ async def test_failed_business_migration_does_not_record_version(monkeypatch):
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create_business"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
@@ -1007,6 +1027,7 @@ async def test_current_schema_does_not_rewrite_workdir_data(monkeypatch):
         get_schema_versions=lambda: _async_value({}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "ensure_runtime_scope_width"),
         create_business_tables=lambda: _record(calls, "create"),
         create_knowledge_tables=lambda: _record(calls, "create_knowledge"),
@@ -1097,6 +1118,7 @@ async def test_yuanlei_v31_only_adds_project_attributes_before_version_record(
             "knowledge": storage_migration.KNOWLEDGE_SCHEMA_VERSION, "yuanlei": old_version}),
         record_schema_version=lambda domain, version: _record(calls, f"version:{domain}:{version}"),
         upgrade_yuanlei_schema_v37_to_v38=lambda: _record(calls, "project_identity"),
+        upgrade_yuanlei_schema_v38_to_v39=lambda: _record(calls, "project_themes"),
         ensure_runtime_scope_width=lambda: _record(calls, "runtime_width"),
         upgrade_yuanlei_schema_v31_to_v32=lambda: _record(calls, "project_attributes"),
         upgrade_yuanlei_schema_v32_to_v33=lambda: _record(calls, "work_results"),

@@ -16,11 +16,12 @@
 
     <div ref="scrollContainer" class="dashboard-body">
         <div class="dashboard-modes" aria-label="项目概览视图">
-          <button type="button" :aria-pressed="!business" @click="setView(false)">管理概览</button>
+          <button type="button" :aria-pressed="!business && !themeSelected" @click="setView(false)">管理概览</button>
           <button type="button" :aria-pressed="business" @click="setView(true)">业务大屏</button>
-          <span>管理概览发现待办；业务大屏用于观察，办理进入工作详情。</span>
+          <button type="button" :aria-pressed="themeSelected" @click="router.replace({query:{...route.query,view:'theme'}})">项目主题</button><span>管理概览发现待办；业务大屏用于观察，办理进入工作详情。</span>
         </div>
-        <template v-if="!business">
+        <ProjectThemePanel v-if="themeSelected" :project-id="projectId" />
+        <template v-else-if="!business">
         <div v-if="boardLoading && !board.project" class="dashboard-state" role="status"><a-spin /><p>正在读取管理概览…</p></div>
         <a-alert
           v-else-if="boardError && !board.project"
@@ -74,6 +75,7 @@ import { computed, onMounted, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessageSquarePlus, RefreshCw } from '@lucide/vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
+import ProjectThemePanel from '@/components/project/ProjectThemePanel.vue'
 import DefaultProjectDashboard from '@/components/project/DefaultProjectDashboard.vue'
 import { projectDashboardApi } from '@/apis/project_dashboard_api'
 import { governanceBoardApi } from '@/apis/governance_board_api'
@@ -84,6 +86,7 @@ const route = useRoute()
 const router = useRouter()
 
 const projectId = computed(() => String(route.params.project_id || ''))
+const themeSelected = computed(() => route.query.view === 'theme')
 const business = computed(() => route.query.view === 'business')
 const setView = (show) => router.replace({ query: { ...route.query, view: show ? 'business' : undefined } })
 const loading = ref(false), boardLoading = ref(false), businessLoading = ref(false)

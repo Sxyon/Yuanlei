@@ -1,0 +1,15 @@
+{
+  "scope": "quiesced full isolated PostgreSQL plus protected theme directory and synthetic Workdir backup/restore; no theme import/export API",
+  "postgresDumpSha256": "3e41e561d66102f5d169427be6a6c0e8da537090c9c29a8d7be2de2c7cff54c4",
+  "bindingMatchesIndependentSql": true,
+  "versionId": "a58ffc18-adf4-44a8-ab87-33dc6188188e",
+  "generation": 6,
+  "packageDigest": "3916f5cef24e4ccf9f038122752d36aef6f0ceaf00f9bd4a237acb03749890a3",
+  "restoredPackageBytesMatch": true,
+  "secondProjectFileMappingsMatch": true,
+  "restoredPngSha256": "695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb",
+  "sourceCount": 9,
+  "auditFaults": 0,
+  "invalidBindings": 0,
+  "originalServiceRestarted": true
+}

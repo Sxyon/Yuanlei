@@ -1,0 +1,44 @@
+# 维护和恢复项目主题文件
+
+本页面向部署维护者，处理主题文件与数据库引用的对账及同一实例备份恢复。用户从“项目→主题管理”维护候选、发布版本，并为有权项目选择；S04的真实业务及项目文件内容显示待S05接通。正式跨实例主题迁移、主题生成Agent与协作／Andon属于后继范围。
+
+## 文件与数据库各保存什么
+
+`project_theme_service`拥有发布和选择事务，`project_theme_repository`拥有来源可见性、持久修订及引用查询；`yuxi.themes`拥有ZIP解析和文件域。`storage-migrator`在yuanlei域38→39创建来源、不可变版本、项目绑定及维护历史。Compose的`theme-sources`命名卷只挂API与migrator，API中的根为`/app/theme-sources`；测试或明确部署配置可用`YUXI_THEME_SOURCES_DIR`指定独立服务根，不能指向Workdir或Agent挂载。
+
+候选及版本文件以来源UUID和原ZIP摘要寻址；同摘要不授予权限，不跨来源去重。发布文件不可覆盖，数据库版本行拒绝UPDATE／DELETE；候选编辑保存新快照和修订，项目继续指向原版本。Project绑定包括准确版本、声明文件alias映射和generation，共用目录不合并选择。
+
+## 对账与来源恢复
+
+来源维护页的“维护对账”只查当前有权来源。检查区分被引用且有效、完整孤儿、临时残留、缺包和损坏；“清理未引用文件”在来源锁内重新查引用，只清理完整孤儿与临时残留。数据库不可用时无法取得授权／锁／引用，清理失败，不按文件年龄猜测引用。损坏文件保留用于诊断，不能通过再次发布覆盖已有版本。
+
+部署维护者可在API容器内使用只读检查命令，覆盖全部来源及项目引用；有缺包、损坏、非普通文件或不合法绑定时返回非零。命令输出来源身份和摘要，不输出包内容、凭据或宿主路径。
+
+```bash
+docker compose exec -T api uv run --no-sync python scripts/check_project_theme_storage.py
+```
+
+来源停用后候选仍可维护，但不能新发布或选择；既有版本继续加载。安全撤回拒绝版本加载，保留原因、版本和绑定。恢复撤回必须填写原因；恢复来源不更换项目版本。缺包可从同一版本的可信备份恢复原字节后重试；无法恢复时由用户明确选择其他已发布版本，不能悄悄回写内置主题。
+
+## 一致备份与恢复
+
+先暂停所有向该数据库和主题域写入的API／migrator，并停止worker，核对运行中的工作已妥善结束；以下命令针对Compose内PostgreSQL和当前主题卷。外部PostgreSQL部署必须备份实际`POSTGRES_URL`所指数据库，不能以默认Compose库冒充它。备份目录只供部署维护者，权限700，数据库及文件备份不提交Git。
+
+```bash
+mkdir -m 700 /your/private/backup
+docker compose stop api worker
+# 在PostgreSQL容器内展开变量，不在宿主输出密码。
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /your/private/backup/database.dump
+docker compose run --rm --no-deps -T api tar -C /app/theme-sources -cf - . > /your/private/backup/theme-sources.tar
+chmod 600 /your/private/backup/database.dump /your/private/backup/theme-sources.tar
+```
+
+备份同时保留数据库和主题文件域，另按原Workdir备份机制保留项目文件及部署密钥／实例身份。候选修订、版本和项目绑定都依赖数据库；只有数据库备份无法恢复被引用ZIP，只有ZIP无法恢复来源和选择授权。
+
+先在隔离恢复副本中恢复完整数据库及主题域，保持该实例的身份和必要密钥，不运行主题导入或重新授权。保留文件权限；恢复后先执行正式migrator兼容检查及只读主题对账，再核对每个被引用ZIP的摘要、版本与alias，并通过真实HTTP和浏览器确认项目的准确version ID、generation及包内资源字节。验证通过后按部署维护窗口恢复API／worker；当前原选择与故障原因必须可解释。恢复命令不得指向未经批准覆盖的运行库或卷。
+
+## 解析配额与S05接续
+
+配额和实际展开／解码计量由生产parser `yuxi.themes.packages`拥有；容量测量脚本 `backend/scripts/measure_project_theme_capacity.py`用两份S03原包和接近边界的有效包测成本，负例区分压缩超限、实际展开超限、伪报长度、成员及图片预算。限额不是格式兼容承诺或部署吞吐保证，不沿用研究实验数字。
+
+S05复用已有授权版本加载、Project主键绑定及`ProjectThemeService.validate_files`边界，以Project授权和Workdir读取已保存alias。S04只校验路径、普通文件、实际JSON／PNG类型及容量；S05每次读取还需重新授权并校验generation、文件类型和字节，不能把绑定时通过当永久文件权限。系统业务继续走原Owner，正式主题页的待接通标识只在真实读取闭合后移除。

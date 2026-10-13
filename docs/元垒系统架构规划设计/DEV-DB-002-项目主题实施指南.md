@@ -1,6 +1,6 @@
 # DEV-DB-002｜项目主题实施指南
 
-版本：1.2，2026-10-12。读者：后续开发者、设计者和独立Reviewer。类型：已采纳方案的实施参考。需求与架构由[SYS-DB-001](SYS-DB-001-Dashboard系统需求与架构设计.md)拥有，阶段领取由[DEV-DB-001](DEV-DB-001-Dashboard开发任务与实施约束.md)拥有，用户确认及实际完成状态由[LOG最新记录](LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。本指南拥有工作包、契约落点与验证步骤，不维护第二套进度台账。
+版本：1.3，2026-10-12。读者：后续开发者、设计者和独立Reviewer。类型：已采纳方案的实施参考。需求与架构由[SYS-DB-001](SYS-DB-001-Dashboard系统需求与架构设计.md)拥有，阶段领取由[DEV-DB-001](DEV-DB-001-Dashboard开发任务与实施约束.md)拥有，用户确认及实际完成状态由[LOG最新记录](LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。本指南拥有工作包、契约落点与验证步骤，不维护第二套进度台账。
 
 ## 1. 使用方法与确认范围
 
@@ -33,7 +33,7 @@
 | M7 Project选择 | ProjectRepository的可见性查询/行锁、PostgreSQL yuanlei域及storage_migration | S04新增来源/版本/Project绑定实体和正式migrator增量；未来版本号以当时真实Owner为准 |
 | M8 指定文件 | Workdir.open_existing/read_file及Workspace全路径no-follow | S04校验绑定；S05新增Project主题资源读取用例与薄路由，复用Workdir，不创建thread |
 
-表中新增名称是实施位置建议，不表示文件已经存在。开始修改前用rg定位当前符号：ProjectRepository.get_active_selectable_for_user／lock_active_selectable_for_user、治理查询、正式工作查询、Workdir.read_file与resolve_project_run_scope。HTTP入口在backend/server/routers，服务在backend/package/yuxi/services，SQL查询在repositories，不能把用例写进路由。
+S03契约／ThemeHost与S04包／维护／选择Owner已形成；本表保留阶段分责，当前实现及验证见LOG第26节。开始修改前用rg定位当前符号：ProjectRepository.get_active_selectable_for_user／lock_active_selectable_for_user、治理查询、正式工作查询、Workdir.read_file与resolve_project_run_scope。HTTP入口在backend/server/routers，服务在backend/package/yuxi/services，SQL查询在repositories，不能把用例写进路由。
 
 公共内置包随平台只读发布；个人公共库属于当前维护者；项目专属来源只可在该Project选择，若需复用先经有权维护者显式复制/提升为个人公共来源并记录来源。受保护theme-sources服务文件域不挂Agent、不放进Project可写Workdir。平台当前个人/Project权限复用，组织协作授权不在本轮范围。
 
@@ -157,21 +157,24 @@ manifest只声明逻辑文件与包内资源；source是作者声明，认证来
 
 ## 5. S04：持久保存、维护与项目选择
 
-先完成可问责的后端链路，再接维护界面；不能只让localStorage记住选择。以下实体与接口是实施规格，当前尚不存在；具体命名可随真实Owner结构调整，语义及提交顺序保持。
+S04页面与关键操作的R1已确认稿由[SYS第11节](SYS-DB-001-Dashboard系统需求与架构设计.md#_11-db-s04-主题维护与项目选择设计审阅-r1)拥有。真实后端链路及维护界面已经接通，项目选择由PG拥有。以下语义由project_theme_service／repository、yuxi.themes及正式yuanlei 38→39迁移拥有；本指南保留关系与时序，实际证据见LOG第26节。
 
 ### 5.1 数据与文件工作包
 
 | 语义实体 | 必须保存及约束 |
 | --- | --- |
 | ThemeSource | 服务生成source ID、归属域builtin/personal/project、owner uid、可选Project、来源说明、停用/撤回状态。请求者不能伪造builtin或别的owner |
+| ThemeCandidate | source ID、可编辑候选的revision、受保护快照引用及指纹、编辑者与时间；预期revision防覆盖，候选快照完整写入后提交引用，失败不改变旧候选或已发布版本 |
 | ThemeVersion | source ID、业务版本、包digest/size、format/ABI、校验信息、真实创建者；unique(source,version)，不同字节同版本409，已发布内容不可改；同hash不是权限 |
 | ProjectThemeBinding | Project主键、已授权版本FK、指定文件alias映射、generation；两个Project共用Workdir仍各自独立，更新用Project锁及expectedGeneration防覆盖 |
 
 先补元垒Feature/已采纳提案关联，再在yuanlei域实现实体与真实migrator升版；版本号从当时YUANLEI_SCHEMA_VERSION读取，不复制研究版本或lab表。测试旧版→新版、重复迁移、约束拒绝和升级后原Project数据保留；不回写上游business/knowledge域。
 
-配置独立theme-sources服务卷，目录由服务按认证owner/source/project生成。候选位于受保护来源域，发布blob按digest只读；API实例共享PG与该卷，Agent沙盒/Project Workdir没有卷访问。内置包只读，个人公共与项目专属来源分别鉴权；候选可编辑，发布版本不可覆盖。不要复制研究临时绝对路径、Docker名字或UID。
+生产parser在读取展开内容时执行流式累计限额，中央目录的声明尺寸只作预检；拒绝重复成员、非普通文件／符号链接、绝对／穿越／反斜杠路径、加密和不支持的压缩类型，精确闭合成员集合。JSON拒绝重复键并按纯模型校验，PNG核实际格式、解码与尺寸预算；类型不能只靠扩展名或manifest。原ZIP与声明assets分别重算指纹，压缩、展开、单成员、成员量、页／块及图片像素限制用正式样例与边界样本确定。
 
-发布用例按完整校验→临时完整写/fsync→同卷原子无覆盖发布→PG登记版本执行；并发同hash复用前重算字节，DB失败留下未引用完整blob且不改变旧绑定。选择用例先授权来源/Project、核版本和必需文件绑定，再锁Project并检查expectedGeneration，提交新选择。删除/停用来源不能默默破坏已绑定版本；安全撤回明确拒绝加载。清理孤儿必须重查PG引用，不以文件年龄直接删已使用包；本段提供可执行对账/清理入口，不建无consumer的后台任务系统。
+配置独立theme-sources服务卷，目录由服务按认证owner/source/project生成。候选位于受保护来源域，发布blob只在同一来源文件域内按digest复用且只读；API实例共享PG与该卷，Agent沙盒/Project Workdir没有卷访问。内置包只读，个人公共与项目专属来源分别鉴权；候选可编辑，发布版本不可覆盖。不要复制研究临时绝对路径、Docker名字或UID。
+
+发布用例按完整校验→临时完整写/fsync→同卷原子无覆盖发布→PG登记版本执行；并发同hash复用前重算字节，DB失败留下未引用完整blob且不改变旧绑定。选择用例先授权来源/Project、核版本和必需文件绑定，再锁Project并检查expectedGeneration，提交新选择。来源保留追溯记录，停用阻止新发布及新选择，既有绑定继续加载；安全撤回记录原因并明确拒绝加载，原绑定保留。这项R1操作语义已确认，授权仍沿原个人/Project边界。清理孤儿必须在与发布相同的来源锁内重查PG引用，并核对实际文件身份；PG不可用拒绝清理。对账区分临时残留、完整未引用包、被引用缺包与损坏，提供有权来源按需维护入口，不建通用后台任务系统。
 
 ### 5.2 窄接口与界面接线
 
@@ -243,7 +246,7 @@ S07先收集默认主题连续使用的具体问题：找项目/议题是否困�
 
 每一工作包在真实Owner处闭合：纯模型/映射用unit，持久化/授权用真实HTTP＋PG/文件，用户交互用真实DOM，故障/重启/导入回读最终状态。新guard有能恢复缺陷并在正确原因失败的负例；合法/非法fixture显式审阅，不由CI同时生成oracle再验证。截图、HTTP 200、模型报告或unit绿灯都不能替代对应高层事实。
 
-按[测试规范](../develop-guides/testing-guidelines.md)运行最小相关集合，再按改动风险扩大。以下命令为现有统一入口；具体主题测试文件在相应阶段创建后加入选择器，本轮没有执行产品主题测试。
+按[测试规范](../develop-guides/testing-guidelines.md)运行最小相关集合，再按改动风险扩大。以下命令为现有统一入口；主题契约、生产包parser和真实HTTP持久化测试已经接入，实际执行结果见LOG第26节。
 
 ```bash
 python3 scripts/verify_engineering_contracts.py

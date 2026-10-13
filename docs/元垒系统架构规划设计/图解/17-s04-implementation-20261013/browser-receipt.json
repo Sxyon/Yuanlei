@@ -1,0 +1,461 @@
+{
+  "checks": [
+    "隔离服务有权目录实际可读",
+    "内置来源无维护权限入口",
+    "从真实原ZIP复制候选",
+    "未保存编辑不能预览或发布旧候选",
+    "未保存编辑没有发发布请求",
+    "真实候选编辑及校验完成",
+    "真实包与合成业务预览分开标识",
+    "发布准确不可变版本",
+    "迟到真实候选响应不能污染已切换内置来源",
+    "来源切换后旧请求不会遗留busy状态",
+    "正式页不显示合成业务",
+    "合成决定未进入正式页面",
+    "页面重新读取准确持久版本",
+    "正式主题 1024px 无整页溢出",
+    "正式主题 768px 无整页溢出",
+    "正式主题 375px 无整页溢出",
+    "第二个共目录项目真实选择及文件绑定通过",
+    "包内PNG真实读取并浏览器解码",
+    "项目文件内容没有提前接入或合成",
+    "真实包资源375px无整页溢出",
+    "深色主题真实PNG可读",
+    "无浏览器脚本错误",
+    "主题真实HTTP没有被stub或错误洗成成功",
+    "独立HTTP回读版本和绑定一致"
+  ],
+  "requests": [
+    {
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources/85123df4-76d5-493f-b917-716501571e51/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources/85123df4-76d5-493f-b917-716501571e51/definition",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources/85123df4-76d5-493f-b917-716501571e51/publish",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources/85123df4-76d5-493f-b917-716501571e51/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources/85123df4-76d5-493f-b917-716501571e51/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/theme-versions/a58ffc18-adf4-44a8-ab87-33dc6188188e",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/theme",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/blueprint",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/dashboard",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/governance/board",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/blueprint",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/dashboard",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/b2d2374e-7068-43cf-b3a2-f8920c5227f1/governance/board",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/dashboard",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/blueprint",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/governance/board",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/theme/assets",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/blueprint",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/dashboard",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/governance/board",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/8e1d21c8-652c-4f2c-99c1-ab7a0f163870/theme/assets",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "scriptErrors": [],
+  "sourceHashes": {
+    "web/src/components/project/ProjectThemeManager.vue": "b7740805882e5230e56ee4c999e28f8db01a387f3a4a3cb14203558ea7460e2e",
+    "web/src/components/project/ProjectThemeSelection.vue": "253b61a42493c51baee3d64336e73c2478ac083d8f8d7397b8847216274d1b17",
+    "web/src/components/project/ProjectThemePanel.vue": "e852aab087b99bd7facc89c516f212552f3dcbfb9c9ffc6ea81da466827f59c8",
+    "web/src/apis/project_theme_api.js": "5a87320528b883177e461feb672e1c519fa89083f4e30155c5c3cd47c64e8845",
+    "backend/package/yuxi/services/project_theme_service.py": "5f27c85ec0ec0930ed2664fd627f7fc37606237f70f6a3c6905e7c6b980af898",
+    "backend/package/yuxi/themes/packages.py": "ce61411b554bd64b0b972a6b4d87a3fec6dc377e44669b4cb5f742422742b992"
+  },
+  "selected": {
+    "projectId": "b2d2374e-7068-43cf-b3a2-f8920c5227f1",
+    "versionId": "a58ffc18-adf4-44a8-ab87-33dc6188188e",
+    "sourceId": "85123df4-76d5-493f-b917-716501571e51",
+    "digest": "3916f5cef24e4ccf9f038122752d36aef6f0ceaf00f9bd4a237acb03749890a3",
+    "generation": 6
+  }
+}

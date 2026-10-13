@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e66c6a72-f734-4e3f-9d91-d6f92df59149",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/16-s04-design-20261012/theme-relations.candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/16-s04-design-20261012/theme-relations.html",
+  "specification": {
+    "sha256": "9a7204950c90aed9b06e4072d660029d845bd62a078a1e3e91fa8785a9a9d826",
+    "bytes": 4560
+  },
+  "artifact": {
+    "sha256": "36aa1276c70a950ebd3101c857e3a76fd36089af09ce2fecafd38c4f1feb29fe",
+    "bytes": 761693
+  }
+}

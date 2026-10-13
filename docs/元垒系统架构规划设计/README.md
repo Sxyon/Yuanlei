@@ -1,6 +1,6 @@
 # 元垒系统规划｜当前入口
 
-读者：用户与专项执行者。版本：2026-10-12 S03 R1确认后实施。此目录维护当前系统目标、专项设计、开发任务和事实进度。当前技术方案已采纳，后续执行读DEV-DB-002；S02调查基线只供归档追溯，启动任务必须核最新源码/HEAD。S03独立合成预览按R1确认范围实施，体验与阶段通过仍由用户判断；协作专项保持暂停。
+读者：用户与专项执行者。版本：2026-10-13 S04 R1已确认、真实实施待阶段审阅。此目录维护当前系统目标、专项设计、开发任务和事实进度。当前技术方案已采纳，后续执行读DEV-DB-002；S02调查基线只供归档追溯，启动任务必须核最新源码/HEAD。S03独立合成预览按R1确认范围实施，体验与阶段通过仍由用户判断；协作专项保持暂停。
 
 ## 1. 先看图，再逐项核对
 
@@ -19,13 +19,15 @@
 | CA-G07 | <a href="图解/07-collaboration-tasks/collaboration-frozen-tasks.html" target="_blank" rel="noopener">协作冻结后继任务</a> | 重启前提、C1—C6及第二渠道的真实依赖 | DEV-CA-001、LOG-CA-001；当前不领取 |
 | DB-G08 | 渐进推进流程候选 | 当前段调查、试验、阶段判断和中断 | 校验未通过，暂无交付图；文字规则见DEV |
 | DB-G09 | <a href="图解/10-stage-relations-20261011/stage-acceptance.html" target="_blank" rel="noopener">S01—S07推进与验收关系</a> | 七段顺序、原要求1—12映射、验收出口与未通过重审 | 当前推进图；非完成状态或远期技术定案 |
-| DB-G13 | <a href="图解/13-theme-execution-20261012/theme-execution.html" target="_blank" rel="noopener">项目主题已采纳执行结构</a> | 固定Vue/受控包、持久版本/选择、双数据与迁移工作分责 | SYS-DB-001／DEV-DB-002；技术已采纳；S03预览已实施，生产存储与真实接线待后续 |
+| DB-G13 | <a href="图解/13-theme-execution-20261012/theme-execution.html" target="_blank" rel="noopener">项目主题已采纳执行结构</a> | 固定Vue/受控包、持久版本/选择、双数据与迁移工作分责 | SYS-DB-001／DEV-DB-002；技术已采纳；S03预览及S04真实存储／选择已实施；业务接线留S05 |
 | DB-G14 | <a href="图解/14-s03-design-20261012/prototype.html" target="_blank" rel="noopener">S03 R1六页原型</a>及<a href="图解/14-s03-design-20261012/page-relations.html" target="_blank" rel="noopener">页面／对象／返回候选图</a> | 两种组织方式、模块位置与准确返回 | SYS第10节；R1设计已确认；原型与设计图保留追溯，产品证据见LOG |
 | DB-G10/11 | <a href="图解/11-s01-entry-20261011/project-entry.html" target="_blank" rel="noopener">S01 P1—P4原型与关系/保存序列</a> | 页面布局、点击关系、字段缺口与候选原子保存 | SYS-DB-001第8节；P1—P4本地产品已实施验收；LOG第15节 |
 
 整体关系图之外，页面布局和模块理念见SYS-DB-002。数值图表属于项目大屏的数据表现，不由Archify代替实现。
 
 S03实际预览入口：平台“项目 → 主题管理 → 预览两套主题（合成数据）”，本地路由 `/projects/theme-preview`。六页职责与取舍见SYS第10节，接口及S04—S06替换边界见DEV-DB-002第3节，验证和未接线范围见LOG第22节。外观证据：[默认Dashboard（浅色）](图解/15-s03-implementation-20261012/sample-default-Dashboard-light-1440.png)、[调研课题脉络（浅色）](图解/15-s03-implementation-20261012/sample-research-课题脉络-light-1440.png)、[调研窄屏（375px）](图解/15-s03-implementation-20261012/research-context-light-375.png)。截图用于外观审阅，交互依据为真实DOM验例。
+
+S04当前设计审阅：[SYS第11节R1](SYS-DB-001-Dashboard系统需求与架构设计.md#_11-db-s04-主题维护与项目选择设计审阅-r1)及<a href="图解/16-s04-design-20261012/prototype.html" target="_blank" rel="noopener">P1—P5页面稿</a>；<a href="图解/16-s04-design-20261012/theme-relations.html" target="_blank" rel="noopener">DB-G16来源／版本／项目关系</a>、<a href="图解/16-s04-design-20261012/publication.html" target="_blank" rel="noopener">DB-G17发布时序</a>、<a href="图解/16-s04-design-20261012/project-selection.html" target="_blank" rel="noopener">DB-G18项目选择</a>。页面组织已确认，生产存储／维护／项目选择已实施；本轮确认依据、真实校验及未接通范围见LOG第26节。实际入口为“项目→主题管理”和项目Dashboard的“项目主题”；正式业务与文件内容待S05接通。真实效果可看[维护与发布](图解/17-s04-implementation-20261013/published-light-1440.png)、[准确项目选择](图解/17-s04-implementation-20261013/selected-light-1440.png)、[真实包资源](图解/17-s04-implementation-20261013/resource-light-1440.png)，恢复与交接见LOG第26节。
 
 ## 2. 当前文档职责
 
