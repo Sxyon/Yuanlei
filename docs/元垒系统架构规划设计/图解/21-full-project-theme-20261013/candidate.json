@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G23｜全项目主题 · 目标架构 R2 待审",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/21-full-project-theme-20261013/theme-architecture.html"
+  },
+  "components": [
+    {
+      "id": "entry",
+      "type": "external",
+      "label": "平台与历史入口",
+      "sublabel": "项目列表 / 主导航 / 准确旧链接",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        280,
+        80
+      ]
+    },
+    {
+      "id": "host",
+      "type": "security",
+      "label": "项目宿主",
+      "sublabel": "身份 / 授权版本 / 意图 / 草稿与返回",
+      "pos": [
+        570,
+        40
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "definition",
+      "type": "frontend",
+      "label": "主题定义＋完整基础主题",
+      "sublabel": "导航 / 页面与详情 / 布局与密度",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        280,
+        80
+      ]
+    },
+    {
+      "id": "composer",
+      "type": "frontend",
+      "label": "当前主题组合与呈现",
+      "sublabel": "覆盖或明确继承 / 不回旧UI",
+      "pos": [
+        570,
+        300
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "capabilities",
+      "type": "frontend",
+      "label": "可信业务能力组件",
+      "sublabel": "阅读 / 创建编辑 / 操作 / 历史与错误",
+      "pos": [
+        570,
+        560
+      ],
+      "size": [
+        350,
+        80
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "database",
+      "label": "原持久事实与文件",
+      "sublabel": "项目 / 版本 / 业务状态 / Workdir",
+      "pos": [
+        40,
+        820
+      ],
+      "size": [
+        280,
+        80
+      ]
+    },
+    {
+      "id": "owner",
+      "type": "backend",
+      "label": "原业务服务与授权",
+      "sublabel": "状态校验 / 并发 / 审计 / 路径边界",
+      "pos": [
+        570,
+        820
+      ],
+      "size": [
+        350,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "intent",
+      "from": "entry",
+      "to": "host",
+      "label": "准确项目 / 对象意图",
+      "variant": "emphasis"
+    },
+    {
+      "id": "load",
+      "from": "host",
+      "to": "composer",
+      "label": "授权选择 / 同一页面上下文"
+    },
+    {
+      "id": "compose",
+      "from": "definition",
+      "to": "composer",
+      "label": "只选注册能力 / 有限布局"
+    },
+    {
+      "id": "views",
+      "from": "composer",
+      "to": "capabilities",
+      "label": "全部项目页面与办理",
+      "variant": "emphasis"
+    },
+    {
+      "id": "actions",
+      "from": "capabilities",
+      "to": "owner",
+      "label": "固定查询 / 合法动作 / 原API"
+    },
+    {
+      "id": "facts",
+      "from": "owner",
+      "to": "facts",
+      "label": "独立授权 / 查询与写入"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "全部项目能力处于主题内",
+      "items": [
+        "蓝图、议题讨论决定、建议、正式工作与结果、督查。",
+        "资料、项目智能体、属性及资源设置、主题选择与维护。",
+        "详情／编辑／历史也重构，不只是改导航。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "保留业务，重构界面",
+      "items": [
+        "不复制业务状态机，不给主题自由JS或任意API。",
+        "旧URL解析到新主题可信能力，保留准确对象与版本。",
+        "继承基础视图仍在当前主题壳内；不能回旧管理页。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "当前为设计推荐",
+      "items": [
+        "先整体稿，再证明蓝图编辑与议题读写竖切。",
+        "依真实消费者决定能力契约与format／ABI升级。",
+        "图不是已实现接线；S06继续暂停。"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G20｜项目级主题职责纠偏 · 待设计确认",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/19-project-theme-scope-20261013/theme-scope.html"
+  },
+  "components": [
+    {
+      "id": "entry",
+      "type": "external",
+      "label": "项目日常入口",
+      "sublabel": "列表进入 / 主导航 / 直达链接",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        250,
+        80
+      ]
+    },
+    {
+      "id": "scope",
+      "type": "security",
+      "label": "项目级宿主",
+      "sublabel": "当前项目 / 绑定 / 版本 / 权限",
+      "pos": [
+        490,
+        40
+      ],
+      "size": [
+        310,
+        80
+      ]
+    },
+    {
+      "id": "fallback",
+      "type": "frontend",
+      "label": "可信退路",
+      "sublabel": "未绑定 / 故障原因 / 不改绑定",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        250,
+        80
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "frontend",
+      "label": "当前主题日常页面",
+      "sublabel": "同一宿主 / 阅读导航 / 显示别名",
+      "pos": [
+        490,
+        300
+      ],
+      "size": [
+        310,
+        80
+      ]
+    },
+    {
+      "id": "utility",
+      "type": "frontend",
+      "label": "补充管理入口",
+      "sublabel": "蓝图 / 建议 / 督查等保持可达",
+      "pos": [
+        40,
+        560
+      ],
+      "size": [
+        250,
+        80
+      ]
+    },
+    {
+      "id": "handle",
+      "type": "backend",
+      "label": "准确对象办理",
+      "sublabel": "原业务权限 / 状态 / 审计",
+      "pos": [
+        490,
+        560
+      ],
+      "size": [
+        310,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "enter",
+      "from": "entry",
+      "to": "scope",
+      "label": "正常进入",
+      "variant": "emphasis"
+    },
+    {
+      "id": "resolve",
+      "from": "scope",
+      "to": "theme",
+      "label": "有权且版本可用",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fallback",
+      "from": "scope",
+      "to": "fallback",
+      "label": "未绑或加载失败",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "top",
+      "via": [
+        [
+          370,
+          80
+        ],
+        [
+          370,
+          230
+        ],
+        [
+          165,
+          230
+        ]
+      ]
+    },
+    {
+      "id": "retain",
+      "from": "fallback",
+      "to": "utility",
+      "label": "保留可信能力"
+    },
+    {
+      "id": "extra",
+      "from": "theme",
+      "to": "utility",
+      "label": "按需管理",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right",
+      "via": [
+        [
+          380,
+          340
+        ],
+        [
+          380,
+          600
+        ]
+      ]
+    },
+    {
+      "id": "object",
+      "from": "theme",
+      "to": "handle",
+      "label": "准确对象 / 原Owner"
+    },
+    {
+      "id": "return",
+      "from": "handle",
+      "to": "theme",
+      "label": "同范围返回",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          950,
+          600
+        ],
+        [
+          950,
+          340
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "推荐职责，尚未实施",
+      "items": [
+        "项目主题不是概览里的第二套工作台。",
+        "图只明确职责；具体导航与入口映射需完整稿评审。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "保留已完成能力",
+      "items": [
+        "复用版本绑定、ThemeHost与真实业务／资源适配。",
+        "保留未覆盖管理能力及准确对象历史链接。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "纠偏验收起点",
+      "items": [
+        "从项目列表及项目主导航点击进入。",
+        "对无对象旧链接与准确对象链接分别验证。",
+        "S06暂不领取；S07不承担基础作用域补救。"
+      ]
+    }
+  ]
+}

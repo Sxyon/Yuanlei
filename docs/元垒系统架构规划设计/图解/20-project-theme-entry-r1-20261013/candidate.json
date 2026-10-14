@@ -1,0 +1,183 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G21｜项目主题主入口与办理返回 · R1待审",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/20-project-theme-entry-r1-20261013/entry-flow.html"
+  },
+  "lanes": [
+    {
+      "id": "daily",
+      "label": "01 / M1—M4 项目日常入口"
+    },
+    {
+      "id": "manage",
+      "label": "02 / M5 原能力与准确办理"
+    }
+  ],
+  "mainPath": [
+    "list",
+    "binding",
+    "nav",
+    "page",
+    "object",
+    "return"
+  ],
+  "nodes": [
+    {
+      "id": "list",
+      "lane": "daily",
+      "col": 0,
+      "type": "frontend",
+      "label": "M1 项目列表进入",
+      "sublabel": "现有项目UUID / 直接链接",
+      "width": 146
+    },
+    {
+      "id": "binding",
+      "lane": "daily",
+      "col": 1,
+      "type": "security",
+      "label": "M2 当前绑定",
+      "sublabel": "Project可见 / 版本有权",
+      "width": 146
+    },
+    {
+      "id": "nav",
+      "lane": "daily",
+      "col": 2,
+      "type": "frontend",
+      "label": "M3 项目主导航",
+      "sublabel": "主题全部页面 / 可信入口",
+      "width": 146
+    },
+    {
+      "id": "page",
+      "lane": "daily",
+      "col": 3,
+      "type": "frontend",
+      "label": "M4 当前主题页",
+      "sublabel": "home / workbench明确映射",
+      "width": 146
+    },
+    {
+      "id": "object",
+      "lane": "daily",
+      "col": 4,
+      "type": "backend",
+      "label": "准确对象办理",
+      "sublabel": "原议题 / 决定 / 正式任务",
+      "width": 146
+    },
+    {
+      "id": "return",
+      "lane": "daily",
+      "col": 5,
+      "type": "security",
+      "label": "M7 返回重读",
+      "sublabel": "同账号 / Project / 修订",
+      "width": 146
+    },
+    {
+      "id": "manage",
+      "lane": "manage",
+      "col": 2,
+      "type": "frontend",
+      "label": "M5 办理与管理",
+      "sublabel": "蓝图 / 建议 / 督查 / 治理",
+      "width": 146
+    },
+    {
+      "id": "actions",
+      "lane": "manage",
+      "col": 3,
+      "type": "backend",
+      "label": "原办理能力",
+      "sublabel": "新建议题 / 回复 / 审批",
+      "width": 146
+    }
+  ],
+  "edges": [
+    {
+      "id": "list-binding",
+      "from": "list",
+      "to": "binding"
+    },
+    {
+      "id": "binding-nav",
+      "from": "binding",
+      "to": "nav",
+      "label": "有权就绪"
+    },
+    {
+      "id": "nav-page",
+      "from": "nav",
+      "to": "page",
+      "label": "主导航"
+    },
+    {
+      "id": "page-object",
+      "from": "page",
+      "to": "object",
+      "label": "准确ID"
+    },
+    {
+      "id": "object-return",
+      "from": "object",
+      "to": "return",
+      "label": "原结果"
+    },
+    {
+      "id": "return-page",
+      "from": "return",
+      "to": "page",
+      "label": "重读恢复",
+      "role": "return",
+      "route": "up-channel",
+      "fromSide": "top",
+      "toSide": "top",
+      "bias": 0.25
+    },
+    {
+      "id": "nav-manage",
+      "from": "nav",
+      "to": "manage",
+      "label": "固定入口",
+      "role": "branch"
+    },
+    {
+      "id": "manage-actions",
+      "from": "manage",
+      "to": "actions",
+      "label": "原权限"
+    },
+    {
+      "id": "actions-object",
+      "from": "actions",
+      "to": "object",
+      "label": "准确办理",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "R1推荐边界",
+      "items": [
+        "本图是待审候选接线，当前HEAD 89c40810仍仅概览子页挂载主题。",
+        "两主题组织各异；角色只选择页面，不能声明URL、身份、权限或写动作。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "旧链接与故障",
+      "items": [
+        "inspection带对象、管理hash或未知上下文保留原能力；不统一重定向。",
+        "Project失权清空全部内容并回项目列表；读取故障保留绑定，不偷偷改版本。",
+        "完整旧链接与故障另见DB-G22；本图主链与管理分支一起审阅。"
+      ]
+    }
+  ]
+}

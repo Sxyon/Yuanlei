@@ -1,0 +1,130 @@
+{
+  "evidenceKind": "pure-script-handler-and-source",
+  "sha256": "9fbfdbce2d041798634a425cabea7a474be00c9eaf13bc6b24bc1c21d8edef43",
+  "rendered": [
+    {
+      "theme": "default",
+      "page": "overview"
+    },
+    {
+      "theme": "default",
+      "page": "blueprint"
+    },
+    {
+      "theme": "default",
+      "page": "topics"
+    },
+    {
+      "theme": "default",
+      "page": "topic"
+    },
+    {
+      "theme": "default",
+      "page": "suggestions"
+    },
+    {
+      "theme": "default",
+      "page": "work"
+    },
+    {
+      "theme": "default",
+      "page": "task"
+    },
+    {
+      "theme": "default",
+      "page": "reports"
+    },
+    {
+      "theme": "default",
+      "page": "resources"
+    },
+    {
+      "theme": "default",
+      "page": "agents"
+    },
+    {
+      "theme": "default",
+      "page": "agent"
+    },
+    {
+      "theme": "default",
+      "page": "settings"
+    },
+    {
+      "theme": "default",
+      "page": "projects"
+    },
+    {
+      "theme": "research",
+      "page": "overview"
+    },
+    {
+      "theme": "research",
+      "page": "blueprint"
+    },
+    {
+      "theme": "research",
+      "page": "topics"
+    },
+    {
+      "theme": "research",
+      "page": "topic"
+    },
+    {
+      "theme": "research",
+      "page": "suggestions"
+    },
+    {
+      "theme": "research",
+      "page": "work"
+    },
+    {
+      "theme": "research",
+      "page": "task"
+    },
+    {
+      "theme": "research",
+      "page": "reports"
+    },
+    {
+      "theme": "research",
+      "page": "resources"
+    },
+    {
+      "theme": "research",
+      "page": "agents"
+    },
+    {
+      "theme": "research",
+      "page": "agent"
+    },
+    {
+      "theme": "research",
+      "page": "settings"
+    },
+    {
+      "theme": "research",
+      "page": "projects"
+    }
+  ],
+  "checks": [
+    "Overview removes redundant title/subtitle and page-jump CTA; blueprint total text bounded",
+    "Detail blueprint only renders selected document, inline reading/editing, history body",
+    "Drawer mode renders all blueprints; picking expands and selects exact document",
+    "Inline save updates only edited blueprint in synthetic memory",
+    "Topic body and collapsible decisions remain while mixed activity filters change",
+    "Activity order reverses source event order; recent targets exact thread and decision",
+    "Action plans and work names, plan destination filter and concise page tools",
+    "Repeated synthetic replies remain separate collapsible chronological entries",
+    "Topic/work use one collection toolbar with left discovery and right creation; overview descriptions share object anchors",
+    "Blueprint history return restores original drawer/editor/selection/collapse/draft and scroll intent across multiple versions",
+    "No direct API code and safe responsive/motion source rules remain"
+  ],
+  "browser": "Not run: prior file-protocol policy denial remains; no alternate channel",
+  "limits": [
+    "No DOM/layout/click verification",
+    "No actual hover/keyboard/focus validation",
+    "No real API or persistence",
+    "No screenshot or aesthetic acceptance"
+  ]
+}

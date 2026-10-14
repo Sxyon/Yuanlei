@@ -1,0 +1,14 @@
+{
+  "head": "89c408101dfd0778c955f3be37a0febc4d7e410e",
+  "files": {
+    "web/src/layouts/ProjectLayout.vue": "115f563356c13f3cb4603957fe98cc572d1d8722d606eb391d3fa2b2f5bbf72f",
+    "web/src/views/ProjectsView.vue": "b2da4d88129d8f81d57adbdeb079ecc1d8a72b94b360977b954545d17ac29854",
+    "web/src/views/ProjectDashboardView.vue": "065c3c86ec6a8fc7469ec2eb034833216e6496b0edd429a7dc4ecc06de97eb1b",
+    "web/src/views/ProjectInspectionBoardView.vue": "9ea487a6fce1fdc0e752a6e193c70f138c966fcc59af9b8716a7ba29a2037b74",
+    "web/src/components/project/themes/ThemeHost.vue": "184eea09285c6214ac8f48aa617dae9d5df97912328a93916b6fc3ff131bbdda",
+    "web/src/components/project/ProjectThemePanel.vue": "60cfbdd2485c5f81b447a49385df1d3838e14e129ccea4b1b0c37d07f6983dd6",
+    "web/src/utils/projectThemeReturn.js": "bbdd7f7a0c3a31493c0f302b1fead6af4a6118dd3b78552464beda92b5fcd28b",
+    "backend/package/yuxi/services/project_theme_contract.py": "61356fb2c4e3073ac40b6a39287921c85cdd2ece42885c49fa8449988fa10703"
+  },
+  "scope": "当前实现取证；新入口设计未实施"
+}

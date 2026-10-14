@@ -1,0 +1,229 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G22｜旧链接与失败分流 · R1待审",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/20-project-theme-entry-r1-20261013/legacy-flow.html"
+  },
+  "lanes": [
+    {
+      "id": "legacy",
+      "label": "01 / M8 旧入口与原意"
+    },
+    {
+      "id": "exact",
+      "label": "02 / M5 对象与管理"
+    },
+    {
+      "id": "failure",
+      "label": "03 / M6 授权、失败与恢复",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "old",
+    "classify",
+    "bare",
+    "entry"
+  ],
+  "nodes": [
+    {
+      "id": "old",
+      "lane": "legacy",
+      "col": 0,
+      "type": "external",
+      "label": "原项目链接",
+      "sublabel": "dashboard / inspection",
+      "width": 200
+    },
+    {
+      "id": "classify",
+      "lane": "legacy",
+      "col": 1,
+      "type": "security",
+      "label": "按意图分类",
+      "sublabel": "有对象 / hash / 未知参数",
+      "width": 200
+    },
+    {
+      "id": "bare",
+      "lane": "legacy",
+      "col": 2,
+      "type": "frontend",
+      "label": "只处理裸入口",
+      "sublabel": "v2角色 / v1索引",
+      "width": 200
+    },
+    {
+      "id": "entry",
+      "lane": "legacy",
+      "col": 3,
+      "type": "frontend",
+      "label": "当前主题页",
+      "sublabel": "当前有权Project版本",
+      "width": 200
+    },
+    {
+      "id": "owner",
+      "lane": "exact",
+      "col": 1,
+      "type": "backend",
+      "label": "保留原上下文",
+      "sublabel": "准确ID / revision / 管理hash",
+      "width": 200
+    },
+    {
+      "id": "original",
+      "lane": "exact",
+      "col": 2,
+      "type": "frontend",
+      "label": "原业务能力",
+      "sublabel": "蓝图 / 建议 / 督查 / 治理",
+      "width": 200
+    },
+    {
+      "id": "back",
+      "lane": "exact",
+      "col": 3,
+      "type": "security",
+      "label": "返回再核范围",
+      "sublabel": "无token→当前home或索引",
+      "width": 200
+    },
+    {
+      "id": "scope",
+      "lane": "failure",
+      "col": 0,
+      "type": "security",
+      "label": "Project与绑定检查",
+      "sublabel": "来源授权 / 当前generation",
+      "width": 200
+    },
+    {
+      "id": "error",
+      "lane": "failure",
+      "col": 1,
+      "type": "security",
+      "label": "明确错误与清空",
+      "sublabel": "撤回 / 坏包 / 失权",
+      "width": 200
+    },
+    {
+      "id": "recover",
+      "lane": "failure",
+      "col": 2,
+      "type": "frontend",
+      "label": "可解释退路",
+      "sublabel": "有权原能力 / 重试 / 选择",
+      "width": 200
+    },
+    {
+      "id": "reload",
+      "lane": "failure",
+      "col": 3,
+      "type": "backend",
+      "label": "重读当前范围",
+      "sublabel": "失权只回列表 / 登录",
+      "width": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "old-classify",
+      "from": "old",
+      "to": "classify"
+    },
+    {
+      "id": "classify-bare",
+      "from": "classify",
+      "to": "bare",
+      "label": "无上下文"
+    },
+    {
+      "id": "bare-entry",
+      "from": "bare",
+      "to": "entry",
+      "label": "就绪"
+    },
+    {
+      "id": "classify-owner",
+      "from": "classify",
+      "to": "owner",
+      "label": "其余保留",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "role": "branch"
+    },
+    {
+      "id": "owner-original",
+      "from": "owner",
+      "to": "original",
+      "label": "原Owner"
+    },
+    {
+      "id": "original-back",
+      "from": "original",
+      "to": "back",
+      "label": "查看/办理"
+    },
+    {
+      "id": "back-entry",
+      "from": "back",
+      "to": "entry",
+      "label": "重新授权",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "role": "return"
+    },
+    {
+      "id": "scope-error",
+      "from": "scope",
+      "to": "error",
+      "label": "失败",
+      "variant": "security"
+    },
+    {
+      "id": "error-recover",
+      "from": "error",
+      "to": "recover",
+      "label": "按权限",
+      "variant": "security"
+    },
+    {
+      "id": "recover-reload",
+      "from": "recover",
+      "to": "reload",
+      "label": "重试或选择"
+    },
+    {
+      "id": "reload-scope",
+      "from": "reload",
+      "to": "scope",
+      "label": "重核",
+      "route": "bottom-channel",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "不可丢的上下文",
+      "items": [
+        "inspection task_id仍为建议；正式任务保持work/tasks/:id。",
+        "未知参数、多对象组合、原hash和历史revision保留原Owner处理。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "当前绑定保留",
+      "items": [
+        "未绑定仍可用原概览/工作台；v1缺角色是索引提示，不是坏包。",
+        "Project失权无原能力降级；单块/文件错误留原页明确恢复。"
+      ]
+    }
+  ]
+}

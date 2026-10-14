@@ -1,0 +1,179 @@
+{
+  "evidenceKind": "pure-script-and-source",
+  "sha256": "5d57fd05a0afe549d30b054722665343727afc8881e1cba5e8f188763ec002e5",
+  "rendered": [
+    {
+      "theme": "default",
+      "page": "overview",
+      "title": "项目总览"
+    },
+    {
+      "theme": "default",
+      "page": "blueprint",
+      "title": "蓝图"
+    },
+    {
+      "theme": "default",
+      "page": "topics",
+      "title": "议题"
+    },
+    {
+      "theme": "default",
+      "page": "topic",
+      "title": "怎样让项目中的议题真正成为思考与执行的主线？"
+    },
+    {
+      "theme": "default",
+      "page": "suggestions",
+      "title": "工作建议"
+    },
+    {
+      "theme": "default",
+      "page": "work",
+      "title": "正式工作"
+    },
+    {
+      "theme": "default",
+      "page": "task",
+      "title": "实现全项目主题工作区"
+    },
+    {
+      "theme": "default",
+      "page": "reports",
+      "title": "督查"
+    },
+    {
+      "theme": "default",
+      "page": "resources",
+      "title": "项目资料"
+    },
+    {
+      "theme": "default",
+      "page": "agents",
+      "title": "项目智能体"
+    },
+    {
+      "theme": "default",
+      "page": "agent",
+      "title": "方案设计 · 工作台"
+    },
+    {
+      "theme": "default",
+      "page": "settings",
+      "title": "项目设置"
+    },
+    {
+      "theme": "default",
+      "page": "projects",
+      "title": "项目列表"
+    },
+    {
+      "theme": "research",
+      "page": "overview",
+      "title": "研究总览"
+    },
+    {
+      "theme": "research",
+      "page": "blueprint",
+      "title": "研究蓝图"
+    },
+    {
+      "theme": "research",
+      "page": "topics",
+      "title": "课题"
+    },
+    {
+      "theme": "research",
+      "page": "topic",
+      "title": "怎样让项目中的议题真正成为思考与执行的主线？"
+    },
+    {
+      "theme": "research",
+      "page": "suggestions",
+      "title": "工作建议"
+    },
+    {
+      "theme": "research",
+      "page": "work",
+      "title": "验证工作"
+    },
+    {
+      "theme": "research",
+      "page": "task",
+      "title": "实现全项目主题工作区"
+    },
+    {
+      "theme": "research",
+      "page": "reports",
+      "title": "研究复核"
+    },
+    {
+      "theme": "research",
+      "page": "resources",
+      "title": "项目资料"
+    },
+    {
+      "theme": "research",
+      "page": "agents",
+      "title": "项目智能体"
+    },
+    {
+      "theme": "research",
+      "page": "agent",
+      "title": "方案设计 · 工作台"
+    },
+    {
+      "theme": "research",
+      "page": "settings",
+      "title": "项目设置"
+    },
+    {
+      "theme": "research",
+      "page": "projects",
+      "title": "项目列表"
+    }
+  ],
+  "checkedTopicRegions": 5,
+  "checkedStateTemplates": 3,
+  "checkedRepresentativeDialogTemplates": 7,
+  "contrasts": [
+    {
+      "name": "light body",
+      "ratio": 13.501472609309568,
+      "pass": true
+    },
+    {
+      "name": "light secondary",
+      "ratio": 5.804290920416462,
+      "pass": true
+    },
+    {
+      "name": "light primary button",
+      "ratio": 5.473250081210842,
+      "pass": true
+    },
+    {
+      "name": "dark body",
+      "ratio": 13.379456978348934,
+      "pass": true
+    },
+    {
+      "name": "dark secondary",
+      "ratio": 8.023927902563933,
+      "pass": true
+    },
+    {
+      "name": "dark primary button",
+      "ratio": 9.181528030827963,
+      "pass": true
+    }
+  ],
+  "browser": "Not run: file protocol denied by browser policy; no alternate channel",
+  "limits": [
+    "Not browser DOM or clicks",
+    "Not responsive layout verification",
+    "Not focus trap or actual draft navigation verification",
+    "Not real API permission/state validation",
+    "Not user aesthetic acceptance"
+  ]
+}

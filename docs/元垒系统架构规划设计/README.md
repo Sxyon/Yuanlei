@@ -1,15 +1,18 @@
 # 元垒系统规划｜当前入口
 
-读者：用户与专项执行者。版本：2026-10-13 S05真实接通实施与联合验证。S04初步完成、未经严格验收；用户明确允许接续S05，完整重审S04不作为开工前置。此目录维护当前系统目标、专项设计、开发任务和事实进度。当前技术方案已采纳，后续执行读DEV-DB-002；S02调查基线只供归档追溯，启动任务必须核最新源码/HEAD。S03独立合成预览按R1确认范围实施，体验与阶段通过仍由用户判断；协作专项保持暂停。
+当前实施入口：SYS-DB-001第14节（最新逐页反馈14.8—14.9／DB-P07 R3）、DEV-DB-002第11节、LOG-DB-001第35节，以及图解21目录DB-P07／DB-G23。DB-P07 R3及补充已批准，弹窗样式未审核；下一独立任务为DEV11.9的DB-S05-R整体实施。S05未通过。全部项目页面及办理纳入主题；旧P06 R1及两角色format2建议被否定，不继续领取。S06暂停。
+
+读者：用户与专项执行者。版本：2026-10-14 全项目主题重整R3。S05初版审核不通过，入口R1仍留旧管理UI的方案被用户否定。S04初步完成、未经严格验收；用户明确允许接续S05，完整重审S04不作为开工前置。此目录维护当前系统目标、专项设计、开发任务和事实进度。当前技术方案已采纳，后续执行读DEV-DB-002；S02调查基线只供归档追溯，启动任务必须核最新源码/HEAD。S03独立合成预览按R1确认范围实施，体验与阶段通过仍由用户判断；协作专项保持暂停。
 
 ## 1. 先看图，再逐项核对
 
-从<a href="图解/10-stage-relations-20261011/stage-acceptance.html" target="_blank" rel="noopener">DB-G09｜S01—S07顺序推进与验收图</a>及[当前阶段审阅入口](DEV-MG-002-DB-D00设计审阅阅读计划.md)进入。按S01到S07依次实施验收；运行/保存/数据/迁移路线已采纳，具体工作包见DEV-DB-002。DB-G09保留顺序关系，图内当时状态由当前LOG覆盖。
+先从<a href="图解/21-full-project-theme-20261013/review.html" target="_blank" rel="noopener">DB-P07全项目设计</a>及[当前阅读计划](DEV-MG-002-DB-D00设计审阅阅读计划.md)进入，再核SYS第14节和DEV第11节。DB-G09保留原阶段关系供追溯，不能越过本轮全项目重整领取S06。
 
 <a href="图解/index.html" target="_blank" rel="noopener">打开图解导航</a>，或依次阅读下表。图均标明目标/候选/暂停范围；它们不是已上线能力截图。图文核对依据与校验状态在[整理记录](LOG-MG-002-目录重整与图文核对记录.md)。
 
 | 图号 | 图解 | 用于判断什么 | 文档与状态 |
 | --- | --- | --- | --- |
+| DB-P07／G23 | <a href="图解/21-full-project-theme-20261013/review.html" target="_blank" rel="noopener">完整设计打样</a>／<a href="图解/21-full-project-theme-20261013/theme-architecture.html" target="_blank" rel="noopener">目标架构</a> | 全部项目界面／办理、密度及能力边界 | SYS14.10；页面设计已批准，产品未实现；架构图复用原关系 |
 | PL-G01 | <a href="图解/01-platform/platform-target.html" target="_blank" rel="noopener">系统目标架构</a> | 项目、研讨、工作、上下文、准确结果和复盘如何连接 | SYS-PL-001；目标关系 |
 | DB-G02 | <a href="图解/02-dashboard/dashboard-architecture.html" target="_blank" rel="noopener">旧Dashboard候选架构</a> | 保留旧机制取舍供比较 | 历史候选；当前不定案 |
 | DB-G03 | <a href="图解/03-dashboard-tasks/dashboard-tasks.html" target="_blank" rel="noopener">旧Dashboard开发任务</a> | 追溯旧DB-D00/T01—13 | 已停止领取；历史用途 |
@@ -71,3 +74,5 @@ S01设计追溯入口为[SYS-DB-001第8节P1—P4 R1](SYS-DB-001-Dashboard系统
 暂停与新设计保留原已实现增量，未执行产品回滚、数据库清理或业务配置变更。
 
 当前S01的P1—P4已确认，落地修订由SYS第8.8节拥有，原用户确认和本地开发纠正见LOG第14节。设计先归档为3a0ff83a，产品随后在当前本地主checkout完成实施与验收，见SYS第8.9节及LOG第15节；S01用户已验收76/100“基本能用，审美较差”，作为后续设计依据。S02技术路线已采纳并归档，隔离试验事实与用户实验验收分别记录；指南已形成；S03 R1已确认并实施，产品预览与阶段判定见LOG，见LOG最新节。
+
+历史纠偏审阅稿（已被DB-P07替代）：<a href="图解/20-project-theme-entry-r1-20261013/review.html" target="_blank" rel="noopener">DB-P06｜项目主入口、两主题与原办理完整R1</a>；<a href="图解/20-project-theme-entry-r1-20261013/entry-flow.html" target="_blank" rel="noopener">DB-G21主入口／办理返回</a>及<a href="图解/20-project-theme-entry-r1-20261013/legacy-flow.html" target="_blank" rel="noopener">DB-G22旧链接／故障</a>。推荐、旧包与格式／Schema接续代价由SYS第13.4节拥有，DEV第10.6节交接，实际证据／限制见LOG第31节。上述P06已被否定，仅供历史；当前DB-P07已批准，按DEV11.9实施，S05未通过、S06暂停。
