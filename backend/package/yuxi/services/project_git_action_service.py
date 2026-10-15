@@ -254,12 +254,13 @@ async def enqueue_git_action_in_session(db, row):
     return task
 
 
-async def list_project_git_actions(*, db, uid, project_id, limit=50, offset=0):
+async def list_project_git_actions(*, db, uid, project_id, limit=50, offset=0, status=None):
     """项目所有者查看持久批准与执行时间线。"""
     if await ProjectRepository(db).get_active_selectable_for_user(project_id, uid) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     return [
-        row.to_dict() for row in await ProjectGitActionRepository(db).list(uid, project_id, limit=limit, offset=offset)
+        row.to_dict()
+        for row in await ProjectGitActionRepository(db).list(uid, project_id, limit=limit, offset=offset, status=status)
     ]
 
 

@@ -1,5 +1,7 @@
 <template>
-  <section class="topic-history">
+  <section class="topic-history" :class="{ 'continuous-history': presentation === 'continuous' }">
+    <template v-if="presentation === 'continuous' && !maintenanceOpen"><a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button @click="loadMore(true)">重试动态</a-button></template></a-alert><a-alert v-if="followupError" type="error" show-icon :message="followupError"><template #action><a-button @click="loadFollowup">重试讨论与确认</a-button></template></a-alert></template>
+    <component :is="presentation === 'continuous' ? Modal : 'div'" :open="maintenanceOpen" title="议题维护与实际达成" :footer="null" :width="720" @cancel="maintenanceOpen = false">
     <a-alert
       v-if="topic.execution_hint"
       show-icon
@@ -19,8 +21,8 @@
       >从此议题创建工作</RouterLink
     >
     <a-alert v-if="error" type="error" show-icon :message="error" />
-    <details v-if="!topic.archived_at" :open="!!action" class="topic-maintenance">
-      <summary>议题维护（关闭、重开、归档等）</summary>
+    <details v-if="!topic.archived_at" :open="presentation === 'continuous' || !!action" class="topic-maintenance">
+      <summary v-if="presentation !== 'continuous'">议题维护（关闭、重开、归档等）</summary>
       <a-select v-model:value="action" aria-label="议题操作" style="min-width: 160px">
         <a-select-option v-if="topic.admission_status === 'rejected'" value="resubmit"
           >重新提交纳入</a-select-option
@@ -74,22 +76,6 @@
       }}</a-button>
     </details>
     <a-button v-else :disabled="busy" @click="restore">恢复归档议题</a-button>
-    <div v-if="!topic.archived_at" class="topic-discussion">
-      <h4>持续研讨</h4>
-      <a-select v-model:value="discussionType" aria-label="讨论类型" style="min-width: 140px">
-        <a-select-option value="discussion">研讨</a-select-option>
-        <a-select-option value="reconsideration">重议</a-select-option>
-        <a-select-option value="correction">纠偏</a-select-option>
-      </a-select>
-      <a-textarea
-        v-model:value="content"
-        :maxlength="100000"
-        :auto-size="{ minRows: 5, maxRows: 20 }"
-        placeholder="写下讨论内容，支持 Markdown"
-      />
-      <a-button :disabled="busy || !content.trim()" @click="post">发布讨论</a-button>
-      <span>讨论类型表达意图，发帖不会自动重开议题。</span>
-    </div>
     <a-alert v-if="followupError" type="error" show-icon :message="followupError" />
     <a-button v-if="followupError" @click="loadFollowup">重新加载引用与确认</a-button>
     <TopicOutcomePanel
@@ -102,6 +88,7 @@
       @updated="refreshFollowup"
       @visibility-lost="failure => emit('visibility-lost', failure)"
     />
+    </component>
     <article v-if="focusedRevision" class="history-event">
       <h4>定位历史修订 {{ focusedRevision.number }}</h4>
       <h5>{{ focusedRevision.title }}</h5>
@@ -109,7 +96,7 @@
         :content="`${focusedRevision.expected_outcome || '未填写预期结果'}\n\n${focusedRevision.verification_conditions || '未填写核对条件'}`"
       />
     </article>
-    <article v-if="focusedDiscussion" class="history-event">
+    <article v-if="focusedDiscussion && presentation !== 'continuous'" class="history-event">
       <h4>定位原讨论</h4>
       <TopicDiscussionCard
         :project-id="projectId"
@@ -122,12 +109,14 @@
       @visibility-lost="failure => emit('visibility-lost', failure)"
       />
     </article>
-    <details :open="!!route?.query.comment_id || !!route?.query.revision">
-    <summary>历史时间线 · 最新在前（{{ events.length }} 个已加载节点）</summary>
+    <component :is="presentation === 'continuous' ? 'div' : 'details'" :open="presentation === 'continuous' || !!route?.query.comment_id || !!route?.query.revision">
+    <summary v-if="presentation !== 'continuous'">历史时间线 · {{ events.length }} 个已加载节点</summary>
+    <div v-if="presentation === 'continuous'" class="activity-heading"><h2>动态</h2><div class="timeline-tools"><button v-for="item in [['all','全部'],['discussion','讨论'],['work','执行'],['history','历史']]" :key="item[0]" :aria-pressed="eventFilter === item[0]" :class="{ active: eventFilter === item[0] }" @click="eventFilter = item[0]">{{ item[1] }}</button><select v-model="eventOrder" aria-label="动态顺序"><option value="asc">由早到晚</option><option value="desc">最新在前</option></select></div></div>
     <a-spin v-if="loading" />
-    <p v-if="!loading && !events.length">暂无历史节点。</p>
-    <article v-for="event in events" :key="event.sequence" class="history-event">
-      <header>
+    <p v-if="!loading && !events.length && !error">暂无历史节点。</p>
+    <article v-for="event in displayedEvents" :key="event.key || event.sequence" :id="event.comment ? `topic-discussion-${event.comment.id}` : undefined" :tabindex="event.comment ? -1 : undefined" class="history-event" :class="{ 'discussion-event': !!event.comment, 'work-event': event.kind === 'work' }">
+      <div v-if="event.kind === 'work'" class="timeline-work"><RouterLink :to="{name:'ProjectWorkTaskView',params:{project_id:projectId,task_id:event.work.id}}"><strong>{{ event.work.title }}</strong><p>{{ event.work.description?.slice(0,180) }}</p></RouterLink><span>{{ event.work.number }} · {{ overviewStatusLabel(event.work.status) }}</span></div>
+      <header v-else-if="presentation !== 'continuous' || !event.comment">
         <strong>{{ eventLabel(event) }}</strong
         ><span
           >{{ event.author_name || event.created_by || '历史记录' }} ·
@@ -153,7 +142,7 @@
           decisions.find((d) => d.id === event.details.decision_id)?.title ||
           event.details.decision_id
         }}
-        <router-link :to="{ query: { ...$route.query, decision_id: event.details.decision_id } }"
+        <router-link :to="{ query: { ...$route.query, decision_id: event.details.decision_id, comment_id: undefined, revision: undefined } }"
           >查看决策详情</router-link
         >
       </p>
@@ -162,6 +151,7 @@
         :to="{
           query: {
             ...$route.query,
+            decision_id: undefined,
             comment_id: event.details.parent_comment_id || event.details.comment_id
           }
         }"
@@ -178,8 +168,8 @@
         {{ event.details.explanation }}
         <a @click="openConfirmation(event.details.confirmation_id)">查看确认及当时条件</a>
       </p>
+      <details v-if="event.comment && (presentation === 'continuous' || event.comment.id !== focusedDiscussion?.id)" :open="presentation !== 'continuous' || expandedThreads.has(event.comment.id) || route?.query.comment_id === event.comment.id" class="timeline-discussion" @toggle="rememberThread(event.comment.id, $event)"><summary><strong>{{ event.comment.author_name || '讨论' }}</strong><span class="discussion-kind">{{ discussionLabels[event.comment.discussion_type] || '研讨' }}</span><span class="thread-preview">{{ (event.comment.content || '').slice(0,80) }}</span><time>{{ timestampLabel(event.created_at) }}</time></summary>
       <TopicDiscussionCard
-        v-if="event.comment && event.comment.id !== focusedDiscussion?.id"
         :project-id="projectId"
         :topic-id="topic.id"
         :comment="event.comment"
@@ -189,21 +179,42 @@
         @updated="refreshFollowup"
       @visibility-lost="failure => emit('visibility-lost', failure)"
       />
+      </details>
       <small v-if="event.comment && !event.revision_number">当时正文版本未知</small>
       <details v-if="event.revision">
         <summary>
           查看当时正文 · 修订 {{ event.revision.number
           }}{{ event.revision.origin === 'migration' ? '（迁移基线）' : '' }}
         </summary>
-        <h5>{{ event.revision.title }}</h5>
-        <MarkdownPreview :content="event.revision.summary || '暂无正文'" />
-        <MarkdownPreview
-          :content="`${event.revision.expected_outcome || '未填写预期结果'}\n\n${event.revision.verification_conditions || '未填写核对条件'}`"
-        />
+        <section class="revision-snapshot" :aria-label="`修订 ${event.revision.number} 正文快照`">
+          <div class="revision-snapshot-heading"><span>历史正文 · 修订 {{ event.revision.number }}</span><span>只读</span></div>
+          <h3>{{ event.revision.title }}</h3>
+          <div class="revision-snapshot-prose"><MarkdownPreview :content="event.revision.summary || '暂无正文'" /></div>
+          <div class="revision-snapshot-conditions"><section><h4>预期结果</h4><MarkdownPreview :content="event.revision.expected_outcome || '未填写预期结果'" /></section><section><h4>核对条件</h4><MarkdownPreview :content="event.revision.verification_conditions || '未填写核对条件'" /></section></div>
+        </section>
       </details>
     </article>
     <a-button v-if="nextBefore" :disabled="loading" @click="loadMore(false)">加载更早记录</a-button>
-    </details>
+    </component>
+    <div v-if="!topic.archived_at" class="topic-discussion">
+      <h4 v-if="presentation !== 'continuous'">持续研讨</h4>
+      <a-textarea
+        v-model:value="content"
+        :maxlength="100000"
+        :auto-size="{ minRows: 5, maxRows: 20 }"
+        aria-label="发表讨论"
+        placeholder="留下讨论、证据或反馈…"
+      />
+      <div class="composer-actions">
+      <a-select v-model:value="discussionType" aria-label="讨论类型" style="min-width: 140px">
+        <a-select-option value="discussion">研讨</a-select-option>
+        <a-select-option value="reconsideration">重议</a-select-option>
+        <a-select-option value="correction">纠偏</a-select-option>
+      </a-select>
+      <a-button :disabled="busy || !content.trim()" @click="post">{{ presentation === 'continuous' ? '发表' : '发布讨论' }}</a-button>
+      </div>
+      <span v-if="presentation !== 'continuous'">讨论类型表达意图，发帖不会自动重开议题。</span>
+    </div>
   </section>
 </template>
 
@@ -216,12 +227,14 @@ import TopicOutcomePanel from './TopicOutcomePanel.vue'
 import { Modal } from 'ant-design-vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
-import { describeBoardError } from '@/utils/governanceBoard'
+import { describeBoardError, overviewStatusLabel } from '@/utils/governanceBoard'
 
 const props = defineProps({
   projectId: { type: String, required: true },
   topic: { type: Object, required: true },
   decisions: { type: Array, default: () => [] },
+  presentation: { type: String, default: 'history' },
+  works: { type: Array, default: () => [] },
   draft: { type: Object, default: () => ({ content: '', discussionType: 'discussion' }) }
 })
 const emit = defineEmits(['updated', 'visibility-lost'])
@@ -234,7 +247,26 @@ const followupError = ref(''),
   followupReady = ref(false)
 const dispositionLabels = { adopted: '采纳', partial: '部分采纳', rejected: '不采纳' }
 let followupGeneration = 0
+const maintenanceOpen = ref(false)
+defineExpose({ openMaintenance: () => { maintenanceOpen.value = true } })
 const events = ref([])
+const eventFilter = ref('all'), eventOrder = ref('asc')
+const displayedEvents = computed(() => {
+  if (props.presentation !== 'continuous') return events.value
+  const sourceEvents = [...events.value]
+  if (focusedDiscussion.value && !sourceEvents.some(item => item.comment?.id === focusedDiscussion.value.id)) sourceEvents.push({ kind: 'comment', key: `comment:${focusedDiscussion.value.id}`, comment: focusedDiscussion.value, created_at: focusedDiscussion.value.created_at })
+  const rows = [...sourceEvents, ...props.works.map(work => ({ kind: 'work', key: `work:${work.id}`, work, created_at: work.created_at }))]
+  return rows.filter(event => eventFilter.value === 'all' || (event.kind === 'work' ? 'work' : event.comment ? 'discussion' : 'history') === eventFilter.value)
+    .sort((a, b) => (Date.parse(a.created_at) - Date.parse(b.created_at) || (a.sequence || 0) - (b.sequence || 0)) * (eventOrder.value === 'asc' ? 1 : -1))
+})
+const expandedThreads = ref(new Set(props.draft.expandedThreads || []))
+function rememberThread(id, event) {
+  const values = new Set(expandedThreads.value)
+  if (event.target.open) values.add(id)
+  else values.delete(id)
+  expandedThreads.value = values
+  sharedDraft.expandedThreads = [...values]
+}
 const nextBefore = ref(null)
 const loading = ref(false)
 const busy = ref(false)
@@ -323,8 +355,21 @@ async function loadFollowup() {
     if (!active || seq !== followupGeneration || topicId !== props.topic.id) return
     focusedDiscussion.value = discussion
     focusedRevision.value = revision
+    if (discussion && props.presentation === 'continuous') {
+      eventFilter.value = 'all'
+      await nextTick()
+      const target = typeof document === 'undefined' ? null : document.getElementById(`topic-discussion-${discussion.id}`)
+      target?.scrollIntoView({ block: 'center' })
+      target?.focus({ preventScroll: true })
+    }
   } catch (failure) {
-    if (active && seq === followupGeneration) followupError.value = describeBoardError(failure)
+    if (active && seq === followupGeneration) {
+      followupError.value = describeBoardError(failure)
+      if ([401, 403, 404].includes(failure?.status || failure?.response?.status)) {
+        candidates.value = []; confirmations.value = []; focusedDiscussion.value = focusedRevision.value = null
+        emit('visibility-lost', failure)
+      }
+    }
   }
 }
 async function refreshFollowup() {
@@ -332,6 +377,7 @@ async function refreshFollowup() {
   await Promise.all([loadMore(true), loadFollowup()])
 }
 async function openConfirmation(id) {
+  maintenanceOpen.value = true
   await nextTick()
   const record = document.getElementById(`topic-confirmation-${id}`)
   if (record) {
@@ -352,10 +398,17 @@ async function loadMore(reset = false) {
       reset ? null : nextBefore.value
     )
     if (seq !== generation || topicId !== props.topic.id) return
+    error.value = ''
     events.value = reset ? result.items : [...events.value, ...result.items]
     nextBefore.value = result.next_before
   } catch (failure) {
-    if (seq === generation) error.value = describeBoardError(failure)
+    if (seq === generation) {
+      error.value = describeBoardError(failure)
+      if ([401, 403, 404].includes(failure?.status || failure?.response?.status)) {
+        events.value = []; nextBefore.value = null
+        emit('visibility-lost', failure)
+      }
+    }
   } finally {
     if (seq === generation) loading.value = false
   }
@@ -475,7 +528,7 @@ watch(
 )
 </script>
 
-<style scoped>
+<style scoped lang="less">
 summary { cursor: pointer; min-height: 36px; color: var(--gray-700); }
 .source-work-link {
   color: var(--main-color);
@@ -503,4 +556,25 @@ summary { cursor: pointer; min-height: 36px; color: var(--gray-700); }
 .history-event details {
   margin-top: 12px;
 }
+
+.timeline-tools { display:flex; gap:8px; margin:16px 0; > :deep(.ant-select) { min-width:120px; } }
+.timeline-work { padding:16px; background:var(--gray-25); border:1px solid var(--gray-150); border-radius:8px; a { display:block; color:var(--color-text); text-decoration:none; } a:hover strong { color:var(--main-color); } p { font-size:14px; line-height:1.6; } span { font-size:12px; color:var(--color-text-secondary); } }
+.timeline-discussion { margin-top:8px; summary { cursor:pointer; line-height:1.8; overflow-wrap:anywhere; } }
+
+.continuous-history { display:block; border-top:1px solid var(--gray-150); padding-top:22px; .activity-heading { display:flex; align-items:center; justify-content:space-between; gap:15px; flex-wrap:wrap; margin-bottom:20px; h2 { margin:0; font-size:18px; } } .timeline-tools { margin:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap; button { font-size:12px; border:0; background:none; padding:5px 8px; min-height:32px; color:var(--color-text-secondary); border-radius:6px; cursor:pointer; } button.active { color:var(--main-color); background:var(--main-10); } select { font-size:11px; border:0; padding:5px; background:transparent; color:var(--color-text-secondary); } }
+.history-event { border:0; padding:5px 8px; margin-bottom:16px; font-size:13px; header { align-items:center; gap:10px; strong { font-weight:400; } span { margin-left:auto; font-size:11px; } } >p { font-size:12px; color:var(--color-text-secondary); } >details:not(.timeline-discussion) { font-size:11px; margin-top:4px; >summary { min-height:24px; } } }
+.discussion-event { padding:0; }.timeline-discussion { background:var(--gray-0); border:1px solid var(--gray-150); border-radius:9px; margin:0; overflow:hidden; >summary { display:flex; align-items:center; list-style:none; gap:12px; padding:17px 18px; font-size:13px; min-width:0; >strong { white-space:nowrap; font-weight:500; } time { white-space:nowrap; font-size:11px; color:var(--color-text-secondary); } } &[open] .thread-preview { display:none; } :deep(.discussion-card) { padding:0 22px 20px; border:0; } }.thread-preview { flex:1; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:var(--color-text-secondary); }.discussion-kind { color:var(--color-text-secondary); font-size:11px; }.work-event { padding:0; }.timeline-work { padding:17px 20px; background:var(--gray-0); border:1px solid var(--gray-150); border-left:3px solid var(--main-color); border-radius:7px; strong { font-size:15px; } p { font-size:12px; color:var(--color-text-secondary); margin:6px 0 10px; } }
+.topic-discussion { margin-top:24px; background:var(--gray-0); border:1px solid var(--gray-150); border-radius:9px; padding:14px; gap:8px; :deep(textarea) { border:0; background:transparent; padding:4px; min-height:100px; } }.composer-actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; :deep(.ant-select-selector) { border:0; background:transparent; box-shadow:none!important; } }
+}
+@media(max-width:760px) { .continuous-history .timeline-discussion >summary { gap:8px; flex-wrap:wrap; padding:14px; .thread-preview { flex-basis:100%; order:5; white-space:normal; } } }
+
+.continuous-history { border-top:0; padding-top:0; .activity-heading { padding:0 4px 12px; border-bottom:1px solid var(--gray-150); margin-bottom:20px; } .history-event:not(.discussion-event):not(.work-event) { margin-left:8px; border-left:2px solid var(--gray-150); padding:8px 14px; color:var(--color-text-secondary); } .timeline-discussion>summary { font-size:14px; } .timeline-discussion>summary>strong { font-weight:600; color:var(--color-text); } }
+
+/* 每条历史快照有完整外框，展开后的正文不与下一条动态相连。 */
+.revision-snapshot { margin:12px 0 20px; padding:20px 24px; border:1px solid var(--gray-150); border-radius:8px; background:var(--gray-0); color:var(--color-text); font-size:15px; line-height:1.8; min-width:0; overflow-wrap:anywhere; }
+.revision-snapshot-heading { display:flex; justify-content:space-between; gap:12px; padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid var(--gray-150); font-size:12px; color:var(--color-text-secondary); }
+.revision-snapshot>h3 { font-size:18px; line-height:1.6; margin:0 0 18px; color:var(--color-text); }
+.revision-snapshot-conditions { margin-top:24px; padding-top:18px; border-top:1px solid var(--gray-150); display:grid; gap:16px; h4 { margin:0 0 8px; font-size:13px; font-weight:600; color:var(--color-text-secondary); } }
+.revision-snapshot :deep(.yk-markdown-preview) { font-size:15px; line-height:1.8; }
+@media(max-width:760px) { .revision-snapshot { padding:16px; margin-bottom:18px; }.revision-snapshot>h3 { font-size:17px; } }
 </style>

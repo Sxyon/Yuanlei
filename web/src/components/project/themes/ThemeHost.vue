@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { ArrowLeft, PanelLeft } from '@lucide/vue'
+import CapabilityPreview from './CapabilityPreview.vue'
 import ThemeBlockFrame from './ThemeBlockFrame.vue'
 import ThemeObjectDetail from './ThemeObjectDetail.vue'
 import { themeComponentRegistry } from './registry'
@@ -221,7 +222,8 @@ defineExpose({ navigate, selectedTopicId, pageId, captureContext })
         <template v-if="detailEvent"><button data-return class="theme-back" @click="returnToPage"><ArrowLeft :size="16" />返回 {{ page.title }}</button><ThemeObjectDetail v-if="detail?.state === 'ready'" :result="detail" :object-type="detailEvent.objectType" :project-name="projectName" :simulation="simulation" @navigate="navigate" /><ThemeBlockFrame v-else :block="{ id: 'object-detail', title: '对象详情' }" :result="detail || { state: 'loading' }" @retry="openObject(detailEvent)" /></template>
         <template v-else>
           <header class="theme-intro"><small>{{ pack.theme.name }} / {{ projectName }}</small><h1 tabindex="-1">{{ page.title }}</h1><p>{{ page.description }}</p></header>
-          <div class="theme-page-grid" :class="[page.layout, { 'has-summary': page.blocks.some(block => block.region === 'summary') }]">
+          <CapabilityPreview v-if="page.capability" :capability="page.capability" :topic-label="pack.theme.topicLabel" />
+          <div v-else class="theme-page-grid" :class="[page.layout, { 'has-summary': page.blocks.some(block => block.region === 'summary') }]">
             <div v-for="region in regions" :key="region" :class="`theme-region-${region}`">
               <ThemeBlockFrame v-for="block in page.blocks.filter(item => item.region === region)" :key="block.id" :block="block" :result="results[block.id] || { state: 'loading' }" @navigate="navigate" @retry="loadPage">
                 <component :is="themeComponentRegistry[block.type]" v-bind="componentProps(block)" v-on="componentEvents(block)" />

@@ -372,13 +372,14 @@ class ProjectThemeService:
 
 
 async def install_builtin_themes(db, store=None):
-    """正式migrator登记原S03内置包，原版本字节不得覆盖。"""
+    """正式migrator登记平台内置包，既存来源和版本字节保持。"""
     store = store or ThemeStore()
     repo = ProjectThemeRepository(db)
-    for filename in ("default", "research"):
+    for filename in ("default", "research", "workspace-default", "workspace-research", "workspace-research-reading"):
         raw = (Path(__file__).parents[1] / "themes" / "builtin" / f"{filename}.theme.zip").read_bytes()
         parsed = parse_package(raw)
-        source_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"yuanlei:theme:builtin:{filename}"))
+        source_name = "workspace-research" if filename == "workspace-research-reading" else filename
+        source_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"yuanlei:theme:builtin:{source_name}"))
         source = await repo.source(source_id, "", None, lock=True)
         if source is None:
             await repo.create(source_id, "builtin", None, None, parsed.definition.theme.name, "平台随版本发布的内置包")

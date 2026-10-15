@@ -25,7 +25,7 @@ test('两份独立正式定义加载；显示别名与原业务绑定分别保�
 test('结构与跨引用负例按正确原因拒绝，不跳过坏块', async () => {
   const valid = await sample('research')
   const cases = [
-    ['invalid_package', p => { p.manifest.componentAbi = 2 }],
+    ['invalid_package', p => { p.manifest.componentAbi = 3 }],
     ['invalid_package', p => { p.manifest.formatVersion = '1' }],
     ['invalid_package', p => { p.theme.script = 'alert(1)' }],
     ['invalid_package', p => { p.theme.pages[0].blocks[0].type = 'iframe' }],

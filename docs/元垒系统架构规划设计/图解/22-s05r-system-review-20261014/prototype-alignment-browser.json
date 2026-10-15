@@ -1,0 +1,137 @@
+{
+  "recorded_on": "2026-10-15",
+  "prototype_sha256": "9fbfdbce2d041798634a425cabea7a474be00c9eaf13bc6b24bc1c21d8edef43",
+  "method": "批准HTML源码逐段核对；产品通过CUA实际DOM、样式、焦点及正常鼠标/键盘交互核验。file://原型受浏览器策略禁止，未目视原型或做像素比对。",
+  "project_id": "2ab35928-be32-4905-b499-7c0b01acf772",
+  "theme": "默认 · 项目管理 2.0.0，显式选择，generation 4",
+  "observations": [
+    {
+      "page": "default-overview",
+      "viewport": 1360,
+      "header_visible": false,
+      "attention_xy": [
+        322,
+        24
+      ],
+      "blueprint_xy": [
+        967.0859375,
+        24
+      ],
+      "progress_xy": [
+        322,
+        245.3359375
+      ],
+      "activity_xy": [
+        967.0859375,
+        300.6171875
+      ],
+      "horizontal_overflow": false
+    },
+    {
+      "page": "topic-filter-return",
+      "expanded_after_execution_then_all": true,
+      "composer_y": 1428.3515625,
+      "feed_y": 497.8125,
+      "standalone_focused_card": false
+    },
+    {
+      "page": "discussion-deep-link",
+      "focused_id": "topic-discussion-1bf17e69-5fee-401e-abec-7a95cd7c673c",
+      "thread_open": true,
+      "thread_y": 340.90625,
+      "viewport_height": 969
+    },
+    {
+      "page": "decision-deep-link",
+      "focused_id": "topic-decision-9d24285c-86ec-4e03-b3df-eed26e105f21",
+      "group_open": true,
+      "decision_open": true,
+      "decision_y": 417.3125
+    },
+    {
+      "page": "settings-375",
+      "width": 375,
+      "layout_height": 1168.3671875,
+      "overflow_style": "visible",
+      "delete_button_y": 846.8671875,
+      "viewport_height": 900,
+      "horizontal_overflow": false,
+      "delete_executed": false
+    },
+    {
+      "page": "topic-375-dark",
+      "initial_result": "failed: html.dark下仍读到浅色背景，完整全局选择器修正后重验",
+      "corrected_background": "rgb(21, 29, 27)",
+      "corrected_text": "rgb(237, 242, 238)",
+      "width": 375,
+      "horizontal_overflow": false
+    },
+    {
+      "page": "blueprint-hover",
+      "expanded": "true",
+      "titles": [
+        "两周试点执行与复盘",
+        "社区阅读空间试点：筹备复核后"
+      ]
+    },
+    {
+      "page": "blueprint-read-saved",
+      "draft_leaked": false,
+      "draft_notice": "有未保存草稿，切换编辑可继续。",
+      "h1_count": 1,
+      "draft_restored_in_editor": true,
+      "test_input_restored": true
+    },
+    {
+      "page": "work-directory",
+      "search_y": 20,
+      "new_button_y": 24,
+      "view_in_same_toolbar": true,
+      "secondary_toolbar": false,
+      "columns": [
+        "工作",
+        "进展",
+        "当前动作",
+        ""
+      ],
+      "horizontal_overflow": false
+    },
+    {
+      "page": "work-detail",
+      "result_x": 322,
+      "basis_x": 967.0859375,
+      "basis_title": "工作依据 调整来源",
+      "basis_visible": true,
+      "management_open": false,
+      "horizontal_overflow": false
+    },
+    {
+      "page": "reports",
+      "interventions_x": 322,
+      "reports_x": 967.0859375,
+      "horizontal_overflow": false
+    },
+    {
+      "page": "topic-reading-typography",
+      "font_size": "16px",
+      "line_height": "30.4px",
+      "owner": "MarkdownPreview .yk-markdown-preview",
+      "note": "通过真实组件根类校正选择器，未修改原Markdown内容"
+    },
+    {
+      "page": "settings-theme-candidate-close",
+      "cancel_retains_draft": true,
+      "discard_then_reopen_reads_original": true,
+      "persisted_edit": false,
+      "published": false,
+      "note": "仅改变未保存合成名称；取消、明确放弃、重开回读原候选均由真实UI核验"
+    }
+  ],
+  "limits": [
+    "不是像素一致证明",
+    "不是用户验收",
+    "本轮临时视口已复原、最终恢复浅色",
+    "截图仅本机临时附件，不提交账号或其他日常项目画面"
+  ],
+  "independent_source_review": "用量恢复后完成；失权迟到请求问题修正并核回，无剩余实质源码阻塞；不代表用户验收或像素一致"
+}

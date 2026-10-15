@@ -86,3 +86,5 @@ web/src/utils/__tests__/
 
 
 .obsidian/
+
+.agents/

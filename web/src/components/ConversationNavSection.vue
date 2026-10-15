@@ -83,48 +83,8 @@
                     >
                       <Plus :size="16" />
                     </button>
-                    <a-dropdown
-                      :trigger="['click']"
-                      :disabled="projectPendingId === group.project.id"
-                    >
-                      <template #overlay>
-                        <a-menu>
-                          <a-menu-item
-                            key="dashboard"
-                            :icon="h(LayoutDashboard, { size: 14 })"
-                            @click="emit('open-project-dashboard', group.project)"
-                            >项目 Dashboard</a-menu-item
-                          >
-                          <a-menu-item
-                            key="workbench"
-                            :icon="h(ClipboardList, { size: 14 })"
-                            @click="emit('open-project-workbench', group.project)"
-                            >项目工作台</a-menu-item
-                          >
-                          <a-menu-item
-                            key="git"
-                            :icon="h(GitFork, { size: 14 })"
-                            @click="emit('manage-project-git', group.project)"
-                            >项目设置</a-menu-item
-                          >
-                          <a-menu-item
-                            key="delete"
-                            danger
-                            :icon="h(Trash2, { size: 14 })"
-                            @click="confirmDeleteProject(group.project)"
-                            >删除项目</a-menu-item
-                          >
-                        </a-menu>
-                      </template>
-                      <button
-                        type="button"
-                        class="project-action project-more"
-                        aria-label="项目操作"
-                        @click.stop
-                      >
-                        <MoreVertical :size="16" />
-                      </button>
-                    </a-dropdown>
+                    <button type="button" class="project-action project-home" :aria-label="`进入项目“${group.project.name}”`" title="进入项目" @click.stop="emit('open-project-dashboard', group.project)"><ArrowRight :size="16" /></button>
+
                   </div>
                   <CollapseTransition>
                     <div v-if="isProjectExpanded(group.project.id)" class="project-conversations">
@@ -204,19 +164,14 @@
 <script setup>
 import ProjectFilters from './ProjectFilters.vue'
 import { filterProjects } from '@/utils/projectSelection'
-import { computed, h, ref } from 'vue'
-import { Modal } from 'ant-design-vue'
+import { computed, ref } from 'vue'
 import {
-  ClipboardList,
   ChevronDown,
   FolderClosed,
   FolderOpen,
-  GitFork,
-  LayoutDashboard,
+  ArrowRight,
   Loader2,
-  MoreVertical,
   Plus,
-  Trash2
 } from '@lucide/vue'
 import ConversationNavItem from '@/components/ConversationNavItem.vue'
 import CollapseTransition from '@/components/common/CollapseTransition.vue'
@@ -293,18 +248,7 @@ const toggleProject = (projectId) => {
   expandedProjects.value = next
 }
 
-const confirmDeleteProject = (project) => {
-  Modal.confirm({
-    title: `删除项目“${project.name}”？`,
-    icon: null,
-    centered: true,
-    okText: '删除项目',
-    okButtonProps: { danger: true },
-    cancelText: '取消',
-    content: '项目中的对话会被删除，项目文件夹和其中的文件会保留。',
-    onOk: () => emit('delete-project', project.id)
-  })
-}
+
 </script>
 
 <style lang="less" scoped>

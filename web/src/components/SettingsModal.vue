@@ -100,6 +100,7 @@
             <HardDrive class="icon" :size="18" />
             <span>专属沙盒</span>
           </div>
+          <button v-if="userStore.isLoggedIn" type="button" class="sider-item settings-git-tab" :class="{ activesec: activeTab === 'gitConnections' }" @click="activeTab = 'gitConnections'"><GitBranch class="icon" :size="18" /><span>Git 连接</span></button>
         </div>
 
         <div v-if="showStarCard" class="settings-star-card">
@@ -116,7 +117,7 @@
               <X :size="14" />
             </button>
           </div>
-          <p class="star-card-title">给 Yuxi 点个 Star</p>
+          <p class="star-card-title">给 Yuanlei 点个 Star</p>
           <p class="star-card-description">
             如果这个项目帮到了你，欢迎去 GitHub 点亮一个 Star，让更多人看到它。
           </p>
@@ -178,6 +179,7 @@
         >
           专属沙盒
         </div>
+        <button v-if="userStore.isLoggedIn" type="button" class="nav-item settings-git-tab" :class="{ active: activeTab === 'gitConnections' }" @click="activeTab = 'gitConnections'">Git 连接</button>
         <div
           class="nav-item"
           :class="{ active: activeTab === 'base' }"
@@ -250,6 +252,8 @@
             <CodingSandboxSettingsCard />
           </div>
 
+          <div v-show="activeTab === 'gitConnections'" v-if="userStore.isLoggedIn && loadedTabs.has('gitConnections')"><GitConnectionsSettingsCard :active="visible && activeTab === 'gitConnections'" /></div>
+
           <div v-show="activeTab === 'base'" v-if="userStore.isAdmin && loadedTabs.has('base')">
             <BasicSettingsSection />
           </div>
@@ -281,6 +285,7 @@ import {
   CircleUser,
   ExternalLink,
   HardDrive,
+  GitBranch,
   Key,
   KeyRound,
   ScanText,
@@ -303,6 +308,7 @@ const CodingCredentialSettingsCard = createAsyncPanel(
 const CodingSandboxSettingsCard = createAsyncPanel(
   () => import('@/components/CodingSandboxSettingsCard.vue')
 )
+const GitConnectionsSettingsCard = createAsyncPanel(() => import('@/components/GitConnectionsSettingsCard.vue'))
 const BasicSettingsSection = createAsyncPanel(() => import('@/components/BasicSettingsSection.vue'))
 const OCRSettingsSection = createAsyncPanel(() => import('@/components/OCRSettingsSection.vue'))
 const ApiKeyManagementComponent = createAsyncPanel(
@@ -343,7 +349,7 @@ const visible = computed({
 
 const availableTabs = computed(() => {
   const tabs = []
-  if (userStore.isLoggedIn) tabs.push('account', 'apiKeys', 'agentEnv', 'codingCredentials', 'codingSandboxes')
+  if (userStore.isLoggedIn) tabs.push('account', 'apiKeys', 'agentEnv', 'codingCredentials', 'codingSandboxes', 'gitConnections')
   if (userStore.isAdmin) tabs.push('base', 'ocr', 'user')
   if (userStore.isSuperAdmin) tabs.push('department')
   return tabs
@@ -392,6 +398,7 @@ watch(
 </script>
 
 <style lang="less">
+.settings-modal .settings-git-tab { border:0; background:transparent; text-align:left; font:inherit; width:100%; cursor:pointer; &:focus-visible { outline:2px solid var(--main-color); outline-offset:-2px; } }
 .settings-modal.ant-modal {
   .ant-modal-content {
     border: 1px solid var(--gray-200);

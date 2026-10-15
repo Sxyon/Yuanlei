@@ -80,7 +80,7 @@ def test_valid_definition_preserves_display_alias_and_normalizes_defaults():
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
-        (lambda p: p["manifest"].update(componentAbi=2), "componentAbi"),
+        (lambda p: p["manifest"].update(componentAbi=3), "componentAbi"),
         (lambda p: p["manifest"].update(formatVersion="1"), "formatVersion"),
         (lambda p: p["manifest"].update(formatVersion=True), "formatVersion"),
         (lambda p: p["theme"].update(script="alert(1)"), "extra_forbidden"),
@@ -197,3 +197,27 @@ def test_loaded_reference_is_host_metadata_and_cross_references_still_validate()
     data["theme"]["pages"][0]["blocks"][1]["binding"]["alias"] = "absent"
     with pytest.raises(ValidationError, match="resource_reference"):
         LoadedThemePackage.model_validate(data)
+
+
+def test_workspace_capabilities_require_explicit_abi_and_base():
+    """新能力只能由ABI2消费者解释，旧包与未知能力拒绝误读。"""
+    package = valid_package()
+    package["theme"]["pages"] = [
+        {"id": "read-custom", "title": "研究文稿", "description": "蓝图读写", "layout": "reading", "capability": "blueprints"}
+    ]
+    with pytest.raises(ValidationError, match="capability_abi"):
+        ThemePackage.model_validate(package)
+    package["manifest"]["componentAbi"] = 2
+    with pytest.raises(ValidationError, match="base_version"):
+        ThemePackage.model_validate(package)
+    package["theme"]["baseVersion"] = 1
+    parsed = ThemePackage.model_validate(package)
+    assert parsed.theme.pages[0].capability == "blueprints"
+    assert parsed.theme.pages[0].blocks == []
+    duplicate = deepcopy(package)
+    duplicate["theme"]["pages"].append({**duplicate["theme"]["pages"][0], "id": "other"})
+    with pytest.raises(ValidationError, match="duplicate_capability"):
+        ThemePackage.model_validate(duplicate)
+    package["theme"]["pages"][0]["capability"] = "arbitrary-api"
+    with pytest.raises(ValidationError):
+        ThemePackage.model_validate(package)

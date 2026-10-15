@@ -1,14 +1,14 @@
 <template>
   <section>
-    <div class="toolbar">
-      <span>{{ kind === 'history' ? 'Git 审批与执行历史' : '工作空间占用与排队' }}</span>
+    <div v-if="items === null" class="toolbar">
+      <span>{{ kind === 'history' ? 'Git 审批与执行历史' : kind === 'pending' ? '待人工审批' : '工作空间占用与排队' }}</span>
       <a-button size="small" :loading="loading" @click="load()">刷新</a-button>
     </div>
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <a-spin :spinning="loading">
       <a-empty
         v-if="!rows.length && !error && !loading"
-        :description="kind === 'history' ? '暂无 Git 审批记录' : '当前没有工作空间占用或等待任务'"
+        :description="kind === 'history' ? '暂无 Git 审批记录' : kind === 'pending' ? '暂无待人工审批' : '当前没有工作空间占用或等待任务'"
       />
       <template v-if="kind === 'occupancies'">
         <article v-for="resource in groups" :key="resource.id" class="activity-card">
@@ -77,7 +77,7 @@
           </p>
           <a-button size="small" @click="selected = row">查看动作与时间线</a-button>
         </article>
-        <div class="toolbar">
+        <div v-if="kind === 'history'" class="toolbar">
           <a-button :disabled="offset === 0 || loading" @click="changePage(-1)">上一页</a-button>
           <span>第 {{ offset / pageSize + 1 }} 页</span>
           <a-button :disabled="rows.length < pageSize || loading" @click="changePage(1)"
@@ -155,11 +155,15 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { projectApi } from '@/apis/project_api'
+import { useUserStore } from '@/stores/user'
+const user = useUserStore()
 const props = defineProps({
   projectId: { type: String, required: true },
   kind: { type: String, required: true },
-  resources: { type: Array, default: () => [] }
+  resources: { type: Array, default: () => [] },
+  items: { type: Array, default: null }, autoRefresh: { type: Boolean, default: true }
 })
+const emit = defineEmits(['refresh'])
 const rows = ref([]),
   selected = ref(null),
   loading = ref(false),
@@ -187,6 +191,7 @@ const groups = computed(() =>
   }))
 )
 const load = async (quiet = false) => {
+  if (props.items !== null) { rows.value = props.items; emit('refresh'); return }
   const version = generation,
     requestVersion = ++loadVersion
   if (!quiet) loading.value = true
@@ -242,7 +247,7 @@ const release = async (slot) => {
   }
 }
 watch(
-  [() => props.projectId, () => props.kind],
+  [() => props.projectId, () => props.kind, () => user.uid],
   () => {
     generation++
     clearInterval(timer)
@@ -252,7 +257,7 @@ watch(
     busy.value = ''
     error.value = ''
     load()
-    timer = setInterval(() => load(true), 5000)
+    if (props.autoRefresh && props.items === null) timer = setInterval(() => load(true), 5000)
   },
   { immediate: true }
 )
@@ -279,6 +284,16 @@ const statusColor = (value) =>
         ? 'orange'
         : 'blue'
 const time = (value) => (value ? new Date(value).toLocaleString() : '—')
+watch(() => props.items, items => {
+  if (items === null) return
+  rows.value = items
+  if (selected.value) {
+    const current = items.find(row => row.id === selected.value.id)
+    selected.value = current || null
+    if (!current) { generation++; busy.value = ''; error.value = '' }
+  }
+}, { immediate: true })
+defineExpose({ openAction: id => { selected.value = rows.value.find(item => item.id === id) || null } })
 </script>
 <style scoped>
 .toolbar {

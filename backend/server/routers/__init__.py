@@ -41,6 +41,8 @@ from server.routers.tool_router import tools
 from server.routers.user_router import user_router
 from server.routers.workspace_router import workspace, workspace_knowledge
 
+from server.routers.project_files_router import project_files
+
 router = APIRouter()
 
 # 基础系统接口：健康检查、配置、认证与聊天主链路。
@@ -52,6 +54,7 @@ router.include_router(agent_invocation_channel_router)  # /api/agent-invocation/
 router.include_router(agent_invocation_eval_router)  # /api/agent-invocation/eval/*
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
 router.include_router(project_themes)
+router.include_router(project_files)
 router.include_router(projects)  # /api/projects* 项目创建与选择
 router.include_router(project_work)  # /api/projects/{id}/work/* 独立项目工作任务
 router.include_router(project_work_executions)  # /api/projects/{id}/work/tasks/*/executions 与 Agent 工作台

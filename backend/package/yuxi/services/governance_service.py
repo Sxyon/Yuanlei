@@ -1582,3 +1582,60 @@ async def page_governance_comments(*, project_id, topic_id, db, user, offset, li
         "contextTopic": topic,
         "pagination": {"offset": offset, "limit": limit, "total": total},
     }
+
+
+async def get_project_recent_activity(*, project_id: str, db: AsyncSession, user: User) -> dict:
+    """项目总览动态使用原历史事实，准确定位回复、决定或正文。"""
+    await _require_project(project_id=project_id, db=db, user=user)
+    events, independent = await GovernanceRepository(db).recent_project_activity(
+        project_id=project_id, uid=str(user.uid), limit=8
+    )
+    items = []
+    for event, topic, comment in events:
+        decision_id = (event.details or {}).get("decision_id")
+        kind = "comment" if comment else "decision" if decision_id else "topic"
+        items.append(
+            {
+                "event_key": f"{topic.id}:{event.sequence}",
+                "kind": kind,
+                "id": comment.id if comment else decision_id or topic.id,
+                "topic_id": topic.id,
+                "title": topic.title,
+                "summary": comment.content
+                if comment
+                else event.reason
+                or {
+                    "created": "提出议题",
+                    "revised": "修订提议",
+                    "admitted": "纳入议题",
+                    "rejected": "拒绝纳入",
+                    "close": "关闭议题",
+                    "reopen": "重开议题",
+                    "archive": "归档议题",
+                    "restore": "恢复议题",
+                    "decision_created": "新增决定草案",
+                    "decision_approved": "批准决定",
+                    "decision_revised": "修订决定草案",
+                    "decision_revoked": "撤销决定",
+                }.get(event.kind, "更新了议题记录"),
+                "author_name": event.author_name,
+                "comment_id": comment.parent_comment_id or comment.id if comment else None,
+                "created_at": format_utc_datetime(event.created_at),
+                "event_kind": event.kind,
+            }
+        )
+    items.extend(
+        {
+            "event_key": f"decision:{row.id}:{event.sequence if event else 0}",
+            "kind": "decision",
+            "id": row.id,
+            "topic_id": None,
+            "title": row.title,
+            "summary": row.conclusion,
+            "author_name": event.author_name if event else row.created_by or "历史未记录",
+            "created_at": format_utc_datetime(event.created_at if event else row.updated_at),
+        }
+        for row, event in independent
+    )
+    items.sort(key=lambda item: (item["created_at"] or "", item["event_key"]), reverse=True)
+    return {"items": items[:8]}

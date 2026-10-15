@@ -1,53 +1,18 @@
 <template>
   <div class="tasks-page">
-    <PageHeader title="项目工作任务" :loading="loading" show-border>
-      <template #actions>
-        <a-button size="small" @click="router.push({ name: 'ProjectInspectionBoardComp', params: { project_id: projectId } })">项目工作台</a-button>
-        <a-button size="small" @click="openTopicCodes">议题编号</a-button>
-        <a-button size="small" :disabled="loading" @click="load">刷新</a-button>
-      </template>
-    </PageHeader>
     <main ref="scrollContainer" class="tasks-content">
       <a-alert v-if="error" type="error" show-icon :message="error" class="tasks-alert">
         <template #action><a-button size="small" @click="load">重试</a-button></template>
       </a-alert>
       <a-spin v-else-if="loading" class="tasks-loading" />
       <template v-else>
-        <header class="tasks-hero">
-          <div>
-            <p class="tasks-eyebrow">PROJECT TASKS <span v-if="codeSaved">· {{ projectCode }}</span></p>
-            <h1>任务管理</h1>
-            <p>按状态推进工作，在时间轴上安排计划，并查看每次智能体执行。</p>
-          </div>
-          <a-button type="primary" size="large" @click="openCreate">新建任务</a-button>
-        </header>
-        <div class="tasks-summary" aria-label="任务概况">
-          <div><strong>{{ tasks.length }}</strong><span>全部任务</span></div>
-          <div><strong>{{ countStatus('in_progress') }}</strong><span>进行中</span></div>
-          <div><strong>{{ countStatus('blocked') }}</strong><span>受阻</span></div>
-          <div><strong>{{ countStatus('done') }}</strong><span>已完成</span></div>
-        </div>
-        <section class="tasks-panel">
-          <div class="tasks-toolbar">
-            <div class="tasks-tabs" role="tablist" aria-label="任务视图">
-              <button v-for="option in views" :key="option.value" type="button" role="tab"
-                :aria-selected="view === option.value" :class="{ active: view === option.value }" @click="view = option.value">
-                {{ option.label }}
-              </button>
-            </div>
-            <div class="tasks-filters">
-              <a-input v-model:value="search" allow-clear placeholder="搜索编号或标题" aria-label="搜索任务" class="tasks-search" />
-              <a-select v-if="view !== 'board'" v-model:value="filter" aria-label="筛选任务状态" class="tasks-filter">
-                <a-select-option value="all">全部状态</a-select-option>
-                <a-select-option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</a-select-option>
-              </a-select>
-            </div>
-          </div>
+        <div class="collection-tools"><div class="collection-discovery"><a-input v-model:value="search" allow-clear placeholder="搜索工作标题" aria-label="搜索任务" /><div class="work-view-switch" role="group" aria-label="工作视图"><button v-for="option in views" :key="option.value" type="button" :aria-label="option.label" :title="option.label" :aria-pressed="view === option.value" :class="{ active: view === option.value }" @click="view = option.value"><component :is="option.icon" :size="16" /><span>{{ option.label }}</span></button></div><details class="work-list-more"><summary aria-label="工作筛选与管理">···</summary><div><a-select v-model:value="filter" aria-label="筛选任务状态"><a-select-option value="all">全部状态</a-select-option><a-select-option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</a-select-option></a-select><a-button type="text" @click="openTopicCodes">议题编号</a-button><a-button type="text" :disabled="loading" @click="load">刷新</a-button></div></details></div><a-button type="primary" @click="openCreate">新建</a-button></div>
+        <section class="tasks-panel" :class="`view-${view}`" aria-label="工作内容">
           <div v-if="!tasks.length && view === 'board'" class="tasks-empty">
             <div class="tasks-empty-icon">✓</div>
             <h2>从第一个任务开始</h2>
             <p>记录工作目标，设置负责人和计划，再交给数字员工执行。</p>
-            <a-button type="primary" @click="openCreate">新建任务</a-button>
+            <a-button type="primary" @click="openCreate">新建工作</a-button>
           </div>
           <template v-else-if="view === 'board'">
             <div class="tasks-board">
@@ -76,14 +41,12 @@
             <div v-if="!visibleTasks.length" class="view-empty">没有符合筛选条件的任务</div>
             <div v-else class="tasks-table-scroll">
               <table class="tasks-table">
-                <thead><tr><th>编号 / 任务</th><th>状态</th><th>第一负责人</th><th>计划时间</th><th>更新时间</th></tr></thead>
+                <thead><tr><th>工作</th><th>进展</th><th>当前动作</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="item in visibleTasks" :key="item.id">
                     <td><RouterLink :to="taskRoute(item)" class="table-title"><small>{{ item.number }}</small><strong>{{ item.title }}</strong></RouterLink></td>
                     <td><span class="status-pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span></td>
-                    <td>{{ ownerName(item) }}</td>
-                    <td>{{ planLabel(item) }}</td>
-                    <td>{{ formatTime(item.updated_at) }}</td>
+                    <td>{{ {todo:'明确验收条件',in_progress:'查看执行与提交',blocked:'查看阻塞原因',done:'阅读结果与记录',cancelled:'查看取消记录'}[item.status] || '查看工作' }}</td><td><RouterLink :to="taskRoute(item)">打开</RouterLink></td>
                   </tr>
                 </tbody>
               </table>
@@ -117,7 +80,7 @@
       </template>
     </main>
 
-    <a-modal v-model:open="createOpen" title="新建项目任务" :footer="null" :width="620" :body-style="{ maxHeight: 'calc(100vh - 190px)', overflowY: 'auto' }" :destroy-on-close="false">
+    <a-modal v-model:open="createOpen" title="新建工作" :footer="null" :width="620" :body-style="{ maxHeight: 'calc(100vh - 190px)', overflowY: 'auto' }" :destroy-on-close="false">
       <div class="task-form">
         <div v-if="!codeSaved" class="code-setup">
           <strong>先设置项目编号缩写</strong>
@@ -139,7 +102,7 @@
           <label>第一负责人<a-select v-model:value="ownerSlug" allow-clear placeholder="可选：项目数字员工"><a-select-option v-for="agent in agents" :key="agent.slug" :value="agent.slug">{{ agent.name || agent.slug }}</a-select-option></a-select></label>
         </div>
         <p v-if="formError" class="tasks-error" role="alert">{{ formError }}</p>
-        <div class="form-actions"><a-button @click="createOpen = false">取消</a-button><a-button type="primary" :loading="saving" :disabled="!title.trim() || (!codeSaved && !projectCode.trim())" @click="createTask">创建任务</a-button></div>
+        <div class="form-actions"><a-button @click="createOpen = false">取消</a-button><a-button type="primary" :loading="saving" :disabled="!title.trim() || (!codeSaved && !projectCode.trim())" @click="createTask">创建工作</a-button></div>
       </div>
     </a-modal>
     <a-modal v-model:open="topicCodeOpen" title="议题编号缩写" :footer="null" :width="560">
@@ -181,11 +144,11 @@
 </template>
 
 <script setup>
+import { List, Columns3, CalendarRange } from '@lucide/vue'
 import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import WorkSourceFields from '@/components/project/WorkSourceFields.vue'
@@ -234,25 +197,22 @@ const scheduleStart = ref('')
 const scheduleDue = ref('')
 const filter = ref('all')
 const search = ref('')
-const view = ref('board')
+const view = ref('list')
 const localToday = () => {
   const date = new Date()
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 const today = ref(localToday())
 const ganttMonth = ref(today.value.slice(0, 7))
-const views = [{ value: 'board', label: '看板' }, { value: 'list', label: '列表' }, { value: 'gantt', label: '甘特图' }]
+const views = [{ value: 'list', label: '列表', icon: List }, { value: 'board', label: '看板', icon: Columns3 }, { value: 'gantt', label: '时间计划', icon: CalendarRange }]
 const statuses = [
   { value: 'todo', label: '待办' }, { value: 'in_progress', label: '进行中' },
   { value: 'blocked', label: '受阻' }, { value: 'done', label: '已完成' }, { value: 'cancelled', label: '已取消' }
 ]
 const statusLabel = (status) => statuses.find((item) => item.value === status)?.label || status
 const ownerName = (item) => agents.value.find((agent) => agent.slug === item.primary_owner_agent_slug)?.name || item.primary_owner_agent_slug || '未指定'
-const formatTime = (value) => value ? new Date(value).toLocaleDateString('zh-CN') : '—'
-const planLabel = (item) => item.start_date && item.due_date ? `${item.start_date} → ${item.due_date}` : item.due_date || item.start_date || '未安排'
 const isOverdue = (item) => item.due_date < today.value && !['done', 'cancelled'].includes(item.status)
 const taskRoute = (item) => ({ name: 'ProjectWorkTaskView', params: { project_id: projectId.value, task_id: item.id } })
-const countStatus = (status) => tasks.value.filter((item) => item.status === status).length
 const matchesSearch = (item) => `${item.number} ${item.title}`.toLowerCase().includes(search.value.trim().toLowerCase())
 const visibleTasks = computed(() => tasks.value.filter((item) => matchesSearch(item) && (filter.value === 'all' || item.status === filter.value)))
 const selectedTopicMissingCode = computed(() => {
@@ -556,4 +516,29 @@ onUnmounted(() => clearInterval(calendarTimer))
 .form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }.form-actions { display: flex; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--gray-150); padding-top: 16px; }
 .code-setup { padding: 14px; border-radius: 9px; background: var(--gray-50, #f8fafc); border: 1px solid var(--gray-150); }.code-setup p { color: var(--gray-600); font-size: 12px; margin: 4px 0 10px; }.schedule-title { color: var(--gray-700); margin: 0; }
 @media (max-width: 760px) { .tasks-content { padding: 18px 14px 40px; }.tasks-hero { align-items: flex-start; }.tasks-hero h1 { font-size: 23px; }.tasks-summary { grid-template-columns: repeat(2, 1fr); }.tasks-toolbar { flex-direction: column; align-items: stretch; }.tasks-filters { flex-wrap: wrap; }.tasks-search { width: 100%; }.tasks-board { grid-template-columns: repeat(5, 220px); }.form-pair { grid-template-columns: 1fr; } }
+
+.tasks-page { background:var(--gray-25); }
+.tasks-content { padding:24px 32px; }
+.collection-tools { display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px; }
+.collection-discovery { display:flex;gap:8px;min-width:0;>:deep(.ant-input-affix-wrapper){max-width:320px;min-width:80px;} >:deep(.ant-select){min-width:110px;} }
+.tasks-secondary-tools {display:flex;gap:8px;}
+.tasks-panel {background:var(--gray-0);border:1px solid var(--gray-150);border-radius:10px;padding:24px;}
+@media(max-width:768px){.tasks-content{padding:16px 12px;}.tasks-panel{padding:16px 12px;}.tasks-toolbar{flex-wrap:wrap;}}
+
+.tasks-content { max-width:none; padding:0 38px 48px; }.collection-tools { padding:20px 0; min-height:72px; margin:0 0 4px; }.tasks-panel { padding:24px; border-radius:10px; }.work-list-heading { font-size:19px; margin:0 0 18px; }.work-list-more { position:relative; >summary { list-style:none; cursor:pointer; padding:8px; color:var(--color-text-secondary); } >div { position:absolute; top:100%; left:0; z-index:3; min-width:180px; background:var(--gray-0); padding:12px; border:1px solid var(--gray-150); border-radius:7px; display:grid; gap:8px; } }
+@media(max-width:760px) { .tasks-content { padding:0 16px 28px; }.collection-discovery { flex-wrap:nowrap; }.tasks-panel { padding:18px; } }
+
+/* 工作内容直接使用项目画布，只有单项工作形成卡片。 */
+.tasks-panel { background:transparent; border:0; border-radius:0; padding:0; min-height:0; overflow:visible; }
+.work-view-switch { display:flex; gap:2px; padding:3px; border:1px solid var(--gray-150); border-radius:8px; flex-shrink:0; button { display:flex; align-items:center; gap:6px; min-height:36px; padding:6px 10px; border:0; background:transparent; color:var(--color-text-secondary); border-radius:5px; cursor:pointer; white-space:nowrap; } button.active { background:var(--gray-0); color:var(--main-color); box-shadow:0 1px 3px rgb(0 0 0 / 6%); } button:focus-visible { outline:2px solid var(--main-color); outline-offset:2px; } }
+.collection-discovery { flex:1; align-items:center; >:deep(.ant-input-affix-wrapper) { flex:1; max-width:280px; } }
+.tasks-table th { background:transparent; padding:12px 16px; border-bottom:1px solid var(--gray-150); font-weight:500; }
+.tasks-table td { padding:18px 16px; background:transparent; border-bottom:1px solid var(--gray-150); border-top:0; }
+.tasks-table tr:hover td { background:transparent; }.tasks-table tr:hover .table-title strong { color:var(--main-color); }
+.tasks-board { gap:16px; background:transparent; padding-bottom:16px; grid-template-columns:repeat(5,minmax(230px,1fr)); }
+.tasks-column { border:0; border-radius:10px; background:var(--gray-100); }.tasks-column>header { border:0; padding:14px; }.column-body { padding:0 10px 4px; }.task-card { box-shadow:none; border-radius:8px; }
+.gantt-controls { padding:12px 0 20px; }.gantt-scroll { border:1px solid var(--gray-150); border-radius:8px; }
+@media(max-width:760px) { .collection-discovery { flex-wrap:wrap; }.collection-discovery>:deep(.ant-input-affix-wrapper) { max-width:none; width:100%; flex-basis:100%; }.work-view-switch button { min-height:40px; }.tasks-panel { padding:0; }.collection-tools { align-items:flex-start; }.collection-tools>.ant-btn { margin-top:3px; flex-shrink:0; } }
+
+@media(max-width:600px) { .work-view-switch button { min-width:38px; justify-content:center; padding:6px; } .work-view-switch button span { display:none; }.tasks-table { min-width:0; table-layout:fixed; }.tasks-table th:first-child { width:72%; }.tasks-table th:nth-child(n+3), .tasks-table td:nth-child(n+3) { display:none; }.tasks-table td, .tasks-table th { padding:14px 8px; }.table-title { overflow-wrap:anywhere; }.status-pill { padding:3px 5px; white-space:nowrap; } }
 </style>

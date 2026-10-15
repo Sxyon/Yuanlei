@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { Modal } from 'ant-design-vue'
 import { useUserStore } from '@/stores/user'
 import { projectThemeApi } from '@/apis/project_theme_api'
 import ProjectThemeSelection from './ProjectThemeSelection.vue'
@@ -8,8 +9,8 @@ import ThemeHost from './themes/ThemeHost.vue'
 import { validateLoadedPackage } from './themes/contract'
 import { createSyntheticAdapter } from './themes/syntheticAdapter'
 
-const props = defineProps({ projectId: { type: String, default: '' }, projects: { type: Array, required: true } })
-const emit = defineEmits(['project'])
+const props = defineProps({ projectId: { type: String, default: '' }, projects: { type: Array, required: true }, stayInProject: Boolean })
+const emit = defineEmits(['project', 'selected', 'catalog-changed'])
 const route = useRoute(), router = useRouter(), user = useUserStore()
 const mode = ref(route.query.theme_action === 'select' ? 'selection' : 'catalog'), scope = ref('personal')
 const sources = ref([]), activeId = ref(''), candidate = shallowRef(null), definition = ref(''), error = ref(''), notice = ref(''), busy = ref(false)
@@ -26,7 +27,15 @@ const dirty = computed(() => {
 })
 const fileStateText = value => ({referenced:'已引用且字节有效',orphan:'完整未引用包',temporary:'临时残留',removed_orphan:'已清理未引用包',removed_temporary:'已清理临时残留',missing:'引用包缺失',package_missing:'引用包缺失',package_corrupt:'包字节损坏',unsafe_entry:'非普通文件，拒绝清理'}[value] || `校验失败：${value}`)
 const statusText = value => ({ active: '可新选择', disabled: '已停用，既有选择可加载', withdrawn: '安全撤回，加载已拒绝' }[value])
-async function load() {
+function canDiscard() {
+  if(!dirty.value) return true
+  return new Promise(resolve => Modal.confirm({title:'放弃未保存的主题候选？',okText:'放弃并离开',cancelText:'继续编辑',onOk:()=>resolve(true),onCancel:()=>resolve(false)}))
+}
+onBeforeRouteLeave(canDiscard)
+function beforeUnload(event) { if(dirty.value) { event.preventDefault(); event.returnValue='' } }
+onMounted(() => { if(props.stayInProject) window.addEventListener('beforeunload',beforeUnload) })
+async function load(confirmDiscard = false) {
+  if(confirmDiscard && !await canDiscard()) return
   const token = ++generation, id = props.projectId
   busy.value = true; error.value = ''; sources.value = []; activeId.value = ''; candidate.value = null; preview.value = null; audit.value = null; operation.value = ''
   try { const result = await projectThemeApi.catalog(id); if (token === generation) sources.value = result.sources }
@@ -40,6 +49,7 @@ async function run(action) {
   finally { if (token === generation) busy.value = false }
 }
 async function openSource(source) {
+  if(!await canDiscard()) return
   const token = ++generation; activeId.value = source.id; candidate.value = null; audit.value = null; preview.value = null; operation.value = ''; notice.value = ''; error.value = ''
   mode.value = source.kind === 'builtin' ? 'versions' : 'candidate'
   if (source.kind === 'builtin') { busy.value = false; return }
@@ -51,7 +61,7 @@ async function openSource(source) {
 }
 async function upload(event) {
   const file = event.target.files?.[0]; event.target.value = ''
-  if (!file || !active.value) return
+  if (!file || !active.value || !await canDiscard()) return
   const source = active.value, revision = candidate.value?.source.candidate_revision || source.candidate_revision
   await run(async token => {
     const result = await projectThemeApi.upload(source.id, props.projectId, revision, file)
@@ -72,20 +82,23 @@ async function publish(token) {
   const version = await projectThemeApi.publish(source.id, props.projectId, candidate.value.source.candidate_revision)
   if (token !== generation || activeId.value !== source.id) return
   source.versions = [version, ...source.versions.filter(item=>item.id!==version.id)]
+  emit('catalog-changed')
   notice.value = `已发布 ${source.name} · ${version.version}；项目选择未改变。`; mode.value = 'versions'
 }
 async function create(copyVersion = null) {
+  if(!await canDiscard()) return
   const token = generation
   const result = await projectThemeApi.create({ name: copyVersion ? `${active.value.name}（个人副本）` : createName.value, kind: copyVersion ? 'personal' : createKind.value, project_id: !copyVersion && createKind.value==='project' ? props.projectId : null, copy_version_id: copyVersion, copy_project_id: copyVersion ? props.projectId || null : null })
   if (token !== generation) return
   sources.value.push({...result,versions:[]}); createOpen.value = false; scope.value = result.kind
+  candidate.value = null
   await openSource(result)
 }
 async function maintain() {
   const source = active.value, token = generation
   const result = await projectThemeApi.status(source.id, props.projectId, operation.value, reason.value)
   if (token !== generation) return
-  Object.assign(source, result); operation.value = ''; reason.value = ''; notice.value = '来源状态及原因已保存；原项目绑定保留。'
+  Object.assign(source, result); emit('catalog-changed'); operation.value = ''; reason.value = ''; notice.value = '来源状态及原因已保存；原项目绑定保留。'
 }
 async function inspect(clean = false) {
   const source = active.value, token = generation
@@ -111,14 +124,15 @@ async function showPreview({versionId,projectId=props.projectId}={}) {
   preview.value = { package: pack, adapter: createSyntheticAdapter(loader), returnMode: mode.value }
   mode.value = 'preview'
 }
-watch(() => [props.projectId, user.uid], load, { immediate: true })
-onUnmounted(() => { generation++ })
+watch(() => [props.projectId, user.uid], () => load(), { immediate: true })
+defineExpose({ canDiscard, openPreview: value => run(() => showPreview(value)), showCatalog: async () => { if(await canDiscard()) mode.value = 'catalog' } })
+onUnmounted(() => { generation++; if(props.stayInProject) window.removeEventListener('beforeunload',beforeUnload) })
 </script>
 <template>
   <section class="theme-management">
-    <div class="toolbar"><p>主题维护 · 候选、版本与项目选择分别提交</p><div class="actions"><RouterLink :to="{name:'ProjectThemePreviewView'}">S03 合成样例</RouterLink><RouterLink v-if="project" :to="{name:'ProjectDashboardComp',params:{project_id:project.id}}">返回项目：{{project.name}}</RouterLink><a-button v-else @click="router.push({name:'ProjectsComp'})">返回项目列表</a-button><a-button :loading="busy" @click="load">刷新目录</a-button></div></div>
+    <div class="toolbar"><p>主题维护 · 候选、版本与项目选择分别提交</p><div class="actions"><RouterLink :to="{name:'ProjectThemePreviewView'}">S03 合成样例</RouterLink><RouterLink v-if="project" :to="{name:'ProjectDashboardComp',params:{project_id:project.id}}">返回项目：{{project.name}}</RouterLink><a-button v-else @click="router.push({name:'ProjectsComp'})">返回项目列表</a-button><a-button :loading="busy" @click="load(true)">刷新目录</a-button></div></div>
     <a-alert v-if="error" type="error" show-icon :message="error" /><a-alert v-if="notice" type="success" show-icon :message="notice" />
-    <ProjectThemeSelection v-if="mode==='selection'" :project-id="projectId" :projects="projects" @project="id=>emit('project',id)" @cancel="mode='catalog'" @preview="value=>run(()=>showPreview(value))" />
+    <ProjectThemeSelection v-if="mode==='selection'" :project-id="projectId" :projects="projects" :stay-in-project="stayInProject" @selected="value=>emit('selected',value)" @project="id=>emit('project',id)" @cancel="mode='catalog'" @preview="value=>run(()=>showPreview(value))" />
     <template v-else-if="mode==='preview' && preview"><div class="toolbar"><a-button @click="mode=preview.returnMode;preview=null">返回维护 / 选择</a-button><p class="preview-notice">包定义及包内资源真实读取；业务及项目文件内容为合成预览，不保存项目选择。</p></div><ThemeHost :theme-package="preview.package" project-id="preview-market" project-label="隔离合成项目" :user-id="String(user.uid)" :adapter="preview.adapter" simulation /></template>
     <template v-else>
       <div class="toolbar"><div class="actions"><a-radio-group v-model:value="scope" @change="mode='catalog';activeId=''" :options="[{value:'builtin',label:'平台内置'},{value:'personal',label:'个人公共'},{value:'project',label:'项目专属'}]" /><a-select :value="projectId || undefined" :options="projects.map(p=>({value:p.id,label:p.name}))" placeholder="选择项目范围" aria-label="主题所属项目" allow-clear @change="id=>emit('project',id)" /></div><a-button type="primary" :disabled="busy" @click="createOpen=true">建立来源</a-button></div>

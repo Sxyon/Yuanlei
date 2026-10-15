@@ -5,8 +5,8 @@ import { useUserStore } from '@/stores/user'
 import { projectThemeApi } from '@/apis/project_theme_api'
 import { validateLoadedPackage } from './themes/contract'
 
-const props = defineProps({ projectId: { type: String, required: true }, projects: { type: Array, required: true } })
-const emit = defineEmits(['project', 'preview', 'cancel'])
+const props = defineProps({ projectId: { type: String, required: true }, projects: { type: Array, required: true }, stayInProject: Boolean })
+const emit = defineEmits(['project', 'preview', 'cancel', 'selected'])
 const user = useUserStore(), router = useRouter(), loading = ref(false), saving = ref(false), error = ref('')
 const catalog = ref([]), current = shallowRef(null), versionId = ref(''), bundle = shallowRef(null), files = ref(Object.create(null))
 let sequence = 0, versionSequence = 0, controller
@@ -27,6 +27,14 @@ async function load() {
   } catch (cause) { if (token === sequence) error.value = cause.message }
   finally { if (token === sequence) loading.value = false }
 }
+async function refreshCatalog() {
+  const token = sequence, project = props.projectId
+  try {
+    const result = await projectThemeApi.catalog(project)
+    if (token === sequence && project === props.projectId) catalog.value = result.sources
+  } catch (cause) { if(token === sequence) error.value = cause.message }
+}
+defineExpose({refreshCatalog})
 async function chooseVersion() {
   const token = ++versionSequence, id = versionId.value, project = props.projectId
   files.value = Object.create(null); bundle.value = null; error.value = ''
@@ -43,7 +51,8 @@ async function save() {
     const result = await projectThemeApi.select(project, { version_id: versionId.value, files: { ...files.value }, expected_generation: current.value.generation })
     if (token !== sequence) return
     current.value = result
-    await router.push({ name: 'ProjectDashboardComp', params: { project_id: project }, query: { view: 'theme' } })
+    emit('selected', result)
+    if (!props.stayInProject) await router.push({ name: 'ProjectDashboardComp', params: { project_id: project }, query: { view: 'theme' } })
   } catch (cause) {
     if (token !== sequence) return
     if (cause.status === 409 || cause.response?.status === 409) {
@@ -63,8 +72,8 @@ onUnmounted(() => { sequence++; versionSequence++; controller?.abort() })
     <div class="toolbar"><h2>项目主题选择</h2><a-button @click="emit('cancel')">返回主题管理</a-button></div>
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <div class="select-grid">
-      <section class="panel"><h3>当前项目与选择</h3><label>项目<a-select :value="projectId || undefined" :options="projects.map(p=>({value:p.id,label:p.name}))" placeholder="选择项目" aria-label="主题目标项目" :disabled="saving" @change="value=>emit('project',value)" /></label><p v-if="current">当前：{{ currentVersion ? `${currentVersion.source.name} · ${currentVersion.version}` : current.binding ? '原选择版本无法加载' : '未选择' }} · 修订 {{ current.generation }}</p><a-alert v-if="current?.error" type="warning" :message="current.error.message" /><label>发布版本<a-select v-model:value="versionId" :options="choices.map(v=>({value:v.id,label:`${v.source.name} · ${v.version} · ${v.source.kind==='builtin'?'内置':v.source.kind==='personal'?'个人公共':'项目专属'}`}))" :disabled="loading || saving || !projectId" placeholder="选择准确发布版本" aria-label="主题发布版本" /></label><p class="help">目录及保存时都重新授权。修改候选不会自动改变此选择。</p></section>
-      <section class="panel"><h3>项目文件映射</h3><p v-if="!bundle">选定版本后显示它要求的文件。</p><p v-else-if="!aliases.length">此版本没有项目文件要求。</p><label v-for="[alias,type] in aliases" :key="alias">{{ alias }} · {{ type }}<a-input v-model:value="files[alias]" :aria-label="`文件绑定 ${alias}`" :disabled="saving" placeholder="当前项目内路径，例如 /reports/data.json" /></label><p class="help">后端检查当前Project归属、逐段no-follow、普通文件、实际类型与容量。每次内容读取重新核对当前绑定与权限。</p><h3>确认选择</h3><p v-if="target">目标：{{ target.source.name }} · {{ target.version }}</p><p v-for="[alias] in aliases" :key="alias">{{ alias }} → {{ files[alias] || '尚未绑定' }}</p><div class="actions"><a-button :disabled="!bundle || saving" @click="emit('preview', {versionId, projectId})">隔离预览</a-button><a-button type="primary" :loading="saving" :disabled="!bundle || !current || aliases.some(([alias])=>!files[alias])" @click="save">保存项目选择</a-button></div><p class="help">只保存当前项目准确版本与映射，不代表真实业务已可用。</p></section>
+      <section class="panel"><h3>当前项目与选择</h3><label>项目<a-select :value="projectId || undefined" :options="projects.map(p=>({value:p.id,label:p.name}))" placeholder="选择项目" aria-label="主题目标项目" :disabled="saving" @change="value=>emit('project',value)" /></label><p v-if="current">当前：{{ currentVersion ? `${currentVersion.source.name} · ${currentVersion.version}` : current.binding ? '原选择版本无法加载' : '未选择' }} · 修订 {{ current.generation }}</p><a-alert v-if="current?.error" type="warning" :message="current.error.message" /><label>发布版本<a-select v-model:value="versionId" :options="choices.map(v=>({value:v.id,label:`${v.source.name} · ${v.version} · ${v.source.kind==='builtin'?'内置':v.source.kind==='personal'?'个人公共':'项目专属'}`}))" :disabled="loading || saving || !projectId" placeholder="选择准确发布版本" aria-label="主题发布版本" /></label><p class="help">选择已发布的版本。后续发布不会自动替换项目当前版本。</p></section>
+      <section class="panel"><h3>项目文件映射</h3><p v-if="!bundle">选定版本后显示它要求的文件。</p><p v-else-if="!aliases.length">此版本没有项目文件要求。</p><label v-for="[alias,type] in aliases" :key="alias">{{ alias }} · {{ type }}<a-input v-model:value="files[alias]" :aria-label="`文件绑定 ${alias}`" :disabled="saving" placeholder="当前项目内路径，例如 /reports/data.json" /></label><p class="help">文件须位于当前项目中，并符合主题要求的格式与大小。</p><h3>确认选择</h3><p v-if="target">目标：{{ target.source.name }} · {{ target.version }}</p><p v-for="[alias] in aliases" :key="alias">{{ alias }} → {{ files[alias] || '尚未绑定' }}</p><div class="actions"><a-button :disabled="!bundle || saving" @click="emit('preview', {versionId, projectId})">隔离预览</a-button><a-button type="primary" :loading="saving" :disabled="!bundle || !current || aliases.some(([alias])=>!files[alias])" @click="save">保存项目选择</a-button></div><p class="help">保存后，当前项目将使用此版本；已有业务内容和历史保留。</p></section>
     </div>
   </section>
 </template>

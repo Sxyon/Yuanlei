@@ -16,10 +16,11 @@ import { useProjectsStore } from '@/stores/projects'
 import { normalizeAgent, normalizeAgentBackendOption } from '@/utils/agentConfigUtils'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 
+const props = defineProps({ projectId: { type:String, default:'' } })
 const projectsStore = useProjectsStore()
 const router = useRouter()
 
-const selectedProjectId = ref('')
+const selectedProjectId = ref(props.projectId)
 const managedAgents = ref([])
 const agentLoading = ref(false)
 const submitting = ref(false)
@@ -216,6 +217,8 @@ const refresh = async () => {
   await loadAgents()
 }
 
+watch(() => props.projectId, id => { if (id) selectedProjectId.value = id })
+
 watch(selectedProjectId, () => {
   loadAgents()
 })
@@ -235,7 +238,7 @@ defineExpose({
   <div class="project-agent-manage-panel">
     <PageShoulder v-model:search="searchQuery" search-placeholder="搜索项目数字员工...">
       <template #actions>
-        <div class="project-select-wrap" :class="{ 'is-shaking': projectSelectShaking }">
+        <div v-if="!projectId" class="project-select-wrap" :class="{ 'is-shaking': projectSelectShaking }">
           <a-select
             ref="projectSelectRef"
             v-model:value="selectedProjectId"
@@ -285,15 +288,14 @@ defineExpose({
           <span>{{ currentProject?.name || '全部项目' }} · {{ filteredAgents.length }} 个数字员工</span>
         </div>
         <ExtensionCardGrid :min-width="320">
+          <div v-for="agent in filteredAgents" :key="`${agent.project_id}::${agent.slug}`" class="project-agent-item">
           <InfoCard
-            v-for="agent in filteredAgents"
-            :key="`${agent.project_id}::${agent.slug}`"
             :title="agent.name"
             :subtitle="agent.slug"
             :description="agent.description || '暂无描述'"
             :default-icon="Bot"
             :tags="[
-              ...(agent.project_name ? [{ name: agent.project_name, color: 'gray' }] : []),
+              ...(!projectId && agent.project_name ? [{ name: agent.project_name, color: 'gray' }] : []),
               {
                 name: overriddenCount(agent) ? `覆盖 ${overriddenCount(agent)} 项` : '继承基础配置',
                 color: overriddenCount(agent) ? 'blue' : 'gray'
@@ -302,6 +304,7 @@ defineExpose({
             ]"
             class="config-card agent-card"
           >
+
             <template #icon>
               <FallbackAvatar
                 class="agent-card-icon-image"
@@ -310,7 +313,7 @@ defineExpose({
                 :name="agent.name || agent.slug"
                 :seed="agent.slug"
                 kind="agent"
-                :size="40"
+                :size="32"
                 shape="rounded"
                 :alt="`${agent.name || '智能体'}图标`"
               />
@@ -344,7 +347,9 @@ defineExpose({
                 </a-menu-item>
               </a-menu>
             </template>
+            <template #footer><div class="project-agent-actions"><RouterLink :to="{name:'ProjectAgentWorkbenchView',params:{project_id:agent.project_id,agent_slug:agent.slug}}"><ListTodo :size="15" />工作台</RouterLink><a-button type="text" @click="openEditModal(agent)"><SquarePen :size="15" />配置</a-button></div></template>
           </InfoCard>
+          </div>
         </ExtensionCardGrid>
       </section>
     </template>
@@ -386,7 +391,7 @@ defineExpose({
   </div>
 </template>
 
-<style lang="less" scoped>
+<style scoped lang="less">
 .project-agent-manage-panel {
   height: 100%;
   min-height: 0;
@@ -499,4 +504,11 @@ defineExpose({
     transform: translateX(3px);
   }
 }
+
+ .project-agent-manage-panel { padding-top:20px; }
+.project-agent-item { min-width:0; display:flex; }
+.project-agent-item>.agent-card { flex:1; }
+.project-agent-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; >a { display:flex; align-items:center; gap:6px; color:var(--main-color); text-decoration:none; font-size:13px; font-weight:500; padding:5px 0; } :deep(.ant-btn) { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--color-text-secondary); } }
+.agent-card :deep(.info-card-footer) { margin-top:16px; padding-top:12px; border-top:1px solid var(--gray-150); }
+.project-agent-manage-panel :deep(.extension-card-grid) { grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))!important; }
 </style>

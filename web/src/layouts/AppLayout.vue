@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, provide, watch, nextTick, useId } from 'vue'
+import { ref, onMounted, onUnmounted, computed, provide, watch, nextTick } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { GithubOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
@@ -64,28 +64,51 @@ const settingsInitialTab = ref('')
 const platformPinned = computed(() => !chatUIStore.sidebarCollapsed)
 const platformOpen = ref(false)
 const platformCompact = ref(false)
-const sidebarCollapsed = computed(() => !(platformOpen.value || (!platformCompact.value && platformPinned.value)))
+const sidebarCollapsed = computed(() => platformCompact.value || !platformPinned.value)
 const platformOverlay = computed(() => platformOpen.value && (platformCompact.value || !platformPinned.value))
-const platformId = `platform-${useId()}`
-const platformPanel = ref(null)
+const platformHover = ref(false)
+const platformPanel = ref(null), platformPreviewPanel = ref(null)
+const navigationSurfaces = computed(() => [
+  { id: 'rail', collapsed: sidebarCollapsed.value, preview: false },
+  ...(platformOverlay.value ? [{ id: 'preview', collapsed: false, preview: true }] : [])
+])
 let platformTrigger = null
-let platformWidthQuery
+let platformWidthQuery, platformHoverTimer
 const syncPlatformWidth = () => {
+  clearTimeout(platformHoverTimer)
   platformCompact.value = platformWidthQuery.matches
   platformOpen.value = false
 }
 const closePlatform = async (force = false) => {
+  clearTimeout(platformHoverTimer)
   if (!platformOpen.value && !force) return
   platformOpen.value = false
+  platformHover.value = false
   await nextTick()
   const trigger = platformTrigger?.isConnected ? platformTrigger : platformPanel.value?.querySelector('[aria-label="展开平台导航"]')
   trigger?.focus?.()
 }
 const openPlatform = async (event) => {
+  clearTimeout(platformHoverTimer)
   platformTrigger = event?.currentTarget || null
-  platformOpen.value = true
+  platformHover.value = false
+  chatUIStore.sidebarCollapsed = false
+  platformOpen.value = platformCompact.value
   await nextTick()
   platformPanel.value?.querySelector('[aria-label="收起平台导航"]')?.focus()
+}
+const previewPlatform = () => {
+  clearTimeout(platformHoverTimer)
+  if (!platformPinned.value && !platformCompact.value) platformHoverTimer = setTimeout(() => { platformHover.value = true; platformOpen.value = true }, 200)
+}
+const leavePlatform = event => { clearTimeout(platformHoverTimer); if (platformPanel.value?.contains(event.relatedTarget) || platformPreviewPanel.value?.contains(event.relatedTarget) || event.relatedTarget?.closest?.('.platform-navigation-popup')) return; if (platformHover.value) { platformHover.value = false; platformOpen.value = false } }
+const handlePlatformClick = event => { if (event.currentTarget.classList.contains('platform-preview')) return; if (!platformPinned.value && !event.target.closest('.sidebar-header-action,.brand-link')) void openPlatform(event) }
+const handlePreviewPointer = event => {
+  if (platformHover.value && !platformPanel.value?.contains(event.target) && !platformPreviewPanel.value?.contains(event.target) && !event.target.closest('.platform-navigation-popup')) { platformHover.value = false; platformOpen.value = false }
+}
+const handlePlatformOutside = (event) => {
+  if (event.target.closest('.platform-navigation-popup')) return
+  if (platformOpen.value && !platformPanel.value?.contains(event.target) && !platformPreviewPanel.value?.contains(event.target)) void closePlatform()
 }
 const pinPlatform = async () => {
   chatUIStore.sidebarCollapsed = !chatUIStore.sidebarCollapsed
@@ -98,7 +121,7 @@ const pinPlatform = async () => {
 }
 
 const collapsePlatform = () => {
-  if (!platformOverlay.value) chatUIStore.sidebarCollapsed = true
+  chatUIStore.sidebarCollapsed = true
   void closePlatform(true)
 }
 
@@ -145,6 +168,7 @@ const fetchGithubStars = async () => {
 }
 
 const handleGlobalKeydown = (e) => {
+  if (e.key === 'Escape' && platformOpen.value) void closePlatform()
   // Ctrl+Shift+D or Cmd+Shift+D: Toggle Debug Modal for SuperAdmin
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
     if (userStore.isSuperAdmin) {
@@ -156,6 +180,8 @@ const handleGlobalKeydown = (e) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('pointerdown', handlePlatformOutside)
+  window.addEventListener('pointermove', handlePreviewPointer)
   if (window.matchMedia) {
     platformWidthQuery = window.matchMedia('(max-width: 1100px)')
     syncPlatformWidth()
@@ -192,7 +218,10 @@ const startThreadStatusSync = () => {
 }
 
 onUnmounted(() => {
+  clearTimeout(platformHoverTimer)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('pointerdown', handlePlatformOutside)
+  window.removeEventListener('pointermove', handlePreviewPointer)
   platformWidthQuery?.removeEventListener('change', syncPlatformWidth)
   if (threadStatusSyncTimer) {
     clearInterval(threadStatusSyncTimer)
@@ -445,11 +474,7 @@ provide('settingsModal', {
 
 <template>
   <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'platform-overlay': platformOverlay }">
-    <a-drawer :open="platformOverlay" placement="left" :width="230" :get-container="false" :force-render="true" :closable="false" :body-style="{ padding: 0 }" @close="closePlatform()">
-      <div :id="platformId" class="platform-drawer-target" />
-    </a-drawer>
-    <Teleport :to="`#${platformId}`" :disabled="!platformOverlay" defer>
-    <div ref="platformPanel" class="header" aria-label="元垒平台导航">
+    <div v-for="{ id, collapsed: sidebarCollapsed, preview: isPreview } in navigationSurfaces" :key="id" :ref="element => { if (isPreview) platformPreviewPanel = element; else platformPanel = element }" class="header" :class="{ 'platform-preview': isPreview }" :aria-label="isPreview ? '平台导航预览' : '元垒平台导航'" @mouseenter="previewPlatform" @mouseleave="leavePlatform" @click.capture="handlePlatformClick">
       <div class="sidebar-brand" @click.stop>
         <router-link v-if="!sidebarCollapsed" to="/" class="brand-link">
           <img :src="infoStore.organization.avatar" class="brand-avatar" />
@@ -613,7 +638,6 @@ provide('settingsModal', {
         </div>
       </div>
     </div>
-    </Teleport>
     <ProjectLayout id="app-router-view" :enabled="Boolean(route.params.project_id)">
     <router-view v-slot="{ Component, route }">
       <keep-alive :key="userStore.uid">
@@ -693,6 +717,7 @@ div.header,
   flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
+  isolation:isolate;
 }
 
 .header {
@@ -1044,7 +1069,7 @@ div.header,
 }
 
 .app-layout.sidebar-collapsed {
-  .header {
+  > .header:not(.platform-preview) {
     flex-basis: @sidebar-collapsed-width;
     width: @sidebar-collapsed-width;
     align-items: stretch;
@@ -1137,8 +1162,7 @@ div.header,
 </style>
 
 <style lang="less" scoped>
-.platform-drawer-target { height: 100%; .header { height: 100%; width: 230px; } }
-.app-layout.platform-overlay { padding-left: 64px; }
+.header { position:relative; z-index:100; }.app-layout>.header.platform-preview { position:fixed; top:0; left:64px; width:230px; height:100vh; z-index:101; box-shadow:8px 0 24px #00000018; }
 .header button:focus-visible, .header a:focus-visible { outline: 2px solid var(--main-color); outline-offset: -2px; }
 @media (max-width: 700px) { .header .nav-item, .sidebar-header-action, .brand-link { min-height: 44px; } }
 </style>

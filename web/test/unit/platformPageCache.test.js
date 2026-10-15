@@ -31,3 +31,31 @@ test('实际宿主缓存模板：聊天经过非缓存项目页保持草稿，�
   await router.push('/agent'); await settle(); assert.equal(mounts, 1); assert.equal(chat.setupState.draft, '合成未发送草稿')
   userStore.uid = 'u2'; await settle(); assert.equal(unmounts, 1); assert.equal(mounts, 2); assert.equal(chat.setupState.draft, '')
 })
+
+test('真实项目路由退出即销毁返回链接，全局对话不再要求project_id', async t => {
+  const { RouterLink, useRoute } = await import('vue-router')
+  const routesSource = readFileSync(new URL('../../src/router/index.js', import.meta.url), 'utf8')
+  let unmounted = 0
+  const failures = []
+  const Project = defineComponent({ setup() { const route = useRoute(); onUnmounted(() => unmounted++); return () => h(RouterLink, {to:{name:'agents',params:{project_id:route.params.project_id}}},()=> '返回项目智能体') } })
+  const projectMeta = name => {
+    const start = routesSource.indexOf(`name: '${name}'`)
+    const meta = routesSource.slice(start).match(/meta:\s*\{([^}]+)\}/)[1]
+    assert.match(meta, /keepAlive:\s*false/, `${name}不能缓存依赖当前项目路由的视图`)
+    return {keepAlive:false}
+  }
+  const router = createRouter({ history:createMemoryHistory(), routes:[
+    {path:'/projects/:project_id/agents/:slug/workbench',name:'project-workbench',component:Project,meta:projectMeta('ProjectAgentWorkbenchView')},
+    {path:'/projects/:project_id/agents',name:'agents',component:Project,meta:projectMeta('ProjectAgentsComp')},
+    {path:'/agent',name:'chat',component:{name:'GlobalChat',render:()=>h('div','global')},meta:{keepAlive:true}}
+  ] })
+  projectMeta('ProjectWorkTasksView'); projectMeta('ProjectWorkTaskView')
+  await router.push('/projects/p/agents/a/workbench'); await router.isReady()
+  const app = renderer.createApp({components:{RouterView,ProjectLayout:{render(){return h('section',this.$slots.default?.())}}},setup:()=>({userStore:reactive({uid:'user'}),route:router.currentRoute}),render})
+  app.config.errorHandler = error => failures.push(error)
+  app.use(router); app.mount({}); t.after(()=>app.unmount()); await settle()
+  await router.push('/agent'); await settle()
+  assert.equal(unmounted,1)
+  assert.deepEqual(failures,[])
+  assert.equal(router.currentRoute.value.path,'/agent')
+})

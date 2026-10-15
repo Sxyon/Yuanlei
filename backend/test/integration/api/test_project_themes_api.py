@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from server.routers.project_theme_router import project_themes
 from server.routers.governance_router import governance
 from server.routers.project_work_router import project_work
+from server.routers.project_files_router import project_files
 from server.utils.auth_middleware import get_db
 from yuxi.services.project_theme_service import install_builtin_themes
 from yuxi.storage.postgres.manager import PostgresManager
@@ -68,6 +69,7 @@ async def live_theme(tmp_path, monkeypatch):
     app.include_router(project_themes, prefix="/api")
     app.include_router(governance, prefix="/api")
     app.include_router(project_work, prefix="/api")
+    app.include_router(project_files, prefix="/api")
 
     async def sessions():
         """请求各自使用真实事务，错误回滚、成功提交。"""
@@ -139,6 +141,11 @@ async def live_theme(tmp_path, monkeypatch):
         # 先有旧Project行，增量迁移两次验证幂等与原数据保留。
         await manager.upgrade_yuanlei_schema_v38_to_v39()
         await manager.upgrade_yuanlei_schema_v38_to_v39()
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE project_theme_versions DROP CONSTRAINT project_theme_versions_check"))
+            await conn.execute(text("ALTER TABLE project_theme_versions ADD CONSTRAINT project_theme_versions_check CHECK (format_version=1 AND component_abi=1)"))
+        await manager.upgrade_yuanlei_schema_v39_to_v40()
+        await manager.upgrade_yuanlei_schema_v39_to_v40()
         async with factory() as db:
             assert (await db.get(Project, projects[0].id)).name == "合成主题项目0"
             await install_builtin_themes(db)
@@ -903,3 +910,99 @@ async def test_bound_png_actual_bytes_and_type_no_conversation(live_theme):
     assert r.json()["detail"]["code"] == "file_limit" and r.status_code == 413
     async with env.db() as db:
         assert await db.scalar(text("SELECT count(*) FROM conversations")) == 0
+
+
+async def test_complete_workspace_theme_abi2_preserves_binding_and_immutable_versions(live_theme):
+    """ABI增量迁移幂等；旧绑定、字节与新发布版本均可回读。"""
+    env = live_theme
+    source, version, raw = await create_publish(env)
+    project = env.projects[0].id
+    response = await env.client.put(f"/api/projects/{project}/theme", json={"version_id": version["id"], "files": {}, "expected_generation": 0})
+    assert response.status_code == 200, response.text
+    before = response.json()
+    await env.manager.upgrade_yuanlei_schema_v39_to_v40()
+    await env.manager.upgrade_yuanlei_schema_v39_to_v40()
+    after = (await env.client.get(f"/api/projects/{project}/theme")).json()
+    assert after["binding"] == before["binding"]
+    assert after["generation"] == before["generation"]
+    assert after["package"]["digest"] == hashlib.sha256(raw).hexdigest()
+    catalog = (await env.client.get(f"/api/theme-sources?project_id={project}")).json()
+    complete = next(s for s in catalog["sources"] if s["name"] == "默认 · 项目管理")
+    loaded = (await env.client.get(f"/api/theme-versions/{complete['versions'][0]['id']}?project_id={project}")).json()
+    assert loaded["manifest"]["componentAbi"] == 2
+    assert loaded["theme"]["baseVersion"] == 1
+    assert {page["capability"] for page in loaded["theme"]["pages"]} == {"overview", "blueprints", "topics", "plans", "work", "inspection", "files", "agents", "settings"}
+
+
+async def test_project_files_http_scope_roundtrip_and_negative_boundaries(live_theme):
+    """真实HTTP/PG/文件验证项目范围，越界与失权不会落盘。"""
+    env = live_theme
+    base = f"/api/projects/{env.projects[0].id}/files"
+    result = await env.client.get(base)
+    assert result.status_code == 200, result.text
+    assert any(row["path"] == "/data.json" for row in result.json()["entries"])
+    result = await env.client.post(base + "/directory", json={"parent_path": "/", "name": "story"})
+    assert result.status_code == 200, result.text
+    result = await env.client.post(base + "/upload", data={"parent_path": "/story"}, files=[("files", ("story.md", "# 故事初稿\n".encode(), "text/markdown"))])
+    assert result.status_code == 200, result.text
+    assert (env.root / "story/story.md").read_text() == "# 故事初稿\n"
+    result = await env.client.put(base + "/content", json={"path": "/story/story.md", "content": "# 真实回读\n"})
+    assert result.status_code == 200, result.text
+    assert (env.root / "story/story.md").read_text() == "# 真实回读\n"
+    result = await env.client.get(base + "/content", params={"path": "/story/story.md"})
+    assert result.status_code == 200 and "真实回读" in result.text
+    for path in ("/../outside.md", "/story/../../outside.md", "\\outside.md"):
+        denied = await env.client.put(base + "/content", json={"path": path, "content": "bad"})
+        assert denied.status_code == 400, denied.text
+    for path in ("//", "/"):
+        denied = await env.client.delete(base, params={"path": path})
+        assert denied.status_code in (400, 422), denied.text
+        assert env.root.is_dir()
+    denied = await env.client.get(base + "/content", params={"path": "/link.json"})
+    assert denied.status_code == 403
+    denied = await env.client.get(base, headers=env.headers[1])
+    assert denied.status_code == 404
+    denied = await env.client.put(base + "/content", headers=env.headers[1], json={"path": "/story/story.md", "content": "foreign"})
+    assert denied.status_code == 404
+    assert (env.root / "story/story.md").read_text() == "# 真实回读\n"
+    assert not (env.root.parent / "outside.md").exists()
+
+
+async def test_project_activity_uses_real_event_identity_and_authorization(live_theme):
+    """最近动态混合原历史事实，评论和决定均返回准确来源。"""
+    env = live_theme
+    base = f"/api/projects/{env.projects[0].id}/governance"
+    topic = (await env.client.post(base + "/topics", json={"title": "开放方案", "summary": "正文常驻", "source_channel": "project"})).json()
+    comment = await env.client.post(base + f"/topics/{topic['id']}/comments", json={"content": "先试运营两周", "discussion_type": "discussion"})
+    assert comment.status_code == 200, comment.text
+    comment_id = comment.json()["id"]
+    decision = await env.client.post(base + "/decisions", json={"title": "试运营方案", "conclusion": "采用两周试点", "topic_id": topic["id"]})
+    assert decision.status_code == 200, decision.text
+    activity = await env.client.get(base + "/activity")
+    assert activity.status_code == 200, activity.text
+    items = activity.json()["items"]
+    assert any(item["kind"] == "comment" and item["id"] == comment_id and item["comment_id"] == comment_id and item["topic_id"] == topic["id"] for item in items)
+    assert any(item["kind"] == "decision" and item["id"] == decision.json()["id"] for item in items)
+    assert len({item["event_key"] for item in items}) == len(items)
+    denied = await env.client.get(base + "/activity", headers=env.headers[1])
+    assert denied.status_code == 404
+    async with env.db() as db:
+        assert await db.scalar(text("SELECT content FROM governance_topic_comments WHERE id=:id"), {"id": comment_id}) == "先试运营两周"
+
+
+@pytest.mark.asyncio
+async def test_activity_excludes_deleted_independent_decision(live_theme):
+    """软删除草案不得在当前动态中复活。"""
+    env = live_theme
+    base = f"/api/projects/{env.projects[0].id}/governance"
+    created = await env.client.post(base + "/decisions", json={"title":"无来源测试草案", "conclusion":"可撤回合成内容"})
+    assert created.status_code == 200, created.text
+    row = created.json()
+    before = (await env.client.get(base + "/activity")).json()["items"]
+    assert any(item["id"] == row["id"] and item["topic_id"] is None and item["author_name"] == env.users[0].username for item in before)
+    deleted = await env.client.post(base + f"/decisions/{row['id']}/operations", json={"action":"delete","reason":"隔离测试删除草案", "expected_revision":row["revision_number"]})
+    assert deleted.status_code == 200, deleted.text
+    after = (await env.client.get(base + "/activity")).json()["items"]
+    assert not any(item["id"] == row["id"] for item in after)
+    async with env.db() as db:
+        assert await db.scalar(text("SELECT deleted_at IS NOT NULL FROM governance_decisions WHERE id=:id"), {"id":row["id"]})

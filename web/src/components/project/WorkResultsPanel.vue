@@ -1,6 +1,6 @@
 <template>
   <section class="result-panel">
-    <h2>交付与办理</h2>
+    <h2>当前交付</h2>
     <a-alert v-if="task.legacy_completion" type="info" message="历史完成，未记录验收依据" show-icon />
     <a-alert v-else-if="task.status === 'done' && !task.acceptance_current" type="warning" message="历史结果按旧要求验收，尚无当前要求的验收依据" show-icon />
     <p class="muted">要求修订 {{ task.criteria_revision || 1 }} · 结果 {{ task.results?.length || 0 }} 份。执行成功、结果接受与工作完成分别记录。</p>
@@ -8,17 +8,17 @@
     <a-alert v-if="missingResult" type="warning" show-icon message="指定结果不在当前工作中，未替换为其他结果。请核对入口或刷新。" />
     <div class="result-selector" aria-label="选择交付结果">
       <button v-for="item in task.results || []" :key="item.id" type="button" :aria-pressed="item.id === selectedId" @click="selectResult(item.id)">
-        {{ statusName(item.status) }} · 要求 {{ item.criteria_revision || '未记录' }} · {{ item.id.slice(0, 8) }}
-        <span>{{ formatDateTime(item.created_at) }} · {{ item.summary }}</span>
+        {{ statusName(item.status) }} · 要求 {{ item.criteria_revision || '未记录' }}
+        <span>{{ formatDateTime(item.created_at) }} · {{ summaryTitle(item.summary) }}</span>
       </button>
     </div>
     <p v-if="!task.results?.length" class="muted">尚无业务结果记录，可直接人工交付，无需议题或智能体。</p>
     <article v-for="result in selectedResult ? [selectedResult] : []" :key="result.id" :id="`work-result-${result.id}`" class="result-card">
-      <h3>结果 {{ result.id.slice(0, 8) }} · {{ statusName(result.status) }} · {{ formatDateTime(result.created_at) }}</h3>
-      <p class="muted">{{ result.origin_kind === 'automatic' ? '执行自动导入' : '人工提交' }} · 提交者 {{ result.submitted_by }} · 要求修订 {{ result.criteria_revision || '未记录' }}</p>
+      <h3>{{ summaryTitle(result.summary) }}</h3><pre class="result-body">{{ result.summary }}</pre><p class="muted">{{ statusName(result.status) }} · {{ formatDateTime(result.created_at) }}</p>
+      <p class="muted">{{ result.origin_kind === 'automatic' ? '执行自动导入' : '人工提交' }} · 要求修订 {{ result.criteria_revision || '未记录' }}</p>
       <p v-if="result.source_execution_id"><a :href="`#work-execution-${result.source_execution_id}`">查看当次执行来源</a></p>
-      <p v-if="result.source_delegation_id">来源委派：{{ result.source_delegation_id }}</p>
-      <h4>结果摘要</h4><pre>{{ result.summary }}</pre>
+      <details class="result-trace"><summary>来源与追溯</summary><p>结果：{{ result.id }}</p><p>提交者：{{ result.submitted_by }}</p><p v-if="result.source_delegation_id">来源委派：{{ result.source_delegation_id }}</p></details>
+
       <p v-if="result.unresolved">未解决事项：{{ result.unresolved }}</p>
       <a-alert v-if="result.criteria_changed" type="warning" show-icon message="该结果基于旧要求；核对原依据后可记录未接受，接受需补充当前要求的交付。" />
       <details open><summary>提交时验收条件{{ result.criteria_changed ? '（与当前要求不同）' : '' }}</summary><pre>{{ result.criteria_snapshot === null ? '旧执行未记录可核对条件，不能作为当前完成依据，请补充人工结果' : result.criteria_snapshot || '当时未填写条件' }}</pre></details>
@@ -29,11 +29,11 @@
       </a-alert>
       <h4>交付文件与引用</h4><ul><li v-for="(item, index) in result.evidence" :key="index">
         <a v-if="item.kind === 'url'" :href="item.value" target="_blank" rel="noopener noreferrer">{{ item.title || item.value }}</a>
-        <router-link v-else-if="item.kind === 'file' && item.workspace_path" :to="{ name: 'workspace', query: { open: item.workspace_path } }" target="_blank">查看文件：{{ item.title || item.value }}</router-link>
+        <router-link v-else-if="item.kind === 'file' && item.workspace_path" :to="{ name: 'ProjectFiles', params: { project_id: projectId }, query: { open: item.value } }" target="_blank">查看文件：{{ item.title || item.value }}</router-link>
         <a-button v-else-if="item.kind === 'attachment'" type="link" :disabled="item.availability === 'unavailable'" @click="emit('download-attachment', item.value)">下载附件：{{ item.title || task.attachments?.find(file => file.id === item.value)?.file_name || item.value }}</a-button>
         <span v-else>{{ item.title || item.value }}</span> · {{ item.availability_message }}
       </li></ul>
-      <p class="muted">文件独立打开用于对照；返回本页仍保留所选结果与意见。预览能力沿用个人空间，未支持格式可下载。</p>
+      <p class="muted">文件独立打开用于对照；返回本页仍保留所选结果与意见。在项目资料中核对内容，未支持格式可下载。</p>
       <p v-if="result.reviewed_at">{{ result.reviewed_by }} · {{ formatDateTime(result.reviewed_at) }} · {{ result.review_comment || '未填写意见' }}</p>
       <ResultFeedbackPanel :project-id="projectId" :task-id="task.id" :task-number="task.number" :result="result" @refresh="emit('refresh')" />
       <a-button v-if="result.status === 'accepted' && !result.criteria_changed && task.status !== 'done'" type="primary" :loading="completionBusy" :disabled="completionBusy" @click="emit('complete-task')">完成工作（已接受当前结果）</a-button>
@@ -93,6 +93,11 @@ import { formatDateTime } from '@/utils/time'
 import { useUserStore } from '@/stores/user'
 import { getReviewDraft, setReviewDraft, clearReviewScope, reviewDrafts } from '@/utils/resultReviewDrafts'
 
+/** 目录仅显示短摘要，完整交付正文单独保留。 */
+const summaryTitle = value => {
+  const chars = Array.from(String(value || '文字交付').replace(/\s+/g, ' ').trim())
+  return chars.length > 60 ? chars.slice(0, 59).join('') + '…' : chars.join('')
+}
 const props = defineProps({ projectId: { type: String, required: true }, task: { type: Object, required: true }, executions: { type: Array, default: () => [] }, anchor: { type: String, default: '' }, completionBusy: { type: Boolean, default: false } })
 const emit = defineEmits(['refresh', 'complete', 'select-result', 'download-attachment', 'complete-task'])
 const user = useUserStore()

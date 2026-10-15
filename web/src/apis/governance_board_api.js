@@ -11,6 +11,7 @@ function pageQuery(query) {
 }
 
 export const governanceBoardApi = {
+  recentActivity: projectId => apiGet(`${projectPath(projectId)}/governance/activity`, {cache:'no-store'}),
   businessSummary: (projectId, signal) => apiGet(`${projectPath(projectId)}/governance/summary`, { signal, cache: 'no-store' }),
   topicsPage: (projectId, query, signal) => apiGet(`${projectPath(projectId)}/governance/topics-page?${pageQuery(query)}`, { signal, cache: 'no-store' }),
   decisionsPage: (projectId, query, signal) => apiGet(`${projectPath(projectId)}/governance/decisions-page?${pageQuery(query)}`, { signal, cache: 'no-store' }),

@@ -231,7 +231,7 @@
             "type": "integer"
           },
           "componentAbi": {
-            "maximum": 1,
+            "maximum": 2,
             "minimum": 1,
             "title": "Componentabi",
             "type": "integer"
@@ -310,6 +310,29 @@
             "title": "Layout",
             "type": "string"
           },
+          "capability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "overview",
+                  "blueprints",
+                  "topics",
+                  "plans",
+                  "work",
+                  "inspection",
+                  "files",
+                  "agents",
+                  "settings"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Capability"
+          },
           "blocks": {
             "items": {
               "discriminator": {
@@ -344,7 +367,6 @@
                 }
               ]
             },
-            "minItems": 1,
             "title": "Blocks",
             "type": "array"
           }
@@ -353,8 +375,7 @@
           "id",
           "title",
           "description",
-          "layout",
-          "blocks"
+          "layout"
         ],
         "title": "Page",
         "type": "object"
@@ -622,6 +643,38 @@
           "topicLabel": {
             "minLength": 1,
             "title": "Topiclabel",
+            "type": "string"
+          },
+          "baseVersion": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Baseversion"
+          },
+          "density": {
+            "default": "comfortable",
+            "enum": [
+              "comfortable",
+              "compact"
+            ],
+            "title": "Density",
+            "type": "string"
+          },
+          "accent": {
+            "default": "teal",
+            "enum": [
+              "teal",
+              "blue",
+              "slate"
+            ],
+            "title": "Accent",
             "type": "string"
           },
           "pages": {
@@ -968,7 +1021,7 @@
             "type": "integer"
           },
           "componentAbi": {
-            "maximum": 1,
+            "maximum": 2,
             "minimum": 1,
             "title": "Componentabi",
             "type": "integer"
@@ -1047,6 +1100,29 @@
             "title": "Layout",
             "type": "string"
           },
+          "capability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "overview",
+                  "blueprints",
+                  "topics",
+                  "plans",
+                  "work",
+                  "inspection",
+                  "files",
+                  "agents",
+                  "settings"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Capability"
+          },
           "blocks": {
             "items": {
               "discriminator": {
@@ -1081,7 +1157,6 @@
                 }
               ]
             },
-            "minItems": 1,
             "title": "Blocks",
             "type": "array"
           }
@@ -1090,8 +1165,7 @@
           "id",
           "title",
           "description",
-          "layout",
-          "blocks"
+          "layout"
         ],
         "title": "Page",
         "type": "object"
@@ -1359,6 +1433,38 @@
           "topicLabel": {
             "minLength": 1,
             "title": "Topiclabel",
+            "type": "string"
+          },
+          "baseVersion": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Baseversion"
+          },
+          "density": {
+            "default": "comfortable",
+            "enum": [
+              "comfortable",
+              "compact"
+            ],
+            "title": "Density",
+            "type": "string"
+          },
+          "accent": {
+            "default": "teal",
+            "enum": [
+              "teal",
+              "blue",
+              "slate"
+            ],
+            "title": "Accent",
             "type": "string"
           },
           "pages": {

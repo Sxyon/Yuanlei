@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { displayBlueprintName, normalizeBlueprintName } from '../../src/utils/blueprintName.js'
+import { displayBlueprintName, normalizeBlueprintName, blueprintDocumentHeading, blueprintDocumentBody } from '../../src/utils/blueprintName.js'
 
 test('新建蓝图自动补全后缀，界面隐藏后缀', () => {
   assert.equal(normalizeBlueprintName('  product-plan  '), 'product-plan.md')
@@ -38,4 +38,12 @@ test('名称支持大写英文与常用标点，拒绝空白和危险字符', ()
     '中'.repeat(65)
   ])
     assert.equal(normalizeBlueprintName(name), null)
+})
+
+test('首行标题只在文档抬头出现，正文保留其余完整内容与后续标题', () => {
+  const content = '# 蓝图方向\n\n预期结果\n\n## 验证条件\n完整后续正文'
+  assert.equal(blueprintDocumentHeading('文件名.md', content), '蓝图方向')
+  assert.equal(blueprintDocumentBody(content), '\n预期结果\n\n## 验证条件\n完整后续正文')
+  assert.equal(blueprintDocumentHeading('文件名.md', '普通正文\n# 内文标题'), '文件名')
+  assert.equal(blueprintDocumentBody('普通正文\n# 内文标题'), '普通正文\n# 内文标题')
 })

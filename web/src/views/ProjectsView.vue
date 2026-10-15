@@ -2,6 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { message } from 'ant-design-vue'
+import { projectThemeApi } from '@/apis/project_theme_api'
+import { validateLoadedPackage } from '@/components/project/themes/contract'
+import { projectThemeSettingsTarget } from '@/components/project/themes/workspaceCapabilities'
+import { useUserStore } from '@/stores/user'
 import { Grid2X2, List, Plus, RefreshCw, SlidersHorizontal } from '@lucide/vue'
 import ProjectThemeManager from '@/components/project/ProjectThemeManager.vue'
 import PageHeader from '@/components/shared/PageHeader.vue'
@@ -17,7 +22,25 @@ const { projects, isLoading, hasLoaded, error, management } = storeToRefs(store)
 const tab = computed(() => route.query.tab === 'themes' ? 'themes' : 'projects')
 const tabs = [{key: 'projects', label: '项目列表'}, {key: 'themes', label: '主题管理'}]
 const filtered = computed(() => searchManagedProjects(projects.value, management.value.query))
-const createOpen = ref(false), editing = ref(null)
+const createOpen = ref(false), editing = ref(null), editingId = ref(null)
+const user = useUserStore()
+let editRequest = 0
+/** 优先进入已绑定主题的设置页，未声明设置时沿用原弹窗。 */
+async function editProject(project) {
+  const request = ++editRequest, owner = user.uid
+  editingId.value = project.id
+  try {
+    const selection = await projectThemeApi.binding(project.id)
+    if (request !== editRequest || user.uid !== owner || route.name !== 'ProjectsComp') return
+    if (selection.state === 'error') throw new Error(selection.error?.message || '项目主题不可用，请先修复绑定')
+    const target = projectThemeSettingsTarget(project.id, selection.state === 'ready' ? validateLoadedPackage(selection.package) : null)
+    if (target) await router.push(target)
+    else editing.value = project
+  } catch (cause) {
+    if (request !== editRequest || user.uid !== owner || route.name !== 'ProjectsComp') return
+    message.error(cause.message || '读取项目主题失败，请重试')
+  } finally { if (request === editRequest) editingId.value = null }
+}
 const themeProjectId = computed(() => String(route.query.project_id || ''))
 const columnNames = ['项目 / 描述', '类型 / 分类', '管理状态', '负责人', 'Workdir / 更新时间']
 const columnMinimums = [240, 100, 100, 100, 100]
@@ -74,7 +97,7 @@ onMounted(reload)
             </div>
             <p class="project-description" :title="project.description">{{ project.description || '暂无描述' }}</p>
             <div class="card-attributes"><span>{{ typeLabel(project) }}</span><span v-if="project.category" :title="project.category" class="category">{{ project.category }}</span><span class="status-tag">{{ statusLabel(project) }}</span></div>
-            <footer><time :datetime="project.updated_at" :title="project.updated_at">更新于{{ formatRelativeTime(project.updated_at) || '未知' }}</time><a-button type="text" size="small" @click="editing = project" class="project-edit">编辑</a-button><RouterLink :to="dashboard(project)" class="entry-link">进入项目 →</RouterLink></footer>
+            <footer><time :datetime="project.updated_at" :title="project.updated_at">更新于{{ formatRelativeTime(project.updated_at) || '未知' }}</time><a-button type="text" size="small" :loading="editingId === project.id" @click="editProject(project)" class="project-edit">编辑</a-button><RouterLink :to="dashboard(project)" class="entry-link">进入项目 →</RouterLink></footer>
           </article>
         </div>
         <div v-else-if="hasLoaded" class="table-scroll" role="region" aria-label="项目列表，可横向滚动" tabindex="0">
@@ -89,7 +112,7 @@ onMounted(reload)
               <td><span class="workdir" :title="project.workdir_path">{{ project.workdir_path }}</span><small :title="project.updated_at">更新于{{ formatRelativeTime(project.updated_at) || '未知' }}</small></td>
                 <td>
                   <div class="row-actions">
-                    <a-button type="link" size="small" @click="editing = project">编辑</a-button>
+                    <a-button type="link" size="small" :loading="editingId === project.id" @click="editProject(project)">编辑</a-button>
                     <RouterLink :to="dashboard(project)" class="entry-link">进入</RouterLink>
                   </div>
                 </td>

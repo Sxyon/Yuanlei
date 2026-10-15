@@ -1,3 +1,4 @@
+import { projectWorkspaceIntent } from '@/utils/projectWorkspaceIntent'
 import { createRouter, createWebHistory } from 'vue-router'
 import BlankLayout from '@/layouts/BlankLayout.vue'
 import { useUserStore } from '@/stores/user'
@@ -104,7 +105,7 @@ const router = createRouter({
           path: '',
           name: 'ProjectWorkTasksView',
           component: () => import('../views/ProjectWorkTasksView.vue'),
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, keepAlive: false }
         }
       ]
     },
@@ -117,7 +118,7 @@ const router = createRouter({
           path: '',
           name: 'ProjectWorkTaskView',
           component: () => import('../views/ProjectWorkTaskView.vue'),
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, keepAlive: false }
         }
       ]
     },
@@ -130,14 +131,49 @@ const router = createRouter({
           path: '',
           name: 'ProjectAgentWorkbenchView',
           component: () => import('../views/ProjectAgentWorkbenchView.vue'),
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, keepAlive: false }
         }
       ]
     },
     {
       path: '/projects/:project_id/agents',
       component: AppLayout,
-      children: [{ path: '', name: 'ProjectAgentsComp', component: () => import('../views/ProjectAgentsView.vue'), meta: { requiresAuth: true } }]
+      children: [{ path: '', name: 'ProjectAgentsComp', component: () => import('../views/ProjectAgentsView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/plans',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectPlans', component: () => import('../views/ProjectCapabilityView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/reports',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectReports', component: () => import('../views/ProjectCapabilityView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/files',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectFiles', component: () => import('../views/ProjectCapabilityView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/settings',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectSettings', component: () => import('../views/ProjectCapabilityView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/theme-display',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectThemeDisplay', component: () => import('../views/ProjectThemeDisplayView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/topics',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectTopics', component: () => import('../views/ProjectTopicsView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+    },
+    {
+      path: '/projects/:project_id/blueprints',
+      component: AppLayout,
+      children: [{ path: '', name: 'ProjectBlueprints', component: () => import('../views/ProjectBlueprintsView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
     },
     {
       path: '/projects/:project_id/dashboard',
@@ -173,7 +209,7 @@ const router = createRouter({
         {
           path: '',
           name: 'ProjectInspectionBoardComp',
-          component: () => import('../views/ProjectInspectionBoardView.vue'),
+          redirect: projectWorkspaceIntent,
           meta: { keepAlive: false, requiresAuth: true }
         }
       ]
@@ -272,6 +308,10 @@ const router = createRouter({
 
 // 全局前置守卫
 router.beforeEach(async (to) => {
+  if (to.name === 'ProjectDashboardComp' && to.query.view === 'theme') {
+    const query = { ...to.query }; delete query.view
+    return { name: 'ProjectThemeDisplay', params: to.params, query, hash: to.hash, replace: true }
+  }
   // 检查路由是否需要认证
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth === true)
   const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)

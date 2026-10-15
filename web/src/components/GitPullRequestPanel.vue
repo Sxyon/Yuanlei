@@ -1,5 +1,5 @@
 <template>
-  <a-collapse class="pull-request-panel">
+  <a-collapse class="pull-request-panel" :default-active-key="['pulls']">
     <a-collapse-panel key="pulls" header="Gitea 合并请求">
       <a-alert v-if="error" type="error" show-icon :message="error" />
       <div class="pull-actions">

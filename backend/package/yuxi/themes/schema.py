@@ -27,7 +27,7 @@ PROJECT_THEME_SCHEMA_STATEMENTS = (
         candidate_revision INTEGER NOT NULL,
         created_by VARCHAR(64) REFERENCES users(uid), created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(source_id,version), CHECK (digest ~ '^[a-f0-9]{64}$'),
-        CHECK (format_version=1 AND component_abi=1)
+        CHECK (format_version=1 AND component_abi IN (1,2))
     )""",
     """CREATE TABLE IF NOT EXISTS project_theme_bindings (
         project_id VARCHAR(64) PRIMARY KEY REFERENCES projects(id),
@@ -49,4 +49,12 @@ PROJECT_THEME_SCHEMA_STATEMENTS = (
     "DROP TRIGGER IF EXISTS project_theme_version_immutable ON project_theme_versions",
     """CREATE TRIGGER project_theme_version_immutable BEFORE UPDATE OR DELETE ON project_theme_versions
         FOR EACH ROW EXECUTE FUNCTION project_theme_version_immutable()""",
+)
+
+
+PROJECT_THEME_ABI2_STATEMENTS = (
+    "ALTER TABLE project_theme_versions DROP CONSTRAINT IF EXISTS project_theme_versions_check",
+    "ALTER TABLE project_theme_versions DROP CONSTRAINT IF EXISTS ck_project_theme_versions_abi",
+    "ALTER TABLE project_theme_versions ADD CONSTRAINT ck_project_theme_versions_abi "
+    "CHECK (format_version=1 AND component_abi IN (1,2))",
 )

@@ -24,11 +24,11 @@ const renderer = createRenderer({
 })
 const settle = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)) }
 const topic = id => ({ id, admission_status: 'canonical', progress: 'open', revision_number: 1 })
-function mountPanel(t, current = ref(topic('a')), route = { query: {} }) {
+function mountPanel(t, current = ref(topic('a')), route = { query: {} }, extra = {}) {
   const instances = []
   const drafts = {}
   const Component = { ...Panel, render() { instances.push(getCurrentInstance()); return h('div') } }
-  const app = renderer.createApp({ render: () => h(Component, { key: current.value.id, projectId: 'project', topic: current.value, draft: drafts[current.value.id] ||= { content: '', discussionType: 'discussion' } }) })
+  const app = renderer.createApp({ render: () => h(Component, { key: current.value.id, projectId: 'project', topic: current.value, draft: drafts[current.value.id] ||= { content: '', discussionType: 'discussion' }, ...extra }) })
   app.provide(ssrContextKey, { modules: new Set() })
   app.provide(routeLocationKey, route)
   app.mount({})
@@ -212,4 +212,41 @@ test('有效深链改成无效后清旧定位，仍展示当前议题确认事�
   assert.equal(state.focusedDiscussion, null)
   assert.equal(state.focusedRevision, null)
   assert.match(state.followupError, /原讨论不存在/)
+})
+
+test('讨论展开状态按评论身份记入原草稿，切换筛选后仍能恢复', async t => {
+  t.mock.method(api, 'getTopicTimeline', async () => ({ items: [], next_before: null }))
+  const { instances } = mountPanel(t)
+  await settle()
+  const state = instances.at(-1).setupState
+  state.rememberThread('reply-a', { target: { open: true } })
+  state.eventFilter = 'work'
+  state.eventFilter = 'all'
+  assert.equal(state.expandedThreads.has('reply-a'), true)
+  assert.deepEqual(state.sharedDraft.expandedThreads, ['reply-a'])
+  state.rememberThread('reply-b', { target: { open: true } })
+  state.rememberThread('reply-a', { target: { open: false } })
+  assert.deepEqual(state.sharedDraft.expandedThreads, ['reply-b'])
+})
+
+test('动态读取失败后重试成功清除错误；失权清空节点并通知父级', async t => {
+  let failure = new Error('暂时不可读')
+  t.mock.method(api, 'getTopicTimeline', async () => { if (failure) throw failure; return { items: [{ sequence: 1, kind: 'created' }], next_before: null } })
+  const lost = []
+  const { instances } = mountPanel(t, ref(topic('a')), { query: {} }, { onVisibilityLost: cause => lost.push(cause) })
+  await settle()
+  const state = instances.at(-1).setupState
+  assert.match(state.error, /暂时不可读/)
+  failure = null
+  await state.loadMore(true)
+  assert.equal(state.error, '')
+  assert.equal(state.events.length, 1)
+  failure = Object.assign(new Error('已失权'), { status: 403 })
+  await state.loadMore(true)
+  assert.equal(state.events.length, 0)
+  assert.equal(lost.at(-1).status, 403)
+  t.mock.method(api, 'getTopicFollowup', async () => { throw failure })
+  await state.loadFollowup()
+  assert.equal(lost.length, 2)
+  assert.deepEqual(state.confirmations, [])
 })

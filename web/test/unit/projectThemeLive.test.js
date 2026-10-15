@@ -12,7 +12,7 @@ test('主题返回只回当前项目，错账号／项目／令牌和损坏记�
     const context = { projectId: 'project-a', packageRef: 'version-a', bindingGeneration: 4, pageId: 'read', selectedTopicId: 'topic-a', queries: {}, top: 120 }
     const token = saveThemeReturn('user-a', context)
     assert.deepEqual(readThemeReturn(token, 'user-a', 'project-a'), context)
-    assert.deepEqual(themeReturnTarget(token, 'user-a', 'project-a'), { name: 'ProjectDashboardComp', params: { project_id: 'project-a' }, query: { view: 'theme', theme_return: token } })
+    assert.deepEqual(themeReturnTarget(token, 'user-a', 'project-a'), { name: 'ProjectThemeDisplay', params: { project_id: 'project-a' }, query: { theme_return: token } })
     for (const args of [[token, 'user-b', 'project-a'], [token, 'user-a', 'project-b'], ['https://external.invalid', 'user-a', 'project-a']]) assert.equal(themeReturnTarget(...args), null)
     stored = 'broken-json'; assert.equal(readThemeReturn(token, 'user-a', 'project-a'), null)
   } finally { globalThis.sessionStorage = original }

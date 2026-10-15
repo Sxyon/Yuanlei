@@ -3,10 +3,13 @@ import { after, before, test } from 'node:test'
 import { setImmediate } from 'node:timers'
 import { createRenderer, getCurrentInstance, h, nextTick, reactive, ssrContextKey } from 'vue'
 import { message } from 'ant-design-vue'
+import { createPinia, setActivePinia } from 'pinia'
 import { createServer } from 'vite'
+import { routeLocationKey } from 'vue-router'
 
-let vite, ResourcePanel, PullPanel, SettingsModal, WorktreePanel, ActivityPanel, api, gitApi
+let vite, ResourcePanel, PullPanel, SettingsModal, WorktreePanel, ActivityPanel, Workspace, api, gitApi
 before(async () => {
+  setActivePinia(createPinia())
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: ActivityPanel } = await vite.ssrLoadModule('/src/components/ProjectGitActivityPanel.vue'))
@@ -14,6 +17,7 @@ before(async () => {
   ;({ default: WorktreePanel } = await vite.ssrLoadModule('/src/components/GitWorktreeArtifactPanel.vue'))
   ;({ default: PullPanel } = await vite.ssrLoadModule('/src/components/GitPullRequestPanel.vue'))
   ;({ default: SettingsModal } = await vite.ssrLoadModule('/src/components/ProjectGitSettingsModal.vue'))
+  ;({ default: Workspace } = await vite.ssrLoadModule('/src/components/ProjectGitWorkspace.vue'))
   ;({ gitApi } = await vite.ssrLoadModule('/src/apis/git_api.js'))
   ;({ projectApi: api } = await vite.ssrLoadModule('/src/apis/project_api.js'))
 })
@@ -30,6 +34,7 @@ const mount = (t, View, props) => {
   const Component = { ...View, render() { instance = getCurrentInstance(); return h('div') } }
   const app = renderer.createApp({ setup: () => () => h(Component, props) })
   app.provide(ssrContextKey, { modules: new Set() })
+  app.provide(routeLocationKey, reactive({query:{}}))
   app.mount({})
   t.after(() => app.unmount())
   return () => instance.setupState
@@ -268,4 +273,94 @@ test('工作树轮询替换同一记录时保留审查弹窗及提交草稿', as
   assert.equal(state().open, false)
   assert.equal(state().review, null)
   assert.equal(state().commitMessage, '')
+})
+
+
+test('实时差异刷新不能替换人工确认中的审查依据和输入', async (t) => {
+  let count = 0
+  t.mock.method(api, 'reviewGitResource', async () => ({ head_sha: `head-${++count}`, tree_sha: `tree-${count}`, dirty: true, diff: `diff-${count}` }))
+  const props = reactive({ projectId: 'project', resource: { ...resource(), checkout_head_sha: 'head' }, mode: 'activity', refreshToken: 0 })
+  const state = mount(t, ResourcePanel, props)
+  await settle()
+  assert.equal(state().review.head_sha, 'head-1')
+  assert.equal(state().reviewOpen, false)
+  await state().openReview()
+  const frozen = state().review.head_sha
+  state().commitMessage = '人工审查说明'
+  props.refreshToken++
+  await settle()
+  assert.notEqual(state().liveReview.head_sha, frozen)
+  assert.equal(state().review.head_sha, frozen)
+  assert.equal(state().commitMessage, '人工审查说明')
+})
+
+test('外部待审批投影移除记录时清理已展开申请', async (t) => {
+  const props = reactive({ projectId: 'project', kind: 'pending', items: [{ id: 'action', status: 'pending' }], autoRefresh: false })
+  const state = mount(t, ActivityPanel, props)
+  await settle()
+  state().selected = props.items[0]
+  props.items = []
+  await settle()
+  assert.equal(state().selected, null)
+  assert.deepEqual(state().rows, [])
+})
+
+
+test('资源刷新暂停后不再安排轮询，恢复后回读；切项目拒绝迟到结果', async (t) => {
+  const jobs = new Set()
+  t.mock.method(globalThis, 'setTimeout', fn => { jobs.add(fn); return fn })
+  t.mock.method(globalThis, 'clearTimeout', fn => { jobs.delete(fn) })
+  t.mock.method(api, 'getRepositories', async () => [])
+  t.mock.method(api, 'getGitWorktrees', async () => [])
+  t.mock.method(api, 'getGitActions', async () => [])
+  t.mock.method(api, 'getGitOccupancies', async () => [])
+  const props = reactive({projectId:'first'})
+  const state = mount(t, Workspace, props)
+  await settle()
+  assert.equal(jobs.size,1)
+  state().paused = true
+  await settle()
+  assert.equal(jobs.size,0)
+  state().paused = false
+  await settle()
+  assert.equal(jobs.size,1)
+  let finish
+  t.mock.method(api, 'getRepositories', project => project === 'first' ? new Promise(resolve=>{finish=resolve}) : Promise.resolve([{id:'new-project'}]))
+  const oldRead = state().refresh()
+  props.projectId = 'second'
+  await settle()
+  finish([{id:'stale-project'}])
+  await oldRead
+  assert.equal(state().resources[0].id,'new-project')
+})
+
+test('干净且无待推送的仓库随刷新出现新改动，开始审查后不再覆盖',async t=>{
+  let snapshot={head_sha:'head',tree_sha:'clean',dirty:false,unpushed:false}
+  t.mock.method(api,'reviewGitResource',async()=>({...snapshot}))
+  const props=reactive({projectId:'project',resource:{...resource(),checkout_head_sha:'head'},mode:'activity',refreshToken:0})
+  const state=mount(t,ResourcePanel,props)
+  await settle()
+  assert.equal(state().review.dirty,false)
+  snapshot={...snapshot,dirty:true,tree_sha:'changed'}
+  props.refreshToken++;await settle()
+  assert.equal(state().review.dirty,true)
+  state().commitMessage='审阅中的提交'
+  snapshot={...snapshot,tree_sha:'new-change'}
+  props.refreshToken++;await settle()
+  assert.equal(state().review.tree_sha,'changed')
+  assert.equal(state().liveReview.tree_sha,'new-change')
+})
+
+test('推送确认展开时即使干净也冻结HEAD，轮询不能替换即将批准的依据',async t=>{
+  let snapshot={head_sha:'reviewed',tree_sha:'clean',dirty:false,unpushed:false}
+  t.mock.method(api,'reviewGitResource',async()=>({...snapshot}))
+  const push=t.mock.method(api,'pushGitResource',async()=>snapshot)
+  t.mock.method(message,'success',()=>{})
+  const props=reactive({projectId:'project',resource:{...resource(),checkout_head_sha:'head'},mode:'activity',refreshToken:0})
+  const state=mount(t,ResourcePanel,props);await settle()
+  state().confirmation='push'
+  snapshot={...snapshot,head_sha:'new-unreviewed'}
+  props.refreshToken++;await settle()
+  await state().push()
+  assert.equal(push.mock.calls[0].arguments[2].expected_head,'reviewed')
 })

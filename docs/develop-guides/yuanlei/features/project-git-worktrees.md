@@ -56,3 +56,13 @@ Project 需要绑定多个远端仓库，并让同一根任务的 Root Agent 与
 - [项目 Git 审批记录与占用队列](../decisions/proposed/2026-10-04-project-git-approval-history.md)
 
 - [Project Git 资源目录初始化守卫的终态判定](../decisions/implemented/2026-10-07-project-git-directory-guard-terminal-status.md)
+
+## 连接与项目资源的界面边界
+
+系统设置的“Git连接”管理当前用户的服务地址与只写凭据；项目Git资源只选择用户连接并绑定仓库。连接数据及所有操作继续由原用户uid授权，不新增项目专属连接副本，已有绑定不迁移。未使用连接才可删除，Token不回显及可信服务端使用规则保持；界面由SettingsModal、GitConnectionsSettingsCard和ProjectGitSettingsModal承载。
+
+### 项目设置的资源工作区（2026-10-15）
+
+项目设置将高频差异、待审批、占用与工作树单独展示，仓库配置位于右侧窄列；历史和合并请求按需弹窗。高频区5秒自动读取，可暂停；只更新展示，不替换人工提交确认的HEAD/tree。总览非空提醒携带准确申请或占用区域定位。GET项目git-actions增加可选status=pending，在用户与项目可见性内先筛选再分页，默认历史行为不变。连接仍由用户级系统设置管理，项目配置可显式刷新连接候选。
+
+证据：资源面板与projectGitAttention前端回归、真实HTTP集成test_pending_filter_precedes_history_pagination（旧待办、分页、无效状态与项目隔离）。实际远端创建、审批、提交与清理仍由原流程负责，本轮界面观察不代表这些写动作已再次验收。

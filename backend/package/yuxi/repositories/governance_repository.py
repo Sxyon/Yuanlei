@@ -318,6 +318,49 @@ class GovernanceRepository:
         )
         await self.db.flush()
 
+    async def recent_project_activity(self, *, project_id: str, uid: str, limit: int):
+        """按真实事件时间读取可见项目动态，保留准确讨论和决定引用。"""
+        query = (
+            select(GovernanceTopicEvent, GovernanceTopic, GovernanceTopicComment)
+            .join(GovernanceTopic, GovernanceTopic.id == GovernanceTopicEvent.topic_id)
+            .join(Project, Project.id == GovernanceTopic.project_id)
+            .outerjoin(GovernanceTopicComment, GovernanceTopicComment.id == GovernanceTopicEvent.comment_id)
+            .where(
+                Project.id == project_id,
+                Project.uid == uid,
+                Project.status == "active",
+                GovernanceTopic.deleted_at.is_(None),
+            )
+            .order_by(
+                GovernanceTopicEvent.created_at.desc(),
+                GovernanceTopicEvent.topic_id,
+                GovernanceTopicEvent.sequence.desc(),
+            )
+            .limit(limit)
+        )
+        events = (await self.db.execute(query)).all()
+        independent = (
+            await self.db.execute(
+                select(GovernanceDecision, GovernanceDecisionEvent)
+                .join(Project, Project.id == GovernanceDecision.project_id)
+                .outerjoin(
+                    GovernanceDecisionEvent,
+                    (GovernanceDecisionEvent.decision_id == GovernanceDecision.id)
+                    & (GovernanceDecisionEvent.sequence == GovernanceDecision.history_sequence),
+                )
+                .where(
+                    Project.id == project_id,
+                    Project.uid == uid,
+                    Project.status == "active",
+                    GovernanceDecision.topic_id.is_(None),
+                    GovernanceDecision.deleted_at.is_(None),
+                )
+                .order_by(GovernanceDecision.updated_at.desc(), GovernanceDecision.id)
+                .limit(limit)
+            )
+        ).all()
+        return events, independent
+
     async def list_topic_timeline(self, topic_id: str, *, before: int | None, limit: int):
         """按稳定序号倒序分页，联结对应快照及讨论。"""
         query = (

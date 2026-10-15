@@ -1,18 +1,85 @@
 <template>
   <div class="agent-workbench-page">
-    <PageHeader :title="workbenchTitle" :loading="loading" show-border>
-      <template #actions><a-button size="small" @click="load">刷新</a-button></template>
-    </PageHeader>
+    <header class="workbench-tools"><h1 v-if="workbench">{{ workbenchTitle }}</h1><div class="workbench-return">
+      <RouterLink
+        :to="{ name: 'ProjectAgentsComp', params: { project_id: route.params.project_id } }"
+        >返回项目智能体</RouterLink
+      ><a-button :loading="loading" @click="load">刷新</a-button>
+      </div>
+    </header>
     <main ref="scrollContainer" class="agent-workbench-content">
       <a-spin v-if="loading" class="agent-workbench-state" />
       <a-alert v-else-if="error" type="error" show-icon :message="error">
         <template #action><a-button size="small" @click="load">重试</a-button></template>
       </a-alert>
       <template v-else-if="workbench">
-        <p class="agent-workbench-muted">这里接收和执行工作；执行完成不等于结果接受。核对交付进入准确工作详情；人工求助从收件箱答复，已答复但未恢复仍需跟进。</p>
-        <RouterLink :to="{ name: 'InboxView' }">查看跨项目收件箱</RouterLink>
-        <section class="agent-workbench-section agent-workbench-config">
-          <h2>任务接收设置</h2>
+
+
+
+        <div class="workbench-columns"><div class="workbench-main">
+        <section v-for="section in sections" :key="section.key" class="agent-workbench-section">
+          <h2>{{ section.title }}</h2>
+          <p v-if="!section.items.length" class="agent-workbench-muted">{{ section.empty }}</p>
+          <ul v-else>
+            <li v-for="item in section.items" :key="item.id">
+              <div>
+                <RouterLink
+                  :to="{
+                    name: 'ProjectWorkTaskView',
+                    params: { project_id: route.params.project_id, task_id: item.task_id },
+                    hash: `#work-execution-${item.id}`
+                  }"
+                >
+                  {{ item.task_number }} · {{ item.task_title }}
+                </RouterLink>
+                <p>{{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</p>
+                <p v-if="item.model_spec">执行模型：{{ item.model_spec }}</p>
+                <details v-if="item.current_run_id"><summary>准确执行标识</summary><code>{{ item.current_run_id }}</code></details>
+                <p v-if="item.error_message" class="agent-workbench-error">
+                  {{ item.error_message }}
+                </p>
+                <RouterLink
+                  v-if="item.thread_id && ['submitted', 'interrupted'].includes(item.status)"
+                  :to="{ name: 'AgentCompWithThreadId', params: { thread_id: item.thread_id } }"
+                  >进入执行会话</RouterLink
+                >
+              </div>
+              <div
+                v-if="['pending_acceptance', 'queued'].includes(item.status)"
+                class="agent-workbench-actions"
+              >
+                <a-button
+                  v-if="item.status === 'pending_acceptance'"
+                  type="primary"
+                  :loading="working === item.id"
+                  :disabled="Boolean(working)"
+                  @click="accept(item)"
+                  >接受任务</a-button
+                >
+                <a-button
+                  :loading="working === item.id"
+                  :disabled="Boolean(working)"
+                  @click="cancel(item)"
+                  >撤回分配</a-button
+                >
+              </div>
+              <div
+                v-else-if="['failed', 'cancelled'].includes(item.status)"
+                class="agent-workbench-actions"
+              >
+                <a-button
+                  :loading="working === item.id"
+                  :disabled="Boolean(working)"
+                  @click="retry(item)"
+                  >重新执行</a-button
+                >
+              </div>
+            </li>
+          </ul>
+        </section>
+        </div><aside class="workbench-aside"><h2>执行配置</h2>
+        <details class="agent-workbench-section agent-workbench-config">
+          <summary>任务接收设置</summary>
           <label class="agent-workbench-setting">
             <span>自动接受新分配的任务</span>
             <a-switch v-model:checked="autoAcceptWork" :disabled="settingsSaving" />
@@ -26,34 +93,19 @@
               @select-model="selectWorkModel"
             />
           </div>
-          <p class="agent-workbench-muted">未选择时使用该智能体的项目模型。接受任务时固化模型，后续设置变更不影响已接受任务。</p>
-          <a-button type="primary" :loading="settingsSaving" :disabled="!settingsChanged || settingsSaving" @click="saveSettings">保存设置</a-button>
-        </section>
-        <section v-for="section in sections" :key="section.key" class="agent-workbench-section">
-          <h2>{{ section.title }}</h2>
-          <p v-if="!section.items.length" class="agent-workbench-muted">{{ section.empty }}</p>
-          <ul v-else>
-            <li v-for="item in section.items" :key="item.id">
-              <div>
-                <RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: item.task_id }, hash: `#work-execution-${item.id}` }">
-                  {{ item.task_number }} · {{ item.task_title }}
-                </RouterLink>
-                <p>{{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</p>
-                <p v-if="item.model_spec">执行模型：{{ item.model_spec }}</p>
-                <p v-if="item.current_run_id">Run：{{ item.current_run_id }}</p>
-                <p v-if="item.error_message" class="agent-workbench-error">{{ item.error_message }}</p>
-                <RouterLink v-if="item.thread_id && ['submitted', 'interrupted'].includes(item.status)" :to="{ name: 'AgentCompWithThreadId', params: { thread_id: item.thread_id } }">进入执行会话</RouterLink>
-              </div>
-              <div v-if="['pending_acceptance', 'queued'].includes(item.status)" class="agent-workbench-actions">
-                <a-button v-if="item.status === 'pending_acceptance'" type="primary" :loading="working === item.id" :disabled="Boolean(working)" @click="accept(item)">接受任务</a-button>
-                <a-button :loading="working === item.id" :disabled="Boolean(working)" @click="cancel(item)">撤回分配</a-button>
-              </div>
-              <div v-else-if="['failed', 'cancelled'].includes(item.status)" class="agent-workbench-actions">
-                <a-button :loading="working === item.id" :disabled="Boolean(working)" @click="retry(item)">重新执行</a-button>
-              </div>
-            </li>
-          </ul>
-        </section>
+          <p class="agent-workbench-muted">
+            未选择时使用该智能体的项目模型。接受任务时固化模型，后续设置变更不影响已接受任务。
+          </p>
+          <a-button
+            type="primary"
+            :loading="settingsSaving"
+            :disabled="!settingsChanged || settingsSaving"
+            @click="saveSettings"
+            >保存设置</a-button
+          >
+        </details>
+        <RouterLink :to="{ name: 'InboxView' }">前往平台收件箱处理人工求助</RouterLink>
+        </aside></div>
         <p v-if="actionError" class="agent-workbench-error" role="alert">{{ actionError }}</p>
       </template>
     </main>
@@ -62,14 +114,14 @@
 
 <script setup>
 import { useReturnScroll } from '@/utils/pageReturnScroll'
-import { computed, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import PageHeader from '@/components/shared/PageHeader.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import { projectWorkExecutionApi } from '@/apis/project_work_execution_api'
 import { projectAgentApi } from '@/apis/project_agent_api'
 
 const route = useRoute()
+const accessLost = inject('projectAccessLost', () => {})
 const workbench = ref(null)
 const loading = ref(false)
 const scrollContainer = ref(null)
@@ -88,22 +140,43 @@ const workbenchTitle = computed(() => {
   return subject ? `智能体工作台 · ${subject}` : '智能体工作台'
 })
 
-const settingsChanged = computed(() => workbench.value && (
-  autoAcceptWork.value !== workbench.value.auto_accept_work ||
-  workDefaultModelSpec.value !== (workbench.value.work_default_model_spec || '')
-))
-const selectWorkModel = (spec) => { workDefaultModelSpec.value = spec || '' }
+const settingsChanged = computed(
+  () =>
+    workbench.value &&
+    (autoAcceptWork.value !== workbench.value.auto_accept_work ||
+      workDefaultModelSpec.value !== (workbench.value.work_default_model_spec || ''))
+)
+const selectWorkModel = (spec) => {
+  workDefaultModelSpec.value = spec || ''
+}
 
 const sections = computed(() => [
-  { key: 'current', title: '当前工作', items: workbench.value?.current ? [workbench.value.current] : [], empty: '当前没有执行中的任务' },
-  { key: 'pending_acceptance', title: '待接受', items: workbench.value?.pending_acceptance || [], empty: '没有待接受任务' },
+  {
+    key: 'current',
+    title: '当前工作',
+    items: workbench.value?.current ? [workbench.value.current] : [],
+    empty: '当前没有执行中的任务'
+  },
+  {
+    key: 'pending_acceptance',
+    title: '待接受',
+    items: workbench.value?.pending_acceptance || [],
+    empty: '没有待接受任务'
+  },
   { key: 'queued', title: '排队任务', items: workbench.value?.queued || [], empty: '队列为空' },
   { key: 'recent', title: '最近工作', items: workbench.value?.recent || [], empty: '暂无历史记录' }
 ])
-const statusLabel = (status) => ({
-  pending_acceptance: '待接受', queued: '排队中', dispatching: '派发中', submitted: '执行中',
-  interrupted: '等待答复', completed: '执行已完成', failed: '失败', cancelled: '已取消'
-})[status] || status
+const statusLabel = (status) =>
+  ({
+    pending_acceptance: '待接受',
+    queued: '排队中',
+    dispatching: '派发中',
+    submitted: '执行中',
+    interrupted: '等待答复',
+    completed: '执行已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  })[status] || status
 const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN') : '')
 
 async function load() {
@@ -121,7 +194,10 @@ async function load() {
     const [result, bindings] = await Promise.all([
       projectWorkExecutionApi.getWorkbench(projectId, agentSlug),
       // 显示名降级为 slug，不因归属列表读取失败阻断工作台本身。
-      projectAgentApi.list(projectId).then((data) => data.agents || []).catch(() => [])
+      projectAgentApi
+        .list(projectId)
+        .then((data) => data.agents || [])
+        .catch(() => [])
     ])
     if (version === loadVersion) {
       workbench.value = result
@@ -130,7 +206,13 @@ async function load() {
       agentName.value = bindings.find((agent) => agent.slug === agentSlug)?.name || ''
     }
   } catch (cause) {
-    if (version === loadVersion) error.value = cause?.message || '工作台加载失败'
+    if (version === loadVersion) {
+      error.value = cause?.message || '工作台加载失败'
+      if ([401, 403, 404].includes(cause?.status || cause?.response?.status)) {
+        workbench.value = null
+        accessLost()
+      }
+    }
   } finally {
     if (version === loadVersion) loading.value = false
   }
@@ -200,31 +282,99 @@ async function retry(item) {
   }
 }
 
-watch(() => [route.params.project_id, route.params.agent_slug], () => {
-  if (!route.params.project_id || !route.params.agent_slug) {
-    ++loadVersion
-    loading.value = false
-    return
-  }
-  workbench.value = null
-  actionError.value = ''
-  agentName.value = ''
-  load()
-}, { immediate: true })
+watch(
+  () => [route.params.project_id, route.params.agent_slug],
+  () => {
+    if (!route.params.project_id || !route.params.agent_slug) {
+      ++loadVersion
+      loading.value = false
+      return
+    }
+    workbench.value = null
+    actionError.value = ''
+    agentName.value = ''
+    load()
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => loadVersion++)
 </script>
 
 <style scoped lang="less">
-.agent-workbench-content { max-width: 920px; margin: 0 auto; padding: 24px; }
-.agent-workbench-state { display: block; margin: 56px auto; }
-.agent-workbench-section { border-bottom: 1px solid var(--gray-150); padding: 12px 0 22px; }
-.agent-workbench-section h2 { font-size: 17px; color: var(--gray-900); }
-.agent-workbench-setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 14px 0; }
-.agent-workbench-setting > span { flex: 1; }
-.agent-workbench-model > :last-child { flex: 2; }
-.agent-workbench-section ul { list-style: none; padding: 0; }
-.agent-workbench-section li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--gray-100); }
-.agent-workbench-actions { display: flex; gap: 8px; }
-.agent-workbench-section p { margin: 5px 0; color: var(--gray-500); }
-.agent-workbench-muted { color: var(--gray-500); }
-.agent-workbench-error { color: var(--color-error-700) !important; }
+.workbench-tools {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 24px 0;
+}
+.agent-workbench-content h1 {
+  font-size: 25px;
+  margin: 0 0 20px;
+}
+.agent-workbench-config {
+  margin-top: 24px;
+}
+.agent-workbench-config summary {
+  cursor: pointer;
+}
+.agent-workbench-content {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.agent-workbench-state {
+  display: block;
+  margin: 56px auto;
+}
+.agent-workbench-section {
+  border-bottom: 1px solid var(--gray-150);
+  padding: 12px 0 22px;
+}
+.agent-workbench-section h2 {
+  font-size: 17px;
+  color: var(--gray-900);
+}
+.agent-workbench-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0;
+}
+.agent-workbench-setting > span {
+  flex: 1;
+}
+.agent-workbench-model > :last-child {
+  flex: 2;
+}
+.agent-workbench-section ul {
+  list-style: none;
+  padding: 0;
+}
+.agent-workbench-section li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--gray-100);
+}
+.agent-workbench-actions {
+  display: flex;
+  gap: 8px;
+}
+.agent-workbench-section p {
+  margin: 5px 0;
+  color: var(--gray-500);
+}
+.agent-workbench-muted {
+  color: var(--gray-500);
+}
+.agent-workbench-error {
+  color: var(--color-error-700) !important;
+}
+
+.agent-workbench-content { max-width:none; padding:0 38px 48px; }.workbench-tools { padding:20px 38px 0; }.agent-workbench-content h1 { padding:25px 0 22px; margin:0; font-size:25px; }.workbench-columns { display:grid; grid-template-columns:minmax(0,1.75fr) minmax(245px,1fr); gap:24px; align-items:start; }.workbench-main { background:var(--gray-0); border:1px solid var(--gray-150); border-radius:10px; padding:24px; min-width:0; }.workbench-aside { background:var(--gray-0); border:1px solid var(--gray-150); border-radius:10px; padding:24px; min-width:0; >h2 { font-size:19px; margin:0 0 18px; } }.agent-workbench-section { padding-top:0; }.agent-workbench-config { border:0; }.workbench-aside >a { display:block; margin-top:18px; font-size:13px; }
+@media(max-width:1100px) { .workbench-columns { grid-template-columns:minmax(0,1fr); } }@media(max-width:760px) { .agent-workbench-content { padding:0 16px 28px; }.workbench-tools { padding:20px 16px 0; } }
+
+.workbench-tools { padding:25px 38px 22px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; }.workbench-tools h1 { margin:0; font-size:25px; }.workbench-return { display:flex; align-items:center; gap:12px; }@media(max-width:760px){.workbench-tools{padding:25px 16px 22px;}}
 </style>

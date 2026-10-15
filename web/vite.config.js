@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import process from 'node:process'
 import path from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
@@ -78,11 +79,18 @@ const pdfjsCmapsPlugin = {
   }
 }
 
+// 每个测试子进程拥有缓存并在退出时回收，避免并行热加载污染和累积占盘。
+const testCacheDir = process.env.NODE_TEST_CONTEXT
+  ? fileURLToPath(new URL(`./node_modules/.vite-tests/${process.pid}`, import.meta.url))
+  : undefined
+if (testCacheDir) process.once('exit', () => fs.rmSync(testCacheDir, { recursive: true, force: true }))
+
 export default defineConfig(({ mode }) => {
-  // eslint-disable-next-line no-undef
   const env = loadEnv(mode, process.cwd(), '')
   return {
     plugins: [vue(), modelMetadataPlugin, pdfjsCmapsPlugin],
+    // Node测试的临时Vite实例不能重写正在热加载的浏览器依赖缓存。
+    cacheDir: testCacheDir,
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))

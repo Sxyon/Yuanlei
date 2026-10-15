@@ -1,8 +1,6 @@
 <template>
   <div class="work-task-page">
-    <PageHeader :title="task?.title || '项目工作'" :loading="loading" show-border>
-      <template #actions><a-button v-if="themeOrigin" size="small" @click="router.push(themeOrigin)">返回项目主题</a-button><a-button size="small" @click="returnToSource">{{ returnPath ? '返回来源' : '工作列表' }}</a-button><a-button size="small" @click="router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })">任务管理</a-button></template>
-    </PageHeader>
+    <div v-if="!task" class="work-object-tools"><a-button @click="returnToSource">{{ returnPath ? '返回来源' : '返回工作列表' }}</a-button><a-button :loading="loading" @click="load">刷新</a-button></div>
     <main class="work-task-content">
       <a-spin v-if="loading && !task" class="work-task-state" />
       <a-alert v-else-if="error && !task" type="error" show-icon :message="error">
@@ -14,20 +12,15 @@
         <a-alert v-if="actionError" type="error" show-icon :message="actionError" />
         <a-alert v-if="attachmentError" type="error" show-icon :message="attachmentError" />
         <div class="work-task-heading">
-          <span class="work-task-number">{{ task.number }}</span>
-          <h1>{{ task.title }}</h1>
-          <span class="work-task-status">{{ statusLabel(task.status) }}</span>
+          <div><h1 class="work-object-title">{{ task.title }}</h1><p class="work-task-number">{{ task.number }} · {{ statusLabel(task.status) }}</p></div><div class="work-heading-actions"><a-button @click="returnToSource">{{ returnPath ? '返回来源' : '返回工作列表' }}</a-button><a-button :loading="loading" @click="load">刷新</a-button></div>
         </div>
+        <div class="work-review-layout"><div class="work-review-main">
         <section class="work-task-section">
           <WorkResultsPanel :project-id="String(route.params.project_id)" :task="task" :executions="executions" :completion-busy="saving" :anchor="route.hash" @select-result="id => router.replace({ hash: `#work-result-${id}` })" @complete-task="selectedStatus = 'done'; updateStatus()" @download-attachment="downloadResultAttachment" @refresh="load" @complete="completeWithGitCheck" />
         </section>
-        <details class="work-management" :open="route.hash.startsWith('#work-execution-')"><summary>来源、执行历史与工作管理</summary>
-        <p v-if="task.parent_id" class="work-task-parent">
-          父任务：<RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: task.parent_id } }">查看父任务</RouterLink>
-        </p>
-
+        </div><aside class="work-review-aside">
         <section class="work-task-section">
-          <h2>工作来源 <a-button size="small" @click="editSource">调整来源</a-button></h2>
+          <h2>工作依据 <a-button size="small" @click="editSource">调整来源</a-button></h2>
           <p v-if="!task.source?.topic && !task.source?.decision" class="work-task-muted">独立工作，未关联议题或决策。</p>
           <p v-for="suggestion in task.suggestions || []" :key="suggestion.id">工作建议：<RouterLink class="work-task-link" :to="inspectionLink({ task_id: suggestion.id })">{{ suggestion.title }}</RouterLink>
             <RouterLink v-if="suggestion.decision_id" class="work-task-link" :to="inspectionLink({ decision_id: suggestion.decision_id })">建议来源决策</RouterLink>
@@ -55,8 +48,13 @@
           </form>
         </section>
 
-        <section class="work-task-section">
-          <h2>任务管理</h2>
+        <details class="work-management" :open="/^#work-(execution|delegation)-/.test(route.hash)"><summary>执行与历史、工作管理</summary>
+        <p v-if="task.parent_id" class="work-task-parent">
+          父任务：<RouterLink :to="{ name: 'ProjectWorkTaskView', params: { project_id: route.params.project_id, task_id: task.parent_id } }">查看父任务</RouterLink>
+        </p>
+
+        <details class="work-task-section">
+          <summary>安排与状态</summary>
           <div class="work-task-controls">
             <label for="task-status">状态</label>
             <a-select id="task-status" v-model:value="selectedStatus" :disabled="saving" style="min-width: 160px">
@@ -78,10 +76,10 @@
             <input v-model="selectedDue" type="date" :disabled="saving" aria-label="计划结束日期" />
             <a-button :loading="saving" :disabled="selectedStart === (task.start_date || '') && selectedDue === (task.due_date || '')" @click="updateSchedule">保存计划</a-button>
           </div>
-        </section>
+        </details>
 
-        <section class="work-task-section">
-          <h2>网页引用</h2>
+        <details class="work-task-section">
+          <summary>网页引用</summary>
           <p v-if="!task.references?.length" class="work-task-muted">暂无引用</p>
           <ul v-else>
             <li v-for="reference in task.references" :key="reference.id">
@@ -95,10 +93,10 @@
             <a-button :loading="saving" :disabled="!referenceTitle.trim() || !referenceUrl.trim()" @click="addReference">添加引用</a-button>
           </div>
           <p v-if="referenceError" class="work-task-error" role="alert">{{ referenceError }}</p>
-        </section>
+        </details>
 
-        <section class="work-task-section">
-          <h2>文件附件</h2>
+        <details class="work-task-section">
+          <summary>文件附件</summary>
           <p v-if="!task.attachments?.length" class="work-task-muted">暂无附件</p>
           <ul v-else>
             <li v-for="attachment in task.attachments" :key="attachment.id">
@@ -113,10 +111,10 @@
             <input ref="attachmentInput" type="file" :disabled="saving" @change="uploadAttachment" />
           </div>
           <p v-if="attachmentError" class="work-task-error" role="alert">{{ attachmentError }}</p>
-        </section>
+        </details>
 
-        <section class="work-task-section">
-          <h2>系统规则巡检</h2>
+        <details class="work-task-section">
+          <summary>系统规则巡检</summary>
           <div class="work-task-controls">
             <label for="task-inspection">启用巡检</label>
             <a-switch id="task-inspection" v-model:checked="inspectionEnabled" :disabled="saving" />
@@ -133,10 +131,10 @@
               <span class="work-task-muted">{{ run.summary || '未发现异常' }}</span>
             </li>
           </ul>
-        </section>
+        </details>
 
-        <section class="work-task-section">
-          <h2>任务知识库</h2>
+        <details class="work-task-section">
+          <summary>工作知识库</summary>
           <div class="work-task-controls">
           <a-select v-model:value="selectedKnowledges" mode="multiple" placeholder="默认不选择知识库" :disabled="saving" style="min-width: 220px">
             <a-select-option v-for="item in task.knowledge_candidates || []" :key="item.kb_id" :value="item.kb_id">{{ item.name }}</a-select-option>
@@ -144,10 +142,10 @@
           <a-button :loading="saving" @click="saveKnowledges">保存知识库</a-button>
           <p class="work-task-muted">候选来自项目已关联且当前可访问的知识库；只在执行此任务时加入选择，运行时重新检查权限。</p>
           </div>
-        </section>
+        </details>
 
-        <section v-if="task.parent_id" class="work-task-section">
-          <h2>子任务 Git 工作区</h2>
+        <details v-if="task.parent_id" class="work-task-section">
+          <summary>子任务 Git 工作区</summary>
           <div class="work-task-controls">
           <a-select v-model:value="selectedGitWorkspaceMode" :disabled="saving || executions.length > 0" style="min-width: 280px">
               <a-select-option value="inherit">共用父任务工作区</a-select-option>
@@ -156,7 +154,7 @@
             <a-button :loading="saving" :disabled="executions.length > 0 || selectedGitWorkspaceMode === (task.git_workspace_mode || 'inherit')" @click="updateGitWorkspaceMode">保存工作区方式</a-button>
           </div>
           <p class="work-task-muted">执行前选择；已有执行记录后保持工作区身份，避免历史成果被重新归属。</p>
-        </section>
+        </details>
         <p v-if="!task.acceptance_criteria" class="work-task-muted">尚未填写验收条件，派发前请核对工作要求。</p>
         <WorkContextDrawer ref="contextDrawer" :project-id="String(route.params.project_id)" :task="task" @context="executionContext = $event" />
         <WorkDelegationsPanel :completion-busy="saving" :anchor="route.hash" :context="executionContext" @history="(id) => contextDrawer?.showHistory('delegation', id)" :project-id="String(route.params.project_id)" :task-id="task.id" :title="task.title" :description="task.description" :agents="agents" :ended="['done', 'cancelled'].includes(task.status)" />
@@ -245,6 +243,7 @@
           <p v-if="actionError" class="work-task-error" role="alert">{{ actionError }}</p>
         </section>
         </details>
+        </aside></div>
       </template>
     </main>
     <a-modal v-model:open="gitCompletionOpen" title="任务仍有 Git 成果需要处理" :footer="null">
@@ -268,7 +267,6 @@ import { themeReturnTarget } from '@/utils/projectThemeReturn'
 
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import PageHeader from '@/components/shared/PageHeader.vue'
 import ProjectGitSettingsModal from '@/components/ProjectGitSettingsModal.vue'
 import WorkDelegationsPanel from '@/components/project/WorkDelegationsPanel.vue'
 import WorkContextDrawer from '@/components/project/WorkContextDrawer.vue'
@@ -292,11 +290,12 @@ const returnPath = computed(() => {
   const back = router.options.history.state.back
   if (typeof back !== 'string' || !back.startsWith('/') || back.startsWith('//')) return ''
   const target = router.resolve(back)
-  const allowed = ['ProjectDashboardComp', 'ProjectWorkTasksView', 'ProjectInspectionBoardComp', 'ProjectAgentWorkbenchView', 'InboxView', 'InspectionBoardComp']
+  const allowed = ['ProjectDashboardComp', 'ProjectWorkTasksView', 'ProjectInspectionBoardComp', 'ProjectTopics', 'ProjectPlans', 'ProjectReports', 'ProjectThemeDisplay', 'ProjectAgentWorkbenchView', 'InboxView', 'InspectionBoardComp']
   return target.fullPath !== current && allowed.includes(target.name) && (!target.params.project_id || target.params.project_id === route.params.project_id) ? back : ''
 })
 function returnToSource() {
-  if (returnPath.value) router.back()
+  if (themeOrigin.value) router.push(themeOrigin.value)
+  else if (returnPath.value) router.back()
   else router.push({ name: 'ProjectWorkTasksView', params: { project_id: route.params.project_id } })
 }
 
@@ -819,4 +818,17 @@ watch([() => route.hash, task, executions, loading], async () => {
 .work-task-section :deep(textarea) { margin-bottom: 12px; }
 .work-task-error { margin-top: 12px; color: var(--color-error-700); }
 @media (max-width: 640px) { .work-task-controls { flex-wrap: wrap; } }
+
+.work-task-page {background:var(--gray-25);}
+.work-object-tools {display:flex;justify-content:space-between;gap:12px;padding:16px 32px 0;}
+.work-object-title {font-size:26px;line-height:1.5;margin:0 0 8px;overflow-wrap:anywhere;}
+.work-task-content {max-width:1100px;margin:0 auto;padding:24px 32px;}
+.work-task-section {border:1px solid var(--gray-150);border-radius:10px;padding:24px;background:var(--gray-0);margin:20px 0;}
+.work-task-section > summary {font-size:17px;font-weight:500;cursor:pointer;}
+@media(max-width:768px){.work-task-content{padding:16px 12px;}.work-object-tools{padding:16px 12px 0;}.work-task-section{padding:16px;}}
+
+.work-task-content { max-width:none; padding:0 38px 48px; }.work-object-tools { padding:20px 38px 0; }.work-task-heading { padding:25px 0 22px; }.work-review-layout { display:grid; grid-template-columns:minmax(0,1.75fr) minmax(245px,1fr); gap:24px; align-items:start; }.work-review-main,.work-review-aside { min-width:0; }.work-review-aside { display:grid; gap:20px; }.work-management { background:var(--gray-0); padding:24px; border:1px solid var(--gray-150); border-radius:10px; >summary { cursor:pointer; font-size:19px; font-weight:600; } }.work-task-section { margin:0; border-radius:10px; }
+@media(max-width:1100px) { .work-review-layout { grid-template-columns:minmax(0,1fr); } }@media(max-width:760px) { .work-task-content { padding:0 16px 28px; }.work-object-tools { padding:20px 16px 0; } }
+
+.work-task-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; }.work-heading-actions { display:flex; align-items:center; gap:8px; }.work-task-number { margin:6px 0 0; }
 </style>

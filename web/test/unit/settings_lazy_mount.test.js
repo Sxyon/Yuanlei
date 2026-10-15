@@ -144,6 +144,11 @@ test('设置仅挂载访问页，切换保留表单，关闭重开只挂载当�
     )
     assert.equal(agentEnv.props.value, 'env-draft')
 
+    assert.equal(find(host, node => node.props.panel === 'GitConnectionsSettingsCard'), undefined)
+    await select('Git 连接')
+    assert.ok(find(host, node => node.props.panel === 'GitConnectionsSettingsCard'))
+    await select('账户设置')
+
     visible.value = false
     await nextTick()
     visible.value = true

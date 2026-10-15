@@ -1,12 +1,13 @@
 <template>
-  <section class="decision-panel">
+  <section class="decision-panel" :class="{ 'decision-index': showSource }">
     <details v-if="removedDraft">
       <summary>复制已移除决策的未提交草稿 · {{ removedDraft.title }}</summary>
       <a-textarea :value="removedDraft.content" readonly aria-label="已移除决策草稿" :rows="6" />
       <a-button @click="removedDraft = null">清除此草稿副本</a-button>
     </details>
     <a-alert v-if="selectedId && !decisions.some(item => item.id === selectedId)" type="warning" show-icon message="指定决策不在当前可见列表；保留原地址，不跳到另一条决策。" />
-    <p>草案可修改；批准后原文保留。补充保留原决策有效，整条替代才使原决策失效。</p>
+    <template v-if="!embedded">
+    <p v-if="!showSource">草案可修改；批准后原文保留。补充保留原决策有效，整条替代才使原决策失效。</p>
     <p v-if="!decisions.length">还没有决策记录。</p>
     <article
       v-for="decision in currentDecisions"
@@ -20,6 +21,7 @@
           governanceStatusLabel(decision.status)
         }}</a-tag>
       </header>
+      <p v-if="showSource" class="decision-source"><span>{{ decision.topic_id ? '来源议题' : '独立决定' }}</span><a v-if="decision.topic_id && topics.some(item => item.id === decision.topic_id)" @click="$emit('topic', decision.topic_id)">{{ topics.find(item => item.id === decision.topic_id)?.title }}</a><span v-else-if="decision.topic_id">来源议题不可见</span><span v-else>未关联议题</span></p>
       <p>{{ relationLabels[decision.relation_type] }} · 版本 {{ decision.revision_number }}</p>
       <a-alert
         v-if="decision.requires_review"
@@ -48,11 +50,13 @@
       >
         <strong>{{ decision.title }}</strong
         ><a-tag>{{ governanceStatusLabel(decision.status) }}</a-tag>
+        <p v-if="showSource" class="decision-source"><span>{{ decision.topic_id ? '来源议题' : '独立决定' }}</span><a v-if="decision.topic_id && topics.some(item => item.id === decision.topic_id)" @click="$emit('topic', decision.topic_id)">{{ topics.find(item => item.id === decision.topic_id)?.title }}</a><span v-else-if="decision.topic_id">来源议题不可见</span><span v-else>未关联议题</span></p>
         <a-button @click="open(decision)">查看原文与历史</a-button>
       </article>
     </details>
+    </template>
     <section v-if="selected" class="decision-detail">
-      <h3>{{ selected.title }} · {{ governanceStatusLabel(selected.status) }}</h3>
+      <h3 v-if="!embedded">{{ selected.title }} · {{ governanceStatusLabel(selected.status) }}</h3>
       <a-alert v-if="error" type="error" show-icon :message="error" />
       <a-spin v-if="loading" />
       <template v-if="detail">
@@ -80,7 +84,7 @@
         </p>
         <p v-if="detail.references.length">已有引用：{{ detail.references.join('、') }}</p>
         <p v-for="task in detail.tasks" :key="task.id">
-          已关联工作建议：<router-link :to="{ query: { ...$route.query, task_id: task.id } }">{{
+          已关联工作建议：<router-link :to="{ name: 'ProjectPlans', params: { project_id: projectId }, query: { task_id: task.id } }">{{
             task.title
           }}</router-link>
           · {{ governanceStatusLabel(task.status) }}
@@ -243,7 +247,7 @@
           >
           <a-button :disabled="busy" @click="cancel">取消</a-button>
         </form>
-        <h4>决策局部时间线 · 最新在前</h4>
+<component :is="embedded ? 'details' : 'div'"><summary v-if="embedded">历史与当时快照</summary><h4 v-else>决策局部时间线 · 最新在前</h4>
         <article v-for="event in events" :key="event.sequence" class="history-node">
           <strong
             >{{ eventLabels[event.kind] || event.kind }} · 版本 {{ event.revision_number }}</strong
@@ -278,6 +282,7 @@
         <a-button v-if="nextBefore" :disabled="loading" @click="loadMore"
           >加载更早决策记录</a-button
         >
+        </component>
       </template>
     </section>
   </section>
@@ -299,7 +304,9 @@ const props = defineProps({
   projectId: { type: String, required: true },
   decisions: { type: Array, default: () => [] },
   topics: { type: Array, default: () => [] },
-  selectedId: { type: String, default: '' }
+  selectedId: { type: String, default: '' },
+  embedded: { type: Boolean, default: false },
+  showSource: { type: Boolean, default: false }
 })
 const emit = defineEmits(['updated', 'select', 'compose', 'topic', 'visibility-lost'])
 const route = useRoute()
@@ -609,4 +616,6 @@ form {
   flex-wrap: wrap;
   align-items: center;
 }
+.decision-source { display:flex; align-items:center; gap:8px; color:var(--color-text-secondary); font-size:12px; }.decision-source>span:first-child { padding:2px 6px; border-radius:4px; background:var(--gray-50); }.decision-source a { text-decoration:none; }
+.decision-index .source-work-link { display:inline-flex; align-items:center; min-height:32px; padding:4px 8px; margin-left:6px; text-decoration:none; }.decision-index a:hover { text-decoration:none; }
 </style>

@@ -37,7 +37,7 @@
       ></span>
     </button>
     <span class="conversation-actions" @click.stop @dblclick.stop>
-      <a-dropdown :trigger="['click']">
+      <a-dropdown overlay-class-name="platform-navigation-popup" :trigger="['click']">
         <template #overlay>
           <a-menu>
             <a-menu-item

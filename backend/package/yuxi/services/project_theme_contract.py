@@ -41,7 +41,7 @@ class Manifest(ClosedModel):
     """可携主题包清单，身份和绑定由宿主另行提供。"""
 
     formatVersion: Version
-    componentAbi: Version
+    componentAbi: Annotated[int, Field(strict=True, ge=1, le=2)]
     theme: Literal["theme.json"]
     source: Name
     files: dict[Name, Literal["application/json", "image/png"]]
@@ -187,6 +187,9 @@ Block = Annotated[
 ]
 
 
+Capability = Literal["overview", "blueprints", "topics", "plans", "work", "inspection", "files", "agents", "settings"]
+
+
 class Page(ClosedModel):
     """有限页面布局，不携CSS或组件代码。"""
 
@@ -194,7 +197,17 @@ class Page(ClosedModel):
     title: Name
     description: Name
     layout: Literal["overview", "reading", "full"]
-    blocks: Annotated[list[Block], Field(min_length=1)]
+    capability: Capability | None = None
+    blocks: list[Block] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def check_content(self):
+        """业务能力与展示块分开，页面必须有实际消费者。"""
+        if self.capability is None and not self.blocks:
+            raise ValueError("page_content: 页面需要可信能力或展示块")
+        if self.capability is not None and self.blocks:
+            raise ValueError("page_content: 办理页面不能同时定义只读块")
+        return self
 
 
 class Theme(ClosedModel):
@@ -204,6 +217,9 @@ class Theme(ClosedModel):
     version: Name
     name: Name
     topicLabel: Name
+    baseVersion: Literal[1] | None = None
+    density: Literal["comfortable", "compact"] = "comfortable"
+    accent: Literal["teal", "blue", "slate"] = "teal"
     pages: Annotated[list[Page], Field(min_length=1)]
 
 
@@ -216,6 +232,13 @@ class ThemePackage(ClosedModel):
     @model_validator(mode="after")
     def check_references(self):
         """闭合页、组件绑定与文件引用。"""
+        capabilities = [p.capability for p in self.theme.pages if p.capability]
+        if (capabilities or self.theme.baseVersion is not None) and self.manifest.componentAbi < 2:
+            raise ValueError("capability_abi: 完整业务能力需要componentAbi 2")
+        if capabilities and self.theme.baseVersion != 1:
+            raise ValueError("base_version: 完整业务能力需要明确基础界面版本")
+        if len(capabilities) != len(set(capabilities)):
+            raise ValueError("duplicate_capability: 同一能力只能覆盖一个主页面")
         page_ids = [p.id for p in self.theme.pages]
         if len(set(page_ids)) != len(page_ids):
             raise ValueError("duplicate_page: 页面ID重复")

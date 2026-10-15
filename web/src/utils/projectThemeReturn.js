@@ -15,5 +15,5 @@ export function readThemeReturn(token, userId, projectId) {
 
 /** 返回地址不接受浏览器提供的URL，只能回当前项目主题。 */
 export function themeReturnTarget(token, userId, projectId) {
-  return readThemeReturn(token, userId, projectId) ? { name: 'ProjectDashboardComp', params: { project_id: projectId }, query: { view: 'theme', theme_return: token } } : null
+  return readThemeReturn(token, userId, projectId) ? { name: 'ProjectThemeDisplay', params: { project_id: projectId }, query: { theme_return: token } } : null
 }

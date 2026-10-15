@@ -25,13 +25,14 @@ class ProjectGitActionRepository:
             select(ProjectGitAction).where(ProjectGitAction.uid == uid, ProjectGitAction.request_id == request_id)
         )
 
-    async def list(self, uid, project_id, *, limit=50, offset=0):
-        """返回倒序审批历史及稳定分页。"""
+    async def list(self, uid, project_id, *, limit=50, offset=0, status=None):
+        """按用户和项目筛选审批后稳定分页，待办不受历史数量影响。"""
+        query = select(ProjectGitAction).where(ProjectGitAction.uid == uid, ProjectGitAction.project_id == project_id)
+        if status is not None:
+            query = query.where(ProjectGitAction.status == status)
         return list(
             await self.db.scalars(
-                select(ProjectGitAction)
-                .where(ProjectGitAction.uid == uid, ProjectGitAction.project_id == project_id)
-                .order_by(ProjectGitAction.created_at.desc(), ProjectGitAction.id.desc())
+                query.order_by(ProjectGitAction.created_at.desc(), ProjectGitAction.id.desc())
                 .limit(limit)
                 .offset(offset)
             )

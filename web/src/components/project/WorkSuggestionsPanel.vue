@@ -1,7 +1,17 @@
 <template>
   <div class="suggestions-panel">
-    <p v-if="!suggestions.length">暂无工作建议，可在上方记录待处理事项。</p>
-    <ul>
+    <p v-if="!suggestions.length">{{ presentation === 'plans' ? '暂无符合条件的行动计划。' : '暂无工作建议，可在上方记录待处理事项。' }}</p>
+    <div v-if="presentation === 'plans'" class="plan-cards">
+      <article v-for="item in suggestions" :id="`task-${item.id}`" :key="item.id" class="plan-card" :class="{'focused-plan':selectedId === item.id}">
+        <header><span class="plan-indicator">{{ item.work ? '已关联工作' : item.status === 'rejected' ? '已拒绝' : '待落实' }}</span></header><h2>{{ item.title }}</h2>
+        <p class="plan-result">{{ (item.description || '尚未补充预期结果与计划内容。').slice(0,180) }}</p>
+        <details v-if="item.description"><summary>计划内容</summary><p class="plan-content">{{ item.description }}</p></details>
+        <div class="plan-source"><span>依据</span><RouterLink v-if="item.topic_id" :to="{name:'ProjectTopics',params:{project_id:projectId},query:{topic_id:item.topic_id}}">{{ topics.find(t=>t.id===item.topic_id)?.title || '来源议题' }}</RouterLink><RouterLink v-if="item.decision_id" :to="{name:'ProjectTopics',params:{project_id:projectId},query:{decision_id:item.decision_id,...(item.topic_id?{topic_id:item.topic_id}:{})}}">{{ decisions.find(d=>d.id===item.decision_id)?.title || '来源决定' }}</RouterLink><a v-if="item.source?.url" :href="item.source.url" target="_blank" rel="noopener noreferrer">来源原文</a><a-dropdown v-if="item.status === 'proposed'" :trigger="['click']"><a-button aria-label="行动计划更多操作">···</a-button><template #overlay><a-menu @click="$emit('reject',item)"><a-menu-item key="reject">不采用</a-menu-item></a-menu></template></a-dropdown></div>
+        <footer><RouterLink v-if="item.work" :to="workLink(item.work.id)">{{ item.work.number }} · {{ item.work.title }}</RouterLink><template v-else-if="item.status !== 'rejected'"><a-button type="primary" @click="open(item, 'create')">转为工作</a-button><a-button type="text" @click="open(item, 'link')">关联已有工作</a-button></template></footer>
+        <p v-if="item.review?.note" class="plan-source">{{ item.review.note }}</p>
+      </article>
+    </div>
+    <ul v-else>
       <li v-for="item in suggestions" :id="`task-${item.id}`" :key="item.id">
         <strong>{{ item.title }}</strong>
         <a-tag>{{
@@ -122,6 +132,8 @@ import WorkSourceFields from './WorkSourceFields.vue'
 import { sourceChannelLabel } from '@/utils/governanceBoard'
 const props = defineProps({
   projectId: String,
+  selectedId: { type:String, default:'' },
+  presentation: { type:String, default:'suggestions' },
   suggestions: { type: Array, default: () => [] },
   topics: { type: Array, default: () => [] },
   decisions: { type: Array, default: () => [] }
@@ -164,7 +176,7 @@ function close() {
   error.value = ''
   loading.value = false
 }
-async function open(item) {
+async function open(item, requestedMode = null) {
   const seq = ++generation
   restoring = true
   selected.value = item
@@ -182,6 +194,7 @@ async function open(item) {
   topicCodeDraft.value = ''
   const saved = getGovernanceDraft(user.uid, props.projectId, `suggestion:${item.id}`)
   if (saved) for (const [name, value] of Object.entries(fields)) value.value = saved[name]
+  if (requestedMode) mode.value = requestedMode
   reviewConfirmed.value = false
   restoring = false
   loading.value = true
@@ -295,7 +308,7 @@ watch(
   }
 )
 </script>
-<style scoped>
+<style scoped lang="less">
 .suggestions-panel ul {
   list-style: none;
   padding: 0;
@@ -315,4 +328,14 @@ label {
   gap: 12px;
   min-width: 0;
 }
+
+.plan-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:24px; align-items:start; }
+.plan-card { padding:24px; background:var(--gray-0); border:1px solid var(--gray-150); border-radius:10px; overflow-wrap:anywhere; >header {display:flex;justify-content:space-between;gap:12px;align-items:start;} h2 {font-size:19px;line-height:1.6;margin:0;} .plan-result {font-size:15px;line-height:1.8;margin:20px 0;} summary {cursor:pointer;color:var(--color-text-secondary);} .plan-content {white-space:pre-wrap;font-size:16px;line-height:1.8;} .plan-source {display:flex;flex-wrap:wrap;gap:8px;font-size:13px;color:var(--color-text-secondary);margin-top:16px;} footer {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;} }
+
+.focused-plan {border-left:3px solid var(--main-color);}
+
+.plan-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }.plan-card { padding:22px 24px; border-radius:9px; >header { margin-bottom:12px; }.plan-indicator { font-size:11px; color:var(--color-text-secondary); }.plan-result { font-size:14px; color:var(--color-text-secondary); margin:13px 0 20px; line-height:1.8; }.plan-source { padding-top:16px; border-top:1px solid var(--gray-150); font-size:12px; } footer { justify-content:flex-start; margin-top:18px; gap:8px; flex-wrap:wrap; } }
+@media(max-width:1100px) { .plan-cards { grid-template-columns:minmax(0,1fr); } }
+
+.plan-source :deep(.ant-dropdown-trigger) { margin-left:auto; background:transparent; border:0; min-height:28px; padding:0 7px; }
 </style>

@@ -1,8 +1,8 @@
 # 项目主题的可信多页运行时
 
-状态：S03同宿主预览、S04持久版本／维护／选择及S05真实业务／文件／原宿主返回已接入；S04初步完成、未经严格验收，本轮证据及待联合审查范围由LOG拥有。
+状态：DB-S05-R用户于2026-10-15审核不通过，现按SYS第14节及DB-P07批准原型返工，末轮独立复核未完成；旧S03—S05接通记录仅为历史资产。S05未通过，实际证据及未完范围由LOG第37节拥有。
 类型：新增能力
-主要 Owner：[已采纳主题实施方案](../decisions/proposed/2026-10-12-project-theme-implementation.md)
+主要 Owner：[全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)
 
 ## 需求与失败场景
 
@@ -19,13 +19,13 @@ S03提供独立平台预览及两个包样例，全部业务和资料明确模�
 
 ## 与 Yuxi 的边界
 
-AppLayout、PageHeader、平台明暗token与现有项目入口继续拥有外壳。原治理和ProjectWork Owner拥有业务DTO、历史依据及最终授权；Workdir拥有指定文件的安全读取边界。元垒在这些Owner旁增加纯主题契约、有限组件与ThemeHost，不向原静态HTML视图授予数据bridge。
+AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航和有限能力继承；平台明暗token继续共用。原治理和ProjectWork Owner拥有业务DTO、历史依据及最终授权；Workdir拥有指定文件的安全读取边界。元垒在这些Owner旁增加纯主题契约、有限组件与ThemeHost，不向原静态HTML视图授予数据bridge。
 
 包加载器返回已校验manifest／theme与原包字节digest；业务适配器提供固定read／readObject及资源字节。S04版本加载与S05真实业务／资源在此接口替换当前样例来源，页面定义和组件无需重建。S04生产parser、来源授权、不可变发布与数据库绑定由实际服务、文件域及PG约束拥有，取舍见[存储决策](../decisions/implemented/2026-10-13-project-theme-storage.md)。源停用保留旧加载，安全撤回拒绝加载且保留绑定；任何故障不能隐式改选内置版本。
 
 ## 稳定集成点
 
-纯Pydantic契约拥有可携定义、宿主加载DTO、组件投影、资源元数据和有限导航；生成Schema供前端加载边界消费。ThemeHost按同一协议渲染，原业务Owner继续拥有真实状态。加载reference独立于作者theme.id及digest，S04使用已授权版本引用替换样例引用；S05的业务和文件适配沿当前Project及原DTO接线，原业务有界分页保持身份／状态和议题归属；返回令牌只保存阅读上下文，原宿主继续拥有办理。
+纯Pydantic契约拥有可携定义、宿主加载DTO、组件投影、资源元数据和有限导航；生成Schema供前端加载边界消费。ThemeHost按同一协议渲染，原业务Owner继续拥有真实状态。加载reference独立于作者theme.id及digest，S04使用已授权版本引用替换样例引用；S05的业务和文件适配沿当前Project及原DTO接线，原业务有界分页保持身份／状态和议题归属；返回令牌只保存阅读上下文，原业务Owner继续拥有办理。DB-S05-R增加componentAbi 2的有限capability页与baseVersion 1继承，formatVersion保持1；原ABI1展示页保留，旧项目URL解析到准确新能力。新内置完整主题使用独立来源和版本，任何版本调整都不能覆盖已发布字节或静默改变绑定。项目资料在Workspace前增加Project授权与相对路径边界，动态从原治理事件投影，均不复制业务状态。
 
 ## 上游依赖
 
@@ -41,9 +41,11 @@ AppLayout、PageHeader、平台明暗token与现有项目入口继续拥有外�
 
 ## 决策与证据
 
-当前需求／确认范围见[SYS-DB-001第10节](../../../元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计.md)，契约和交接由[DEV-DB-002](../../../元垒系统架构规划设计/DEV-DB-002-项目主题实施指南.md)拥有，实际命令、模拟边界及阶段验收由[LOG-DB-001](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。纯契约、组件／第三份定义测试、真实浏览器DOM和样例ZIP字节回读分别验证其边界，不以用户评分或单个HTTP状态代替事实。
+当前需求／确认范围见[SYS-DB-001第14节](../../../元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计.md)，契约和交接由[DEV-DB-002](../../../元垒系统架构规划设计/DEV-DB-002-项目主题实施指南.md)拥有，实际命令、模拟边界及阶段验收由[LOG-DB-001](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。纯契约、组件／第三份定义测试、真实浏览器DOM和样例ZIP字节回读分别验证其边界，不以用户评分或单个HTTP状态代替事实。
 
 - [已采纳主题实施方案](../decisions/proposed/2026-10-12-project-theme-implementation.md)：S03当前子范围与后继未交付边界分别登记。
 - 纯契约与输入Owner：`backend/package/yuxi/services/project_theme_contract.py`；消费路径为 `web/src/components/project/themes/ThemeHost.vue`，真实浏览器验例为 `web/test/browser/projectThemes.mjs`。
 
 - [真实数据与可信返回接通决策](../decisions/implemented/2026-10-13-project-theme-live-data.md)：固定业务适配、有界查询、绑定alias文件读取和原宿主返回的取舍及验证边界。
+
+- [全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)：九个能力及详情在同一主题内办理；布局与交互原型对齐返工中，末轮独立复核及用户验收未完成。yuanlei v40仅放宽主题ABI约束，保留原版本、绑定和业务数据。

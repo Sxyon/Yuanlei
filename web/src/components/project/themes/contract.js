@@ -25,8 +25,12 @@ function validate(name, value) {
 /** 页引用、资源声明及组件表现共同构成完整定义。 */
 export function validateThemePackage(value) {
   const pack = validate('package', value)
+  const capabilities = pack.theme.pages.map(page => page.capability).filter(Boolean)
   const ids = pack.theme.pages.map(page => page.id)
   const fail = (code, message) => { throw new ThemeContractError(code, message) }
+  if ((capabilities.length || pack.theme.baseVersion != null) && pack.manifest.componentAbi < 2) fail('capability_abi', '完整业务能力需要 componentAbi 2')
+  if (capabilities.length && pack.theme.baseVersion !== 1) fail('base_version', '需要明确基础界面版本')
+  if (new Set(capabilities).size !== capabilities.length) fail('duplicate_capability', '同一能力只能覆盖一个主页面')
   if (new Set(ids).size !== ids.length) fail('duplicate_page', '页面 ID 重复')
   const paths = Object.values(pack.manifest.assets).map(asset => asset.path)
   if (new Set(paths).size !== paths.length) fail('duplicate_asset', '包内资源成员重复')
@@ -34,6 +38,7 @@ export function validateThemePackage(value) {
     if (!asset.path.startsWith('assets/') || /[\\:]/.test(asset.path) || asset.path.split('/').some(p => ['', '.', '..'].includes(p))) fail('asset_path', '资源必须是 assets 下的普通相对成员')
   }
   for (const page of pack.theme.pages) {
+    if ((!page.capability && !page.blocks.length) || page.capability && page.blocks.length) fail('page_content', '页面需要可信能力或展示块，不能混合')
     const blocks = page.blocks.map(b => b.id)
     if (new Set(blocks).size !== blocks.length) fail('duplicate_block', '页面内组件 ID 重复')
     for (const block of page.blocks) {

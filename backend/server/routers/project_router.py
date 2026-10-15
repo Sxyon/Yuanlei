@@ -732,12 +732,13 @@ async def get_project_git_actions(
     project_id: str,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    action_status: Literal["pending"] | None = Query(None, alias="status"),
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
     """分页查看 Git 批准与实际执行历史。"""
     return await list_project_git_actions(
-        db=db, uid=str(current_user.uid), project_id=project_id, limit=limit, offset=offset
+        db=db, uid=str(current_user.uid), project_id=project_id, limit=limit, offset=offset, status=action_status
     )
 
 

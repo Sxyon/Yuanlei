@@ -16,8 +16,8 @@
       closable
       @close="error = ''"
     />
-    <a-tabs v-model:active-key="activeTab">
-      <a-tab-pane key="repositories" tab="仓库">
+    <component :is="section === 'all' ? 'a-tabs' : 'div'" v-model:active-key="activeTab">
+      <component :is="section === 'all' ? 'a-tab-pane' : 'section'" v-if="section === 'all' || section === 'repositories'" key="repositories" tab="仓库">
         <div v-if="repositories.length" class="section-head">
           <a-button
             type="primary"
@@ -40,6 +40,8 @@
                   {{ item.name }}
                 </a-select-option>
               </a-select>
+              <a-button v-if="openSettingsModal" type="link" size="small" @click="openSettingsModal('gitConnections')">管理我的 Git 连接</a-button>
+              <p v-if="!activeConnections.length && !loading" class="connection-hint">先在系统设置 → Git 连接中添加连接，再绑定项目仓库。</p>
             </a-form-item>
             <a-form-item label="仓库" required>
               <a-select v-model:value="selectedRepositoryId" show-search option-filter-prop="label"
@@ -57,13 +59,13 @@
             <a-form-item label="项目目录">
               <a-input v-model:value="repositoryForm.checkout_path" placeholder="默认与仓库同名；同仓库多分支请使用不同目录" />
             </a-form-item>
-            <a-form-item label="使用模式">
+            <a-form-item><template #label>使用模式<a-tooltip title="直接修改项目目录时，任务持续占用并排队使用；并行模式使用独立工作树。" :trigger="['hover','focus']"><button type="button" class="policy-help" aria-label="新仓库使用模式说明">?</button></a-tooltip></template>
               <a-select v-model:value="repositoryForm.usage_mode">
                 <a-select-option value="in_place">直接修改这个文件夹</a-select-option>
                 <a-select-option value="worktree">并行隔离运行</a-select-option>
               </a-select>
             </a-form-item>
-            <a-form-item label="授权模式">
+            <a-form-item><template #label>授权模式<a-tooltip title="受保护目标需人工批准；自动授权和任务分支的批准依据可在历史记录查看。授权模式不会自动触发提交或合并。" :trigger="['hover','focus']"><button type="button" class="policy-help" aria-label="新仓库授权模式说明">?</button></a-tooltip></template>
               <a-select v-model:value="repositoryForm.approval_mode">
                 <a-select-option value="protected">受保护</a-select-option>
                 <a-select-option value="automatic">自动授权（保留批准记录）</a-select-option>
@@ -125,7 +127,7 @@
                   <a-button size="small" danger>停用</a-button>
                 </a-popconfirm>
               </div>
-              <GitResourcePanel v-if="['active', 'provision_failed'].includes(item.status)" :project-id="project.id" :resource="item" @updated="load({ quiet: true })" />
+              <GitResourcePanel :mode="section === 'repositories' ? 'configure' : 'full'" v-if="['active', 'provision_failed'].includes(item.status)" :project-id="project.id" :resource="item" @updated="load({ quiet: true })" />
               <p v-if="item.last_error_message" class="item-error">{{ item.last_error_message }}</p>
               <div v-if="item.status === 'active' && policyDrafts[item.id]" class="policy-editor">
                 <label class="policy-field">
@@ -187,93 +189,9 @@
             </article>
           </div>
         </a-spin>
-      </a-tab-pane>
+      </component>
 
-      <a-tab-pane key="connections" tab="Connections">
-        <div v-if="connections.length" class="section-head">
-          <a-button
-            type="primary"
-            danger
-            size="small"
-            @click="showConnectionForm = !showConnectionForm"
-          >
-            {{ showConnectionForm ? '收起' : '添加 Connection' }}
-          </a-button>
-        </div>
-        <a-form v-if="!connections.length || showConnectionForm" layout="vertical" class="create-form">
-          <div class="form-grid">
-            <a-form-item label="名称" required
-              ><a-input v-model:value="connectionForm.name"
-            /></a-form-item>
-            <a-form-item label="API Origin" required>
-              <a-input
-                v-model:value="connectionForm.api_origin"
-                placeholder="https://gitea.example.com"
-              />
-            </a-form-item>
-            <a-form-item label="SSH Host" required
-              ><a-input v-model:value="connectionForm.ssh_host"
-            /></a-form-item>
-            <a-form-item label="SSH Port" required>
-              <a-input-number v-model:value="connectionForm.ssh_port" :min="1" :max="65535" />
-            </a-form-item>
-          </div>
-          <a-form-item label="SSH known-host key" required>
-            <a-textarea v-model:value="connectionForm.ssh_known_host_key" :rows="2" />
-          </a-form-item>
-          <a-form-item label="Gitea API Token（仅本次提交可见）" required>
-            <a-input-password
-              v-model:value="connectionForm.api_token"
-              autocomplete="new-password"
-            />
-          </a-form-item>
-          <a-button
-            type="primary"
-            html-type="button"
-            :loading="savingConnection"
-            @click="createConnection"
-            >创建 connection</a-button
-          >
-        </a-form>
-        <a-empty v-if="!connections.length" description="尚未创建 connection" />
-        <div v-else class="item-list">
-          <article v-for="item in connections" :key="item.id" class="git-item">
-            <div>
-              <strong>{{ item.name }}</strong
-              ><span>{{ item.api_origin }}</span>
-              <small>{{ item.ssh_host }}:{{ item.ssh_port }}</small>
-            </div>
-              <div class="item-actions">
-                <a-tag>{{ item.provider }}</a-tag>
-                <a-button size="small" @click="beginCredentialUpdate(item)">更新 Token</a-button>
-                <a-popconfirm
-                title="仅未被仓库使用的 connection 可以删除"
-                @confirm="deleteConnection(item)"
-              >
-                <a-button size="small" danger>删除</a-button>
-                </a-popconfirm>
-              </div>
-              <div v-if="editingConnectionId === item.id" class="credential-update">
-                <a-input-password
-                  v-model:value="credentialToken"
-                  autocomplete="new-password"
-                  placeholder="输入新的 Gitea API Token"
-                />
-                <a-button
-                  type="primary"
-                  size="small"
-                  :loading="updatingCredential"
-                  :disabled="!credentialToken"
-                  @click="updateConnectionCredential(item)"
-                  >保存</a-button
-                >
-                <a-button size="small" @click="cancelCredentialUpdate">取消</a-button>
-              </div>
-            </article>
-        </div>
-      </a-tab-pane>
-
-      <a-tab-pane key="worktrees" tab="Worktrees">
+      <component :is="section === 'all' ? 'a-tab-pane' : 'section'" v-if="section === 'all' || section === 'worktrees'" key="worktrees" tab="Worktrees">
         <a-spin :spinning="loading">
           <a-empty v-if="!worktrees.length" description="根任务首次运行后会在这里显示 worktree" />
           <div v-else class="item-list">
@@ -296,19 +214,19 @@
             </article>
           </div>
         </a-spin>
-      </a-tab-pane>
-      <a-tab-pane key="occupancies" tab="占用与排队">
+      </component>
+      <component :is="section === 'all' ? 'a-tab-pane' : 'section'" v-if="section === 'all' || section === 'occupancies'" key="occupancies" tab="占用与排队">
         <ProjectGitActivityPanel v-if="activeTab === 'occupancies'" :project-id="project.id" kind="occupancies" :resources="repositories" />
-      </a-tab-pane>
-      <a-tab-pane key="history" tab="审批与历史">
+      </component>
+      <component :is="section === 'all' ? 'a-tab-pane' : 'section'" v-if="section === 'all' || section === 'history'" key="history" tab="审批与历史">
         <ProjectGitActivityPanel v-if="activeTab === 'history'" :project-id="project.id" kind="history" :resources="repositories" />
-      </a-tab-pane>
-    </a-tabs>
+      </component>
+    </component>
   </component>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { gitApi } from '@/apis/git_api'
@@ -317,19 +235,15 @@ import ProjectGitActivityPanel from '@/components/ProjectGitActivityPanel.vue'
 import GitWorktreeArtifactPanel from '@/components/GitWorktreeArtifactPanel.vue'
 import GitResourcePanel from '@/components/GitResourcePanel.vue'
 
-const props = defineProps({ embedded: Boolean, open: Boolean, project: { type: Object, default: null } })
-const emit = defineEmits(['update:open'])
+const props = defineProps({ embedded: Boolean, open: Boolean, project: { type: Object, default: null }, section: { type: String, default: 'all' }, autoRefresh: { type: Boolean, default: true } })
+const emit = defineEmits(['update:open', 'updated'])
+const { openSettingsModal } = inject('settingsModal', {})
 const activeTab = ref('repositories')
 const loading = ref(false)
-const savingConnection = ref(false)
 const savingRepository = ref(false)
 const savingPolicyId = ref('')
-const updatingCredential = ref(false)
-const editingConnectionId = ref('')
-const credentialToken = ref('')
 const error = ref('')
 const showRepositoryForm = ref(false)
-const showConnectionForm = ref(false)
 const connections = ref([])
 const repositories = ref([])
 const worktrees = ref([])
@@ -360,14 +274,6 @@ const isPolicyDirty = (id) => {
   )
 }
 
-const connectionForm = reactive({
-  name: '',
-  api_origin: '',
-  ssh_host: '',
-  ssh_port: 22,
-  ssh_known_host_key: '',
-  api_token: ''
-})
 const repositoryForm = reactive({
   connection_id: '',
   alias: '',
@@ -455,7 +361,7 @@ const load = async ({ quiet = false } = {}) => {
     const [connectionRows, repositoryRows, worktreeRows] = await Promise.all([
       gitApi.getConnections(),
       projectApi.getRepositories(props.project.id),
-      projectApi.getGitWorktrees(props.project.id)
+      props.section === 'repositories' ? Promise.resolve([]) : projectApi.getGitWorktrees(props.project.id)
     ])
     connections.value = connectionRows
     if (!repositoryForm.connection_id && activeConnections.value.length === 1) repositoryForm.connection_id = activeConnections.value[0].id
@@ -468,33 +374,12 @@ const load = async ({ quiet = false } = {}) => {
       }
     })
     worktrees.value = worktreeRows
+    emit('updated')
     error.value = ''
   } catch (requestError) {
     error.value = requestError?.message || 'Git 配置加载失败'
   } finally {
     loading.value = false
-  }
-}
-
-const createConnection = async () => {
-  savingConnection.value = true
-  try {
-    await gitApi.createConnection({
-      request_id: crypto.randomUUID(),
-      provider: 'gitea',
-      ...connectionForm
-    })
-    connectionForm.api_token = ''
-    connectionForm.ssh_known_host_key = ''
-    connectionForm.name = ''
-    await load({ quiet: true })
-    showConnectionForm.value = false
-    message.success('Gitea connection 已创建')
-  } catch (requestError) {
-    connectionForm.api_token = ''
-    error.value = requestError?.message || 'Connection 创建失败'
-  } finally {
-    savingConnection.value = false
   }
 }
 
@@ -562,41 +447,6 @@ const deactivateRepository = async (item) => {
   }
 }
 
-const deleteConnection = async (item) => {
-  try {
-    await gitApi.deleteConnection(item.id)
-    await load({ quiet: true })
-  } catch (requestError) {
-    error.value = requestError?.message || 'Connection 删除失败'
-  }
-}
-
-const beginCredentialUpdate = (item) => {
-  credentialToken.value = ''
-  editingConnectionId.value = item.id
-}
-
-const cancelCredentialUpdate = () => {
-  credentialToken.value = ''
-  editingConnectionId.value = ''
-}
-
-const updateConnectionCredential = async (item) => {
-  updatingCredential.value = true
-  try {
-    await gitApi.updateCredential(item.id, credentialToken.value)
-    credentialToken.value = ''
-    editingConnectionId.value = ''
-    await load({ quiet: true })
-    message.success('Gitea Token 已更新')
-  } catch (requestError) {
-    credentialToken.value = ''
-    error.value = requestError?.message || 'Token 更新失败'
-  } finally {
-    updatingCredential.value = false
-  }
-}
-
 const cleanupWorktree = async (item) => {
   try {
     await projectApi.cleanupGitWorktree(props.project.id, item.id)
@@ -621,14 +471,16 @@ watch(
     clearInterval(pollTimer)
     if (!open) return
     load()
-    pollTimer = setInterval(() => load({ quiet: true }), 3000)
+    if (props.autoRefresh) pollTimer = setInterval(() => load({ quiet: true }), 3000)
   },
   { immediate: true }
 )
 onBeforeUnmount(() => clearInterval(pollTimer))
+defineExpose({ refresh: load })
 </script>
 
 <style scoped lang="less">
+.connection-hint { font-size:12px; line-height:1.6; color:var(--color-text-secondary); margin:8px 0 0; }
 .git-alert {
   margin-bottom: 12px;
 }
@@ -725,12 +577,6 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   justify-content: flex-end;
   gap: 8px;
 }
-.credential-update {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 8px;
-}
 @media (max-width: 640px) {
   .form-grid {
     grid-template-columns: 1fr;
@@ -740,9 +586,6 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   }
   .item-actions {
     justify-content: flex-start;
-  }
-  .credential-update {
-    grid-template-columns: 1fr;
   }
   .policy-editor {
     grid-template-columns: 1fr;

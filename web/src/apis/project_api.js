@@ -62,7 +62,7 @@ export const projectApi = {
   pushGitResource: (projectId, repositoryId, payload) =>
     apiPost(`/api/projects/${projectId}/repositories/${repositoryId}/push`, gitRequest(payload)),
 
-  getGitActions: (projectId, { limit = 50, offset = 0 } = {}) => apiGet(`/api/projects/${projectId}/git-actions?${buildQuery({ limit, offset })}`),
+  getGitActions: (projectId, { limit = 50, offset = 0, status } = {}) => apiGet(`/api/projects/${projectId}/git-actions?${buildQuery({ limit, offset, status })}`),
   decideGitAction: (projectId, id, approve) => apiPost(`/api/projects/${projectId}/git-actions/${id}/decision`, { approve }),
 
   getGitOccupancies: (projectId) => apiGet(`/api/projects/${projectId}/git-occupancies`),

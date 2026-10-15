@@ -2,7 +2,7 @@
   <div>
     <a-button @click="open('topic')">反馈到议题</a-button>
     <a-button @click="open('blueprint')">补入蓝图复盘</a-button>
-    <p v-for="item in result.topic_feedbacks || []" :key="item.comment_id"><router-link :to="`/projects/${projectId}/inspection?topic_id=${item.topic_id}`">查看议题反馈 · 修订 {{ item.topic_revision }}</router-link></p>
+    <p v-for="item in result.topic_feedbacks || []" :key="item.comment_id"><router-link :to="{name:'ProjectTopics',params:{project_id:projectId},query:{topic_id:item.topic_id,comment_id:item.comment_id}}">查看议题反馈 · 修订 {{ item.topic_revision }}</router-link></p>
     <a-modal v-model:open="visible" :title="mode === 'topic' ? '反馈到议题' : '蓝图复盘预览'" :confirm-loading="busy" :ok-button-props="{ disabled: !ready }" ok-text="确认保存" @ok="save">
       <p>请核对目标和文字后确认。反馈不会自动重开议题或改变工作状态。</p>
       <a-select v-model:value="target" :disabled="busy" aria-label="反馈目标" style="width: 100%" @change="selectTarget(false)">

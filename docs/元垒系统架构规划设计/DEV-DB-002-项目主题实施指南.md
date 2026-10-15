@@ -431,3 +431,45 @@ S01不重做表单和列表；其项目进入动作由S04补接，验证已有sl
 最低交付包含：按SYS14.4逐模块实际完成／未完对应、产品入口与连续任务说明、真实HTTP／PG／文件／DOM证据、相关unit／integration及规定检查、全新独立Reviewer结论、残余和回退办法。先说明系统目标落实与设计偏差，再说明模块实现、取舍和测试边界。交付状态用“待系统审核／待用户验收”，不能自主改为S05通过。用户审核无问题并明确通过后，才按实际契约细化S06导入导出；不能凭本次设计批准自动恢复S06。
 
 每轮按进度／问题／计划更新LOG，整体任务可跨多轮延续。常规实现自主推进；新增业务语义／权限、无法保持历史或需扩大存储／部署边界时集中提交具体方案。产品细节可迭代，既有确认不能被用于拒绝必要修正，也不能被用来扩大范围。
+
+#### R2实际契约与当前检查边界（2026-10-14）
+
+读写消费者采用manifest formatVersion 1／componentAbi 2，theme.baseVersion 1；page.capability仅允许总览、蓝图、议题、计划、工作、督查、资料、智能体、设置九种。能力页不能同时声明旧blocks，未知及重复能力拒绝；缺能力按版本化基础定义继承，主题页面ID不等于业务身份。ABI1与旧blocks继续加载，不自动转换项目绑定。layout沿overview／reading／full，调研总览的reading消费者呈现课题正文主栏与验证／工作侧栏；版本修改新增发布，不覆盖已安装字节。
+
+yuanlei v39→v40经官方migrator更新主题ABI检查约束，其他数据Owner不迁移；内置完整主题采用新来源，旧包保留。原蓝图／治理／工作／结果／Agent API继续拥有状态与权限，项目资料API只在原Workspace动作前执行Project可见性和相对路径校验。新项目壳不因同项目主题重载卸载未保存业务表单，失权则清空并提供平台返回。具体已执行、失败及未验证证据由LOG第37节及后续回执维护，本段不构成S05验收。
+
+#### 2026-10-15 审核否决后的对照纪律
+
+用户否决本轮系统审核，指定DB-P07 `图解/21-full-project-theme-20261013/review.html`为实际布局、细节和交互对照。批准原型保持不动，不通过重写设计稿迁就实现；逐页核最终覆盖CSS、目录／详情、折叠／定位、悬浮／键盘和阅读／草稿，而非仅核能力名称、API或测试数。返工记录继续由LOG37及同一系统审核材料拥有；原业务Owner缺少的动作不得伪造保存或新生命周期。原型访问策略限制、独立复核失败、未验范围必须分别保留，不能登记整体一致或S05通过。
+
+#### 2026-10-15 七项产品反馈补充
+
+用户明确授权直接改产品；SYS14.11覆盖原型中对应侧栏／议题视觉／工作切换／智能体及设置局部组织。其余DB-P07基线保持，不改原型来冒充本次产品一致。沿ProjectLayout、TopicWorkspace／TopicHistoryPanel、ProjectWorkTasksView、ProjectAgentManagePanel、ProjectIdentityFields及嵌入ProjectSettingsModal调整；不改共享InfoCard比例或底层业务状态。项目设置平铺资源仍沿原Git及知识库用例，增加可见读取不形成写权限。实际验证与未验范围见LOG38，S06保持暂停。
+
+#### 2026-10-15 用户级连接与设置卡片
+
+按SYS14.12，SettingsModal懒加载GitConnectionsSettingsCard并向登录用户展示Git连接，项目Git页删除连接管理动作，复用原settingsModal入口和gitApi。原后端uid隔离及凭据服务保持，连接更新后项目沿原轮询回读。Token在提交成功／失败、切设置页、切账号及卸载时清空，迟到请求不能恢复上一用户连接；真实凭据不作为UI走查试验。ProjectSettingsModal仅嵌入模式采用卡片grid及slot组合，原项目列表弹窗保留导航与独立滚动；原属性／关联保存、草稿离开保护不变。
+
+### 设置资源区与总览提醒补充（2026-10-15）
+
+实现对应SYS14.13：ProjectSettingsModal拥有响应式业务卡片组合；ProjectGitWorkspace拥有高频读取与暂停计时器，ProjectGitSettingsModal的repositories区仅负责右侧配置，保留刷新配置入口。GitResourcePanel的activity模式读取实时差异，但人工review快照独立；配置模式不混入实时办理。ProjectGitActivityPanel接收外部items时不另开轮询；selected必须跟随可见记录更新或清除。Worktrees保持既有成果审查、安全清理和cleanup_failed重试。
+
+ProjectGitAttentionSummary只投影待办并携带git_section／git_action返回设置，首次定位后不因周期刷新反复滚动或重开弹窗。loadProjectGitAttention依次读取全部pending分页，接口GET git-actions增加可选status=pending，repository在用户与项目筛选之后、分页之前应用状态；不改变默认历史及批准Owner。HTTP负向测试验证大量新历史不能挤掉旧待办、无效状态拒绝及不可见项目拒绝；前端验证暂停、迟到响应及实时差异不替换冻结审查。
+
+### 内嵌资源审查与展示层级补充（2026-10-15）
+
+SYS14.14使用GitResourcePanel activity模式直接嵌入原review与操作，full模式保留既有弹窗。首次成功读取建立审查依据，后续live结果仅提示HEAD/tree变化，刷新差异显式更新review；不删原expected_head/tree校验。ProjectGitWorkspace使用原生details／summary折叠，保留子组件与草稿，深链首次展开再定位。总览approval与occupancy各自请求需要的数据，避免双实例重复读取全量；项目智能体复用InfoCard footer插槽，不更改共享卡片Owner或配置保存逻辑。
+
+### 刷新、路由与导航补充（2026-10-15）
+
+SYS14.15由GitResourcePanel仓库标题固定Loader占位、条件表单及同排干净状态实现，确认操作仍使用冻结review。ProjectsView点击编辑才调用binding并校验包，使用settings capability对应ID跳转；无绑定／无声明使用原modal，error状态与请求失败显示原因，迟到响应不得跨页面或用户打开编辑器。
+
+AppLayout以同一DOM导航固定浮层取代Drawer内Teleport，避免悬浮移动DOM及受主页面sticky层遮挡；主内容独立stacking context，导航保留自身层级。悬浮200ms预览，鼠标离开取消；点击图标和菜单操作固定展开，固定／收起按钮沿自身语义。ProjectWorkTasksView、ProjectWorkTaskView、ProjectAgentWorkbenchView、ProjectAgentsComp四个漏设路由补keepAlive:false，与其他项目页一致；不改变全局聊天缓存。platformPageCache通过真实meta与Vue RouterLink验证项目退出销毁、全局聊天无必填项目参数，并保留聊天草稿和换账户隔离回归。
+
+确认补充：干净、无待推送与无输入时允许自动采用新review，使新增改动及时出现；任何Popconfirm展开即按动作身份冻结，直到确认操作或取消。仅busy不能覆盖“尚未点确认”的时间窗。导航body菜单使用明确的popup class归属，outside pointerdown识别该归属，避免小屏菜单动作送达前卸载。
+
+### 独立预览与决定索引补充
+
+SYS14.16：AppLayout navigationSurfaces复用一份模板渲染rail及按需preview。全局sidebarCollapsed仅取固定偏好及窄屏条件，不取hover/open；preview独立fixed定位，折叠CSS显式排除preview，取消overlay为主体补padding的旧方案。点击rail固定；preview内部操作保持在当前表面执行，避免点击菜单时先销毁预览。监听指针跨两个表面与popup归属，退出与卸载清理定时器、监听及ref。
+
+TopicWorkspace维护本地decisionScope投影与计数；DecisionHistoryPanel仅在showSource索引模式增加来源信息和收紧说明，不改变议题详情内嵌决定。筛选测试同时核对原集合与当前准确决定不被改写；导航实测核对悬浮前后主区left、width与rail宽度相等，不能只检查浮层出现。

@@ -16,3 +16,11 @@ export function normalizeBlueprintName(input) {
 
 /** 在界面中只展示蓝图名称，文件后缀留给存储协议。 */
 export const displayBlueprintName = (name) => String(name || '').replace(/\.md$/, '')
+
+/** 首行Markdown标题作为文档标题，缺省时沿用文件显示名。 */
+export function blueprintDocumentHeading(name, content) {
+  return String(content || '').match(/^\s*# +([^\n]+)(?:\n|$)/)?.[1].trim() || displayBlueprintName(name)
+}
+
+/** 标题由文档抬头呈现，阅读正文保留其余原文，编辑仍读取完整文件。 */
+export const blueprintDocumentBody = content => String(content || '').replace(/^\s*# +[^\n]+(?:\n|$)/, '')

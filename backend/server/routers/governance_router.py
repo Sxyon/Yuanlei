@@ -720,3 +720,11 @@ async def comments_page(
     return await page_governance_comments(
         project_id=project_id, topic_id=topic_id, db=db, user=user, offset=offset, limit=limit
     )
+
+
+@governance.get("/projects/{project_id}/governance/activity")
+async def recent_project_activity(project_id: str, db=Depends(get_db), user=Depends(get_required_user)):
+    """读取准确来源的项目近期动态。"""
+    from yuxi.services.governance_service import get_project_recent_activity
+
+    return await get_project_recent_activity(project_id=project_id, db=db, user=user)

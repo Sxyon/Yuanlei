@@ -1,6 +1,6 @@
 <template>
   <div class="user-info-component">
-    <a-dropdown :trigger="['click']" v-if="userStore.isLoggedIn">
+    <a-dropdown overlay-class-name="platform-navigation-popup" :trigger="['click']" v-if="userStore.isLoggedIn">
       <div class="user-info-dropdown" :data-align="showRole ? 'left' : 'center'">
         <div class="user-avatar">
           <FallbackAvatar

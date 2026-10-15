@@ -1117,3 +1117,43 @@ async def test_git_approval_records_and_executes_exact_snapshot(resource_api, mo
     app.dependency_overrides[get_required_user] = lambda: User(uid="outsider", username="outsider")
     assert (await client.get(history_url)).status_code == 404
     assert (await client.post(history_url + f"/{row['id']}/decision", json={"approve": True})).status_code == 404
+
+
+async def test_pending_filter_precedes_history_pagination(resource_api):
+    """旧待办不因最新历史分页而漏掉，默认历史及项目隔离保持不变。"""
+    from datetime import datetime, timedelta
+    from yuxi.storage.postgres.models_business import ProjectGitAction
+
+    client, sessions, _, user, repository_id, _, _, resource_path = resource_api
+    project_id = resource_path.split("/")[3]
+    async with sessions() as db:
+        for index in range(103):
+            db.add(
+                ProjectGitAction(
+                    id=f"attention-{index}",
+                    uid=user.uid,
+                    project_id=project_id,
+                    repository_id=repository_id,
+                    request_id=f"attention-{index}",
+                    fingerprint="test",
+                    action="commit",
+                    branch="develop",
+                    expected_head="a" * 40,
+                    approval_kind="required",
+                    approval_reason="人工判断",
+                    status="pending" if index < 2 else "rejected",
+                    created_at=datetime(2026, 1, 1) + timedelta(seconds=index),
+                )
+            )
+        await db.commit()
+    path = f"/api/projects/{project_id}/git-actions"
+    history = await client.get(path, params={"limit": 1})
+    assert history.status_code == 200, history.text
+    assert history.json()[0]["status"] == "rejected"
+    response = await client.get(path, params={"status": "pending", "limit": 1, "offset": 1})
+    assert response.status_code == 200, response.text
+    assert [row["id"] for row in response.json()] == ["attention-0"]
+    assert (await client.get(path, params={"status": "unknown"})).status_code == 422
+    assert (
+        await client.get(f"/api/projects/{uuid.uuid4()}/git-actions", params={"status": "pending"})
+    ).status_code == 404
