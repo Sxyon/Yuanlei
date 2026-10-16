@@ -27,9 +27,14 @@ export function validateThemePackage(value) {
   const pack = validate('package', value)
   const capabilities = pack.theme.pages.map(page => page.capability).filter(Boolean)
   const ids = pack.theme.pages.map(page => page.id)
+  const hidden = pack.theme.hiddenCapabilities ??= []
   const fail = (code, message) => { throw new ThemeContractError(code, message) }
   if ((capabilities.length || pack.theme.baseVersion != null) && pack.manifest.componentAbi < 2) fail('capability_abi', '完整业务能力需要 componentAbi 2')
   if (capabilities.length && pack.theme.baseVersion !== 1) fail('base_version', '需要明确基础界面版本')
+  if ((pack.theme.presentation !== 'baseline' || hidden.length) && pack.manifest.componentAbi < 3) fail('presentation_abi', '导航隐藏与总览组合需要 componentAbi 3')
+  if ((pack.theme.presentation !== 'baseline' || hidden.length) && pack.theme.baseVersion !== 1) fail('presentation_base', '呈现配置需要基础界面版本')
+  if (hidden.includes('overview')) fail('hidden_overview', '项目总览必须可见')
+  if (new Set(hidden).size !== hidden.length) fail('duplicate_hidden', '隐藏能力不能重复')
   if (new Set(capabilities).size !== capabilities.length) fail('duplicate_capability', '同一能力只能覆盖一个主页面')
   if (new Set(ids).size !== ids.length) fail('duplicate_page', '页面 ID 重复')
   const paths = Object.values(pack.manifest.assets).map(asset => asset.path)

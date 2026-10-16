@@ -775,6 +775,9 @@ async def main() -> None:
                 await pg_manager.record_schema_version("yuanlei", 39)
             if yuanlei_version is None or yuanlei_version <= 39:
                 await pg_manager.upgrade_yuanlei_schema_v39_to_v40()
+                await pg_manager.record_schema_version("yuanlei", 40)
+            if yuanlei_version is None or yuanlei_version <= 40:
+                await pg_manager.upgrade_yuanlei_schema_v40_to_v41()
                 await pg_manager.record_schema_version("yuanlei", YUANLEI_SCHEMA_VERSION)
             if knowledge_version is None:
                 await pg_manager.create_knowledge_tables()

@@ -71,7 +71,7 @@ export function resolveWorkspacePages(pack) {
     })),
     ...baseWorkspacePages
       .filter((page) => !overridden.has(page.capability))
-      .map((page) => ({ ...page, inherited: true }))
+      .map((page) => ({ ...page, inherited: Boolean(pack) }))
   ]
 }
 
@@ -84,7 +84,7 @@ export function routeCapability(name) {
 
 /** 新能力主题的历史展示书签进入真实业务消费者，保留原定位。 */
 export function legacyThemeTarget(pack, route) {
-  if (pack?.manifest?.componentAbi !== 2) return null
+  if (!(pack?.manifest?.componentAbi >= 2)) return null
   const declared = pack.theme.pages.find((item) => item.id === route.query.theme_page)
   if (declared && !declared.capability) return null
   const pages = resolveWorkspacePages(pack)
@@ -104,4 +104,10 @@ export function legacyThemeTarget(pack, route) {
 export function projectThemeSettingsTarget(projectId, pack) {
   const page = pack?.theme.pages.find(item => item.capability === 'settings')
   return page ? { name: 'ProjectSettings', params: { project_id: projectId }, query: { theme_page: page.id } } : null
+}
+
+/** 隐藏仅作用于主导航；准确对象和办理路由仍使用完整能力解析。 */
+export function workspaceNavigationPages(pack) {
+  const hidden = new Set(pack?.theme.hiddenCapabilities || [])
+  return resolveWorkspacePages(pack).filter(page => !hidden.has(page.capability))
 }

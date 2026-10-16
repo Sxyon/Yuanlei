@@ -9,6 +9,7 @@ import { createServer } from 'vite'
 let vite, View, api
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
+  globalThis.document = {addEventListener(){},removeEventListener(){}}
   globalThis.window = { addEventListener() {}, removeEventListener() {} }
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ default: View } = await vite.ssrLoadModule('/src/components/project/ProjectThemeManager.vue'))
@@ -18,6 +19,7 @@ after(async () => {
   await vite?.close()
   delete globalThis.localStorage
   delete globalThis.window
+  delete globalThis.document
 })
 const renderer = createRenderer({
   createElement: () => ({}),

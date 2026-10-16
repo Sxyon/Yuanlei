@@ -41,7 +41,7 @@ class Manifest(ClosedModel):
     """可携主题包清单，身份和绑定由宿主另行提供。"""
 
     formatVersion: Version
-    componentAbi: Annotated[int, Field(strict=True, ge=1, le=2)]
+    componentAbi: Annotated[int, Field(strict=True, ge=1, le=3)]
     theme: Literal["theme.json"]
     source: Name
     files: dict[Name, Literal["application/json", "image/png"]]
@@ -220,6 +220,8 @@ class Theme(ClosedModel):
     baseVersion: Literal[1] | None = None
     density: Literal["comfortable", "compact"] = "comfortable"
     accent: Literal["teal", "blue", "slate"] = "teal"
+    presentation: Literal["baseline", "focus", "research"] = "baseline"
+    hiddenCapabilities: list[Capability] = Field(default_factory=list)
     pages: Annotated[list[Page], Field(min_length=1)]
 
 
@@ -239,6 +241,14 @@ class ThemePackage(ClosedModel):
             raise ValueError("base_version: 完整业务能力需要明确基础界面版本")
         if len(capabilities) != len(set(capabilities)):
             raise ValueError("duplicate_capability: 同一能力只能覆盖一个主页面")
+        if (self.theme.presentation != "baseline" or self.theme.hiddenCapabilities) and self.manifest.componentAbi < 3:
+            raise ValueError("presentation_abi: 导航隐藏与总览组合需要componentAbi 3")
+        if (self.theme.presentation != "baseline" or self.theme.hiddenCapabilities) and self.theme.baseVersion != 1:
+            raise ValueError("presentation_base: 呈现配置需要基础界面版本")
+        if "overview" in self.theme.hiddenCapabilities:
+            raise ValueError("hidden_overview: 项目总览必须可见")
+        if len(set(self.theme.hiddenCapabilities)) != len(self.theme.hiddenCapabilities):
+            raise ValueError("duplicate_hidden: 隐藏能力不能重复")
         page_ids = [p.id for p in self.theme.pages]
         if len(set(page_ids)) != len(page_ids):
             raise ValueError("duplicate_page: 页面ID重复")

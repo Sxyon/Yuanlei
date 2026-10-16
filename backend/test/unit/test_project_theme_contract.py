@@ -80,7 +80,7 @@ def test_valid_definition_preserves_display_alias_and_normalizes_defaults():
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
-        (lambda p: p["manifest"].update(componentAbi=3), "componentAbi"),
+        (lambda p: p["manifest"].update(componentAbi=4), "componentAbi"),
         (lambda p: p["manifest"].update(formatVersion="1"), "formatVersion"),
         (lambda p: p["manifest"].update(formatVersion=True), "formatVersion"),
         (lambda p: p["theme"].update(script="alert(1)"), "extra_forbidden"),
@@ -220,4 +220,27 @@ def test_workspace_capabilities_require_explicit_abi_and_base():
         ThemePackage.model_validate(duplicate)
     package["theme"]["pages"][0]["capability"] = "arbitrary-api"
     with pytest.raises(ValidationError):
+        ThemePackage.model_validate(package)
+
+
+def test_presentation_requires_explicit_supported_host_and_visible_home():
+    """呈现配置须由ABI3消费，旧版本不能静默误读。"""
+    package = {
+        "manifest": {"formatVersion": 1, "componentAbi": 3, "theme": "theme.json", "source": "test", "files": {}, "assets": {}},
+        "theme": {"id": "focus", "version": "3", "name": "精简", "topicLabel": "议题", "baseVersion": 1, "presentation": "focus", "hiddenCapabilities": ["settings"], "pages": [{"id": "home", "title": "总览", "description": "项目总览", "layout": "overview", "capability": "overview"}]},
+    }
+    assert ThemePackage.model_validate(package).theme.presentation == "focus"
+    package["manifest"]["componentAbi"] = 2
+    with pytest.raises(ValidationError, match="presentation_abi"):
+        ThemePackage.model_validate(package)
+    package["manifest"]["componentAbi"] = 3
+    package["theme"]["hiddenCapabilities"] = ["overview"]
+    with pytest.raises(ValidationError, match="hidden_overview"):
+        ThemePackage.model_validate(package)
+    package["theme"]["hiddenCapabilities"] = ["files", "files"]
+    with pytest.raises(ValidationError, match="duplicate_hidden"):
+        ThemePackage.model_validate(package)
+    package["theme"]["hiddenCapabilities"] = []
+    package["theme"]["baseVersion"] = None
+    with pytest.raises(ValidationError, match="base_version|presentation_base"):
         ThemePackage.model_validate(package)

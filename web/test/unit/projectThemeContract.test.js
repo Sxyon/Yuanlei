@@ -25,7 +25,7 @@ test('两份独立正式定义加载；显示别名与原业务绑定分别保�
 test('结构与跨引用负例按正确原因拒绝，不跳过坏块', async () => {
   const valid = await sample('research')
   const cases = [
-    ['invalid_package', p => { p.manifest.componentAbi = 3 }],
+    ['invalid_package', p => { p.manifest.componentAbi = 4 }],
     ['invalid_package', p => { p.manifest.formatVersion = '1' }],
     ['invalid_package', p => { p.theme.script = 'alert(1)' }],
     ['invalid_package', p => { p.theme.pages[0].blocks[0].type = 'iframe' }],
@@ -107,4 +107,23 @@ test('合成适配只提供原对象DTO和逻辑文件；详情核对当前项�
   const resource = await adapter.read({ kind: 'file', alias: 'survey' }, context)
   await validateResource(resource, 'application/json')
   assert.equal((await adapter.read({ kind: 'file', alias: 'not-provided' }, context)).state, 'unbound')
+})
+
+test('有限呈现需要ABI3，基础总览不得隐藏，包不支持自由布局代码', async () => {
+  const p = await sample('default')
+  p.manifest.componentAbi = 3
+  p.theme.baseVersion = 1
+  p.theme.presentation = 'focus'
+  p.theme.hiddenCapabilities = ['settings']
+  assert.equal(validateThemePackage(p).theme.presentation,'focus')
+  p.manifest.componentAbi = 2
+  assert.throws(()=>validateThemePackage(p),error=>error.code==='presentation_abi')
+  p.manifest.componentAbi = 3
+  p.theme.hiddenCapabilities = ['overview']
+  assert.throws(()=>validateThemePackage(p),error=>error.code==='hidden_overview')
+  p.theme.hiddenCapabilities = ['files','files']
+  assert.throws(()=>validateThemePackage(p),error=>error.code==='duplicate_hidden')
+  p.theme.hiddenCapabilities = []
+  p.theme.presentation = 'custom-script'
+  assert.throws(()=>validateThemePackage(p),/契约不支持/)
 })

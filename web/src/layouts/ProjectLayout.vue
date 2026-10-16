@@ -7,7 +7,7 @@ import { useChatUIStore } from '@/stores/chatUI'
 import { useUserStore } from '@/stores/user'
 import { projectThemeApi } from '@/apis/project_theme_api'
 import { validateLoadedPackage } from '@/components/project/themes/contract'
-import { resolveWorkspacePages, routeCapability, legacyThemeTarget } from '@/components/project/themes/workspaceCapabilities'
+import { resolveWorkspacePages, workspaceNavigationPages, routeCapability, legacyThemeTarget } from '@/components/project/themes/workspaceCapabilities'
 import { Modal } from 'ant-design-vue'
 import { clearGovernanceDrafts } from '@/utils/governanceDrafts'
 import { clearReviewScope } from '@/utils/resultReviewDrafts'
@@ -40,6 +40,8 @@ onErrorCaptured((cause, instance, info) => {
 })
 const pack = computed(() => !fallback.value && selection.value?.state === 'ready' ? selection.value.package : null)
 const pages = computed(() => resolveWorkspacePages(pack.value))
+const navigationPages = computed(() => workspaceNavigationPages(pack.value))
+const presentation = computed(() => pack.value?.theme.presentation || 'baseline')
 const activePage = computed(() => pages.value.find(page => page.capability === routeCapability(route.name)))
 const activeCapability = computed(() => routeCapability(route.name))
 const icons = { overview: LayoutDashboard, blueprints: BookOpen, topics: MessageSquare, plans: Workflow, work: ListChecks, inspection: Activity, files: Files, agents: Bot, settings: Settings }
@@ -148,7 +150,7 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
 </script>
 
 <template>
-  <section class="project-space" :data-theme-version="selection?.binding?.version_id || ''" :data-theme-generation="selection?.generation || 0" :data-theme-scope="themeScope" :class="{ 'project-collapsed': collapsed, 'project-mobile-open': mobileOpen, 'platform-page': !props.enabled, 'workspace-compact': pack?.theme.density === 'compact', 'workspace-blue': pack?.theme.accent === 'blue', 'workspace-slate': pack?.theme.accent === 'slate', 'workspace-reading': activePage?.layout === 'reading' }">
+  <section class="project-space" :data-theme-version="selection?.binding?.version_id || ''" :data-theme-generation="selection?.generation || 0" :data-theme-scope="themeScope" :class="{ 'project-collapsed': collapsed, 'project-mobile-open': mobileOpen, 'platform-page': !props.enabled, 'workspace-focus': presentation === 'focus', 'workspace-research': presentation === 'research', 'workspace-compact': pack?.theme.density === 'compact', 'workspace-blue': pack?.theme.accent === 'blue', 'workspace-slate': pack?.theme.accent === 'slate', 'workspace-reading': activePage?.layout === 'reading' }">
     <header v-if="enabled" class="project-space-header">
       <button class="project-nav-toggle" type="button" aria-label="项目导航" :aria-expanded="narrow ? mobileOpen : !collapsed" @click="toggleNavigation"><PanelLeft :size="18" /></button>
       <span class="project-breadcrumb">项目空间 / {{ activePage?.title || '项目' }}</span>
@@ -169,12 +171,15 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
     <div class="project-space-body">
       <nav v-if="enabled && project && !themeDenied" class="project-navigation" aria-label="项目工作空间导航">
         <div class="project-head"><div class="project-head-tools"><span>项目空间</span><button type="button" aria-label="收起项目导航" @click="toggleNavigation"><PanelLeft :size="16" /></button></div><h2>{{ project?.name }}</h2><p class="project-description" :title="project?.description || ''">{{ project?.description || '暂无项目描述' }}</p></div>
-        <template v-for="(item,index) in pages" :key="item.id">
-          <small v-if="index === 0 || pages[index - 1].group !== item.group" class="project-nav-group">{{ item.group }}</small>
+        <template v-for="(item,index) in navigationPages" :key="item.id">
+          <small v-if="index === 0 || navigationPages[index - 1].group !== item.group" class="project-nav-group">{{ item.group }}</small>
           <RouterLink :to="{ name: item.route, params: { project_id: projectId }, query: { theme_page: item.id } }" :class="{ active: activeCapability === item.capability }" :aria-current="activeCapability === item.capability ? 'page' : undefined"><component :is="icons[item.capability]" :size="18" />{{ item.title }}<span v-if="item.inherited" class="inherited-marker" title="继承完整基础界面 v1" aria-label="继承完整基础界面 v1">基础</span></RouterLink>
         </template>
         <RouterLink v-for="page in (pack?.theme.pages || []).filter(page => !page.capability)" :key="`extra-${page.id}`" :to="{name:'ProjectThemeDisplay', params:{project_id:projectId},query:{theme_page:page.id}}">{{ page.title }}</RouterLink>
         <small v-if="pack" class="project-nav-group">{{ themeError ? '上次读取：' : '' }}{{ selection.source?.name || pack.theme.name }} · {{ selection.version?.version || pack.theme.version }} · generation {{selection.generation}}</small>
+        <RouterLink v-if="activePage && !navigationPages.some(page => page.capability === activeCapability)" :to="{name:'ProjectDashboardComp',params:{project_id:projectId}}">返回主题总览</RouterLink>
+        <RouterLink :to="{name:'ProjectsComp',query:{tab:'themes',project_id:projectId,theme_action:'select'}}">主题选择／恢复</RouterLink>
+        <small v-if="selection?.source?.status === 'disabled'" role="status">当前来源已退役，原选择保留。请显式选择当前版本。</small>
         <RouterLink :to="{ name: 'ProjectsComp' }"><ArrowLeft :size="18" />项目列表</RouterLink>
       </nav>
       <div v-if="!enabled || project && !themeDenied" class="project-page"><slot v-if="!renderFailed" :theme-scope="themeScope" /></div>
@@ -219,4 +224,14 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
 .project-head select { margin-top:12px; max-width:100%; background:transparent; border:0; padding:0; color:var(--color-text-secondary); font-size:11px; }
 .workspace-compact .project-page :deep(.overview-panel) { padding:19px; }.workspace-compact .project-page :deep(.attention-row), .workspace-compact .project-page :deep(.topic-directory-row) { padding-top:10px; padding-bottom:10px; }.workspace-compact .project-page :deep(.plan-card) { padding:18px 20px; }.workspace-compact .project-page :deep(.history-event:not(.discussion-event):not(.work-event)) { padding-top:1px; padding-bottom:1px; }.workspace-compact .project-page :deep(.tasks-table td) { padding-top:11px; padding-bottom:11px; }
 .project-page :deep(.ant-btn-primary) { background:var(--main-color); border-color:var(--main-color); }
+
+.project-space.workspace-focus { --main-color:var(--second-700); --main-10:var(--second-50); --gray-25:var(--second-50); }
+.workspace-focus .project-navigation { background:var(--gray-0); }
+.workspace-research .project-navigation { background:var(--color-info-900); --color-text:var(--gray-0); --color-text-secondary:var(--color-info-100); --main-color:var(--gray-0); --main-10:var(--color-info-700); --gray-150:var(--color-info-700); width:240px; flex-basis:240px; }
+:global(html.dark .project-space.workspace-focus) { --main-color:var(--second-300); --main-10:var(--gray-100); --gray-25:var(--gray-0); }
+:global(html.dark .workspace-research .project-navigation) { background:var(--color-info-100); --color-text:var(--gray-1000); --color-text-secondary:var(--gray-700); --main-color:var(--gray-1000); --main-10:var(--gray-100); }
+.workspace-research .project-navigation a.active { box-shadow:inset 2px 0 0 currentColor; }
+@media(max-width:700px) { .workspace-research .project-navigation {width:100%;flex-basis:auto;} }
+
+.workspace-research .project-head h2 { color:var(--color-text); }
 </style>

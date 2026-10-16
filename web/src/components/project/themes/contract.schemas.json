@@ -231,7 +231,7 @@
             "type": "integer"
           },
           "componentAbi": {
-            "maximum": 2,
+            "maximum": 3,
             "minimum": 1,
             "title": "Componentabi",
             "type": "integer"
@@ -676,6 +676,34 @@
             ],
             "title": "Accent",
             "type": "string"
+          },
+          "presentation": {
+            "default": "baseline",
+            "enum": [
+              "baseline",
+              "focus",
+              "research"
+            ],
+            "title": "Presentation",
+            "type": "string"
+          },
+          "hiddenCapabilities": {
+            "items": {
+              "enum": [
+                "overview",
+                "blueprints",
+                "topics",
+                "plans",
+                "work",
+                "inspection",
+                "files",
+                "agents",
+                "settings"
+              ],
+              "type": "string"
+            },
+            "title": "Hiddencapabilities",
+            "type": "array"
           },
           "pages": {
             "items": {
@@ -1021,7 +1049,7 @@
             "type": "integer"
           },
           "componentAbi": {
-            "maximum": 2,
+            "maximum": 3,
             "minimum": 1,
             "title": "Componentabi",
             "type": "integer"
@@ -1466,6 +1494,34 @@
             ],
             "title": "Accent",
             "type": "string"
+          },
+          "presentation": {
+            "default": "baseline",
+            "enum": [
+              "baseline",
+              "focus",
+              "research"
+            ],
+            "title": "Presentation",
+            "type": "string"
+          },
+          "hiddenCapabilities": {
+            "items": {
+              "enum": [
+                "overview",
+                "blueprints",
+                "topics",
+                "plans",
+                "work",
+                "inspection",
+                "files",
+                "agents",
+                "settings"
+              ],
+              "type": "string"
+            },
+            "title": "Hiddencapabilities",
+            "type": "array"
           },
           "pages": {
             "items": {

@@ -17,7 +17,7 @@ const catalog = ref([]), current = shallowRef(null), versionId = ref(''), bundle
 const pending = shallowRef(null), committed = ref(false)
 let sequence = 0, versionSequence = 0, checkSequence = 0, bindingSequence = 0, timer
 const project = computed(() => props.projects.find(item => item.id === props.projectId))
-const versions = computed(() => catalog.value.flatMap(source => source.versions.map(version => ({ ...version, source }))))
+const versions = computed(() => catalog.value.filter(source => source.status === 'active').flatMap(source => source.versions.map(version => ({ ...version, source }))))
 const target = computed(() => versions.value.find(item => item.id === versionId.value))
 const groups = computed(() => ['builtin','personal','project'].map(kind => ({ label: { builtin:'内置',personal:'个人公共',project:'项目专属' }[kind], options: versions.value.filter(v => v.source.kind === kind).map(v => ({ value:v.id, label:`${v.source.name} · ${v.version}${v.component_abi === 1 ? ' · ABI1只读展示／基础继承' : ''}${v.source.status !== 'active' ? ' · '+(v.source.status === 'disabled' ? '已停用，不可新选择' : '安全撤回，不可加载') : ''}`, disabled:v.source.status !== 'active' })) })))
 const currentLabel = computed(() => current.value?.source ? `${current.value.source.name} · ${current.value.version.version}` : current.value?.binding ? `原选择 ${current.value.binding.version_id}` : '未绑定主题')
@@ -179,17 +179,17 @@ onUnmounted(() => { window.removeEventListener('beforeunload',beforeUnload);wind
       <section class="panel"><h3>目标项目与当前选择</h3><p v-if="stayInProject">{{ project?.name }} · {{ projectId }}</p><label v-else>分配目标项目<a-select :value="projectId || undefined" :options="projects.map(p=>({value:p.id,label:p.name}))" placeholder="选择有权项目" aria-label="主题目标项目" :disabled="saving || !!pending" @change="changeProject" /></label>
         <p v-if="current">当前：{{currentLabel}} · generation {{current.generation}}</p><a-alert v-if="current?.error" type="warning" :message="current.error.message" description="原绑定保留。可在此显式选择有权版本恢复，不依赖项目设置页面。" />
         <label>准确发布版本<a-select :value="versionId || undefined" :options="groups" :disabled="loading || saving || !!pending || !projectId" placeholder="选择准确发布版本" aria-label="主题发布版本" @change="value=>{versionId=value;chooseVersion()}" /></label>
-        <p v-if="initialVersionId" class="help">版本行带入的准确意图：{{initialVersionId}}。目标改选后须重新授权和核对。</p><p class="help">候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。</p>
+        <details class="help"><summary>选择说明</summary><p>发布新版本不会自动替换项目选择；预览不保存绑定。目标项目改变后，会重新核对权限与文件条件。</p></details>
       </section>
       <section class="panel"><h3>项目文件与条件</h3><p v-if="!bundle">选定目标和准确版本后，读取版本要求。</p><p v-else-if="!aliases.length">此版本没有项目文件要求。</p>
         <label v-for="[alias,type] in aliases" :key="alias">{{alias}} · {{type}}<small>已保存：{{current?.binding?.files?.[alias] || '无'}}</small><a-input v-model:value="files[alias]" :aria-label="`文件绑定 ${alias}`" :aria-invalid="condition?.error?.alias===alias" :disabled="saving || !!pending" placeholder="当前项目内路径，例如 /reports/data.json" @change="filesChanged" /><small v-if="condition?.error?.alias===alias" role="alert">{{condition.error.message}}</small></label>
         <a-alert v-if="condition && !condition.selectable" type="warning" :message="condition.error.message" /><p v-if="condition?.selectable" role="status">来源、准确版本及文件条件通过；应用时重新校验。</p>
         <a-button :loading="checking" :disabled="!bundle || saving || !!pending" @click="checkConditions">重新检查条件</a-button>
-        <h3>确认应用</h3><p>目标项目：{{project?.name || '尚未选择'}} · {{projectId}}</p><p>拟用：{{target ? `${target.source.name} · ${target.version}` : versionId || '未选择'}}</p><p v-for="[alias] in aliases" :key="alias">{{alias}} → {{files[alias] || '尚未填写'}}</p>
+        <h3>确认应用</h3><p>目标项目：{{project?.name || '尚未选择'}}</p><p>拟用：{{target ? `${target.source.name} · ${target.version}` : versionId || '未选择'}}</p><p v-for="[alias] in aliases" :key="alias">{{alias}} → {{files[alias] || '尚未填写'}}</p>
         <p class="help">切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。</p>
         <div class="actions"><a-button :disabled="!bundle || saving" @click="preview=true">预览此准确版本</a-button><a-button type="primary" :loading="saving" :disabled="!condition?.selectable || checking || !!pending" @click="save">应用主题</a-button></div>
         <RouterLink v-if="notice && !stayInProject" :to="{name:'ProjectDashboardComp',params:{project_id:projectId}}">进入项目（可选）</RouterLink>
-        <details v-if="bundle"><summary>版本与包详情</summary><p>{{bundle.reference}} · SHA-256 {{bundle.digest}} · ABI{{bundle.manifest.componentAbi}}</p></details>
+        <details v-if="bundle"><summary>版本与包详情</summary><p>目标项目ID：{{projectId}}</p><p v-if="initialVersionId">版本行带入：{{initialVersionId}}</p><p>{{bundle.reference}} · SHA-256 {{bundle.digest}} · ABI{{bundle.manifest.componentAbi}}</p></details>
       </section>
     </div>
     <section v-if="preview && bundle"><a-button @click="preview=false">返回本次选择</a-button><p>隔离合成预览；不读取真实业务或文件内容，不写项目绑定。</p><ThemeHost :theme-package="bundle" project-id="selection-preview" :user-id="String(user.uid)" :adapter="previewAdapter" simulation /></section>

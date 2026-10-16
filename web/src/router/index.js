@@ -93,8 +93,7 @@ const router = createRouter({
     },
     {
       path: '/projects/theme-preview',
-      component: AppLayout,
-      children: [{ path: '', name: 'ProjectThemePreviewView', component: () => import('../views/ProjectThemePreviewView.vue'), meta: { requiresAuth: true, keepAlive: false } }]
+      redirect: { name: 'ProjectsComp', query: { tab: 'themes' } }
     },
     {
       path: '/projects/:project_id/work/tasks',

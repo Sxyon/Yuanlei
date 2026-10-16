@@ -7,10 +7,13 @@ import { createDashboardSrcdoc } from '@/utils/dashboardFrame'
 import { describeBoardError, overviewStatusLabel } from '@/utils/governanceBoard'
 import { blueprintDocumentHeading, blueprintDocumentBody } from '@/utils/blueprintName'
 import { useUserStore } from '@/stores/user'
+import ThemedOverview from './ThemedOverview.vue'
 import ProjectGitAttentionSummary from '@/components/ProjectGitAttentionSummary.vue'
 const accessLost = inject('projectAccessLost', () => {})
 const props = defineProps({ projectId: { type: String, required: true } })
-const researchTopics = ref([]), blueprintCount = ref(0)
+const themeContext = inject('projectThemeContext', null)
+const presentation = computed(() => themeContext?.value?.package?.theme.presentation || 'baseline')
+const researchTopics = ref([]), decisions = ref([]), blueprintCount = ref(0)
 const route = useRoute()
 const user = useUserStore(),
   board = ref({}),
@@ -105,6 +108,7 @@ function failure(cause) {
     blueprint.value = null
     activity.value = []
     researchTopics.value = []
+    decisions.value = []
     business.value = null
     more.value = null
     moreRows.value = {}
@@ -120,10 +124,11 @@ async function load() {
   loading.value = true
   error.value = ''
   const results = await Promise.allSettled([
-    api.getProjectBoard(token.project),
+    presentation.value === 'baseline' ? api.getProjectBoard(token.project) : Promise.resolve({}),
     api.listBlueprints(token.project),
     api.listTopics(token.project, false),
-    api.recentActivity(token.project)
+    api.recentActivity(token.project),
+    presentation.value === 'research' ? api.listDecisions(token.project) : Promise.resolve([])
   ])
   if (!current(token)) return
   for (const result of results)
@@ -133,6 +138,7 @@ async function load() {
     }
   if (results[0].status === 'fulfilled') board.value = results[0].value
   if (results[2].status === 'fulfilled') researchTopics.value = results[2].value
+  if (results[4].status === 'fulfilled') decisions.value = results[4].value
   if (results[3].status === 'fulfilled') activity.value = results[3].value.items
   if (results[1].status === 'fulfilled') {
     blueprintCount.value = results[1].value.documents?.length || 0
@@ -184,17 +190,18 @@ async function readBusiness() {
   }
 }
 watch(
-  () => [props.projectId, user.uid],
+  () => [props.projectId, user.uid, themeContext?.value?.scope],
   () => {
     generation++
     board.value = {}
     blueprint.value = null
     activity.value = []
     researchTopics.value = []
+    decisions.value = []
     business.value = null
     more.value = null
     void load()
-    if (route.query.view === 'business') {
+    if (presentation.value === 'baseline' && route.query.view === 'business') {
       showBusiness.value = false
       void readBusiness()
     }
@@ -205,16 +212,17 @@ onBeforeUnmount(() => generation++)
 </script>
 <template>
   <section class="overview-workspace" aria-label="项目总览">
-    <div class="overview-tools"><details class="overview-more"><summary aria-label="概览更多操作">···</summary><div><button @click="readBusiness">业务大屏</button><button :disabled="loading" @click="load">刷新</button></div></details></div>
+    <div v-if="presentation === 'baseline'" class="overview-tools"><details class="overview-more"><summary aria-label="概览更多操作">···</summary><div><button @click="readBusiness">业务大屏</button><button :disabled="loading" @click="load">刷新</button></div></details></div>
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <p v-if="loading" role="status">正在读取项目事实…</p>
-    <div v-if="showBusiness" class="business-display">
+    <div v-if="showBusiness && presentation === 'baseline'" class="business-display">
       <a-alert v-if="businessError" type="error" :message="businessError" />
       <iframe v-else-if="business?.state === 'ready'" :srcdoc="createDashboardSrcdoc(business.html)" sandbox referrerpolicy="no-referrer" title="项目静态业务大屏" />
       <p v-else>尚无可用业务大屏。可在平台项目对话中维护静态页面。</p>
       <RouterLink :to="{ name: 'AgentComp', query: { project_id: projectId } }">前往平台项目对话</RouterLink>
     </div>
-    <div class="overview-columns">
+    <ThemedOverview v-if="presentation !== 'baseline'" :presentation="presentation" :project-id="projectId" :blueprint="blueprint" :topics="researchTopics" :decisions="decisions" :activity="activity" :loading="loading" />
+    <div v-else class="overview-columns" data-overview-presentation="baseline">
       <div class="overview-stack overview-primary"><ProjectGitAttentionSummary :project-id="projectId" section="approvals" />
         <section class="overview-panel attention-panel">
           <header><h2>需要你处理</h2><details v-if="attentionGroups.some(group => group.total)" class="overview-more"><summary aria-label="查看全部待处理事项">···</summary><div><button v-for="group in attentionGroups" :key="group.key" @click="openMore(group)">{{ group.title }} · {{ group.total || 0 }}</button></div></details></header>

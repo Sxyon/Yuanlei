@@ -8,7 +8,7 @@
 
 同一主题机制需要承载日常管理和课题调研两种项目页面组织，同时保留议题、决定和正式任务的身份、关系及后端语义。为两个样例各写一套页面宿主，会在存储、数据和迁移接入时分叉；让上传页面执行任意脚本或自行拼请求，会破坏平台数据与授权边界。
 
-S03提供独立平台预览及两个包样例，全部业务和资料明确模拟。主题按受控JSON定义编排平台可信Vue组件，组件输入、导航与资源引用经过纯契约；正式项目可明确选择S04持久版本；可信原项目入口保留，正式业务与指定文件由固定适配读取，独立预览继续明确标合成。
+S03原固定样例作为历史协议资产保留；当前正式预览从真实候选或准确发布版本进入，业务和资料明确模拟，旧独立演示地址重定向到主题管理。主题按受控JSON定义编排平台可信Vue组件，组件输入、导航与资源引用经过纯契约；正式项目可明确选择S04持久版本；可信原项目入口保留，正式业务与指定文件由固定适配读取，独立预览继续明确标合成。
 
 ## 必须保留的业务语义
 
@@ -44,10 +44,12 @@ AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航和有限�
 当前需求／确认范围见[SYS-DB-001第14节](../../../元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计.md)，契约和交接由[DEV-DB-002](../../../元垒系统架构规划设计/DEV-DB-002-项目主题实施指南.md)拥有，实际命令、模拟边界及阶段验收由[LOG-DB-001](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。纯契约、组件／第三份定义测试、真实浏览器DOM和样例ZIP字节回读分别验证其边界，不以用户评分或单个HTTP状态代替事实。
 
 - [已采纳主题实施方案](../decisions/proposed/2026-10-12-project-theme-implementation.md)：S03当前子范围与后继未交付边界分别登记。
-- 纯契约与输入Owner：`backend/package/yuxi/services/project_theme_contract.py`；消费路径为 `web/src/components/project/themes/ThemeHost.vue`，真实浏览器验例为 `web/test/browser/projectThemes.mjs`。
+- 纯契约与输入Owner：`backend/package/yuxi/services/project_theme_contract.py`；消费路径为 `web/src/components/project/themes/ThemeHost.vue`，呈现与真实宿主消费回归为 `web/test/unit/projectThemeSamples.test.js`，HTTP／PG及包字节回读为 `backend/test/integration/api/test_project_themes_api.py`，浏览器实际结果由专项LOG第53节拥有。
 
 - [真实数据与可信返回接通决策](../decisions/implemented/2026-10-13-project-theme-live-data.md)：固定业务适配、有界查询、绑定alias文件读取和原宿主返回的取舍及验证边界。
 
 - [全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)：九个能力及详情在同一主题内办理；布局与交互原型对齐返工中，末轮独立复核及用户验收未完成。yuanlei v40仅放宽主题ABI约束，保留原版本、绑定和业务数据。
 
 - [多主题切换与真实视图修复提案](../decisions/proposed/2026-10-15-project-theme-switch-repair.md)：当前默认样式为基础，S04-R修复选择与宿主一致性，S05-R2验证实际主题表达与双数据；S04-R已按确认稿实施平台完整分配、项目快捷选择、同源预检与宿主恢复；S05-R2仍待实施。切换机制证据见专项LOG第51节，不代替调研内容组织及双数据验收。
+
+- [本地样例整改决策](../decisions/implemented/2026-10-16-project-theme-samples.md)：当前目录清理、默认／应急共同基线、精简导航与有限总览呈现；DB-P09已获用户明确确认，ABI3有限呈现与显式导航隐藏已有消费，主题管理直接整理获授权；当前执行与证据由专项LOG第53节拥有，S05双数据不据此完成。

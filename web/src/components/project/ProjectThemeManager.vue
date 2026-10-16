@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { Modal } from 'ant-design-vue'
 import { useUserStore } from '@/stores/user'
@@ -12,15 +12,16 @@ import { createSyntheticAdapter } from './themes/syntheticAdapter'
 
 const props = defineProps({ projectId: { type: String, default: '' }, projects: { type: Array, required: true }, stayInProject: Boolean })
 const emit = defineEmits(['project', 'selected', 'catalog-changed'])
-const route = useRoute(), router = useRouter(), user = useUserStore()
+const route = useRoute(), user = useUserStore()
 const sourceProjectId = ref(props.projectId), selectionVersionId = ref(''), selectionRef = ref(null)
-const mode = ref(route.query.theme_action === 'select' ? 'selection' : 'catalog'), scope = ref('personal')
+const mode = ref(route.query.theme_action === 'select' ? 'selection' : 'catalog'), scope = ref('builtin')
 const sources = ref([]), activeId = ref(''), candidate = shallowRef(null), definition = ref(''), error = ref(''), notice = ref(''), busy = ref(false)
 const createOpen = ref(false), createName = ref(''), createKind = ref('personal'), operation = ref(''), reason = ref(''), audit = shallowRef(null), preview = shallowRef(null)
-let generation = 0
+let generation = 0, catalogSequence = 0
 const active = computed(() => sources.value.find(item => item.id === activeId.value))
-const visible = computed(() => sources.value.filter(item => item.kind === scope.value))
-const project = computed(() => props.projects.find(item => item.id === props.projectId))
+const showHistory = ref(false)
+const visible = computed(() => sources.value.filter(item => item.kind === scope.value && (showHistory.value || item.status === 'active')))
+const historical = computed(() => sources.value.filter(item => item.kind === scope.value && item.status !== 'active').length)
 const mutable = computed(() => active.value && active.value.kind !== 'builtin')
 const dirty = computed(() => {
   if (!candidate.value?.package) return false
@@ -37,26 +38,42 @@ async function canDiscard(includeSelection = true) {
 }
 onBeforeRouteLeave(() => canDiscard(false))
 function beforeUnload(event) { if(dirty.value) { event.preventDefault(); event.returnValue='' } }
-onMounted(() => { window.addEventListener('beforeunload',beforeUnload) })
-async function load(confirmDiscard = false) {
-  if(confirmDiscard && !await canDiscard()) return
-  const token = ++generation, id = sourceProjectId.value
+onMounted(() => { window.addEventListener('beforeunload',beforeUnload); window.addEventListener('focus',onFocus); document.addEventListener('visibilitychange',onFocus) })
+/** 核对目录保留候选草稿与当前准确版本，不因自动刷新重建编辑状态。 */
+async function refreshCatalog() {
+  const token = generation, request = ++catalogSequence, id = sourceProjectId.value
+  try {
+    const result = await projectThemeApi.catalog(id)
+    if (token === generation && request === catalogSequence) sources.value = result.sources
+  } catch (cause) { if (token === generation && request === catalogSequence) throw cause }
+}
+function onFocus() {
+  const token = generation
+  if (document.visibilityState !== 'hidden' && !busy.value) void refreshCatalog().catch(cause => { if (token === generation) error.value = '目录核对失败：' + cause.message })
+}
+async function selected(value) {
+  emit('selected',value)
+  await run(refreshCatalog)
+}
+async function load() {
+  const token = ++generation, request = ++catalogSequence, id = sourceProjectId.value
   busy.value = true; error.value = ''; sources.value = []; activeId.value = ''; candidate.value = null; preview.value = null; audit.value = null; operation.value = ''
-  try { const result = await projectThemeApi.catalog(id); if (token === generation) sources.value = result.sources }
-  catch (cause) { if (token === generation) error.value = cause.message }
-  finally { if (token === generation) busy.value = false }
+  try { const result = await projectThemeApi.catalog(id); if (token === generation && request === catalogSequence) sources.value = result.sources }
+  catch (cause) { if (token === generation && request === catalogSequence) error.value = cause.message }
+  finally { if (token === generation && request === catalogSequence) busy.value = false }
 }
 async function run(action) {
   const token = generation
+  catalogSequence++
   busy.value = true; error.value = ''; notice.value = ''
-  try { await action(token) } catch (cause) { if (token === generation) error.value = cause.message || '操作失败；原选择保留' }
+  try { await action(token); if (token === generation) await refreshCatalog() } catch (cause) { if (token === generation) error.value = cause.message || '操作失败；原选择保留' }
   finally { if (token === generation) busy.value = false }
 }
 async function openSource(source) {
   if(!await canDiscard()) return
   const token = ++generation; activeId.value = source.id; candidate.value = null; audit.value = null; preview.value = null; operation.value = ''; notice.value = ''; error.value = ''
   mode.value = source.kind === 'builtin' ? 'versions' : 'candidate'
-  if (source.kind === 'builtin') { busy.value = false; return }
+  if (source.kind === 'builtin') { await run(async () => {}); return }
   await run(async () => {
     const result = await projectThemeApi.candidate(source.id, sourceProjectId.value)
     if (token !== generation || activeId.value !== source.id) return
@@ -142,18 +159,18 @@ async function changeTarget(id) {
   emit('project',id)
 }
 defineExpose({ canDiscard, openPreview: value => run(() => showPreview(value)), showCatalog: async () => { if(await canDiscard()) mode.value = 'catalog' } })
-onUnmounted(() => { generation++; window.removeEventListener('beforeunload',beforeUnload) })
+onUnmounted(() => { generation++; window.removeEventListener('beforeunload',beforeUnload); window.removeEventListener('focus',onFocus); document.removeEventListener('visibilitychange',onFocus) })
 </script>
 <template>
   <section class="theme-management">
-    <div class="toolbar"><p>主题维护 · 候选、版本与项目选择分别提交</p><div class="actions"><RouterLink :to="{name:'ProjectThemePreviewView'}">S03 合成样例</RouterLink><RouterLink v-if="project" :to="{name:'ProjectDashboardComp',params:{project_id:project.id}}">返回项目：{{project.name}}</RouterLink><a-button v-else @click="router.push({name:'ProjectsComp'})">返回项目列表</a-button><a-button :loading="busy" @click="load(true)">刷新目录</a-button></div></div>
+    <div class="management-help"><a-popover trigger="click" title="主题使用与维护"><template #content><div class="help-content"><p>选择项目后可分配主题，也可从准确发布版本发起分配。成功后在本页核实结果。</p><p>候选用于编辑；发布生成不可变版本；分配才改变项目选择。预览不保存选择，新发布不会自动替换项目版本。</p><p>个人公共供自己的多个项目复用；项目专属仅限所属项目。停用版本保留历史及已有绑定，可在历史目录追溯。</p><p>目录随来源切换、创建、保存、发布、维护及分配操作自动核对；重新聚焦时也会核对。</p></div></template><a-button type="text" aria-label="主题管理帮助">？ 使用帮助</a-button></a-popover></div>
     <a-alert v-if="error" type="error" show-icon :message="error" /><a-alert v-if="notice" type="success" show-icon :message="notice" />
     <template v-if="mode==='preview' && preview"><div class="toolbar"><a-button @click="mode=preview.returnMode;preview=null">返回维护 / 选择</a-button><p class="preview-notice">包定义及包内资源真实读取；业务及项目文件内容为合成预览，不保存项目选择。</p></div><ThemeHost :theme-package="preview.package" project-id="preview-market" project-label="隔离合成项目" :user-id="String(user.uid)" :adapter="preview.adapter" simulation /></template>
     <template v-else>
       <div v-if="!stayInProject" class="toolbar"><h2>项目分配</h2><a-button @click="assignVersion()">选择项目并分配主题</a-button></div>
-      <ProjectThemeSelection v-if="mode==='selection'" ref="selectionRef" :project-id="projectId" :projects="projects" :initial-version-id="selectionVersionId" :stay-in-project="stayInProject" @selected="value=>emit('selected',value)" @project="changeTarget" @cancel="mode='catalog'" />
-      <div class="toolbar"><div class="actions"><a-radio-group :value="scope" @change="async event=>{if(await canDiscard()){scope=event.target.value;mode='catalog';activeId=''}}" :options="[{value:'builtin',label:'平台内置'},{value:'personal',label:'个人公共'},{value:'project',label:'项目专属'}]" /><a-select :value="sourceProjectId || undefined" :options="projects.map(p=>({value:p.id,label:p.name}))" placeholder="来源所属项目（非分配目标）" aria-label="主题来源所属项目" :disabled="stayInProject || scope!=='project'" allow-clear @change="changeSourceProject" /></div><a-button type="primary" :disabled="busy" @click="createOpen=true">建立来源</a-button></div>
-      <div class="management-grid"><section class="panel"><h2>来源目录</h2><p class="help">个人公共供你自己的多个项目复用；专属仅限所属项目。</p><p v-if="busy && !sources.length" role="status">正在读取有权目录…</p><a-empty v-else-if="!visible.length" :description="scope==='project' && !sourceProjectId ? '先选择有权项目' : '暂无来源，可复制内置版本或建立来源'" /><button v-for="source in visible" :key="source.id" class="source" :aria-current="source.id===activeId ? 'true':undefined" @click="openSource(source)"><strong>{{source.name}}</strong><small>{{statusText(source.status)}} · {{source.versions.length}} 个版本</small></button></section>
+      <ProjectThemeSelection v-if="mode==='selection'" ref="selectionRef" :project-id="projectId" :projects="projects" :initial-version-id="selectionVersionId" :stay-in-project="stayInProject" @selected="selected" @project="changeTarget" @cancel="mode=active ? 'versions' : 'catalog'" />
+      <div class="toolbar"><div class="actions"><a-radio-group :disabled="busy" :value="scope" @change="async event=>{if(await canDiscard()){scope=event.target.value;mode='catalog';activeId='';candidate=null;definition='';await run(refreshCatalog)}}" :options="[{value:'builtin',label:'平台内置'},{value:'personal',label:'个人公共'},{value:'project',label:'项目专属'}]" /><a-select :value="sourceProjectId || undefined" :options="projects.map(p=>({value:p.id,label:p.name}))" placeholder="来源所属项目（非分配目标）" aria-label="主题来源所属项目" :disabled="busy || stayInProject || scope!=='project'" allow-clear @change="changeSourceProject" /></div><a-button type="primary" :disabled="busy" @click="createOpen=true">建立来源</a-button></div>
+      <div class="management-grid"><section class="panel"><h2>来源目录</h2><a-checkbox v-if="historical" v-model:checked="showHistory">显示历史来源（{{historical}}）</a-checkbox><p v-if="busy && !sources.length" role="status">正在读取有权目录…</p><a-empty v-else-if="!visible.length" :description="scope==='project' && !sourceProjectId ? '先选择有权项目' : '暂无来源，可复制内置版本或建立来源'" /><button v-for="source in visible" :key="source.id" class="source" :disabled="busy" :aria-current="source.id===activeId ? 'true':undefined" @click="openSource(source)"><strong>{{source.name}}</strong><small>{{statusText(source.status)}} · {{source.versions.length}} 个版本</small></button></section>
       <section class="panel"><template v-if="active"><div class="toolbar"><div><h2>{{active.name}}</h2><p class="help">{{active.description}} · {{statusText(active.status)}}</p></div><div class="actions"><a-button v-if="mutable" @click="openSource(active)">候选</a-button><a-button @click="mode='versions'">发布版本</a-button><a-button v-if="mutable" @click="run(()=>inspect())">维护对账</a-button></div></div>
         <template v-if="mode==='candidate' && mutable"><p>候选修订 {{candidate?.source.candidate_revision || 0}}；已发布版本保持原字节。</p><label class="upload">替换候选 ZIP<input type="file" accept=".zip,application/zip" aria-label="上传候选ZIP" :disabled="busy" @change="upload" /></label><label v-if="candidate?.package">manifest / theme 受控定义<a-textarea v-model:value="definition" :rows="18" :disabled="busy" aria-label="候选JSON定义" /></label><p v-else class="help">先上传候选ZIP，或从内置版本复制完整包。</p><div class="actions"><a-button :disabled="!candidate?.package || busy" @click="run(save)">保存并校验候选</a-button><a-button :disabled="!candidate?.package || dirty || busy" @click="run(()=>showPreview())">隔离预览</a-button><a-popconfirm title="发布已保存候选的新版本？不改变项目选择。" @confirm="run(publish)"><a-button type="primary" :disabled="!candidate?.package || dirty || active.status!=='active' || busy">发布已保存候选</a-button></a-popconfirm></div><p v-if="dirty" role="status">候选存在未保存修改，请先保存并校验。</p><p class="help">编辑文本需先保存；预览及发布消费服务端已保存修订。校验失败明确定位字段；新资源用完整ZIP替换。</p></template>
         <template v-if="(mode==='versions' || mode==='selection')"><p v-if="!active.versions.length">尚无发布版本，先维护并发布候选。</p><article v-for="version in active.versions" :key="version.id" class="version"><div><strong>{{active.name}} · {{version.version}}</strong><p class="help">{{version.created_at}} · {{version.size}} bytes · 发布者 {{version.created_by || '平台'}}</p><details><summary>追溯信息</summary><p>版本 {{version.id}} · 候选修订 {{version.candidate_revision}}</p><p class="digest">SHA-256 {{version.digest}}</p></details></div><div class="actions"><a-button :disabled="busy || active.status==='withdrawn'" @click="run(()=>showPreview({versionId:version.id}))">预览版本</a-button><a-button :disabled="busy || active.status==='withdrawn'" @click="run(()=>create(version.id))">复制为个人来源</a-button><a-button :disabled="active.status!=='active'" @click="assignVersion(version.id)">分配到项目</a-button></div></article></template>
@@ -166,5 +183,5 @@ onUnmounted(() => { generation++; window.removeEventListener('beforeunload',befo
   </section>
 </template>
 <style scoped lang="less">
-.theme-management{min-width:0;color:var(--color-text);}.toolbar,.actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}.toolbar{justify-content:space-between;margin:20px 0;}.management-grid{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;}.panel{padding:24px;border:1px solid var(--gray-150);border-radius:8px;min-width:0;}h2{font-size:18px;}h3{font-size:16px;}label{display:flex;flex-direction:column;gap:8px;margin:20px 0;}.help,small{font-size:12px;color:var(--color-text-secondary);line-height:1.8;}.source{display:block;width:100%;padding:16px;margin:8px 0;text-align:left;background:var(--gray-0);border:1px solid var(--gray-150);border-radius:6px;color:inherit;cursor:pointer;small{display:block;margin-top:6px;}}.source[aria-current]{border-color:var(--main-color);background:var(--main-10);}.version{display:flex;justify-content:space-between;gap:16px;padding:20px 0;border-bottom:1px solid var(--gray-150);flex-wrap:wrap;}.digest{overflow-wrap:anywhere;font-size:12px;}.maintenance{margin-top:32px;padding-top:20px;border-top:1px solid var(--gray-150);}.preview-notice{background:var(--color-warning-50);color:var(--color-warning-900);padding:12px;}.theme-host{min-height:600px;}button:focus-visible{outline:2px solid var(--main-color);outline-offset:3px;}@media(max-width:768px){.management-grid{grid-template-columns:1fr;}.panel{padding:16px;}}
+.management-help{display:flex;justify-content:flex-end;margin:4px 0;}.help-content{max-width:360px;line-height:1.8;}.theme-management{min-width:0;color:var(--color-text);}.toolbar,.actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}.toolbar{justify-content:space-between;margin:20px 0;}.management-grid{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;}.panel{padding:24px;border:1px solid var(--gray-150);border-radius:8px;min-width:0;}h2{font-size:18px;}h3{font-size:16px;}label{display:flex;flex-direction:column;gap:8px;margin:20px 0;}.help,small{font-size:12px;color:var(--color-text-secondary);line-height:1.8;}.source{display:block;width:100%;padding:16px;margin:8px 0;text-align:left;background:var(--gray-0);border:1px solid var(--gray-150);border-radius:6px;color:inherit;cursor:pointer;small{display:block;margin-top:6px;}}.source[aria-current]{border-color:var(--main-color);background:var(--main-10);}.version{display:flex;justify-content:space-between;gap:16px;padding:20px 0;border-bottom:1px solid var(--gray-150);flex-wrap:wrap;}.digest{overflow-wrap:anywhere;font-size:12px;}.maintenance{margin-top:32px;padding-top:20px;border-top:1px solid var(--gray-150);}.preview-notice{background:var(--color-warning-50);color:var(--color-warning-900);padding:12px;}.theme-host{min-height:600px;}button:focus-visible{outline:2px solid var(--main-color);outline-offset:3px;}@media(max-width:768px){.management-grid{grid-template-columns:1fr;}.panel{padding:16px;}}
 </style>

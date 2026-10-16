@@ -6,11 +6,13 @@ S04-R第一版及A1 v1.1平台增补均已获用户认可，当前A2—A5双入�
 
 A1 v1.1平台增补小稿已备：<a href="图解/24-s04-switch-a1-20261015/platform-v1.1.html" target="_blank" rel="noopener">两条分配路径与平台留页结果</a>。用户原反馈“初步审核没有问题，可以继续”确认本增补；第一版项目内设计不重审。两个入口已连续实施，共用原服务及唯一绑定；本包结果与限制由LOG第51节拥有。
 
+当前本地样例整改已按用户“三个模板审核通过”实施：主题管理移除旧S03演示及重复返回／刷新按钮，说明收至帮助；正常内置目录为默认、精简、调研三套3.0.0，历史来源保留追溯，原绑定不自动迁移。默认与应急共用人工基线，精简三项导航／两区总览及调研阅读组织已有真实消费。领取当前结果看LOG53及SYS15.10、DEV12.3补充；<a href="图解/28-theme-samples-evidence-20261016/management.jpg" target="_blank" rel="noopener">管理页实况</a>、<a href="图解/28-theme-samples-evidence-20261016/focus.jpg" target="_blank" rel="noopener">精简实况</a>、<a href="图解/28-theme-samples-evidence-20261016/research.jpg" target="_blank" rel="noopener">调研实况</a>。<a href="图解/27-theme-samples-20261016/review.html" target="_blank" rel="noopener">DB-P09</a>／<a href="图解/27-theme-samples-20261016/theme-model.html" target="_blank" rel="noopener">DB-G27</a>仅保留设计确认依据。S05-R2双数据与整包验收未据此完成，暂停专项不恢复。
+
 ## 1. 先看图，再逐项核对
 
 1. 看<a href="图解/23-theme-switch-repair-20261015/theme-repair.html" target="_blank" rel="noopener">DB-G24｜S04／S05修复与S06接续</a>，核对两个独立任务与前后依赖。这是计划图，不是完成图。
 2. 阅读[SYS-DB-001第15节](SYS-DB-001-Dashboard系统需求与架构设计.md#_15-多主题切换与基础版本-2026-10-15)：基础版本、多主题实际差异、可切条件、草稿／路由／数据及可携边界。
-3. 下一会话领取[DEV-DB-002第12.2节S04-R](DEV-DB-002-项目主题实施指南.md#_12-2-db-s04-r-项目主题真实切换与恢复)，完成后再领取第12.3节S05-R2。两包的自检与联合验收均需真实入口、绑定与内容证据。
+3. 既有[DEV-DB-002第12.2节S04-R](DEV-DB-002-项目主题实施指南.md#_12-2-db-s04-r-项目主题真实切换与恢复)实施出口见LOG51；当前按第12.3节样例整改补充读取已确认实施与LOG53证据。双数据与整包联合验收仍需真实入口、绑定与内容证据。
 4. [LOG-DB-001第47节](LOG-DB-001-Dashboard进度基线与执行记录.md#_47-多主题切换缺口审视与独立修复规划-2026-10-15)拥有代码事实、偏差原因及本轮未验证范围；后续实际进展继续在同一LOG维护。
 
 当前默认的页面及交互基线来自已批准的[SYS第14节](SYS-DB-001-Dashboard系统需求与架构设计.md#_14-全项目主题重新规划-r2-2026-10-13)、后续产品使用反馈及20940d6e开发提交；用户本轮指定现有默认样式为基础，不等于验收全部主题机制。<a href="图解/21-full-project-theme-20261013/review.html" target="_blank" rel="noopener">DB-P07设计打样</a>保留设计依据，真实产品与原型差异按LOG读取。

@@ -1,0 +1,9 @@
+{
+  "environment": "本地正常Compose，非合成库",
+  "yuanlei_schema": 41,
+  "existing_bindings_unchanged": 2,
+  "existing_version_digests_unchanged": 6,
+  "automatic_binding_migrations": 0,
+  "current_builtin_sources": 3,
+  "retired_builtin_sources": 4
+}

@@ -38,3 +38,19 @@ test('编辑进入主题明确设置能力，不按名称猜测或误入继承�
   assert.equal(projectThemeSettingsTarget('project', {theme:{pages:[{id:'settings',title:'设置'}]}}), null)
   assert.equal(projectThemeSettingsTarget('project', null), null)
 })
+
+test('显式隐藏只缩小主导航；缺页继承与准确业务入口保留', async () => {
+  const { workspaceNavigationPages } = await import('../../src/components/project/themes/workspaceCapabilities.js')
+  const pack = { theme: { hiddenCapabilities: ['plans','work','inspection','files','agents','settings'], pages: [{id:'focus-home',title:'总览',capability:'overview'}] } }
+  assert.deepEqual(workspaceNavigationPages(pack).map(page => page.capability), ['overview','blueprints','topics'])
+  assert.equal(resolveWorkspacePages(pack).find(page => page.capability === 'work').route, 'ProjectWorkTasksView')
+  delete pack.theme.hiddenCapabilities
+  assert.equal(workspaceNavigationPages(pack).length, 9)
+})
+
+test('默认与无包应急使用相同九项基础导航，不给应急额外继承徽标', () => {
+  const current = {theme:{pages:baseWorkspacePages.map(page => ({...page,layout:page.capability==='overview'?'overview':'full'}))}}
+  const baseline = pages => pages.map(({capability,title,group,route,inherited}) => ({capability,title,group,route,inherited}))
+  assert.deepEqual(baseline(resolveWorkspacePages(current)),baseline(resolveWorkspacePages(null)))
+  assert.equal(resolveWorkspacePages({theme:{pages:[]}}).filter(page=>page.inherited).length,9)
+})

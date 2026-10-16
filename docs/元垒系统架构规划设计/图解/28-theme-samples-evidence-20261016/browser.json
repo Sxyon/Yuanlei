@@ -1,0 +1,182 @@
+{
+  "kind": "真实隔离应用，平台入口、项目宿主与准确版本；预览步骤明确合成",
+  "checks": [
+    {
+      "step": "平台准确版本分配精简，刷新后宿主一致",
+      "generation": "14",
+      "navigation": [
+        "总览",
+        "蓝图",
+        "议题",
+        "主题选择／恢复",
+        "项目列表"
+      ],
+      "presentation": "focus",
+      "sections": 2,
+      "version": "20357e7b-1484-4890-919e-4061ec86a9ce"
+    },
+    {
+      "step": "精简动态进入准确议题",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?topic_id=813e9e32-b6c7-48be-8b61-96cb671080c9",
+      "body": "返回目录\n儿童活动是否单独设时段\n研讨中\n待纳入\n正文 v2\n更新于 10/16 13:59\n\n核对家长参与、噪声与场地安排。\n\n预期结果\n\n用参与人数与反馈核对儿童专属时段。\n\n纳入审核\n拒绝纳入\n纳入议题\n决策 0\n动态\n全部\n讨论\n执行\n历史\n由早到晚\n最新在前\n创建议题\ns04r-7723d19866 · 2026/10/16 13:59:50\n查看当时正文 · 修订 1\n修改正文\ns04r-7723d19866 · 2026/10/16 13:59:50\n\n隔离样例内容准备\n\n查看当时正文 · 修订 2\n研讨\n发 表"
+    },
+    {
+      "step": "精简→调研，刷新准确议题保持原ID",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?topic_id=813e9e32-b6c7-48be-8b61-96cb671080c9&theme_page=current-research-topics",
+      "generation": "15",
+      "heading": "儿童活动是否单独设时段",
+      "navigation": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "主题选择／恢复",
+        "项目列表"
+      ],
+      "version": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30"
+    },
+    {
+      "step": "调研三栏与目录改选",
+      "generation": "15",
+      "navBackground": "rgb(0, 80, 179)",
+      "presentation": "research",
+      "projectTitleColor": "rgb(255, 255, 255)",
+      "title": "周末开放时段如何安排",
+      "version": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30"
+    },
+    {
+      "step": "平台切回默认，刷新恢复",
+      "generation": "16",
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "主题选择／恢复",
+        "项目列表"
+      ],
+      "panels": [
+        "overview-panel attention-panel",
+        "overview-panel progress-panel",
+        "overview-panel blueprint-preview",
+        "overview-panel recent-activity"
+      ],
+      "presentation": "baseline",
+      "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+    },
+    {
+      "step": "默认包损坏→应急，原绑定及基线保持",
+      "generation": "16",
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "主题选择／恢复",
+        "项目列表"
+      ],
+      "notice": "已保存，加载失败：主题包摘要不匹配；原项目选择保留 正在使用应急基础界面；持久选择未改变。重新核对主题选择／恢复主题",
+      "panels": [
+        "overview-panel attention-panel",
+        "overview-panel progress-panel",
+        "overview-panel blueprint-preview",
+        "overview-panel recent-activity"
+      ],
+      "presentation": "baseline",
+      "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+    },
+    {
+      "step": "原包字节恢复后核对，未重发绑定",
+      "generation": "16",
+      "notice": "",
+      "presentation": "baseline",
+      "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+    },
+    {
+      "step": "新标签恢复准确对象",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?topic_id=813e9e32-b6c7-48be-8b61-96cb671080c9&theme_page=current-default-topics",
+      "facts": {
+        "generation": "16",
+        "title": "儿童活动是否单独设时段",
+        "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+      }
+    },
+    {
+      "step": "精简准确版本预览390px，无全页横向溢出",
+      "facts": {
+        "presentation": "focus",
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "step": "精简准确版本深色预览",
+      "facts": {
+        "background": "rgb(30, 40, 37)",
+        "dark": true,
+        "foreground": "rgb(237, 242, 238)"
+      }
+    },
+    {
+      "step": "历史来源可追溯但不可新分配",
+      "historyCount": 7,
+      "assignDisabled": true
+    },
+    {
+      "step": "主题管理整理与正常目录",
+      "duplicateBack": false,
+      "help": true,
+      "manualRefresh": false,
+      "s03": false,
+      "sources": [
+        "精简 · 专注推进",
+        "调研 · 阅读工作室",
+        "默认 · 项目管理"
+      ]
+    },
+    {
+      "step": "调研真实项目深色导航",
+      "activeBackground": "rgb(30, 31, 31)",
+      "background": "rgb(17, 29, 44)",
+      "dark": true,
+      "foreground": "rgb(245, 247, 247)",
+      "generation": "17",
+      "presentation": "research"
+    },
+    {
+      "step": "深色实页结束后恢复默认与原浅色偏好",
+      "dark": false,
+      "generation": "18",
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "主题选择／恢复",
+        "项目列表"
+      ],
+      "presentation": "baseline",
+      "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+    }
+  ]
+}

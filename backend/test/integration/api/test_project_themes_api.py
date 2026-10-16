@@ -146,6 +146,8 @@ async def live_theme(tmp_path, monkeypatch):
             await conn.execute(text("ALTER TABLE project_theme_versions ADD CONSTRAINT project_theme_versions_check CHECK (format_version=1 AND component_abi=1)"))
         await manager.upgrade_yuanlei_schema_v39_to_v40()
         await manager.upgrade_yuanlei_schema_v39_to_v40()
+        await manager.upgrade_yuanlei_schema_v40_to_v41()
+        await manager.upgrade_yuanlei_schema_v40_to_v41()
         async with factory() as db:
             assert (await db.get(Project, projects[0].id)).name == "合成主题项目0"
             await install_builtin_themes(db)
@@ -210,7 +212,7 @@ async def test_real_identity_binding_conflicts_same_workdir_and_restart(live_the
     )
     assert r.status_code == 200, r.text
     directory = (await env.client.get("/api/theme-sources")).json()
-    builtin = next(s for s in directory["sources"] if s["kind"] == "builtin" and s["versions"][0]["size"] < 2000)
+    builtin = next(s for s in directory["sources"] if s["kind"] == "builtin" and s["status"] == "active" and s["versions"][0]["size"] < 2000)
     r = await env.client.put(
         f"/api/projects/{b.id}/theme",
         json={"version_id": builtin["versions"][0]["id"], "files": {}, "expected_generation": 0},
@@ -687,7 +689,7 @@ async def test_resource_waiting_for_source_lock_rechecks_project_generation(live
     assert selected.status_code == 200
     catalog = (await env.client.get("/api/theme-sources")).json()
     default = next(
-        s["versions"][0] for s in catalog["sources"] if s["kind"] == "builtin" and s["versions"][0]["size"] < 2000
+        s["versions"][0] for s in catalog["sources"] if s["kind"] == "builtin" and s["status"] == "active" and s["versions"][0]["size"] < 2000
     )
     async with env.db() as locker:
         owner = await locker.scalar(text("SELECT pg_backend_pid()"))
@@ -920,14 +922,14 @@ async def test_complete_workspace_theme_abi2_preserves_binding_and_immutable_ver
     response = await env.client.put(f"/api/projects/{project}/theme", json={"version_id": version["id"], "files": {}, "expected_generation": 0})
     assert response.status_code == 200, response.text
     before = response.json()
-    await env.manager.upgrade_yuanlei_schema_v39_to_v40()
-    await env.manager.upgrade_yuanlei_schema_v39_to_v40()
+    await env.manager.upgrade_yuanlei_schema_v40_to_v41()
+    await env.manager.upgrade_yuanlei_schema_v40_to_v41()
     after = (await env.client.get(f"/api/projects/{project}/theme")).json()
     assert after["binding"] == before["binding"]
     assert after["generation"] == before["generation"]
     assert after["package"]["digest"] == hashlib.sha256(raw).hexdigest()
     catalog = (await env.client.get(f"/api/theme-sources?project_id={project}")).json()
-    complete = next(s for s in catalog["sources"] if s["name"] == "默认 · 项目管理")
+    complete = next(s for s in catalog["sources"] if s["name"] == "默认 · 项目管理" and s["status"] == "disabled")
     loaded = (await env.client.get(f"/api/theme-versions/{complete['versions'][0]['id']}?project_id={project}")).json()
     assert loaded["manifest"]["componentAbi"] == 2
     assert loaded["theme"]["baseVersion"] == 1
@@ -1012,8 +1014,7 @@ async def test_selection_preflight_is_read_only_and_shares_final_guards(live_the
     """只读预检解释条件，不推进绑定；实际应用仍拒绝过期及非法文件。"""
     env = live_theme
     project = env.projects[0].id
-    catalog = (await env.client.get('/api/theme-sources', params={'project_id': project})).json()
-    research = next(v for s in catalog['sources'] if s['name'] == '调研 · 依据阅读' for v in s['versions'])
+    _, research, _ = await create_publish(env, archive='research')
     path = f'/api/projects/{project}/theme'
     body = {'version_id': research['id'], 'expected_generation': 0, 'files': {'survey': '/data.json'}}
     preview = await env.client.post(path + '/check', json=body)
@@ -1034,3 +1035,39 @@ async def test_selection_preflight_is_read_only_and_shares_final_guards(live_the
     assert denied.status_code == 404
     unchanged = (await env.client.get(path)).json()
     assert unchanged['generation'] == 1 and unchanged['binding']['files'] == body['files']
+
+
+async def test_current_samples_retire_history_without_replacing_project_bindings(live_theme):
+    """当前目录三主题、旧选择保留与真实ABI3包由HTTP及PG共同证明。"""
+    env = live_theme
+    project, other = [item.id for item in env.projects[:2]]
+    catalog = (await env.client.get('/api/theme-sources')).json()['sources']
+    current = [source for source in catalog if source['kind'] == 'builtin' and source['status'] == 'active']
+    assert {source['name'] for source in current} == {'默认 · 项目管理', '精简 · 专注推进', '调研 · 阅读工作室'}
+    legacy = next(source for source in catalog if source['name'] == '默认 · 日常管理')
+    old = legacy['versions'][0]
+    async with env.db() as db:
+        # 模拟部署前已经持久选择早期主题的项目，随后由正式登记重跑证明不迁移。
+        await db.execute(text('INSERT INTO project_theme_bindings(project_id,version_id,files,generation,updated_by) VALUES (:p,:v,CAST(:files AS JSONB),7,:uid)'), {'p':project,'v':old['id'],'files':'{}','uid':env.users[0].uid})
+        await db.commit()
+        await install_builtin_themes(db)
+        await install_builtin_themes(db)
+    retained = (await env.client.get(f'/api/projects/{project}/theme')).json()
+    assert retained['generation'] == 7 and retained['binding']['version_id'] == old['id']
+    assert retained['state'] == 'ready' and retained['package']['digest'] == old['digest']
+    refused = await env.client.put(f'/api/projects/{other}/theme', json={'version_id':old['id'],'files':{},'expected_generation':0})
+    assert refused.status_code == 409 and refused.json()['detail']['code'] == 'source_disabled'
+    for index, name in enumerate(['精简 · 专注推进','调研 · 阅读工作室','默认 · 项目管理'],8):
+        source = next(source for source in current if source['name'] == name)
+        version = source['versions'][0]
+        saved = await env.client.put(f'/api/projects/{project}/theme',json={'version_id':version['id'],'files':{},'expected_generation':index-1})
+        assert saved.status_code == 200, saved.text
+        read = (await env.client.get(f'/api/projects/{project}/theme')).json()
+        assert read['generation'] == index and read['binding']['version_id'] == version['id']
+        raw = (BUILTIN / ({'默认 · 项目管理':'current-default','精简 · 专注推进':'current-focus','调研 · 阅读工作室':'current-research'}[name]+'.theme.zip')).read_bytes()
+        assert read['package']['digest'] == hashlib.sha256(raw).hexdigest()
+        assert read['package']['manifest']['componentAbi'] == 3
+        async with env.db() as db:
+            row = (await db.execute(text('SELECT version_id,generation FROM project_theme_bindings WHERE project_id=:p'), {'p':project})).mappings().one()
+            assert row['version_id'] == version['id'] and row['generation'] == index
+        assert (await env.client.get(f'/api/projects/{other}/theme')).json()['generation'] == 0

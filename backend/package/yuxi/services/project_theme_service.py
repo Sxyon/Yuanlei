@@ -397,7 +397,11 @@ async def install_builtin_themes(db, store=None):
     """正式migrator登记平台内置包，既存来源和版本字节保持。"""
     store = store or ThemeStore()
     repo = ProjectThemeRepository(db)
-    for filename in ("default", "research", "workspace-default", "workspace-research", "workspace-research-reading"):
+    legacy = {"default", "research", "workspace-default", "workspace-research"}
+    for filename in (
+        "default", "research", "workspace-default", "workspace-research", "workspace-research-reading",
+        "current-default", "current-focus", "current-research",
+    ):
         raw = (Path(__file__).parents[1] / "themes" / "builtin" / f"{filename}.theme.zip").read_bytes()
         parsed = parse_package(raw)
         source_name = "workspace-research" if filename == "workspace-research-reading" else filename
@@ -405,6 +409,10 @@ async def install_builtin_themes(db, store=None):
         source = await repo.source(source_id, "", None, lock=True)
         if source is None:
             await repo.create(source_id, "builtin", None, None, parsed.definition.theme.name, "平台随版本发布的内置包")
+        if source_name in legacy and (source is None or source["status"] == "active"):
+            await repo.change_status(
+                source_id, "disabled", "历史样例已退役；原版本和绑定保留，请显式选择当前主题。", None
+            )
         versions = await repo.versions(source_id)
         existing = next((v for v in versions if v["version"] == parsed.definition.theme.version), None)
         if existing and existing["digest"] != parsed.digest:

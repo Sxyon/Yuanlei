@@ -216,13 +216,13 @@ defineExpose({ navigate, selectedTopicId, pageId, captureContext })
   <section class="theme-host">
     <div v-if="definitionError" class="theme-definition-error" role="alert"><h2>主题定义不受支持</h2><p>{{ definitionError }}</p><p>请返回主题预览选择其他包；不会自动启用默认主题。</p></div>
     <template v-else-if="pack && page">
-      <nav class="theme-page-navigation" aria-label="项目主题页面"><button class="theme-mobile-menu" :aria-expanded="mobileOpen" @click="mobileOpen = !mobileOpen"><PanelLeft :size="18" />主题导航</button><div :class="{ open: mobileOpen }"><small>主题页面</small><button v-for="item in pack.theme.pages" :key="item.id" :aria-current="pageId === item.id ? 'page' : undefined" @click="navigate({ kind: 'page', pageId: item.id })">{{ item.title }}</button><slot name="platform-navigation" /></div></nav>
+      <nav class="theme-page-navigation" aria-label="项目主题页面"><button class="theme-mobile-menu" :aria-expanded="mobileOpen" @click="mobileOpen = !mobileOpen"><PanelLeft :size="18" />主题导航</button><div :class="{ open: mobileOpen }"><small>主题页面</small><button v-for="item in pack.theme.pages.filter(item => !pack.theme.hiddenCapabilities.includes(item.capability))" :key="item.id" :aria-current="pageId === item.id ? 'page' : undefined" @click="navigate({ kind: 'page', pageId: item.id })">{{ item.title }}</button><slot name="platform-navigation" /></div></nav>
       <main ref="content" class="theme-content">
         <p v-if="navigationError" class="theme-state error" role="alert">{{ navigationError }}</p>
         <template v-if="detailEvent"><button data-return class="theme-back" @click="returnToPage"><ArrowLeft :size="16" />返回 {{ page.title }}</button><ThemeObjectDetail v-if="detail?.state === 'ready'" :result="detail" :object-type="detailEvent.objectType" :project-name="projectName" :simulation="simulation" @navigate="navigate" /><ThemeBlockFrame v-else :block="{ id: 'object-detail', title: '对象详情' }" :result="detail || { state: 'loading' }" @retry="openObject(detailEvent)" /></template>
         <template v-else>
           <header class="theme-intro"><small>{{ pack.theme.name }} / {{ projectName }}</small><h1 tabindex="-1">{{ page.title }}</h1><p>{{ page.description }}</p></header>
-          <CapabilityPreview v-if="page.capability" :capability="page.capability" :topic-label="pack.theme.topicLabel" />
+          <CapabilityPreview v-if="page.capability" :capability="page.capability" :topic-label="pack.theme.topicLabel" :presentation="pack.theme.presentation" />
           <div v-else class="theme-page-grid" :class="[page.layout, { 'has-summary': page.blocks.some(block => block.region === 'summary') }]">
             <div v-for="region in regions" :key="region" :class="`theme-region-${region}`">
               <ThemeBlockFrame v-for="block in page.blocks.filter(item => item.region === region)" :key="block.id" :block="block" :result="results[block.id] || { state: 'loading' }" @navigate="navigate" @retry="loadPage">

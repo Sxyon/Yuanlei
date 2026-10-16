@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DB-G27｜三套样例与共同基线 · 设计待审",
+    "output": "docs/元垒系统架构规划设计/图解/27-theme-samples-20261016/theme-model.html",
+    "quality_profile": "showcase",
+    "locale": "zh-CN"
+  },
+  "components": [
+    {
+      "id": "platform",
+      "type": "frontend",
+      "label": "M1 平台主题管理",
+      "sublabel": "三套当前样例；历史区只供追溯",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        250,
+        76
+      ]
+    },
+    {
+      "id": "host",
+      "type": "backend",
+      "label": "M2 项目选择与宿主",
+      "sublabel": "同一项目绑定；显式选择准确版本",
+      "pos": [
+        400,
+        210
+      ],
+      "size": [
+        250,
+        76
+      ]
+    },
+    {
+      "id": "default",
+      "type": "frontend",
+      "label": "D1 默认 · 项目管理",
+      "sublabel": "完整九项能力；保留人工基线",
+      "pos": [
+        50,
+        400
+      ],
+      "size": [
+        250,
+        76
+      ]
+    },
+    {
+      "id": "focus",
+      "type": "frontend",
+      "label": "D2 精简 · 专注推进",
+      "sublabel": "三项导航；总览仅蓝图与动态",
+      "pos": [
+        400,
+        400
+      ],
+      "size": [
+        250,
+        76
+      ]
+    },
+    {
+      "id": "research",
+      "type": "frontend",
+      "label": "D3 调研 · 阅读工作室",
+      "sublabel": "完整能力；课题与依据重新组织",
+      "pos": [
+        750,
+        400
+      ],
+      "size": [
+        250,
+        76
+      ]
+    },
+    {
+      "id": "baseline",
+      "type": "backend",
+      "label": "R1 共同基础界面",
+      "sublabel": "上一轮人工调整后的页面与交互",
+      "pos": [
+        50,
+        590
+      ],
+      "size": [
+        250,
+        76
+      ]
+    },
+    {
+      "id": "emergency",
+      "type": "frontend",
+      "label": "R2 应急基础界面",
+      "sublabel": "主题异常时呈现；绑定仍保留",
+      "pos": [
+        400,
+        590
+      ],
+      "size": [
+        250,
+        76
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "choose",
+      "from": "platform",
+      "to": "host",
+      "label": "明确确认后应用",
+      "variant": "emphasis"
+    },
+    {
+      "id": "default-choice",
+      "from": "host",
+      "to": "default",
+      "label": "选择默认"
+    },
+    {
+      "id": "focus-choice",
+      "from": "host",
+      "to": "focus",
+      "label": "选择精简"
+    },
+    {
+      "id": "research-choice",
+      "from": "host",
+      "to": "research",
+      "label": "选择调研"
+    },
+    {
+      "id": "default-base",
+      "from": "default",
+      "to": "baseline",
+      "label": "使用共同基线"
+    },
+    {
+      "id": "fallback-base",
+      "from": "emergency",
+      "to": "baseline",
+      "label": "同一基线 + 故障提示",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "当前提案 · 尚未实施",
+      "items": [
+        "正常目录只展示默认、精简、调研；旧来源停用并移至历史区",
+        "隐藏导航不删除业务、权限或历史；准确对象链接仍可进入原详情",
+        "正常默认与应急共用样式和组织，应急不改持久绑定"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "本轮边界",
+      "items": [
+        "现有选择服务、唯一绑定、generation与草稿保护继续复用",
+        "只扩展有真实消费者的有限呈现配置，不复制三套业务页面",
+        "不开发S06、协作或Andon；双数据联合验收仍单独处理"
+      ]
+    }
+  ]
+}

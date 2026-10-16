@@ -27,7 +27,7 @@ PROJECT_THEME_SCHEMA_STATEMENTS = (
         candidate_revision INTEGER NOT NULL,
         created_by VARCHAR(64) REFERENCES users(uid), created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(source_id,version), CHECK (digest ~ '^[a-f0-9]{64}$'),
-        CHECK (format_version=1 AND component_abi IN (1,2))
+        CHECK (format_version=1 AND component_abi IN (1,2,3))
     )""",
     """CREATE TABLE IF NOT EXISTS project_theme_bindings (
         project_id VARCHAR(64) PRIMARY KEY REFERENCES projects(id),
@@ -57,4 +57,12 @@ PROJECT_THEME_ABI2_STATEMENTS = (
     "ALTER TABLE project_theme_versions DROP CONSTRAINT IF EXISTS ck_project_theme_versions_abi",
     "ALTER TABLE project_theme_versions ADD CONSTRAINT ck_project_theme_versions_abi "
     "CHECK (format_version=1 AND component_abi IN (1,2))",
+)
+
+# ABI3让旧宿主拒绝不认识的导航隐藏与总览组织，不修改旧版本行。
+PROJECT_THEME_ABI3_STATEMENTS = (
+    "ALTER TABLE project_theme_versions DROP CONSTRAINT IF EXISTS ck_project_theme_versions_abi",
+    "ALTER TABLE project_theme_versions DROP CONSTRAINT IF EXISTS project_theme_versions_check",
+    "ALTER TABLE project_theme_versions ADD CONSTRAINT project_theme_versions_check "
+    "CHECK (format_version=1 AND component_abi IN (1,2,3))",
 )

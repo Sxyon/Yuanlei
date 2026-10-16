@@ -8,6 +8,8 @@ const flush = async () => { await nextTick(); await new Promise(resolve => setIm
 const waitFor = async predicate => { for (let i = 0; i < 50; i++) { if (predicate()) return; await flush() } assert.ok(predicate(), '组件状态未收敛') }
 
 test('第三份独立定义复用同宿主；旧选择/项目数据与错误不提交，类型和返回准确', async () => {
+  const savedStorage = globalThis.localStorage
+  globalThis.localStorage = {getItem:()=>null,setItem(){},removeItem(){}}
   const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   let app
   try {
@@ -109,5 +111,5 @@ test('第三份独立定义复用同宿主；旧选择/项目数据与错误不�
     await waitFor(() => state().results.topics?.state === 'ready')
     assert.equal(state().selectedTopicId, 'project-b-first', '切到另一目录页不重置准确选择')
     await state().navigate({ kind: 'page', pageId: 'other' }); assert.equal(state().pageId, 'other')
-  } finally { app?.unmount(); await vite.close() }
+  } finally { app?.unmount(); await vite.close(); globalThis.localStorage = savedStorage }
 })
