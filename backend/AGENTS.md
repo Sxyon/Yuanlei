@@ -25,6 +25,8 @@
 
 ## 验证
 
+专项验收前只执行改动相关测试；人工反馈修完并验收通过后再运行下列全量unit／integration／E2E。非专项沿原验证要求，不能把全量延期写成通过。
+
 ```bash
 docker compose exec api uv run --group test pytest test/unit -m "not slow"
 docker compose exec api uv run --group test pytest test/integration

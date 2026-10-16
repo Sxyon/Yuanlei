@@ -112,7 +112,7 @@ docker compose exec web pnpm run build
 make format
 ```
 
-提交前至少运行仓库信任检查、其单元测试和后端 unit：
+提交前至少运行仓库信任检查及其单元测试；非专项同时执行后端unit。专项按[测试规范的专项人工验收时序](./testing-guidelines.md#专项人工验收与全量测试时序)将全量测试安排在人工验收后，验收前提交需注明待执行，不能宣称最终通过：
 
 ```bash
 python3 scripts/verify_engineering_contracts.py

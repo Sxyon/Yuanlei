@@ -8,7 +8,7 @@
 - 保持 loading、empty、error、断线恢复和终态投影语义一致；不要用乐观 UI 覆盖 PostgreSQL 返回的最终事实。
 - `pnpm run lint:check` 是只读 gate；`pnpm run lint` 才允许本地自动修复。
 
-提交前运行：
+提交前按下列命令检查。专项的全量test:unit仅在人工反馈修完并验收通过后运行，验收前执行相关用例，提交注明全量待执行；lint／build及直接相关页面自检仍按改动需要执行：
 
 ```bash
 docker compose exec web pnpm run lint:check
