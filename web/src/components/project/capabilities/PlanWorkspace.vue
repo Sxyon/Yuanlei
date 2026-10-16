@@ -1,4 +1,5 @@
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { inject, computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import WorkSuggestionsPanel from '@/components/project/WorkSuggestionsPanel.vue'
@@ -23,6 +24,7 @@ const board = ref({}),
   filter = ref('pending'),
   open = ref(false),
   draft = ref({})
+useProjectThemeEdit('新建行动计划', () => props.projectId, () => Boolean(open.value && (draft.value.title || draft.value.description)), () => {open.value=false;draft.value={};setGovernanceDraft(user.uid,props.projectId,'theme-plan-create',null)}, () => busy.value, true)
 let generation = 0
 const suggestions = computed(() =>
   (board.value.tasks || []).filter(

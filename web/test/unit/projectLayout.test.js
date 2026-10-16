@@ -8,7 +8,7 @@ import { createServer } from 'vite'
 test('项目导航按用户和项目隔离；窄屏临时打开不覆盖桌面偏好', async t => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
   let narrow = false
-  globalThis.window = { matchMedia: () => ({ matches: narrow }) }
+  globalThis.window = { matchMedia: () => ({ matches: narrow }), addEventListener() {}, removeEventListener() {} }
   const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   const pinia = createPinia(); setActivePinia(pinia)
   let app
@@ -19,6 +19,9 @@ test('项目导航按用户和项目隔离；窄屏临时打开不覆盖桌面�
     const user = useUserStore(); user.uid = 'first-user'
     const { useChatUIStore } = await vite.ssrLoadModule('/src/stores/chatUI.js')
     const ui = useChatUIStore()
+    const { projectThemeApi } = await vite.ssrLoadModule('/src/apis/project_theme_api.js')
+    t.mock.method(projectThemeApi, 'binding', async () => ({ state:'unbound', generation:0, binding:null }))
+    globalThis.document = {addEventListener(){},removeEventListener(){}}
     const { default: Layout } = await vite.ssrLoadModule('/src/layouts/ProjectLayout.vue')
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:project_id/dashboard', name: 'ProjectDashboardComp', component: Layout }] })
     await router.push('/projects/a/dashboard'); await router.isReady()
@@ -34,5 +37,5 @@ test('项目导航按用户和项目隔离；窄屏临时打开不覆盖桌面�
     narrow = true; state().toggleNavigation(); assert.equal(state().mobileOpen, true); assert.equal(state().collapsed, true)
     user.uid = 'second-user'; await nextTick(); assert.equal(state().collapsed, false); assert.equal(state().mobileOpen, false)
     assert.equal(Object.keys(ui.projectNavigationCollapsed).length, 1)
-  } finally { app?.unmount(); disposePinia(pinia); await vite.close(); delete globalThis.window; delete globalThis.localStorage }
+  } finally { app?.unmount(); disposePinia(pinia); await vite.close(); delete globalThis.window; delete globalThis.localStorage; delete globalThis.document }
 })

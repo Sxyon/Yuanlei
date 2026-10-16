@@ -219,6 +219,7 @@
 </template>
 
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { consumeIntent, stableIntent } from '@/utils/topicFollowup'
@@ -278,6 +279,7 @@ const decisionId = toRef(sharedDraft, 'decisionId')
 const executionHint = toRef(sharedDraft, 'executionHint')
 const discussionType = toRef(sharedDraft, 'discussionType', 'discussion')
 const content = toRef(sharedDraft, 'content')
+useProjectThemeEdit('议题讨论与维护', () => props.projectId, () => Boolean(content.value?.trim() || reason.value?.trim() || action.value || decisionId.value || executionHint.value), () => {Object.assign(sharedDraft,{content:'',reason:'',action:undefined,decisionId:undefined,executionHint:undefined})}, () => busy.value, true)
 const actionLabel = computed(
   () =>
     ({

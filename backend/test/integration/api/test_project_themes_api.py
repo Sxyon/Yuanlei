@@ -1006,3 +1006,31 @@ async def test_activity_excludes_deleted_independent_decision(live_theme):
     assert not any(item["id"] == row["id"] for item in after)
     async with env.db() as db:
         assert await db.scalar(text("SELECT deleted_at IS NOT NULL FROM governance_decisions WHERE id=:id"), {"id":row["id"]})
+
+
+async def test_selection_preflight_is_read_only_and_shares_final_guards(live_theme):
+    """只读预检解释条件，不推进绑定；实际应用仍拒绝过期及非法文件。"""
+    env = live_theme
+    project = env.projects[0].id
+    catalog = (await env.client.get('/api/theme-sources', params={'project_id': project})).json()
+    research = next(v for s in catalog['sources'] if s['name'] == '调研 · 依据阅读' for v in s['versions'])
+    path = f'/api/projects/{project}/theme'
+    body = {'version_id': research['id'], 'expected_generation': 0, 'files': {'survey': '/data.json'}}
+    preview = await env.client.post(path + '/check', json=body)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()['selectable'] is True
+    async with env.db() as db:
+        count = await db.scalar(text('SELECT count(*) FROM project_theme_bindings WHERE project_id=:id'), {'id': project})
+        assert count == 0
+    invalid = {**body, 'files': {'survey': '/bad.json'}}
+    refused = await env.client.post(path + '/check', json=invalid)
+    assert refused.status_code == 200 and not refused.json()['selectable']
+    assert refused.json()['error']['alias'] == 'survey'
+    saved = await env.client.put(path, json=body)
+    assert saved.status_code == 200
+    stale = await env.client.post(path + '/check', json=body)
+    assert stale.status_code == 200 and stale.json()['error']['code'] == 'binding_conflict'
+    denied = await env.client.post(path + '/check', json={**body, 'expected_generation': 1}, headers=env.headers[1])
+    assert denied.status_code == 404
+    unchanged = (await env.client.get(path)).json()
+    assert unchanged['generation'] == 1 and unchanged['binding']['files'] == body['files']

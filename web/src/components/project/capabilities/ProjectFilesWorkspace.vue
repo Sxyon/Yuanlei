@@ -1,4 +1,5 @@
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { getGovernanceDraft, setGovernanceDraft } from '@/utils/governanceDrafts'
@@ -42,6 +43,7 @@ watch(fileDraft, () => {
       fileDirty.value ? { content: fileDraft.value } : null
     )
 })
+useProjectThemeEdit('项目资料编辑', () => props.projectId, () => fileDirty.value || Boolean(dialog.value && directoryName.value), () => {fileDraft.value=preview.value?.content || '';dialog.value=null;directoryName.value=''}, () => busy.value)
 function canLeaveFile() {
   return !fileDirty.value || window.confirm('文件有未保存修改，草稿已保留。是否离开当前文件？')
 }

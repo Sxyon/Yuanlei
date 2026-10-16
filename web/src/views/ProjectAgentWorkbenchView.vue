@@ -113,6 +113,7 @@
 </template>
 
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -146,6 +147,7 @@ const settingsChanged = computed(
     (autoAcceptWork.value !== workbench.value.auto_accept_work ||
       workDefaultModelSpec.value !== (workbench.value.work_default_model_spec || ''))
 )
+useProjectThemeEdit('智能体执行配置', () => String(route.params.project_id), () => settingsChanged.value, () => {autoAcceptWork.value=workbench.value?.auto_accept_work || false;workDefaultModelSpec.value=workbench.value?.work_default_model_spec || ''}, () => settingsSaving.value || Boolean(working.value), true)
 const selectWorkModel = (spec) => {
   workDefaultModelSpec.value = spec || ''
 }

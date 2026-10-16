@@ -17,6 +17,7 @@ export const projectThemeApi = {
   cleanup: (id, projectId) => apiPost(sourcePath(id, 'cleanup', projectId), {}),
   version: (id, projectId, signal) => apiGet(`/api/theme-versions/${encodeURIComponent(id)}?${query(projectId)}`, { signal, cache: 'no-store' }),
   binding: (projectId, signal) => apiGet(`/api/projects/${encodeURIComponent(projectId)}/theme`, { signal, cache: 'no-store' }),
+  check: (projectId, body) => apiPost(`/api/projects/${encodeURIComponent(projectId)}/theme/check`, body),
   select: (projectId, body) => apiPut(`/api/projects/${encodeURIComponent(projectId)}/theme`, body),
   async file(projectId, generation, alias, signal) {
     const response = await apiGet(`/api/projects/${encodeURIComponent(projectId)}/theme/files?${buildQuery({ expected_generation: generation, alias })}`, { signal, cache: 'no-store' }, true, 'blob')

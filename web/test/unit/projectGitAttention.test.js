@@ -3,11 +3,12 @@ import { after, before, test } from 'node:test'
 import { createServer } from 'vite'
 let vite, api, load
 before(async () => {
+  globalThis.localStorage = {getItem:()=>null,setItem(){},removeItem(){}}
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   ;({ projectApi: api } = await vite.ssrLoadModule('/src/apis/project_api.js'))
   ;({ loadProjectGitAttention: load } = await vite.ssrLoadModule('/src/utils/projectGitAttention.js'))
 })
-after(async () => { await vite?.close() })
+after(async () => { await vite?.close(); delete globalThis.localStorage })
 test('待审批超过一页仍全部展示，已释放占用不进入总览', async t => {
   t.mock.method(api, 'getGitOccupancies', async () => [{ id:'active',status:'owned' },{ id:'queue',status:'queued' },{ id:'old',status:'released' }])
   t.mock.method(api, 'getGitActions', async (_project, options) => {

@@ -218,6 +218,12 @@ async def binding(project_id: str, svc=Depends(service)):
     return await svc.binding(project_id)
 
 
+@project_themes.post("/projects/{project_id}/theme/check")
+async def check_selection(project_id: str, body: SelectionInput, svc=Depends(service)):
+    """读取同源可选条件，预检不写项目绑定。"""
+    return await svc.check(project_id, body.version_id, body.files, body.expected_generation)
+
+
 @project_themes.put("/projects/{project_id}/theme")
 async def select(project_id: str, body: SelectionInput, svc=Depends(service)):
     """授权并以持久generation保存项目选择。"""

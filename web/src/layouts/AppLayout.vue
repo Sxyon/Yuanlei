@@ -638,12 +638,12 @@ provide('settingsModal', {
         </div>
       </div>
     </div>
-    <ProjectLayout id="app-router-view" :enabled="Boolean(route.params.project_id)">
+    <ProjectLayout v-slot="{themeScope}" id="app-router-view" :enabled="Boolean(route.params.project_id)">
     <router-view v-slot="{ Component, route }">
-      <keep-alive :key="userStore.uid">
+      <keep-alive :key="`cache:${userStore.uid}`">
         <component :is="Component" :key="Component.type.name || Component.type.__name || route.name" v-if="route.meta.keepAlive !== false" />
       </keep-alive>
-      <component :is="Component" v-if="route.meta.keepAlive === false" />
+      <component :is="Component" :key="themeScope" v-if="route.meta.keepAlive === false" />
     </router-view>
     </ProjectLayout>
 

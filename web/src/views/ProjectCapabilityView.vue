@@ -16,7 +16,7 @@ const route = useRoute(),
   projects = useProjectsStore(),
   theme = inject('projectThemeContext', null)
 const themeManager = ref(null), themeSelection = ref(null), settings = ref(null), themeDialog = ref('')
-async function closeThemeDialog() { if (!themeManager.value || await themeManager.value.canDiscard()) themeDialog.value = '' }
+async function closeThemeDialog() { const active = themeDialog.value === 'select' ? themeSelection.value : themeManager.value; if (!active || await active.canDiscard()) themeDialog.value = '' }
 const projectId = computed(() => String(route.params.project_id))
 const project = computed(() => projects.projects.find((item) => item.id === projectId.value))
 /** 项目删除沿原API及会话清理Owner，文件保留规则不变。 */
@@ -59,8 +59,8 @@ function confirmDeleteProject() {
           <section class="settings-panel settings-danger"><h2>项目管理</h2><p class="settings-help">删除项目会删除其中的对话，项目文件夹保留。</p><a-button danger @click="confirmDeleteProject">删除项目</a-button></section></div></template>
       </ProjectSettingsModal>
       <a-modal :open="!!themeDialog" :title="themeDialog === 'select' ? '选择与预览项目主题' : '维护项目主题候选'" :footer="null" :width="1100" :mask-closable="false" :destroy-on-close="true" @cancel="closeThemeDialog">
-        <ProjectThemeSelection v-show="themeDialog === 'select'" ref="themeSelection" :project-id="projectId" :projects="[project]" stay-in-project @preview="value => { themeDialog = 'maintain'; themeManager?.openPreview(value) }" @cancel="themeDialog = 'maintain'" @selected="theme?.reload()" />
-        <ProjectThemeManager v-show="themeDialog === 'maintain'" ref="themeManager" :project-id="projectId" :projects="[project]" stay-in-project @catalog-changed="themeSelection?.refreshCatalog()" @selected="theme?.reload()" />
+        <ProjectThemeSelection v-show="themeDialog === 'select'" ref="themeSelection" :project-id="projectId" :projects="[project]" stay-in-project  @cancel="themeDialog = ''"  />
+        <ProjectThemeManager v-show="themeDialog === 'maintain'" ref="themeManager" :project-id="projectId" :projects="[project]" stay-in-project @catalog-changed="themeSelection?.refreshCatalog()"  />
       </a-modal>
     </template>
   </div>

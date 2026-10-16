@@ -289,6 +289,7 @@
 </template>
 
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
@@ -371,6 +372,7 @@ watch(Object.values(actionFields), () => {
 const approvedTargets = computed(() =>
   props.decisions.filter((d) => d.status === 'approved' && d.id !== selected.value?.id)
 )
+useProjectThemeEdit('决定办理／草案', () => props.projectId, () => Boolean(action.value), () => {action.value='';draft.value={};reason.value=''}, () => busy.value, true)
 let generation = 0
 let deleteConfirmation
 onBeforeUnmount(() => {

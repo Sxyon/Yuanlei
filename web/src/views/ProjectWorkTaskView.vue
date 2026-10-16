@@ -263,6 +263,7 @@
 </template>
 
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { themeReturnTarget } from '@/utils/projectThemeReturn'
 
 import { computed, nextTick, ref, watch } from 'vue'
@@ -340,6 +341,7 @@ const sourceReviewed = ref(false)
 const sourceTopics = ref([])
 const sourceDecisions = ref([])
 const sourceError = ref('')
+useProjectThemeEdit('工作评论／问题／参考及来源编辑', () => String(route.params.project_id), () => Boolean(draft.value.trim() || issueTitle.value || issueDescription.value || issueDraft.value || referenceTitle.value || referenceUrl.value || sourceEditing.value || task.value && (selectedStatus.value!==task.value.status || (selectedOwner.value || null)!==task.value.primary_owner_agent_slug || selectedStart.value!==(task.value.start_date || '') || selectedDue.value!==(task.value.due_date || '') || inspectionEnabled.value!==(task.value.inspection_enabled ?? false) || inspectionInterval.value!==(task.value.inspection_interval_minutes ?? 60) || selectedGitWorkspaceMode.value!==(task.value.git_workspace_mode || 'inherit') || JSON.stringify(selectedKnowledges.value)!==JSON.stringify(task.value.knowledge_ids || []))), () => {if(task.value){selectedStatus.value=task.value.status;selectedOwner.value=task.value.primary_owner_agent_slug || undefined;selectedStart.value=task.value.start_date || '';selectedDue.value=task.value.due_date || '';inspectionEnabled.value=task.value.inspection_enabled ?? false;inspectionInterval.value=task.value.inspection_interval_minutes ?? 60;selectedGitWorkspaceMode.value=task.value.git_workspace_mode || 'inherit';selectedKnowledges.value=[...(task.value.knowledge_ids || [])]}draft.value='';issueTitle.value='';issueDescription.value='';issueDraft.value='';referenceTitle.value='';referenceUrl.value='';sourceEditing.value=false}, () => saving.value, true)
 let sourceExpected = null
 const inspectionLink = (query) => ({ name: 'ProjectInspectionBoardComp', params: { project_id: route.params.project_id }, query })
 async function editSource() {

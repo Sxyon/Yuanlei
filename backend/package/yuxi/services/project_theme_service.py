@@ -272,8 +272,8 @@ class ProjectThemeService:
         except (OSError, ValueError) as exc:
             raise ThemeError("file_boundary", "指定项目文件不在安全的普通文件边界或读取失败", 409) from exc
 
-    async def select(self, project_id, version_id, files, expected_generation):
-        """来源→Project固定锁顺序，后端generation拒绝过期选择。"""
+    async def selection_conditions(self, project_id, version_id, files, expected_generation):
+        """预检和应用共用授权、锁、文件和并发边界，调用方决定是否写入。"""
         await self.project(project_id)
         loaded, _ = await self.version(version_id, project_id)
         await self.source(loaded["version"]["source_id"], project_id, active=True)
@@ -283,6 +283,21 @@ class ProjectThemeService:
         if expected_generation != generation:
             raise ThemeError("binding_conflict", "项目选择已被另一窗口更新，请重新读取后确认", 409)
         await asyncio.to_thread(self.validate_files, project, loaded["parsed"], files)
+        return generation
+
+    async def check(self, project_id, version_id, files, expected_generation):
+        """只读解释可选条件，不保存任何启用状态；最终应用再次校验。"""
+        await self.project(project_id)
+        try:
+            await self.selection_conditions(project_id, version_id, files, expected_generation)
+            return {"selectable": True, "error": None}
+        except ThemeError as exc:
+            return {"selectable": False, "error": {"code": exc.code, "message": exc.message,
+                                                    "alias": getattr(exc, "alias", None)}}
+
+    async def select(self, project_id, version_id, files, expected_generation):
+        """确认后在同一事务推进唯一绑定，预检结果不替代最终校验。"""
+        generation = await self.selection_conditions(project_id, version_id, files, expected_generation)
         await self.repo.bind(project_id, version_id, files, generation + 1, self.uid)
         await self.db.commit()
         return await self.binding(project_id)
@@ -292,6 +307,8 @@ class ProjectThemeService:
         """S04校验普通文件路径、类型和归属，S05复用同一边界读取。"""
         if set(files) != set(parsed.definition.manifest.files):
             raise ThemeError("file_mapping", "必须提供此版本声明的全部文件alias，且不能添加额外项")
+        if not files:
+            return
         try:
             workdir = Workdir.open_existing(str(project.uid), project.workdir_path)
         except (OSError, ValueError) as exc:
@@ -304,12 +321,17 @@ class ProjectThemeService:
                 total_pixels += validate_resource(raw, media)
                 if total_bytes > MAX_EXPANDED_BYTES or total_pixels > MAX_IMAGE_PIXELS:
                     raise ThemeError("file_binding_limit", "文件绑定校验超过总字节或解码预算", 413)
-            except ThemeError:
+            except ThemeError as exc:
+                exc.alias = alias
                 raise
             except FileTransferLimitError as exc:
-                raise ThemeError("file_limit", f"项目文件超过8 MiB：{alias}", 413) from exc
+                error = ThemeError("file_limit", f"项目文件超过8 MiB：{alias}", 413)
+                error.alias = alias
+                raise error from exc
             except (OSError, ValueError) as exc:
-                raise ThemeError("file_boundary", f"文件绑定不可读或不在当前项目普通文件边界：{alias}") from exc
+                error = ThemeError("file_boundary", f"文件绑定不可读或不在当前项目普通文件边界：{alias}")
+                error.alias = alias
+                raise error from exc
 
     async def status(self, source_id, status, reason, project_id=None):
         """停用保留加载；撤回与恢复必须保存可追溯原因。"""

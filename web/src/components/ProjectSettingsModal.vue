@@ -118,6 +118,7 @@
 </template>
 
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, onBeforeUnmount, onMounted, nextTick, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
@@ -156,6 +157,7 @@ const statuses = projectStatuses
 const priorities = projectPriorities
 let savedDraft = '', savedKnowledge = ''
 const settingsDirty = computed(() => data.value && (JSON.stringify(draft) !== savedDraft || JSON.stringify(selectedKnowledge.value) !== savedKnowledge))
+if (props.embedded) useProjectThemeEdit('项目设置与资源选择', () => props.project?.id, () => settingsDirty.value, () => {Object.assign(draft,JSON.parse(savedDraft));selectedKnowledge.value=JSON.parse(savedKnowledge)}, () => saving.value || savingLinks.value || iconUploading.value)
 if (props.embedded) onBeforeRouteLeave(() => {
   if (saving.value || savingLinks.value || iconUploading.value) return false
   if (!settingsDirty.value) return true

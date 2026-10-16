@@ -49,3 +49,5 @@ AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航和有限�
 - [真实数据与可信返回接通决策](../decisions/implemented/2026-10-13-project-theme-live-data.md)：固定业务适配、有界查询、绑定alias文件读取和原宿主返回的取舍及验证边界。
 
 - [全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)：九个能力及详情在同一主题内办理；布局与交互原型对齐返工中，末轮独立复核及用户验收未完成。yuanlei v40仅放宽主题ABI约束，保留原版本、绑定和业务数据。
+
+- [多主题切换与真实视图修复提案](../decisions/proposed/2026-10-15-project-theme-switch-repair.md)：当前默认样式为基础，S04-R修复选择与宿主一致性，S05-R2验证实际主题表达与双数据；S04-R已按确认稿实施平台完整分配、项目快捷选择、同源预检与宿主恢复；S05-R2仍待实施。切换机制证据见专项LOG第51节，不代替调研内容组织及双数据验收。

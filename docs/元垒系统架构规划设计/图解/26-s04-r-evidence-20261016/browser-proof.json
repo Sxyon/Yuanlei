@@ -1,0 +1,168 @@
+{
+  "environment": "隔离数据库 yuanlei_s04_repair_evidence；API 15064；Vite 15174；合成账号；从正常项目列表入口操作，旧深链用例除外",
+  "focus": "跨标签恢复以真实 focus 监听事件受控触发，非操作系统窗口聚焦自动化",
+  "cases": [
+    {
+      "step": "platform-default-to-research",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=5bb57b40-0b0d-4214-b817-6bac908f1e17",
+      "selection": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：调研 · 课题推进 · 2.0.1 · generation 2\n\n准确发布版本\n调研 · 课题推进 · 2.0.1\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：调研 · 课题推进 · 2.0.1\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "step": "research-object",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_page=study-topics&topic_id=f18d4f59-2bf8-4de6-adcc-9c39bede5d70",
+      "version": "760697e5-9e22-4080-bafe-b7e57f70820c",
+      "generation": "2"
+    },
+    {
+      "step": "new-tab-object",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_page=study-topics&topic_id=f18d4f59-2bf8-4de6-adcc-9c39bede5d70",
+      "generation": "2"
+    },
+    {
+      "step": "draft-cancel",
+      "generation": "2",
+      "draft": "S04-R未保存描述：取消切换必须保留"
+    },
+    {
+      "step": "focus-keeps-exact-object",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_page=manage-topics&topic_id=f18d4f59-2bf8-4de6-adcc-9c39bede5d70",
+      "generation": "3",
+      "title": "S04-R准确对象"
+    },
+    {
+      "case": "version-first-unbound-no-settings",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+      "text": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目B\n\n当前：S04-R无设置声明 · 3.0.0 · generation 1\n\n准确发布版本\nS04-R无设置声明 · 3.0.0\n\n版本行带入的准确意图：ca25cf30-62d1-4f80-9c06-bf57a423d183。目标改选后须重新授权和核对。\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目B · c74a0b74-a82a-4e11-bc7f-2ac14ae15737\n\n拟用：S04-R无设置声明 · 3.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "platform-no-settings-back-to-default",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+      "text": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目B\n\n当前：默认 · 项目管理 · 2.0.0 · generation 2\n\n准确发布版本\n默认 · 项目管理 · 2.0.0\n\n版本行带入的准确意图：ca25cf30-62d1-4f80-9c06-bf57a423d183。目标改选后须重新授权和核对。\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目B · c74a0b74-a82a-4e11-bc7f-2ac14ae15737\n\n拟用：默认 · 项目管理 · 2.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "platform-fault-binding-preserved",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+      "text": "项目主题选择\n取 消\n目标项目与当前选择\n分配目标项目\nS04-R验证项目B\n\n当前：原选择 ca25cf30-62d1-4f80-9c06-bf57a423d183 · generation 3\n\n主题包摘要不匹配；原项目选择保留\n原绑定保留。可在此显式选择有权版本恢复，不依赖项目设置页面。\n准确发布版本\n选择准确发布版本\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n选定目标和准确版本后，读取版本要求。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目B · c74a0b74-a82a-4e11-bc7f-2ac14ae15737\n\n拟用：未选择\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题"
+    },
+    {
+      "case": "platform-fault-explicit-recovery",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+      "text": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目B\n\n当前：默认 · 项目管理 · 2.0.0 · generation 4\n\n准确发布版本\n默认 · 项目管理 · 2.0.0\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目B · c74a0b74-a82a-4e11-bc7f-2ac14ae15737\n\n拟用：默认 · 项目管理 · 2.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "dual-entry-409",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/settings?theme_page=manage-settings",
+      "text": "项目主题选择\n取 消\n选择冲突：已回读另一窗口的选择，请重新检查并确认。\n目标项目与当前选择\n\nS04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n当前：S04-R无设置声明 · 3.0.0 · generation 4\n\n准确发布版本\n调研 · 课题推进 · 2.0.1\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：调研 · 课题推进 · 2.0.1\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n版本与包详情"
+    },
+    {
+      "case": "local-reconfirm-applies-host",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=study-overview",
+      "version": "760697e5-9e22-4080-bafe-b7e57f70820c",
+      "generation": "5"
+    },
+    {
+      "case": "saved-read-failed",
+      "protocol": [
+        {
+          "method": "PUT",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "status": 200
+        }
+      ],
+      "text": "项目主题选择\n取 消\n已保存，加载失败：Failed to fetch；请重新读取核实。\n核实已提交的项目选择\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：调研 · 课题推进 · 2.0.1 · generation 5\n\n准确发布版本\n默认 · 项目管理 · 2.0.0\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：默认 · 项目管理 · 2.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n版本与包详情"
+    },
+    {
+      "case": "saved-read-recovered-without-write",
+      "text": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：默认 · 项目管理 · 2.0.0 · generation 6\n\n准确发布版本\n默认 · 项目管理 · 2.0.0\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：默认 · 项目管理 · 2.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "unknown-put-response-verified",
+      "protocol": [
+        {
+          "method": "PUT",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "status": 200
+        }
+      ],
+      "text": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：调研 · 课题推进 · 2.0.1 · generation 7\n\n准确发布版本\n调研 · 课题推进 · 2.0.1\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：调研 · 课题推进 · 2.0.1\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "legacy-exact-object-current-package-missing-page",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_page=study-topics&topic_id=f18d4f59-2bf8-4de6-adcc-9c39bede5d70&revision=1#history",
+      "version": "760697e5-9e22-4080-bafe-b7e57f70820c",
+      "generation": "7"
+    },
+    {
+      "case": "permission-loss-removes-body",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_page=study-topics&topic_id=f18d4f59-2bf8-4de6-adcc-9c39bede5d70&revision=1#history",
+      "workspaceCount": 0,
+      "text": "项目不可访问。返回项目列表"
+    },
+    {
+      "case": "same-generation-fault-cancel",
+      "generation": "8",
+      "draft": "S04-R同代故障保留草稿",
+      "notice": "另一窗口已改变选择。当前保留旧版编辑，处理本地草稿后重新核对。 重新核对主题选择／恢复主题"
+    },
+    {
+      "case": "same-generation-fault-emergency",
+      "version": "ca25cf30-62d1-4f80-9c06-bf57a423d183",
+      "generation": "8",
+      "notice": "已保存，加载失败：主题包摘要不匹配；原项目选择保留 正在使用应急基础界面；持久选择未改变。重新核对主题选择／恢复主题",
+      "draft": ""
+    },
+    {
+      "case": "trusted-platform-recovery-link",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=5bb57b40-0b0d-4214-b817-6bac908f1e17&theme_action=select",
+      "text": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：默认 · 项目管理 · 2.0.0 · generation 9\n\n准确发布版本\n默认 · 项目管理 · 2.0.0\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：默认 · 项目管理 · 2.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "final-local-research",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=study-overview",
+      "version": "760697e5-9e22-4080-bafe-b7e57f70820c",
+      "generation": "10"
+    },
+    {
+      "case": "final-local-default-refresh",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=manage-overview",
+      "version": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+      "generation": "11"
+    },
+    {
+      "case": "api-restart-browser-restore",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=manage-overview",
+      "generation": "11",
+      "version": "b8af0269-078a-4e66-ac60-777cb5ffddd5"
+    },
+    {
+      "case": "platform-chat-draft-survives-project",
+      "entered": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=manage-overview",
+      "returned": "http://127.0.0.1:15174/agent",
+      "draft": "S04-R平台聊天未发送草稿"
+    },
+    {
+      "case": "platform-focus-keeps-intent-reads-current",
+      "url": "http://127.0.0.1:15174/projects?tab=themes&project_id=5bb57b40-0b0d-4214-b817-6bac908f1e17",
+      "text": "项目主题选择\n取 消\n当前绑定已变化，已重新读取；本次选择及映射保留，请重新检查并确认。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：调研 · 课题推进 · 2.0.1 · generation 12\n\n准确发布版本\nS04-R无设置声明 · 3.0.0\nS04-R无设置声明 · 3.0.0\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：S04-R无设置声明 · 3.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n版本与包详情"
+    },
+    {
+      "case": "final-platform-default-13-host-sync",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=manage-overview",
+      "version": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+      "generation": "13",
+      "platform": "项目主题选择\n取 消\n选择已保存并核实；项目主题包可读。其他标签会在重新聚焦后核对。\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：默认 · 项目管理 · 2.0.0 · generation 13\n\n准确发布版本\n默认 · 项目管理 · 2.0.0\n\n候选不在分配目录；发布新版本不会自动替换选择。ABI1为只读展示，业务能力继承基础界面。\n\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A · 5bb57b40-0b0d-4214-b817-6bac908f1e17\n\n拟用：默认 · 项目管理 · 2.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n进入项目（可选）\n版本与包详情"
+    },
+    {
+      "case": "final-api-restart-generation13",
+      "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_page=manage-overview",
+      "version": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+      "generation": "13"
+    }
+  ]
+}

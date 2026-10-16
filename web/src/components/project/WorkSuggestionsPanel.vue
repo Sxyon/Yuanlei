@@ -122,6 +122,7 @@
   </div>
 </template>
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { ref, watch } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { getGovernanceDraft, setGovernanceDraft, clearGovernanceDrafts } from '@/utils/governanceDrafts'
@@ -159,6 +160,7 @@ const works = ref([]),
   existingWork = ref(null),
   loading = ref(false),
   busy = ref(false)
+useProjectThemeEdit('工作建议纳入／关联', () => props.projectId, () => Boolean(selected.value), () => {if(selected.value)setGovernanceDraft(user.uid,props.projectId,`suggestion:${selected.value.id}`,null);selected.value=null}, () => busy.value, true)
 let generation = 0
 let restoring = false
 const fields = { mode, title, description, topicId, decisionId, workId, reason, codeDraft, topicCodeDraft }

@@ -1,17 +1,19 @@
 <script setup>
-import { computed, provide, ref, shallowRef, watch, onMounted, onUnmounted } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, provide, ref, shallowRef, watch, onMounted, onUnmounted, onErrorCaptured } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { LayoutDashboard, BookOpen, MessageSquare, Workflow, ListChecks, Bot, Files, Settings, Activity, PanelLeft, ArrowLeft } from '@lucide/vue'
 import { useProjectsStore } from '@/stores/projects'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useUserStore } from '@/stores/user'
 import { projectThemeApi } from '@/apis/project_theme_api'
 import { validateLoadedPackage } from '@/components/project/themes/contract'
-import { resolveWorkspacePages, routeCapability } from '@/components/project/themes/workspaceCapabilities'
+import { resolveWorkspacePages, routeCapability, legacyThemeTarget } from '@/components/project/themes/workspaceCapabilities'
+import { Modal } from 'ant-design-vue'
+import { clearGovernanceDrafts } from '@/utils/governanceDrafts'
 import { clearReviewScope } from '@/utils/resultReviewDrafts'
 
 const props = defineProps({ enabled: { type: Boolean, default: true } })
-const route = useRoute()
+const route = useRoute(), router = useRouter()
 const projects = useProjectsStore(), ui = useChatUIStore(), user = useUserStore()
 const mobileOpen = ref(false)
 const narrow = ref(false)
@@ -29,28 +31,107 @@ const preferenceKey = computed(() => JSON.stringify([user.uid, projectId.value])
 const collapsed = computed(() => Boolean(ui.projectNavigationCollapsed[preferenceKey.value]))
 const selection = shallowRef(null), themeError = ref(''), themeLoading = ref(false), themeDenied = ref(false)
 let themeSequence = 0
-const pack = computed(() => selection.value?.state === 'ready' ? selection.value.package : null)
+const fallback = ref(false), renderFailed = ref(false), renderError = ref('')
+onErrorCaptured((cause, instance, info) => {
+  if (!props.enabled || !['render function', 'setup function', 'https://vuejs.org/error-reference/#runtime-0', 'https://vuejs.org/error-reference/#runtime-1'].includes(info)) return
+  renderFailed.value = true
+  renderError.value = (selection.value?.binding ? '已保存，加载失败：' : '项目页面加载失败：') + cause.message
+  return false
+})
+const pack = computed(() => !fallback.value && selection.value?.state === 'ready' ? selection.value.package : null)
 const pages = computed(() => resolveWorkspacePages(pack.value))
 const activePage = computed(() => pages.value.find(page => page.capability === routeCapability(route.name)))
 const activeCapability = computed(() => routeCapability(route.name))
 const icons = { overview: LayoutDashboard, blueprints: BookOpen, topics: MessageSquare, plans: Workflow, work: ListChecks, inspection: Activity, files: Files, agents: Bot, settings: Settings }
-const themeContext = computed(() => ({ selection: selection.value, package: pack.value, loading: themeLoading.value, error: themeError.value, reload: loadTheme }))
+const editors = new Set(), pendingTheme = shallowRef(null)
+let editPrompt = null
+const themeScope = computed(() => props.enabled ? JSON.stringify([user.uid,projectId.value,selection.value?.binding?.version_id || '',selection.value?.generation || 0,fallback.value]) : String(user.uid))
+provide('registerProjectThemeEdit', editor => { editors.add(editor); return () => editors.delete(editor) })
+async function beforeSwitch(exclude = null) {
+  const active = [...editors].filter(editor => editor !== exclude && editor.projectId() === projectId.value)
+  if (active.some(editor => editor.busy())) { themeError.value = '当前业务操作正在提交，请完成后再切换。'; return false }
+  const changed = active.filter(editor => editor.dirty())
+  if (!changed.length) return true
+  if (!editPrompt) editPrompt = new Promise(resolve => Modal.confirm({
+    title:'当前项目有未保存内容', content:changed.map(editor => editor.label).join('、'),
+    okText:'放弃所列修改并继续', cancelText:'返回编辑',
+    onOk:() => { for (const editor of changed) editor.discard(); resolve(true) }, onCancel:() => resolve(false)
+  })).finally(() => {editPrompt = null})
+  return editPrompt
+}
+const themeContext = computed(() => ({ selection:selection.value, package:pack.value, loading:themeLoading.value, error:themeError.value, scope:themeScope.value, reload:loadTheme, apply:applyTheme, beforeSwitch }))
 provide('projectThemeContext', themeContext)
-provide('projectAccessLost', () => { themeSequence++; themeDenied.value = true; themeLoading.value = false; selection.value = null; clearReviewScope(user.uid, projectId.value) })
+function denyProject() {
+  themeSequence++; themeDenied.value = true; themeLoading.value = false; selection.value = null; pendingTheme.value = null
+  clearReviewScope(user.uid,projectId.value); clearGovernanceDrafts(user.uid,projectId.value)
+}
+provide('projectAccessLost',denyProject)
+/** 旧主题query不决定目标page；准确对象及历史定位沿稳定能力接续。 */
+async function locateTheme(changed) {
+  const query = { ...route.query }
+  if (changed) delete query.theme_return
+  if (!changed && route.name === 'ProjectThemeDisplay' && pack.value?.manifest.componentAbi === 1) return
+  const exact = route.params.task_id || route.params.agent_slug || ['topic_id','decision_id','comment_id','revision','decision_revision','blueprint','task_id','open'].some(key => query[key]) || (route.name === 'ProjectPlans' && /^#(?:task-|legacy-execution-)/.test(route.hash))
+  const legacy = route.name === 'ProjectThemeDisplay' ? legacyThemeTarget(pack.value,route) : null
+  if (legacy && (!changed || exact)) {
+    if (changed) delete legacy.query.theme_return
+    await router.replace(legacy);return
+  }
+  const currentCapability = routeCapability(route.name) || (query.topic_id || query.decision_id || query.comment_id || query.revision ? 'topics' : query.blueprint ? 'blueprints' : null)
+  const capability = changed && !exact ? 'overview' : currentCapability
+  const page = pages.value.find(item => item.capability === capability)
+  if (!page) {
+    if (route.name === 'ProjectThemeDisplay' && pack.value?.theme.pages.some(item => item.id === query.theme_page && !item.capability)) return
+    const home = pages.value.find(item => item.capability === 'overview')
+    await router.replace({name:home.route,params:{project_id:projectId.value},query:{theme_page:home.id}})
+    return
+  }
+  query.theme_page = page.id
+  if (changed && !exact) {
+    await router.replace({name:page.route,params:{project_id:projectId.value},query:{theme_page:page.id}})
+  } else if (route.name === 'ProjectThemeDisplay' || route.query.theme_page !== page.id || (changed && route.query.theme_return)) {
+    await router.replace({name:route.name === 'ProjectThemeDisplay' ? page.route : route.name,params:{...route.params},query,hash:route.hash})
+  }
+}
+async function applyTheme(result) {
+  themeSequence++
+  const changed = Boolean(selection.value && (selection.value.generation !== result.generation || selection.value.binding?.version_id !== result.binding?.version_id))
+  if (result.state === 'ready') {
+    try { result.package = validateLoadedPackage(result.package) }
+    catch (cause) { result = {...result,state:'error',package:null,error:{message:cause.message}} }
+  }
+  selection.value = result; fallback.value = result.state !== 'ready'; pendingTheme.value = null; themeLoading.value = false
+  themeError.value = result.state === 'ready' ? '' : (result.binding ? '已保存，加载失败：' : '') + (result.error?.message || '尚未绑定主题')
+  if (changed) sessionStorage.removeItem('project-theme-return')
+  await locateTheme(changed)
+}
 async function loadTheme() {
   const request = ++themeSequence, id = projectId.value, owner = user.uid
-  themeError.value = ''; themeLoading.value = true; themeDenied.value = false
-  if (!id || !props.enabled) { themeLoading.value = false; return }
+  if (!id || !props.enabled || themeDenied.value) return
+  themeLoading.value = true; renderFailed.value = false; renderError.value = ''
   try {
-    const result = await projectThemeApi.binding(id)
+    let result = await projectThemeApi.binding(id)
+    if (result.state === 'ready') {
+      try {result.package=validateLoadedPackage(result.package)}
+      catch(cause){result={...result,state:'error',package:null,error:{message:cause.message}}}
+    }
     if (request !== themeSequence || id !== projectId.value || owner !== user.uid) return
-    if (result.state === 'ready') result.package = validateLoadedPackage(result.package)
-    selection.value = result
-    if (result.state !== 'ready') themeError.value = result.error?.message || '尚未绑定主题版本'
-  } catch (cause) { if (request === themeSequence) { themeError.value = cause.message || '主题读取失败'; themeDenied.value = [401,403,404].includes(cause?.status || cause?.response?.status) } }
-  finally { if (request === themeSequence) themeLoading.value = false }
+    const changed = selection.value && (selection.value.generation !== result.generation || selection.value.binding?.version_id !== result.binding?.version_id || selection.value.state !== result.state)
+    if (changed && !await beforeSwitch()) {
+      pendingTheme.value = result; themeError.value = '另一窗口已改变选择。当前保留旧版编辑，处理本地草稿后重新核对。'; return
+    }
+    if (request !== themeSequence) return
+    await applyTheme(result)
+  } catch (cause) {
+    if (request !== themeSequence) return
+    if ([401,403,404].includes(cause.status || cause.response?.status)) denyProject()
+    else themeError.value = '绑定核实失败，当前仅为上次读取的界面：' + (cause.message || '请重试')
+  } finally { if (request === themeSequence || !pendingTheme.value) themeLoading.value = false }
 }
-watch(() => [projectId.value, user.uid, props.enabled], () => { selection.value = null; loadTheme() }, { immediate: true })
+function onFocus() { if (document.visibilityState !== 'hidden') void loadTheme() }
+onMounted(() => { window.addEventListener('focus',onFocus); document.addEventListener('visibilitychange',onFocus) })
+onUnmounted(() => { themeSequence++; window.removeEventListener('focus',onFocus); document.removeEventListener('visibilitychange',onFocus) })
+watch(() => [projectId.value, user.uid, props.enabled], () => { selection.value = null; themeDenied.value = false; fallback.value = false; void loadTheme() }, { immediate: true })
 function toggleNavigation() {
   narrow.value = window.matchMedia('(max-width:700px)').matches
   if (narrow.value) mobileOpen.value = !mobileOpen.value
@@ -67,7 +148,7 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
 </script>
 
 <template>
-  <section class="project-space" :class="{ 'project-collapsed': collapsed, 'project-mobile-open': mobileOpen, 'platform-page': !props.enabled, 'workspace-compact': pack?.theme.density === 'compact', 'workspace-blue': pack?.theme.accent === 'blue', 'workspace-slate': pack?.theme.accent === 'slate', 'workspace-reading': activePage?.layout === 'reading' }">
+  <section class="project-space" :data-theme-version="selection?.binding?.version_id || ''" :data-theme-generation="selection?.generation || 0" :data-theme-scope="themeScope" :class="{ 'project-collapsed': collapsed, 'project-mobile-open': mobileOpen, 'platform-page': !props.enabled, 'workspace-compact': pack?.theme.density === 'compact', 'workspace-blue': pack?.theme.accent === 'blue', 'workspace-slate': pack?.theme.accent === 'slate', 'workspace-reading': activePage?.layout === 'reading' }">
     <header v-if="enabled" class="project-space-header">
       <button class="project-nav-toggle" type="button" aria-label="项目导航" :aria-expanded="narrow ? mobileOpen : !collapsed" @click="toggleNavigation"><PanelLeft :size="18" /></button>
       <span class="project-breadcrumb">项目空间 / {{ activePage?.title || '项目' }}</span>
@@ -78,7 +159,12 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
       <p>{{ projects.error || '项目不存在或已无权访问' }}</p><a-button @click="refresh">重试</a-button>
     </div>
     <div v-if="enabled && themeDenied" class="project-space-state" role="alert">项目不可访问。<RouterLink :to="{name:'ProjectsComp'}">返回项目列表</RouterLink></div>
-    <div v-if="enabled && project && !themeDenied && !themeLoading && (themeError || !pack?.theme.baseVersion)" class="project-theme-notice" role="status">{{ themeError ? `主题状态：${themeError}。当前使用内置完整基础界面，原绑定保留。` : '当前版本保留原展示页；业务办理继承内置完整基础界面 v1，项目绑定未改变。' }}<button type="button" @click="loadTheme">重新读取</button></div>
+    <div v-if="enabled && project && !themeDenied && (themeError || renderError || fallback || !pack?.theme.baseVersion)" class="project-theme-notice" role="status">
+      {{ renderError || themeError || '当前版本的业务能力继承基础界面 v1。' }}
+      <strong v-if="fallback">正在使用应急基础界面；持久选择未改变。</strong>
+      <button type="button" @click="loadTheme">重新核对主题</button>
+      <RouterLink :to="{name:'ProjectsComp',query:{tab:'themes',project_id:projectId,theme_action:'select'}}">选择／恢复主题</RouterLink>
+    </div>
     <div v-if="enabled && project && themeLoading" class="project-space-state" role="status">正在读取项目主题…</div>
     <div class="project-space-body">
       <nav v-if="enabled && project && !themeDenied" class="project-navigation" aria-label="项目工作空间导航">
@@ -88,10 +174,10 @@ watch([project, () => projects.hasLoaded, () => projects.error], () => {
           <RouterLink :to="{ name: item.route, params: { project_id: projectId }, query: { theme_page: item.id } }" :class="{ active: activeCapability === item.capability }" :aria-current="activeCapability === item.capability ? 'page' : undefined"><component :is="icons[item.capability]" :size="18" />{{ item.title }}<span v-if="item.inherited" class="inherited-marker" title="继承完整基础界面 v1" aria-label="继承完整基础界面 v1">基础</span></RouterLink>
         </template>
         <RouterLink v-for="page in (pack?.theme.pages || []).filter(page => !page.capability)" :key="`extra-${page.id}`" :to="{name:'ProjectThemeDisplay', params:{project_id:projectId},query:{theme_page:page.id}}">{{ page.title }}</RouterLink>
-        <small v-if="pack" class="project-nav-group">{{ selection.source?.name || pack.theme.name }} · {{ selection.version?.version || pack.theme.version }}</small>
+        <small v-if="pack" class="project-nav-group">{{ themeError ? '上次读取：' : '' }}{{ selection.source?.name || pack.theme.name }} · {{ selection.version?.version || pack.theme.version }} · generation {{selection.generation}}</small>
         <RouterLink :to="{ name: 'ProjectsComp' }"><ArrowLeft :size="18" />项目列表</RouterLink>
       </nav>
-      <div v-if="!enabled || project && !themeDenied" class="project-page"><slot /></div>
+      <div v-if="!enabled || project && !themeDenied" class="project-page"><slot v-if="!renderFailed" :theme-scope="themeScope" /></div>
     </div>
   </section>
 </template>

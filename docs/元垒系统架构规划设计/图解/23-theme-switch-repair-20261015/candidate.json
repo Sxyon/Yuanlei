@@ -1,0 +1,229 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G24｜多主题切换修复与S06接续（计划）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/23-theme-switch-repair-20261015/theme-repair.html"
+  },
+  "lanes": [
+    {
+      "id": "baseline",
+      "label": "用户指定基线"
+    },
+    {
+      "id": "s04",
+      "label": "S04-R｜真实切换与恢复"
+    },
+    {
+      "id": "s05",
+      "label": "S05-R2｜主题表达与数据"
+    },
+    {
+      "id": "s06",
+      "label": "S06｜交接后另行进入"
+    },
+    {
+      "id": "release",
+      "label": "阶段放行与迁移"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "base",
+      "lane": "baseline",
+      "col": 0,
+      "type": "frontend",
+      "label": "当前默认作为基础",
+      "sublabel": "样式与既有交互保留",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s04check",
+      "lane": "s04",
+      "col": 0,
+      "type": "security",
+      "label": "A1—A2 选择条件",
+      "sublabel": "来源／版本／文件／依赖",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s04apply",
+      "lane": "s04",
+      "col": 1,
+      "type": "database",
+      "label": "A3—A4 应用与同步",
+      "sublabel": "唯一绑定／导航／草稿",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s04verify",
+      "lane": "s04",
+      "col": 2,
+      "type": "security",
+      "label": "A5 独立验收",
+      "sublabel": "切换／重载／冲突／恢复",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s05design",
+      "lane": "s05",
+      "col": 2,
+      "type": "frontend",
+      "label": "B1—B2 两主题表达",
+      "sublabel": "代表页审阅与真实竖切",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s05data",
+      "lane": "s05",
+      "col": 3,
+      "type": "backend",
+      "label": "B3—B4 能力与双数据",
+      "sublabel": "同一业务／JSON／PNG",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s05verify",
+      "lane": "s05",
+      "col": 4,
+      "type": "security",
+      "label": "B5 联合系统验收",
+      "sublabel": "默认→调研→默认",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s06input",
+      "lane": "s06",
+      "col": 4,
+      "type": "database",
+      "label": "交接实际契约",
+      "sublabel": "包／依赖／重绑条件",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s06gate",
+      "lane": "release",
+      "col": 4,
+      "type": "security",
+      "label": "用户明确放行",
+      "sublabel": "未通过继续修复",
+      "width": 140,
+      "height": 52
+    },
+    {
+      "id": "s06work",
+      "lane": "release",
+      "col": 5,
+      "type": "cloud",
+      "label": "S06 两实例迁移",
+      "sublabel": "导出／导入／目标重绑",
+      "width": 140,
+      "height": 52
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "to": "s04check",
+      "label": "保留",
+      "variant": "emphasis",
+      "from": "base"
+    },
+    {
+      "id": "e1",
+      "to": "s04apply",
+      "label": "条件满足",
+      "variant": "emphasis",
+      "from": "s04check"
+    },
+    {
+      "id": "e2",
+      "to": "s04verify",
+      "label": "回读一致",
+      "variant": "emphasis",
+      "from": "s04apply"
+    },
+    {
+      "id": "e3",
+      "to": "s05design",
+      "label": "本包通过后",
+      "variant": "emphasis",
+      "from": "s04verify"
+    },
+    {
+      "id": "e4",
+      "to": "s05data",
+      "label": "设计核准",
+      "variant": "emphasis",
+      "from": "s05design"
+    },
+    {
+      "id": "e5",
+      "to": "s05verify",
+      "label": "实际读写",
+      "variant": "emphasis",
+      "from": "s05data"
+    },
+    {
+      "id": "e6",
+      "to": "s06input",
+      "label": "联合通过后",
+      "variant": "emphasis",
+      "from": "s05verify"
+    },
+    {
+      "id": "e7",
+      "to": "s06gate",
+      "label": "输入齐备",
+      "variant": "emphasis",
+      "from": "s06input"
+    },
+    {
+      "id": "e8",
+      "to": "s06work",
+      "label": "明确放行后",
+      "variant": "emphasis",
+      "from": "s06gate"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "当前交付是修复规划",
+      "items": [
+        "S04已有绑定接口；需补真实入口与宿主切换闭环",
+        "S05保留默认基线，调研须有信息组织差异"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "失败就在对应卡重审",
+      "items": [
+        "条件失败不写绑定；写后加载失败如实核实",
+        "S04-R与S05-R2联合验收前，S06保持暂停"
+      ]
+    }
+  ],
+  "mainPath": [
+    "base",
+    "s04check",
+    "s04apply",
+    "s04verify",
+    "s05design",
+    "s05data",
+    "s05verify",
+    "s06input",
+    "s06gate",
+    "s06work"
+  ]
+}

@@ -1,0 +1,245 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DB-G25｜S04-R 选择、应用与恢复 · A1 待确认设计",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/元垒系统架构规划设计/图解/24-s04-switch-a1-20261015/switch-flow.html"
+  },
+  "lanes": [
+    {
+      "id": "choose",
+      "label": "选择与离开"
+    },
+    {
+      "id": "apply",
+      "label": "保存与应用"
+    },
+    {
+      "id": "verify",
+      "label": "刷新与跨标签"
+    },
+    {
+      "id": "recover",
+      "label": "冲突与恢复",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "entry",
+    "select",
+    "guard",
+    "commit",
+    "read",
+    "ready",
+    "restore"
+  ],
+  "nodes": [
+    {
+      "id": "entry",
+      "lane": "choose",
+      "col": 0,
+      "type": "frontend",
+      "label": "M1 正常项目入口",
+      "sublabel": "项目列表 → 项目 → 设置",
+      "width": 170
+    },
+    {
+      "id": "select",
+      "lane": "choose",
+      "col": 1,
+      "type": "frontend",
+      "label": "M2 选择与预览",
+      "sublabel": "准确版本与文件映射",
+      "width": 170
+    },
+    {
+      "id": "guard",
+      "lane": "choose",
+      "col": 2,
+      "type": "security",
+      "label": "M3 应用前检查",
+      "sublabel": "条件通过并处理未保存内容",
+      "width": 170
+    },
+    {
+      "id": "cancel",
+      "lane": "choose",
+      "col": 3,
+      "type": "frontend",
+      "label": "取消／返回编辑",
+      "sublabel": "不提交项目绑定",
+      "width": 170
+    },
+    {
+      "id": "commit",
+      "lane": "apply",
+      "col": 2,
+      "type": "database",
+      "label": "M4 唯一绑定保存",
+      "sublabel": "重新授权及 generation 检查",
+      "width": 170
+    },
+    {
+      "id": "read",
+      "lane": "apply",
+      "col": 3,
+      "type": "backend",
+      "label": "M5 回读并统一宿主",
+      "sublabel": "导航／正文／对象能力同一上下文",
+      "width": 170
+    },
+    {
+      "id": "ready",
+      "lane": "apply",
+      "col": 4,
+      "type": "frontend",
+      "label": "M6 已应用",
+      "sublabel": "保留准确对象或进入目标总览",
+      "width": 170
+    },
+    {
+      "id": "restore",
+      "lane": "verify",
+      "col": 4,
+      "type": "backend",
+      "label": "M7 再次核对",
+      "sublabel": "刷新／新标签／聚焦回读",
+      "width": 170
+    },
+    {
+      "id": "conflict",
+      "lane": "recover",
+      "col": 1,
+      "type": "security",
+      "label": "R1 选择冲突",
+      "sublabel": "409 回读并等待重新确认",
+      "width": 170
+    },
+    {
+      "id": "uncertain",
+      "lane": "recover",
+      "col": 2,
+      "type": "security",
+      "label": "R2 结果待核实",
+      "sublabel": "先读绑定，禁止盲目重发",
+      "width": 170
+    },
+    {
+      "id": "failure",
+      "lane": "recover",
+      "col": 3,
+      "type": "security",
+      "label": "R3 已保存，加载失败",
+      "sublabel": "保留绑定与可信恢复入口",
+      "width": 170
+    },
+    {
+      "id": "recovery",
+      "lane": "recover",
+      "col": 4,
+      "type": "frontend",
+      "label": "R4 显式恢复",
+      "sublabel": "重试加载／另选／应急基础",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "from": "entry",
+      "to": "select"
+    },
+    {
+      "id": "e1",
+      "from": "select",
+      "to": "guard",
+      "label": "应用主题"
+    },
+    {
+      "id": "e2",
+      "from": "guard",
+      "to": "cancel",
+      "label": "取消"
+    },
+    {
+      "id": "e3",
+      "from": "guard",
+      "to": "commit",
+      "label": "确认离开"
+    },
+    {
+      "id": "e4",
+      "from": "commit",
+      "to": "read",
+      "label": "提交后"
+    },
+    {
+      "id": "e5",
+      "from": "read",
+      "to": "ready",
+      "label": "统一完成"
+    },
+    {
+      "id": "e6",
+      "from": "ready",
+      "to": "restore",
+      "label": "再次进入"
+    },
+    {
+      "id": "e7",
+      "from": "commit",
+      "to": "conflict",
+      "label": "409"
+    },
+    {
+      "id": "e8",
+      "from": "read",
+      "to": "failure",
+      "label": "已保存但加载故障"
+    },
+    {
+      "id": "e10",
+      "from": "failure",
+      "to": "recovery",
+      "label": "有项目权限"
+    },
+    {
+      "id": "e11",
+      "from": "uncertain",
+      "to": "recovery",
+      "label": "核实后"
+    },
+    {
+      "id": "e12",
+      "from": "restore",
+      "to": "recovery",
+      "label": "外部变化／故障"
+    },
+    {
+      "id": "write-unknown",
+      "from": "commit",
+      "to": "uncertain",
+      "label": "响应丢失"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "设计边界",
+      "items": [
+        "本图为拟实现流程，当前源码缺口见 DEV 第12.2节 A1。",
+        "预览不写绑定；发布不自动替换；显式切回同样提交新 generation。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "跨窗口与草稿",
+      "items": [
+        "发现外部改变先标记核对状态；保护未保存输入后接续新版本。",
+        "失权清空数据；应急界面明确标识，绑定不会自动改成默认主题。"
+      ]
+    }
+  ]
+}

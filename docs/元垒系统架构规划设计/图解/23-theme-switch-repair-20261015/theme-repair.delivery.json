@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d55353ef-7f47-48c9-9b88-f7a123b1881d",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/23-theme-switch-repair-20261015/candidate.json",
+  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/23-theme-switch-repair-20261015/theme-repair.html",
+  "specification": {
+    "sha256": "145c0995362479940c2ab413b8e6cc4fbdfa34d0d7c00b21f69e868ead445026",
+    "bytes": 4968
+  },
+  "artifact": {
+    "sha256": "20cd164e0a4c6f7deeb668e3c968cfcfc04c2aa5ccc49c07ac441adb1db59b48",
+    "bytes": 762637
+  }
+}

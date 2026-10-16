@@ -1,4 +1,5 @@
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { confirmationConditionsChanged } from '@/utils/topicFollowup'
 import { themeReturnTarget } from '@/utils/projectThemeReturn'
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -44,6 +45,9 @@ const composer = ref(null),
   form = ref({}),
   formError = ref(''),
   discussionDrafts = ref({})
+const originalForm = ref('')
+watch(composer, () => {originalForm.value=JSON.stringify(form.value)}, {flush:'post'})
+useProjectThemeEdit('议题／决定表单及讨论', () => props.projectId, () => Boolean(composer.value && JSON.stringify(form.value)!==originalForm.value), () => {if(composer.value)setGovernanceDraft(user.uid,props.projectId,draftKey(composer.value),null);composer.value=null;form.value={}}, () => busy.value, true)
 let generation = 0
 const selected = computed(() => topics.value.find((item) => item.id === selectedId.value))
 const achievements = ref({})

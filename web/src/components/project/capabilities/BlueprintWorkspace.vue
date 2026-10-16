@@ -1,4 +1,5 @@
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import {
@@ -349,6 +350,7 @@ async function submitDialog() {
     if (current(captured)) busy.value = false
   }
 }
+useProjectThemeEdit('蓝图编辑／新建', () => props.projectId, () => dirty.value || dialogDirty.value, () => {for(const item of Object.values(entries.value)) item.content=item.saved;dialog.value=null;persist()}, () => busy.value)
 function beforeUnload(event) {
   if (dirty.value || dialogDirty.value) {
     event.preventDefault()

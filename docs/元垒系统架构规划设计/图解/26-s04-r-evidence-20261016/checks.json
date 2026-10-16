@@ -1,0 +1,108 @@
+{
+  "baseline": "20940d6e014a448bc9558269fcf2bf3dc640b1f2",
+  "checks": [
+    {
+      "command": "docker compose exec api uv run --group test pytest test/integration/api/test_project_themes_api.py",
+      "result": "21 passed",
+      "seconds": 345.91,
+      "scope": "真实HTTP/PostgreSQL及文件域"
+    },
+    {
+      "command": "docker compose exec -T -e UV_NO_SYNC=1 api uv run --group test pytest test/unit -m \"not slow\" -q --no-header",
+      "result": "2921 passed, 63 skipped, 1 failed",
+      "seconds": 702.44,
+      "failure": "test_sync_user_accessible_skills_serializes_multiple_processes subprocess timeout",
+      "retest": "同一测试未修改，原样单独复测1 passed,31.15s"
+    },
+    {
+      "command": "docker compose exec web pnpm run test:unit",
+      "result": "593 passed, 6 failed / 599",
+      "seconds": 1502.74,
+      "failures": "platformPageCache旧模板提取2；projectGitAttention缺localStorage 3；projectLayout缺监听环境1",
+      "retest": "保留业务断言，修正fixture；缓存3通过、GitAttention及Layout 4通过，未重跑整套"
+    },
+    {
+      "command": "docker compose exec web node --test test/unit/platformPageCache.test.js test/unit/projectThemeHostSwitch.test.js test/unit/projectThemeSwitch.test.js",
+      "result": "17 passed",
+      "seconds": 9.49,
+      "additional": "真实账号缓存Shell修正；含平台focus与提交epoch、连续确认负例"
+    },
+    {
+      "command": "docker compose exec api uv run --group test pytest test/unit/test_project_theme_selection_conditions.py",
+      "result": "1 passed",
+      "seconds": 6.19
+    },
+    {
+      "command": "docker compose exec web pnpm run lint:check",
+      "result": "passed"
+    },
+    {
+      "command": "docker compose exec web pnpm run build",
+      "result": "passed",
+      "seconds": 11.35
+    },
+    {
+      "command": "pnpm --dir docs run build",
+      "result": "passed",
+      "seconds": 25.89
+    },
+    {
+      "command": "python3 scripts/verify_engineering_contracts.py; python3 -m unittest scripts.test_verify_engineering_contracts",
+      "result": "gate passed; 71 tests passed",
+      "note": "末次proposed decision结果枚举不合规被gate拒绝，修正Owner枚举后重验"
+    },
+    {
+      "command": "ruff check --config backend/pyproject.toml [service/router/new fixtures/new unit]",
+      "result": "passed",
+      "note": "容器ruff不存在，使用宿主已有ruff；既有integration长行未全文件格式化"
+    },
+    {
+      "command": "变更Markdown相对目标检查",
+      "result": "150 targets, 0 missing"
+    },
+    {
+      "command": "最终真实HTTP预检集成单例复验",
+      "result": "1 passed",
+      "seconds": 18.95
+    }
+  ],
+  "mutations": [
+    {
+      "removed": "AppLayout非缓存component themeScope key",
+      "expectedFailure": "旧页面卸载数0而应为1",
+      "restored": true
+    },
+    {
+      "removed": "ProjectLayout同generation state变化守卫",
+      "expectedFailure": "应保留ready和草稿却进入error",
+      "restored": true
+    },
+    {
+      "removed": "旧展示URL跳真实page.route",
+      "expectedFailure": "仍为ProjectThemeDisplay而应ProjectTopics",
+      "restored": true
+    },
+    {
+      "introduced": "平台KeepAlive改用themeScope而非账号key",
+      "expectedFailure": "进入项目销毁聊天，unmount1而应0",
+      "restored": true
+    },
+    {
+      "removed": "check/save推进绑定回读epoch",
+      "expectedFailure": "迟到旧0覆盖已核实新1",
+      "restored": true
+    },
+    {
+      "removed": "连续focus/visibility共用草稿确认Promise",
+      "expectedFailure": "Modal数2而应1",
+      "restored": true
+    }
+  ],
+  "limits": [
+    "未逐字段浏览器穷举所有表单",
+    "聚焦为真实监听的受控事件，非操作系统级切窗",
+    "未在生产数据或跨实例导入测试",
+    "S05-R2组织与双数据未开发/未验",
+    "未重跑整套前端或后端unit，原失败及定向复测如上"
+  ]
+}

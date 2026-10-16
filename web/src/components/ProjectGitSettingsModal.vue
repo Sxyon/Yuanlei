@@ -226,6 +226,7 @@
 </template>
 
 <script setup>
+import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, inject, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
@@ -286,6 +287,7 @@ const repositoryForm = reactive({
   usage_mode: 'worktree',
   approval_mode: 'protected'
 })
+useProjectThemeEdit('项目仓库配置', () => props.project?.id, () => Boolean((props.embedded || props.open) && (Object.keys(policyDrafts).some(isPolicyDirty) || selectedRepositoryId.value || repositoryForm.alias || repositoryForm.checkout_path)), () => {for(const id of Object.keys(policyDrafts))policyDrafts[id]=clonePolicy(policySnapshots[id]);resetRepositorySelection()}, () => savingRepository.value || Boolean(savingPolicyId.value), true)
 const discoveryError = ref('')
 const remoteRepositories = ref([])
 const remoteBranches = ref([])
