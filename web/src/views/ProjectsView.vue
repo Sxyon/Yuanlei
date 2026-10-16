@@ -129,7 +129,7 @@ onMounted(reload)
 
 <style scoped lang="less">
 .projects-view { display: flex; flex-direction: column; min-height: 100%; min-width: 0; background: var(--gray-0); color: var(--color-text); }
-.management-content { padding: 24px var(--page-padding); min-width: 0; }
+.management-content { padding: 24px var(--page-padding); min-width: 0; padding-top: 0px;}
 .project-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; :deep(.ant-btn) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; } }
 .count { margin-right: auto; font-size: 13px; color: var(--color-text-secondary); }
 .project-search { width: 300px; }
