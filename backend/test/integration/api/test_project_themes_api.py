@@ -1071,3 +1071,47 @@ async def test_current_samples_retire_history_without_replacing_project_bindings
             row = (await db.execute(text('SELECT version_id,generation FROM project_theme_bindings WHERE project_id=:p'), {'p':project})).mappings().one()
             assert row['version_id'] == version['id'] and row['generation'] == index
         assert (await env.client.get(f'/api/projects/{other}/theme')).json()['generation'] == 0
+
+
+async def test_authoring_private_source_denies_foreign_copy_edit_and_publish(live_theme):
+    """他人主题制作与复制均拒绝，不创建身份或改候选、发布历史。"""
+    env = live_theme
+    source, version, raw = await create_publish(env)
+    candidate = (await env.client.get(f"/api/theme-sources/{source['id']}/candidate")).json()
+    async with env.db() as db:
+        before = await db.scalar(text("SELECT count(*) FROM project_theme_sources"))
+    denied = env.headers[1]
+    response = await env.client.get(f"/api/theme-sources/{source['id']}/candidate", headers=denied)
+    assert response.status_code == 404
+    response = await env.client.put(
+        f"/api/theme-sources/{source['id']}/definition",
+        headers=denied,
+        json={
+            "expected_revision": 1,
+            "manifest": candidate["package"]["manifest"],
+            "theme": candidate["package"]["theme"],
+        },
+    )
+    assert response.status_code == 404
+    response = await env.client.post(
+        f"/api/theme-sources/{source['id']}/publish",
+        json={"expected_revision": 1},
+        headers=denied,
+    )
+    assert response.status_code == 404
+    response = await env.client.post(
+        "/api/theme-sources",
+        headers=denied,
+        json={"name": "无权副本", "kind": "personal", "copy_version_id": version["id"]},
+    )
+    assert response.status_code == 404
+    async with env.db() as db:
+        assert await db.scalar(text("SELECT count(*) FROM project_theme_sources")) == before
+        row = (
+            await db.execute(
+                text("SELECT candidate_digest,candidate_revision FROM project_theme_sources WHERE id=:id"),
+                {"id": source["id"]},
+            )
+        ).one()
+        assert row.candidate_revision == 1 and row.candidate_digest == version["digest"]
+    assert env.store.read(source["id"], version["digest"]) == raw

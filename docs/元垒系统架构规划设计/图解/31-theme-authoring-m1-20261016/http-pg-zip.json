@@ -1,0 +1,946 @@
+{
+  "baseline": {
+    "kind": "真实HTTP、PG与包字节回读；项目为隔离合成项目",
+    "projects": [
+      {
+        "project": "S04-R验证项目A",
+        "id": "5bb57b40-0b0d-4214-b817-6bac908f1e17",
+        "state": "ready",
+        "version_id": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+        "generation": 21,
+        "source": "默认 · 项目管理",
+        "digest": "9852a17d0e87ad6b194b05968154e4448606a52eb80cafdb060567ac2048c0e7",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目B",
+        "id": "c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+        "state": "ready",
+        "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+        "generation": 4,
+        "source": "默认 · 项目管理",
+        "digest": "2fa6aa89d07531fe9fbe1c58f9fbed0eb2a226bf83b6555a759e7163ece2f314",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目C",
+        "id": "dfa1c93e-818b-4107-a155-7f147b00cdf3",
+        "state": "unbound",
+        "version_id": null,
+        "generation": 0,
+        "source": null,
+        "digest": null,
+        "presentation": "baseline"
+      }
+    ],
+    "catalog": [
+      {
+        "name": "精简 · 专注推进",
+        "status": "active"
+      },
+      {
+        "name": "调研 · 依据阅读",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 课题推进",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 阅读工作室",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 日常管理",
+        "status": "disabled"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "disabled"
+      }
+    ]
+  },
+  "saved-before-publish": {
+    "sources": [
+      {
+        "id": "5d355101-444f-4a45-800f-1a514f2acdd5",
+        "name": "M1-制作验例-20261016",
+        "candidate_digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172",
+        "candidate_revision": 2,
+        "copied_from_version_id": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30",
+        "candidate": {
+          "manifest": {
+            "formatVersion": 1,
+            "componentAbi": 3,
+            "theme": "theme.json",
+            "source": "平台当前项目主题",
+            "files": {},
+            "assets": {}
+          },
+          "theme": {
+            "id": "current-research",
+            "version": "3.1.0-m1",
+            "name": "M1 制作验例",
+            "topicLabel": "课题",
+            "baseVersion": 1,
+            "density": "compact",
+            "accent": "blue",
+            "presentation": "research",
+            "hiddenCapabilities": [],
+            "pages": [
+              {
+                "id": "current-research-overview",
+                "title": "总览",
+                "description": "总览",
+                "layout": "overview",
+                "capability": "overview",
+                "blocks": []
+              },
+              {
+                "id": "current-research-blueprints",
+                "title": "蓝图",
+                "description": "蓝图",
+                "layout": "full",
+                "capability": "blueprints",
+                "blocks": []
+              },
+              {
+                "id": "current-research-topics",
+                "title": "议题",
+                "description": "议题",
+                "layout": "full",
+                "capability": "topics",
+                "blocks": []
+              },
+              {
+                "id": "current-research-plans",
+                "title": "行动计划",
+                "description": "行动计划",
+                "layout": "full",
+                "capability": "plans",
+                "blocks": []
+              },
+              {
+                "id": "current-research-work",
+                "title": "工作",
+                "description": "工作",
+                "layout": "full",
+                "capability": "work",
+                "blocks": []
+              },
+              {
+                "id": "current-research-inspection",
+                "title": "督查",
+                "description": "督查",
+                "layout": "full",
+                "capability": "inspection",
+                "blocks": []
+              },
+              {
+                "id": "current-research-files",
+                "title": "资料",
+                "description": "资料",
+                "layout": "full",
+                "capability": "files",
+                "blocks": []
+              },
+              {
+                "id": "current-research-agents",
+                "title": "智能体",
+                "description": "智能体",
+                "layout": "full",
+                "capability": "agents",
+                "blocks": []
+              },
+              {
+                "id": "current-research-settings",
+                "title": "设置",
+                "description": "设置",
+                "layout": "full",
+                "capability": "settings",
+                "blocks": []
+              }
+            ]
+          },
+          "reference": "candidate:5d355101-444f-4a45-800f-1a514f2acdd5:2",
+          "digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172"
+        },
+        "versions": []
+      }
+    ],
+    "bindings": [
+      {
+        "project": "S04-R验证项目A",
+        "binding": {
+          "version_id": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+          "generation": 21
+        }
+      },
+      {
+        "project": "S04-R验证项目B",
+        "binding": {
+          "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+          "generation": 4
+        }
+      },
+      {
+        "project": "S04-R验证项目C",
+        "binding": null
+      }
+    ]
+  },
+  "published-before-assign": {
+    "sources": [
+      {
+        "id": "5d355101-444f-4a45-800f-1a514f2acdd5",
+        "name": "M1-制作验例-20261016",
+        "candidate_digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172",
+        "candidate_revision": 2,
+        "copied_from_version_id": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30",
+        "candidate": {
+          "manifest": {
+            "formatVersion": 1,
+            "componentAbi": 3,
+            "theme": "theme.json",
+            "source": "平台当前项目主题",
+            "files": {},
+            "assets": {}
+          },
+          "theme": {
+            "id": "current-research",
+            "version": "3.1.0-m1",
+            "name": "M1 制作验例",
+            "topicLabel": "课题",
+            "baseVersion": 1,
+            "density": "compact",
+            "accent": "blue",
+            "presentation": "research",
+            "hiddenCapabilities": [],
+            "pages": [
+              {
+                "id": "current-research-overview",
+                "title": "总览",
+                "description": "总览",
+                "layout": "overview",
+                "capability": "overview",
+                "blocks": []
+              },
+              {
+                "id": "current-research-blueprints",
+                "title": "蓝图",
+                "description": "蓝图",
+                "layout": "full",
+                "capability": "blueprints",
+                "blocks": []
+              },
+              {
+                "id": "current-research-topics",
+                "title": "议题",
+                "description": "议题",
+                "layout": "full",
+                "capability": "topics",
+                "blocks": []
+              },
+              {
+                "id": "current-research-plans",
+                "title": "行动计划",
+                "description": "行动计划",
+                "layout": "full",
+                "capability": "plans",
+                "blocks": []
+              },
+              {
+                "id": "current-research-work",
+                "title": "工作",
+                "description": "工作",
+                "layout": "full",
+                "capability": "work",
+                "blocks": []
+              },
+              {
+                "id": "current-research-inspection",
+                "title": "督查",
+                "description": "督查",
+                "layout": "full",
+                "capability": "inspection",
+                "blocks": []
+              },
+              {
+                "id": "current-research-files",
+                "title": "资料",
+                "description": "资料",
+                "layout": "full",
+                "capability": "files",
+                "blocks": []
+              },
+              {
+                "id": "current-research-agents",
+                "title": "智能体",
+                "description": "智能体",
+                "layout": "full",
+                "capability": "agents",
+                "blocks": []
+              },
+              {
+                "id": "current-research-settings",
+                "title": "设置",
+                "description": "设置",
+                "layout": "full",
+                "capability": "settings",
+                "blocks": []
+              }
+            ]
+          },
+          "reference": "candidate:5d355101-444f-4a45-800f-1a514f2acdd5:2",
+          "digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172"
+        },
+        "versions": [
+          {
+            "id": "04a1681b-02b9-47c8-ac57-54f1d8eb7562",
+            "version": "3.1.0-m1",
+            "digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172",
+            "theme": {
+              "id": "current-research",
+              "version": "3.1.0-m1",
+              "name": "M1 制作验例",
+              "topicLabel": "课题",
+              "baseVersion": 1,
+              "density": "compact",
+              "accent": "blue",
+              "presentation": "research",
+              "hiddenCapabilities": [],
+              "pages": [
+                {
+                  "id": "current-research-overview",
+                  "title": "总览",
+                  "description": "总览",
+                  "layout": "overview",
+                  "capability": "overview",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-blueprints",
+                  "title": "蓝图",
+                  "description": "蓝图",
+                  "layout": "full",
+                  "capability": "blueprints",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-topics",
+                  "title": "议题",
+                  "description": "议题",
+                  "layout": "full",
+                  "capability": "topics",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-plans",
+                  "title": "行动计划",
+                  "description": "行动计划",
+                  "layout": "full",
+                  "capability": "plans",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-work",
+                  "title": "工作",
+                  "description": "工作",
+                  "layout": "full",
+                  "capability": "work",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-inspection",
+                  "title": "督查",
+                  "description": "督查",
+                  "layout": "full",
+                  "capability": "inspection",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-files",
+                  "title": "资料",
+                  "description": "资料",
+                  "layout": "full",
+                  "capability": "files",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-agents",
+                  "title": "智能体",
+                  "description": "智能体",
+                  "layout": "full",
+                  "capability": "agents",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-settings",
+                  "title": "设置",
+                  "description": "设置",
+                  "layout": "full",
+                  "capability": "settings",
+                  "blocks": []
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "project": "S04-R验证项目A",
+        "binding": {
+          "version_id": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+          "generation": 21
+        }
+      },
+      {
+        "project": "S04-R验证项目B",
+        "binding": {
+          "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+          "generation": 4
+        }
+      },
+      {
+        "project": "S04-R验证项目C",
+        "binding": null
+      }
+    ]
+  },
+  "edited-conflict": {
+    "sources": [
+      {
+        "id": "5d355101-444f-4a45-800f-1a514f2acdd5",
+        "name": "M1-制作验例-20261016",
+        "candidate_digest": "56e62bcf09b83af439cec324104018d74f1f05aa4e2791fc2aa107c21c5483c3",
+        "candidate_revision": 3,
+        "copied_from_version_id": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30",
+        "candidate": {
+          "manifest": {
+            "formatVersion": 1,
+            "componentAbi": 3,
+            "theme": "theme.json",
+            "source": "平台当前项目主题",
+            "files": {},
+            "assets": {}
+          },
+          "theme": {
+            "id": "current-research",
+            "version": "3.1.0-m1",
+            "name": "M1 后续编辑",
+            "topicLabel": "课题",
+            "baseVersion": 1,
+            "density": "compact",
+            "accent": "blue",
+            "presentation": "research",
+            "hiddenCapabilities": [],
+            "pages": [
+              {
+                "id": "current-research-overview",
+                "title": "总览",
+                "description": "总览",
+                "layout": "overview",
+                "capability": "overview",
+                "blocks": []
+              },
+              {
+                "id": "current-research-blueprints",
+                "title": "蓝图",
+                "description": "蓝图",
+                "layout": "full",
+                "capability": "blueprints",
+                "blocks": []
+              },
+              {
+                "id": "current-research-topics",
+                "title": "议题",
+                "description": "议题",
+                "layout": "full",
+                "capability": "topics",
+                "blocks": []
+              },
+              {
+                "id": "current-research-plans",
+                "title": "行动计划",
+                "description": "行动计划",
+                "layout": "full",
+                "capability": "plans",
+                "blocks": []
+              },
+              {
+                "id": "current-research-work",
+                "title": "工作",
+                "description": "工作",
+                "layout": "full",
+                "capability": "work",
+                "blocks": []
+              },
+              {
+                "id": "current-research-inspection",
+                "title": "督查",
+                "description": "督查",
+                "layout": "full",
+                "capability": "inspection",
+                "blocks": []
+              },
+              {
+                "id": "current-research-files",
+                "title": "资料",
+                "description": "资料",
+                "layout": "full",
+                "capability": "files",
+                "blocks": []
+              },
+              {
+                "id": "current-research-agents",
+                "title": "智能体",
+                "description": "智能体",
+                "layout": "full",
+                "capability": "agents",
+                "blocks": []
+              },
+              {
+                "id": "current-research-settings",
+                "title": "设置",
+                "description": "设置",
+                "layout": "full",
+                "capability": "settings",
+                "blocks": []
+              }
+            ]
+          },
+          "reference": "candidate:5d355101-444f-4a45-800f-1a514f2acdd5:3",
+          "digest": "56e62bcf09b83af439cec324104018d74f1f05aa4e2791fc2aa107c21c5483c3"
+        },
+        "versions": [
+          {
+            "id": "04a1681b-02b9-47c8-ac57-54f1d8eb7562",
+            "version": "3.1.0-m1",
+            "digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172",
+            "theme": {
+              "id": "current-research",
+              "version": "3.1.0-m1",
+              "name": "M1 制作验例",
+              "topicLabel": "课题",
+              "baseVersion": 1,
+              "density": "compact",
+              "accent": "blue",
+              "presentation": "research",
+              "hiddenCapabilities": [],
+              "pages": [
+                {
+                  "id": "current-research-overview",
+                  "title": "总览",
+                  "description": "总览",
+                  "layout": "overview",
+                  "capability": "overview",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-blueprints",
+                  "title": "蓝图",
+                  "description": "蓝图",
+                  "layout": "full",
+                  "capability": "blueprints",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-topics",
+                  "title": "议题",
+                  "description": "议题",
+                  "layout": "full",
+                  "capability": "topics",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-plans",
+                  "title": "行动计划",
+                  "description": "行动计划",
+                  "layout": "full",
+                  "capability": "plans",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-work",
+                  "title": "工作",
+                  "description": "工作",
+                  "layout": "full",
+                  "capability": "work",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-inspection",
+                  "title": "督查",
+                  "description": "督查",
+                  "layout": "full",
+                  "capability": "inspection",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-files",
+                  "title": "资料",
+                  "description": "资料",
+                  "layout": "full",
+                  "capability": "files",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-agents",
+                  "title": "智能体",
+                  "description": "智能体",
+                  "layout": "full",
+                  "capability": "agents",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-settings",
+                  "title": "设置",
+                  "description": "设置",
+                  "layout": "full",
+                  "capability": "settings",
+                  "blocks": []
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "project": "S04-R验证项目A",
+        "binding": {
+          "version_id": "04a1681b-02b9-47c8-ac57-54f1d8eb7562",
+          "generation": 22
+        }
+      },
+      {
+        "project": "S04-R验证项目B",
+        "binding": {
+          "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+          "generation": 4
+        }
+      },
+      {
+        "project": "S04-R验证项目C",
+        "binding": null
+      }
+    ]
+  },
+  "after-republish": {
+    "sources": [
+      {
+        "id": "5d355101-444f-4a45-800f-1a514f2acdd5",
+        "name": "M1-制作验例-20261016",
+        "candidate_digest": "d36d2a2aeff22ab28a544e698c2eb198f254303fb019465ee2c2625dc98d070d",
+        "candidate_revision": 4,
+        "copied_from_version_id": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30",
+        "candidate": {
+          "manifest": {
+            "formatVersion": 1,
+            "componentAbi": 3,
+            "theme": "theme.json",
+            "source": "平台当前项目主题",
+            "files": {},
+            "assets": {}
+          },
+          "theme": {
+            "id": "current-research",
+            "version": "3.2.0-m1",
+            "name": "M1 后续编辑",
+            "topicLabel": "课题",
+            "baseVersion": 1,
+            "density": "compact",
+            "accent": "blue",
+            "presentation": "research",
+            "hiddenCapabilities": [],
+            "pages": [
+              {
+                "id": "current-research-overview",
+                "title": "总览",
+                "description": "总览",
+                "layout": "overview",
+                "capability": "overview",
+                "blocks": []
+              },
+              {
+                "id": "current-research-blueprints",
+                "title": "蓝图",
+                "description": "蓝图",
+                "layout": "full",
+                "capability": "blueprints",
+                "blocks": []
+              },
+              {
+                "id": "current-research-topics",
+                "title": "议题",
+                "description": "议题",
+                "layout": "full",
+                "capability": "topics",
+                "blocks": []
+              },
+              {
+                "id": "current-research-plans",
+                "title": "行动计划",
+                "description": "行动计划",
+                "layout": "full",
+                "capability": "plans",
+                "blocks": []
+              },
+              {
+                "id": "current-research-work",
+                "title": "工作",
+                "description": "工作",
+                "layout": "full",
+                "capability": "work",
+                "blocks": []
+              },
+              {
+                "id": "current-research-inspection",
+                "title": "督查",
+                "description": "督查",
+                "layout": "full",
+                "capability": "inspection",
+                "blocks": []
+              },
+              {
+                "id": "current-research-files",
+                "title": "资料",
+                "description": "资料",
+                "layout": "full",
+                "capability": "files",
+                "blocks": []
+              },
+              {
+                "id": "current-research-agents",
+                "title": "智能体",
+                "description": "智能体",
+                "layout": "full",
+                "capability": "agents",
+                "blocks": []
+              },
+              {
+                "id": "current-research-settings",
+                "title": "设置",
+                "description": "设置",
+                "layout": "full",
+                "capability": "settings",
+                "blocks": []
+              }
+            ]
+          },
+          "reference": "candidate:5d355101-444f-4a45-800f-1a514f2acdd5:4",
+          "digest": "d36d2a2aeff22ab28a544e698c2eb198f254303fb019465ee2c2625dc98d070d"
+        },
+        "versions": [
+          {
+            "id": "9e7a6406-2d9e-4bdf-b49f-83abb4daacfc",
+            "version": "3.2.0-m1",
+            "digest": "d36d2a2aeff22ab28a544e698c2eb198f254303fb019465ee2c2625dc98d070d",
+            "theme": {
+              "id": "current-research",
+              "version": "3.2.0-m1",
+              "name": "M1 后续编辑",
+              "topicLabel": "课题",
+              "baseVersion": 1,
+              "density": "compact",
+              "accent": "blue",
+              "presentation": "research",
+              "hiddenCapabilities": [],
+              "pages": [
+                {
+                  "id": "current-research-overview",
+                  "title": "总览",
+                  "description": "总览",
+                  "layout": "overview",
+                  "capability": "overview",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-blueprints",
+                  "title": "蓝图",
+                  "description": "蓝图",
+                  "layout": "full",
+                  "capability": "blueprints",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-topics",
+                  "title": "议题",
+                  "description": "议题",
+                  "layout": "full",
+                  "capability": "topics",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-plans",
+                  "title": "行动计划",
+                  "description": "行动计划",
+                  "layout": "full",
+                  "capability": "plans",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-work",
+                  "title": "工作",
+                  "description": "工作",
+                  "layout": "full",
+                  "capability": "work",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-inspection",
+                  "title": "督查",
+                  "description": "督查",
+                  "layout": "full",
+                  "capability": "inspection",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-files",
+                  "title": "资料",
+                  "description": "资料",
+                  "layout": "full",
+                  "capability": "files",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-agents",
+                  "title": "智能体",
+                  "description": "智能体",
+                  "layout": "full",
+                  "capability": "agents",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-settings",
+                  "title": "设置",
+                  "description": "设置",
+                  "layout": "full",
+                  "capability": "settings",
+                  "blocks": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "04a1681b-02b9-47c8-ac57-54f1d8eb7562",
+            "version": "3.1.0-m1",
+            "digest": "717a427aae24e70b2ab6cffe0c5b17a9c7581a77f12e72b92c47f2a05d7e9172",
+            "theme": {
+              "id": "current-research",
+              "version": "3.1.0-m1",
+              "name": "M1 制作验例",
+              "topicLabel": "课题",
+              "baseVersion": 1,
+              "density": "compact",
+              "accent": "blue",
+              "presentation": "research",
+              "hiddenCapabilities": [],
+              "pages": [
+                {
+                  "id": "current-research-overview",
+                  "title": "总览",
+                  "description": "总览",
+                  "layout": "overview",
+                  "capability": "overview",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-blueprints",
+                  "title": "蓝图",
+                  "description": "蓝图",
+                  "layout": "full",
+                  "capability": "blueprints",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-topics",
+                  "title": "议题",
+                  "description": "议题",
+                  "layout": "full",
+                  "capability": "topics",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-plans",
+                  "title": "行动计划",
+                  "description": "行动计划",
+                  "layout": "full",
+                  "capability": "plans",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-work",
+                  "title": "工作",
+                  "description": "工作",
+                  "layout": "full",
+                  "capability": "work",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-inspection",
+                  "title": "督查",
+                  "description": "督查",
+                  "layout": "full",
+                  "capability": "inspection",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-files",
+                  "title": "资料",
+                  "description": "资料",
+                  "layout": "full",
+                  "capability": "files",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-agents",
+                  "title": "智能体",
+                  "description": "智能体",
+                  "layout": "full",
+                  "capability": "agents",
+                  "blocks": []
+                },
+                {
+                  "id": "current-research-settings",
+                  "title": "设置",
+                  "description": "设置",
+                  "layout": "full",
+                  "capability": "settings",
+                  "blocks": []
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "project": "S04-R验证项目A",
+        "binding": {
+          "version_id": "04a1681b-02b9-47c8-ac57-54f1d8eb7562",
+          "generation": 22
+        }
+      },
+      {
+        "project": "S04-R验证项目B",
+        "binding": {
+          "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+          "generation": 4
+        }
+      },
+      {
+        "project": "S04-R验证项目C",
+        "binding": null
+      }
+    ]
+  }
+}
