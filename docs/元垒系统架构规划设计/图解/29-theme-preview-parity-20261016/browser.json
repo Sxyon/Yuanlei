@@ -1,0 +1,554 @@
+[
+  {
+    "step": "项目主题设置弹窗",
+    "body": "项目主题设置\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：默认 · 项目管理 · 3.0.0 · generation 18\n\n准确发布版本\n选择准确发布版本\n选择说明\n项目文件与条件\n\n选定目标和准确版本后，读取版本要求。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A\n\n拟用：未选择\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题"
+  },
+  {
+    "step": "精简准确版本真实页面预览",
+    "background": "rgb(250, 243, 226)",
+    "body": "项目总览\n把这一件事推进清楚\n蓝图 / PROJECT BLUEPRINT\n社区阅读空间试点\n两周试运营\n\n先开放20个座位，完成首场共读与反馈复盘。\n\n边界\n\n先验证时段、座位和志愿排班，不承诺长期投入。\n\n阅读空间试点.md\n打开蓝图 →\n最近动态\n2026/10/16 13:59:50\n儿童活动是否单独设时段\n议题 · s04r-7723d19866\n2026/10/16 13:59:50\n儿童活动是否单独设时段\n议题 · s04r-7723d19866\n2026/10/16 13:59:50\n周末开放时段如何安排\n议题 · s04r-7723d19866\n2026/10/16 13:59:50\n周末开放时段如何安排\n议题 · s04r-7723d19866\n2026/10/16 10:30:06\nS04-R准确对象\n议题 · s04r-7723d19866",
+    "generation": "18",
+    "mode": "preview",
+    "nav": [
+      "总览",
+      "蓝图",
+      "议题",
+      "项目列表"
+    ],
+    "persisted": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+    "version": "20357e7b-1484-4890-919e-4061ec86a9ce",
+    "inertAttribute": true
+  },
+  {
+    "step": "只读正文点击不导航",
+    "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_preview_version=20357e7b-1484-4890-919e-4061ec86a9ce&theme_page=current-focus-overview"
+  },
+  {
+    "case": "实际议题草稿取消离开",
+    "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_page=current-default-topics&topic_id=f18d4f59-2bf8-4de6-adcc-9c39bede5d70",
+    "draft": "本轮预览草稿保护核对，取消后保留，不发表"
+  },
+  {
+    "case": "focus-preview",
+    "body": "项目总览把这一件事推进清楚蓝图 / PROJECT BLUEPRINT社区阅读空间试点两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n边界\n先验证时段、座位和志愿排班，不承诺长期投入。\n阅读空间试点.md打开蓝图 →最近动态2026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 10:30:06S04-R准确对象议题 · s04r-7723d19866",
+    "inert": true,
+    "nav": [
+      "总览",
+      "蓝图",
+      "议题",
+      "项目列表"
+    ],
+    "presentation": null,
+    "version": "20357e7b-1484-4890-919e-4061ec86a9ce"
+  },
+  {
+    "case": "preview-network-before-apply",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/api/theme-versions/20357e7b-1484-4890-919e-4061ec86a9ce"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/theme"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-versions/20357e7b-1484-4890-919e-4061ec86a9ce"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/activity"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint/%E9%98%85%E8%AF%BB%E7%A9%BA%E9%97%B4%E8%AF%95%E7%82%B9.md"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/theme"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-versions/20357e7b-1484-4890-919e-4061ec86a9ce"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/activity"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint/%E9%98%85%E8%AF%BB%E7%A9%BA%E9%97%B4%E8%AF%95%E7%82%B9.md"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint/history"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint/%E9%98%85%E8%AF%BB%E7%A9%BA%E9%97%B4%E8%AF%95%E7%82%B9.md"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/decisions"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/work/tasks"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/theme"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/decisions"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/work/tasks"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/decisions"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/work/tasks"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics/f18d4f59-2bf8-4de6-adcc-9c39bede5d70/followup"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics/f18d4f59-2bf8-4de6-adcc-9c39bede5d70/timeline"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-sources"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-sources"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-versions/20357e7b-1484-4890-919e-4061ec86a9ce"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-sources"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/theme"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-versions/20357e7b-1484-4890-919e-4061ec86a9ce"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/topics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/governance/activity"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprint/%E9%98%85%E8%AF%BB%E7%A9%BA%E9%97%B4%E8%AF%95%E7%82%B9.md"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-sources"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-sources"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/theme"
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects"
+      },
+      {
+        "method": "GET",
+        "path": "/api/theme-versions/20357e7b-1484-4890-919e-4061ec86a9ce"
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/theme/check"
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat/threads"
+      }
+    ],
+    "truncated": false
+  },
+  {
+    "case": "focus-applied",
+    "body": "项目总览把这一件事推进清楚蓝图 / PROJECT BLUEPRINT社区阅读空间试点两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n边界\n先验证时段、座位和志愿排班，不承诺长期投入。\n阅读空间试点.md打开蓝图 →最近动态2026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 10:30:06S04-R准确对象议题 · s04r-7723d19866",
+    "inert": false,
+    "nav": [
+      "总览",
+      "蓝图",
+      "议题",
+      "项目列表"
+    ],
+    "version": "20357e7b-1484-4890-919e-4061ec86a9ce",
+    "sameBody": true
+  },
+  {
+    "case": "research-refresh-newtab",
+    "clone": {
+      "inert": true,
+      "mode": "preview",
+      "saved": "20357e7b-1484-4890-919e-4061ec86a9ce",
+      "version": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30"
+    }
+  },
+  {
+    "case": "research-preview-applied",
+    "preview": {
+      "body": "研究工作室阅读，形成有依据的判断课题目录S04-R准确对象周末开放时段如何安排儿童活动是否单独设时段研究问题S04-R准确对象两主题共享原业务ID\n预期结果尚未填写预期结果。\n已记录决定暂无已记录决定。保留研究问题，不从讨论生成判断。进入准确课题与讨论 →研究背景 · 蓝图社区阅读空间试点两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n边界\n先验证时段、座位和志愿排班，不承诺长期投入。\n阅读空间试点.md打开蓝图 →最近动态2026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 10:30:06S04-R准确对象议题 · s04r-7723d19866",
+      "inert": true,
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "项目列表"
+      ],
+      "version": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30"
+    },
+    "applied": {
+      "body": "研究工作室阅读，形成有依据的判断课题目录S04-R准确对象周末开放时段如何安排儿童活动是否单独设时段研究问题S04-R准确对象两主题共享原业务ID\n预期结果尚未填写预期结果。\n已记录决定暂无已记录决定。保留研究问题，不从讨论生成判断。进入准确课题与讨论 →研究背景 · 蓝图社区阅读空间试点两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n边界\n先验证时段、座位和志愿排班，不承诺长期投入。\n阅读空间试点.md打开蓝图 →最近动态2026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50儿童活动是否单独设时段议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 13:59:50周末开放时段如何安排议题 · s04r-7723d198662026/10/16 10:30:06S04-R准确对象议题 · s04r-7723d19866",
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "项目列表"
+      ],
+      "version": "4b5d6d4f-ebc8-4be5-a6bd-5902308fad30"
+    },
+    "sameBody": true
+  },
+  {
+    "case": "default-real-capabilities",
+    "pages": [
+      {
+        "name": "蓝图",
+        "body": "阅读空间试点新建多个项目共用此目录；修改、重命名和归档作用于同一文件。社区阅读空间试点两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n边界\n先验证时段、座位和志愿排班，不承诺长期投入。\n",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/blueprints?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-blueprints"
+      },
+      {
+        "name": "议题",
+        "body": "全部进展全部准入归档新 建S04-R准确对象0 个决定 · 0 项正式工作研讨中周末开放时段如何安排0 个决定 · 0 项正式工作研讨中儿童活动是否单独设时段0 个决定 · 0 项正式工作研讨中决定索引0 条决定 · 0 条未关联议题⌄全部决定0未关联议题0新建独立决定还没有决策记录。历史决策（0 ",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/topics?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-topics"
+      },
+      {
+        "name": "行动计划",
+        "body": "待落实 0已关联工作 ···全部计划新 建暂无符合条件的行动计划。",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/plans?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-plans"
+      },
+      {
+        "name": "工作",
+        "body": "列表看板时间计划···全部状态议题编号刷新新 建没有符合筛选条件的任务",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/work/tasks?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-work"
+      },
+      {
+        "name": "督查",
+        "body": "刷 新正在读取督查事实…需要介入当前没有已记录的阻塞项。项目执行历史 · 0 条近期记录历史执行异常暂无历史执行异常。近期执行近期汇报在平台管理周期汇报计划暂无汇报。汇报产生于原执行与周期汇报链路。",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/reports?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-inspection"
+      },
+      {
+        "name": "资料",
+        "body": "上传资料文件新建目录刷新项目资料2 项名称大小修改时间操作.yuanlei-3 小时前survey.json14 B11 小时前关联知识与平台资源在项目设置中维护资源连接与知识库关联",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/files?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-files"
+      },
+      {
+        "name": "智能体",
+        "body": "新建项目智能体绑定已有智能体该项目还没有数字员工，点击右上角创建或绑定",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/agents?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-agents"
+      },
+      {
+        "name": "设置",
+        "body": "保存设置上传图标项目名称项目标识 slug字母、数字或连字符，首尾为字母或数字；全局唯一且不区分大小写，设定后不可修改。属性状态计划中优先级无优先级负责人s04r-7723d19866开始日期截止日期每5秒刷新刷 新暂停刷新历史记录待人工审批 0暂无待人工审批改动与提交占用与排队 0当前没有工作空间",
+        "inert": true,
+        "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/settings?theme_preview_version=47ca0b08-0c37-420e-80b7-7c1bfaf7cf45&theme_page=current-default-settings"
+      }
+    ]
+  },
+  {
+    "case": "selection-modal-cancel",
+    "text": "项目主题设置\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：调研 · 阅读工作室 · 3.0.0 · generation 20\n\n准确发布版本\n默认 · 项目管理 · 3.0.0\n选择说明\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A\n\n拟用：默认 · 项目管理 · 3.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n版本与包详情"
+  },
+  {
+    "case": "default-preview-applied",
+    "preview": {
+      "body": "···业务大屏刷新需要你处理···待验收 · 0执行异常 · 0待处理 · 3儿童活动是否单独设时段核对家长参与、噪声与场地安排。周末开放时段如何安排核对访客反馈与志愿排班，保留不同意见。S04-R准确对象两主题共享原业务ID当前推进···0进行中3待判断0阻塞社区阅读空间试点\n 两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n\n 边界\n先验证时段、座位和志愿排班，不承诺长期投入。最近动态议题儿童活动是否单独设时段10/16 13:59议题儿童活动是否单独设时段10/16 13:59议题周末开放时段如何安排10/16 13:59议题周末开放时段如何安排10/16 13:59议题S04-R准确对象10/16 10:30",
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "项目列表"
+      ],
+      "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+    },
+    "applied": {
+      "body": "···业务大屏刷新需要你处理···待验收 · 0执行异常 · 0待处理 · 3儿童活动是否单独设时段核对家长参与、噪声与场地安排。周末开放时段如何安排核对访客反馈与志愿排班，保留不同意见。S04-R准确对象两主题共享原业务ID当前推进···0进行中3待判断0阻塞社区阅读空间试点\n 两周试运营\n先开放20个座位，完成首场共读与反馈复盘。\n\n 边界\n先验证时段、座位和志愿排班，不承诺长期投入。最近动态议题儿童活动是否单独设时段10/16 13:59议题儿童活动是否单独设时段10/16 13:59议题周末开放时段如何安排10/16 13:59议题周末开放时段如何安排10/16 13:59议题S04-R准确对象10/16 10:30",
+      "nav": [
+        "总览",
+        "蓝图",
+        "议题",
+        "行动计划",
+        "工作",
+        "督查",
+        "资料",
+        "智能体",
+        "设置",
+        "项目列表"
+      ],
+      "recoveryLinks": 0,
+      "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+    },
+    "sameBody": true
+  },
+  {
+    "case": "saved-package-fault",
+    "generation": "21",
+    "recovery": [
+      "选择／恢复主题"
+    ],
+    "text": "已保存，加载失败：主题包摘要不匹配；原项目选择保留 正在使用应急基础界面；持久选择未改变。重新核对主题选择／恢复主题",
+    "version": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45"
+  },
+  {
+    "case": "unbound-recovery",
+    "generation": "0",
+    "text": "尚未绑定主题 正在使用应急基础界面；持久选择未改变。重新核对主题选择／恢复主题"
+  },
+  {
+    "case": "selector-preview-newtab-keeps-draft",
+    "url": "http://127.0.0.1:15174/projects/5bb57b40-0b0d-4214-b817-6bac908f1e17/dashboard?theme_preview_version=20357e7b-1484-4890-919e-4061ec86a9ce&theme_page=current-focus-overview",
+    "originalDialog": "项目主题设置\n目标项目与当前选择\n分配目标项目\nS04-R验证项目A\n\n当前：默认 · 项目管理 · 3.0.0 · generation 21\n\n准确发布版本\n精简 · 专注推进 · 3.0.0\n选择说明\n项目文件与条件\n\n此版本没有项目文件要求。\n\n来源、准确版本及文件条件通过；应用时重新校验。\n\n重新检查条件\n确认应用\n\n目标项目：S04-R验证项目A\n\n拟用：精简 · 专注推进 · 3.0.0\n\n切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。\n\n预览此准确版本\n应用主题\n版本与包详情"
+  }
+]

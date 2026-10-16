@@ -41,8 +41,8 @@ test('精简总览仅蓝图与最近动态；调研使用课题正文与真实�
 test('真实总览装配消费主题上下文；管理页收起帮助并去掉历史与手动刷新入口',async t=>{
   t.mock.method(api,'catalog',async()=>({sources:[]}))
   const manager=await render(Manager,{projectId:'',projects:[]})
-  assert.match(manager,/主题管理帮助/)
-  assert.doesNotMatch(manager,/S03 合成样例|返回项目列表|刷新目录|主题维护 · 候选/)
+  assert.match(manager,/主题管理帮助/);assert.match(manager,/项目主题设置/)
+  assert.doesNotMatch(manager,/S03 合成样例|返回项目列表|刷新目录|主题维护 · 候选|选择项目并分配主题|项目分配/)
   const {default:Assembled}=await vite.ssrLoadModule('/src/components/project/capabilities/OverviewWorkspace.vue')
   const {governanceBoardApi}=await vite.ssrLoadModule('/src/apis/governance_board_api.js')
   for(const name of ['getProjectBoard','listTopics','recentActivity','listBlueprints','listDecisions'])t.mock.method(governanceBoardApi,name,async()=>name==='recentActivity'?{items:[]}:name==='listBlueprints'?{documents:[]}:[])
@@ -88,6 +88,9 @@ test('自动核对目录保留候选草稿，迟到目录不覆盖最新读取�
   t.mock.method(api,'publish',async()=>({id:'v',version:'3'}))
   let reads=0;t.mock.method(api,'catalog',async()=>{reads++;return {sources:[{...source,name:'服务端回读',versions:[{id:'v',version:'3'}]}]}})
   await state.run(state.publish)
+  state.candidate=null;await state.assignVersion('v');assert.equal(state.selectionOpen,true);assert.equal(state.selectionVersionId,'v')
+  state.selectionRef={canDiscard:async()=>false};await state.closeSelection();assert.equal(state.selectionOpen,true)
+  state.selectionRef={canDiscard:async()=>true};await state.closeSelection();assert.equal(state.selectionOpen,false)
   assert.equal(reads,1);assert.equal(state.sources[0].name,'服务端回读');assert.equal(state.sources[0].versions[0].id,'v')
 })
 
@@ -106,7 +109,7 @@ test('真实项目宿主导航消费隐藏配置，移除宿主接线会重新�
   const app=createSSRApp({render:()=>h(Host)});app.use(pinia);app.use(router)
   const html=await renderToString(app)
   const nav=html.match(/<nav[^>]*aria-label="项目工作空间导航"[\s\S]*?<\/nav>/)?.[0]
-  assert.ok(nav,html)
+  assert.ok(nav,html);assert.doesNotMatch(nav,/主题选择[／/]恢复/)
   for(const visible of ['总览','蓝图','议题'])assert.match(nav,new RegExp('>'+visible+'<'))
   for(const hidden of ['行动计划','工作','督查','资料','智能体','设置'])assert.doesNotMatch(nav,new RegExp('>'+hidden+'<'))
   assert.match(html,/data-theme-version="v"/);assert.match(html,/data-theme-generation="4"/)

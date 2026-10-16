@@ -1,0 +1,262 @@
+{
+  "baseline": {
+    "kind": "真实HTTP、PG与包字节回读；项目为隔离合成项目",
+    "projects": [
+      {
+        "project": "S04-R验证项目A",
+        "id": "5bb57b40-0b0d-4214-b817-6bac908f1e17",
+        "state": "ready",
+        "version_id": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+        "generation": 18,
+        "source": "默认 · 项目管理",
+        "digest": "9852a17d0e87ad6b194b05968154e4448606a52eb80cafdb060567ac2048c0e7",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目B",
+        "id": "c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+        "state": "ready",
+        "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+        "generation": 4,
+        "source": "默认 · 项目管理",
+        "digest": "2fa6aa89d07531fe9fbe1c58f9fbed0eb2a226bf83b6555a759e7163ece2f314",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目C",
+        "id": "dfa1c93e-818b-4107-a155-7f147b00cdf3",
+        "state": "unbound",
+        "version_id": null,
+        "generation": 0,
+        "source": null,
+        "digest": null,
+        "presentation": "baseline"
+      }
+    ],
+    "catalog": [
+      {
+        "name": "精简 · 专注推进",
+        "status": "active"
+      },
+      {
+        "name": "调研 · 依据阅读",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 课题推进",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 阅读工作室",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 日常管理",
+        "status": "disabled"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "disabled"
+      }
+    ]
+  },
+  "focus_saved": {
+    "kind": "真实HTTP、PG与包字节回读；项目为隔离合成项目",
+    "projects": [
+      {
+        "project": "S04-R验证项目A",
+        "id": "5bb57b40-0b0d-4214-b817-6bac908f1e17",
+        "state": "ready",
+        "version_id": "20357e7b-1484-4890-919e-4061ec86a9ce",
+        "generation": 19,
+        "source": "精简 · 专注推进",
+        "digest": "dd9adbfd721a16ea555cbf01bbb4a08f7b107a2fd3113b4d47af0d101a3b0b72",
+        "presentation": "focus"
+      },
+      {
+        "project": "S04-R验证项目B",
+        "id": "c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+        "state": "ready",
+        "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+        "generation": 4,
+        "source": "默认 · 项目管理",
+        "digest": "2fa6aa89d07531fe9fbe1c58f9fbed0eb2a226bf83b6555a759e7163ece2f314",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目C",
+        "id": "dfa1c93e-818b-4107-a155-7f147b00cdf3",
+        "state": "unbound",
+        "version_id": null,
+        "generation": 0,
+        "source": null,
+        "digest": null,
+        "presentation": "baseline"
+      }
+    ],
+    "catalog": [
+      {
+        "name": "精简 · 专注推进",
+        "status": "active"
+      },
+      {
+        "name": "调研 · 依据阅读",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 课题推进",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 阅读工作室",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 日常管理",
+        "status": "disabled"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "disabled"
+      }
+    ]
+  },
+  "research_preview": {
+    "kind": "真实HTTP、PG与包字节回读；项目为隔离合成项目",
+    "projects": [
+      {
+        "project": "S04-R验证项目A",
+        "id": "5bb57b40-0b0d-4214-b817-6bac908f1e17",
+        "state": "ready",
+        "version_id": "20357e7b-1484-4890-919e-4061ec86a9ce",
+        "generation": 19,
+        "source": "精简 · 专注推进",
+        "digest": "dd9adbfd721a16ea555cbf01bbb4a08f7b107a2fd3113b4d47af0d101a3b0b72",
+        "presentation": "focus"
+      },
+      {
+        "project": "S04-R验证项目B",
+        "id": "c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+        "state": "ready",
+        "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+        "generation": 4,
+        "source": "默认 · 项目管理",
+        "digest": "2fa6aa89d07531fe9fbe1c58f9fbed0eb2a226bf83b6555a759e7163ece2f314",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目C",
+        "id": "dfa1c93e-818b-4107-a155-7f147b00cdf3",
+        "state": "unbound",
+        "version_id": null,
+        "generation": 0,
+        "source": null,
+        "digest": null,
+        "presentation": "baseline"
+      }
+    ],
+    "catalog": [
+      {
+        "name": "精简 · 专注推进",
+        "status": "active"
+      },
+      {
+        "name": "调研 · 依据阅读",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 课题推进",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 阅读工作室",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 日常管理",
+        "status": "disabled"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "disabled"
+      }
+    ]
+  },
+  "restored": {
+    "kind": "真实HTTP、PG与包字节回读；项目为隔离合成项目",
+    "projects": [
+      {
+        "project": "S04-R验证项目A",
+        "id": "5bb57b40-0b0d-4214-b817-6bac908f1e17",
+        "state": "ready",
+        "version_id": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+        "generation": 21,
+        "source": "默认 · 项目管理",
+        "digest": "9852a17d0e87ad6b194b05968154e4448606a52eb80cafdb060567ac2048c0e7",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目B",
+        "id": "c74a0b74-a82a-4e11-bc7f-2ac14ae15737",
+        "state": "ready",
+        "version_id": "b8af0269-078a-4e66-ac60-777cb5ffddd5",
+        "generation": 4,
+        "source": "默认 · 项目管理",
+        "digest": "2fa6aa89d07531fe9fbe1c58f9fbed0eb2a226bf83b6555a759e7163ece2f314",
+        "presentation": "baseline"
+      },
+      {
+        "project": "S04-R验证项目C",
+        "id": "dfa1c93e-818b-4107-a155-7f147b00cdf3",
+        "state": "unbound",
+        "version_id": null,
+        "generation": 0,
+        "source": null,
+        "digest": null,
+        "presentation": "baseline"
+      }
+    ],
+    "catalog": [
+      {
+        "name": "精简 · 专注推进",
+        "status": "active"
+      },
+      {
+        "name": "调研 · 依据阅读",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 课题推进",
+        "status": "disabled"
+      },
+      {
+        "name": "调研 · 阅读工作室",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 日常管理",
+        "status": "disabled"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "active"
+      },
+      {
+        "name": "默认 · 项目管理",
+        "status": "disabled"
+      }
+    ]
+  }
+}

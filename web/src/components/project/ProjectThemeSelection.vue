@@ -1,7 +1,8 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
+import { supportsWorkspacePreview, themePreviewTarget } from '@/utils/projectThemePreview'
 import { Modal } from 'ant-design-vue'
 import { useUserStore } from '@/stores/user'
 import { projectThemeApi } from '@/apis/project_theme_api'
@@ -9,9 +10,9 @@ import { validateLoadedPackage } from './themes/contract'
 import { createSyntheticAdapter } from './themes/syntheticAdapter'
 import ThemeHost from './themes/ThemeHost.vue'
 
-const props = defineProps({ projectId: { type: String, required: true }, projects: { type: Array, required: true }, stayInProject: Boolean, initialVersionId: { type: String, default: '' } })
+const props = defineProps({ projectId: { type: String, required: true }, projects: { type: Array, required: true }, stayInProject: Boolean, embedded: Boolean, initialVersionId: { type: String, default: '' } })
 const emit = defineEmits(['project', 'cancel', 'selected'])
-const user = useUserStore(), context = inject('projectThemeContext', null)
+const router = useRouter(), user = useUserStore(), context = inject('projectThemeContext', null)
 const loading = ref(false), saving = ref(false), checking = ref(false), error = ref(''), notice = ref(''), preview = ref(false)
 const catalog = ref([]), current = shallowRef(null), versionId = ref(''), bundle = shallowRef(null), files = ref({}), condition = shallowRef(null)
 const pending = shallowRef(null), committed = ref(false)
@@ -164,6 +165,13 @@ async function save() {
   } finally { if (token === sequence) saving.value = false }
 }
 
+/** 真实能力预览另开临时项目页，选择草稿仍留在原弹窗。 */
+function showPreview() {
+  if (supportsWorkspacePreview(bundle.value)) {
+    const target = router.resolve(themePreviewTarget(props.projectId, { versionId: versionId.value }))
+    window.open(target.href, '_blank', 'noopener')
+  } else preview.value = true
+}
 async function cancel() { if (await canDiscard()) emit('cancel') }
 defineExpose({refreshCatalog, canDiscard})
 watch(() => [props.projectId,user.uid,props.initialVersionId],load,{immediate:true})
@@ -171,7 +179,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload',beforeUnload);wind
 </script>
 <template>
   <section class="theme-select" :data-project-id="projectId" :data-version-id="current?.binding?.version_id || ''" :data-generation="current?.generation">
-    <div class="toolbar"><h2>项目主题选择</h2><a-button :disabled="saving || !!pending" @click="cancel">取消</a-button></div>
+    <div v-if="!embedded" class="toolbar"><h2>项目主题选择</h2><a-button :disabled="saving || !!pending" @click="cancel">取消</a-button></div>
     <a-alert v-if="error" type="error" role="alert" :message="error" />
     <a-alert v-if="notice" type="success" role="status" :message="notice" />
     <div v-if="pending" class="actions"><a-button :loading="saving" @click="reconcile">核实已提交的项目选择</a-button></div>
@@ -187,7 +195,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload',beforeUnload);wind
         <a-button :loading="checking" :disabled="!bundle || saving || !!pending" @click="checkConditions">重新检查条件</a-button>
         <h3>确认应用</h3><p>目标项目：{{project?.name || '尚未选择'}}</p><p>拟用：{{target ? `${target.source.name} · ${target.version}` : versionId || '未选择'}}</p><p v-for="[alias] in aliases" :key="alias">{{alias}} → {{files[alias] || '尚未填写'}}</p>
         <p class="help">切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。</p>
-        <div class="actions"><a-button :disabled="!bundle || saving" @click="preview=true">预览此准确版本</a-button><a-button type="primary" :loading="saving" :disabled="!condition?.selectable || checking || !!pending" @click="save">应用主题</a-button></div>
+        <div class="actions"><a-button :disabled="!bundle || saving" @click="showPreview">预览此准确版本</a-button><a-button type="primary" :loading="saving" :disabled="!condition?.selectable || checking || !!pending" @click="save">应用主题</a-button></div>
         <RouterLink v-if="notice && !stayInProject" :to="{name:'ProjectDashboardComp',params:{project_id:projectId}}">进入项目（可选）</RouterLink>
         <details v-if="bundle"><summary>版本与包详情</summary><p>目标项目ID：{{projectId}}</p><p v-if="initialVersionId">版本行带入：{{initialVersionId}}</p><p>{{bundle.reference}} · SHA-256 {{bundle.digest}} · ABI{{bundle.manifest.componentAbi}}</p></details>
       </section>

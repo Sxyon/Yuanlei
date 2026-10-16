@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {after,before,test} from 'node:test'
 import {createRenderer,getCurrentInstance,h,ref,ssrContextKey,nextTick} from 'vue'
-import {createRouter,createMemoryHistory} from 'vue-router'
+import {createRouter,createMemoryHistory,RouterView} from 'vue-router'
 import {createPinia,setActivePinia} from 'pinia'
 import {createServer} from 'vite'
 import {setImmediate} from 'node:timers'
@@ -24,7 +24,7 @@ const renderer=createRenderer({createElement:()=>({}),createText:()=>({}),create
 const settle=async()=>{await nextTick();await new Promise(resolve=>setImmediate(resolve));await nextTick()}
 const pack={manifest:{formatVersion:1,componentAbi:2,theme:'theme.json',source:'测试',assets:{},files:{}},theme:{id:'research',name:'研究',version:'2',topicLabel:'课题',baseVersion:1,density:'comfortable',accent:'teal',pages:[{id:'new-topics',title:'课题',description:'研究',layout:'reading',capability:'topics',blocks:[]}]},reference:'v',digest:'a'.repeat(64)}
 const ready=()=>({state:'ready',generation:1,binding:{version_id:'v',files:{}},package:structuredClone(pack)})
-async function mount(t,{url='/projects/p/topics',enabled=true,broken=false}={}) {
+async function mount(t,{url='/projects/p/topics',enabled=true,broken=false,routed=false}={}) {
   const pinia=createPinia();setActivePinia(pinia);useUserStore().uid='u'
   const projects=useProjectsStore();projects.projects=[{id:'p',name:'P'}];projects.hasLoaded=true;t.mock.method(projects,'loadProjects',async()=>{})
   t.mock.method(api,'binding',async()=>ready())
@@ -40,7 +40,11 @@ async function mount(t,{url='/projects/p/topics',enabled=true,broken=false}={}) 
   const draft=ref(''),failures=[];let instance
   const Editor={setup(){useEdit('真实表单',()=> 'p',()=>Boolean(draft.value),()=>draft.value='');return()=>{if(broken)throw new Error('render failed');return h('div')}}}
   const Host={...Layout,render(){instance=getCurrentInstance();return this.renderFailed?null:h(Editor)}}
-  const app=renderer.createApp({render:()=>h(Host,{enabled})});app.use(pinia);app.use(router);app.provide(ssrContextKey,{modules:new Set()});app.config.errorHandler=cause=>failures.push(cause)
+  if (routed) {
+    router.addRoute({path:'/projects/:project_id/topics',name:'ProjectTopics',component:Host})
+    await router.replace(url)
+  }
+  const app=renderer.createApp({render:()=>routed?h(RouterView):h(Host,{enabled})});app.use(pinia);app.use(router);app.provide(ssrContextKey,{modules:new Set()});app.config.errorHandler=cause=>failures.push(cause)
   app.mount({});t.after(()=>app.unmount());await settle()
   return {state:instance.setupState,router,draft,failures}
 }
@@ -96,4 +100,50 @@ test('聚焦与可见性连续回读共用同一草稿确认，取消不丢输�
   const second=state.loadTheme();await settle();assert.equal(count,1)
   prompt.onCancel();await Promise.all([first,second])
   assert.equal(state.selection.state,'ready');assert.equal(draft.value,'保留未保存')
+})
+
+const previewPack=()=>({...structuredClone(pack),manifest:{...pack.manifest,componentAbi:3},reference:'preview-v',theme:{...pack.theme,id:'independent-preview',version:'3',presentation:'focus',hiddenCapabilities:['plans','work','inspection','files','agents','settings'],pages:[{id:'focus-home',title:'总览',description:'总览',layout:'overview',capability:'overview',blocks:[]}]}})
+test('预览读取准确版本进入同一项目上下文，退出恢复持久选择且不写绑定',async t=>{
+  let writes=0;t.mock.method(api,'select',async()=>{writes++})
+  t.mock.method(api,'version',async id=>{assert.equal(id,'preview-v');return previewPack()})
+  const {state,router}=await mount(t,{url:'/projects/p/dashboard?theme_preview_version=preview-v'})
+  await settle()
+  assert.equal(state.previewRequested,true);assert.equal(state.pack.reference,'preview-v');assert.equal(state.pack.theme.presentation,'focus')
+  assert.equal(state.selection.binding.version_id,'v');assert.equal(state.selection.generation,1)
+  assert.deepEqual(state.navigationPages.map(page=>page.capability),['overview','blueprints','topics'])
+  assert.equal(router.currentRoute.value.query.theme_preview_version,'preview-v')
+  await state.exitPreview();await settle()
+  assert.equal(state.previewRequested,false);assert.equal(state.pack.theme.id,'research');assert.equal(state.selection.binding.version_id,'v');assert.equal(writes,0)
+})
+test('候选修订变化明确失败，不拿新候选或已保存包冒充预览',async t=>{
+  t.mock.method(api,'candidate',async()=>({source:{candidate_revision:3},package:previewPack()}))
+  const {state}=await mount(t,{url:'/projects/p/dashboard?theme_preview_source=s&theme_preview_revision=2'})
+  await settle();assert.match(state.previewError,/候选修订已改变/);assert.equal(state.pack,null);assert.equal(state.selection.binding.version_id,'v')
+})
+test('切换预览引用后迟到包不能覆盖新预览，持久选择仍独立',async t=>{
+  t.mock.method(api,'version',async()=>previewPack())
+  const {state,router}=await mount(t,{url:'/projects/p/dashboard?theme_preview_version=preview-v'})
+  let release;t.mock.method(api,'version',async id=>id==='preview-v'?new Promise(resolve=>{release=resolve}):({...previewPack(),reference:'next-preview',theme:{...previewPack().theme,id:'next',presentation:'research',hiddenCapabilities:[]}}))
+  const old=state.loadTheme();await settle()
+  await router.replace({name:'ProjectDashboardComp',params:{project_id:'p'},query:{theme_preview_version:'next-preview'}});await settle()
+  assert.equal(state.pack.reference,'next-preview')
+  release(previewPack());await old
+  assert.equal(state.pack.reference,'next-preview');assert.equal(state.selection.binding.version_id,'v')
+})
+
+
+test('真实RouterView中进入临时预览先保护草稿，取消保留且确认才进入',async t=>{
+  t.mock.method(api,'version',async()=>previewPack())
+  const {router,draft,state}=await mount(t,{routed:true})
+  draft.value='不得丢弃的正文'
+  t.mock.method(Modal,'confirm',options=>options.onCancel())
+  const target={name:'ProjectTopics',params:{project_id:'p'},query:{theme_preview_version:'preview-v',topic_id:'accurate'}}
+  await router.push(target);await settle()
+  assert.equal(router.currentRoute.value.query.theme_preview_version,undefined)
+  assert.equal(draft.value,'不得丢弃的正文');assert.equal(state.pack.reference,'v')
+  t.mock.method(Modal,'confirm',options=>options.onOk())
+  await router.push(target);await settle()
+  assert.equal(router.currentRoute.value.query.theme_preview_version,'preview-v')
+  assert.equal(router.currentRoute.value.query.topic_id,'accurate')
+  assert.equal(draft.value,'');assert.equal(state.pack.reference,'preview-v')
 })
