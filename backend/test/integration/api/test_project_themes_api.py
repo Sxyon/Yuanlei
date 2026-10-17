@@ -10,6 +10,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import httpx
 import pytest
@@ -27,6 +28,7 @@ from server.utils.auth_middleware import get_db
 from yuxi.services.project_theme_service import install_builtin_themes
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import Department, Project, User
+from yuxi.themes.packages import ThemeError
 from yuxi.themes.store import ThemeStore
 from yuxi.utils.auth_utils import AuthUtils
 from yuxi.workspace.paths import user_workspace_dir
@@ -456,6 +458,7 @@ async def test_actual_process_interruption_before_atomic_link(live_theme):
     script = """
 import sys,os,signal,hashlib
 from pathlib import Path
+from yuxi.themes.packages import ThemeError
 from yuxi.themes.store import ThemeStore
 raw=sys.stdin.buffer.read()
 def trace(frame,event,arg):
@@ -1231,3 +1234,379 @@ async def test_mixed_preview_files_exact_revision_and_workdir(live_theme):
     assert (await env.client.get(base)).json() == before
     async with env.db() as db:
         assert await db.scalar(text("SELECT count(*) FROM project_theme_bindings")) == 0
+
+
+def variant_package(raw, *, name):
+    """构造同版本异字节的合法包，供版本冲突负例使用。"""
+    return changed_theme(raw, name=name)
+
+
+def changed_theme(raw, **changes):
+    """只改theme.json的合法变体，供长度与冲突负例使用。"""
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for member in archive.infolist():
+            data = archive.read(member)
+            if member.filename == "theme.json":
+                definition = json.loads(data)
+                definition.update(changes)
+                data = json.dumps(definition, ensure_ascii=False).encode()
+            target.writestr(member, data)
+    return output.getvalue()
+
+
+async def test_version_package_export_original_bytes_and_authorization(live_theme):
+    """已发布版本按原ZIP下载；越权、撤回、缺包拒绝且不改绑定。"""
+    env = live_theme
+    source, version, raw = await create_publish(env)
+    project = env.projects[0]
+    assert (await env.client.put(
+        f"/api/projects/{project.id}/theme",
+        json={"version_id": version["id"], "files": {}, "expected_generation": 0},
+    )).status_code == 200
+    response = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert response.status_code == 200, response.text
+    assert response.content == raw
+    assert response.headers["x-theme-sha256"] == version["digest"]
+    assert response.headers["x-theme-size"] == str(len(raw))
+    assert response.headers["content-type"] == "application/zip"
+    assert "attachment" in response.headers["content-disposition"]
+    assert ".theme.zip" in response.headers["content-disposition"]
+    denied = await env.client.get(f"/api/theme-versions/{version['id']}/package", headers=env.headers[1])
+    assert denied.status_code == 404 and denied.json()["detail"]["code"] == "source_denied"
+    path = f"/api/theme-sources/{source['id']}/status"
+    assert (await env.client.put(path, json={"status": "withdrawn", "reason": "导出负例"})).status_code == 200
+    withdrawn = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert withdrawn.status_code == 409 and withdrawn.json()["detail"]["code"] == "source_withdrawn"
+    assert (await env.client.put(path, json={"status": "active", "reason": "恢复导出"})).status_code == 200
+    assert (await env.client.put(path, json={"status": "disabled", "reason": "停用仍可读"})).status_code == 200
+    disabled = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert disabled.status_code == 200 and disabled.content == raw
+    assert (await env.client.put(path, json={"status": "active", "reason": "恢复导出"})).status_code == 200
+    target = env.store.root / source["id"] / f"{version['digest']}.zip"
+    target.unlink()
+    missing = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert missing.status_code == 409 and missing.json()["detail"]["code"] == "package_missing"
+    env.store.put(source["id"], raw, version["digest"])
+    os.chmod(target, 0o600)
+    target.write_bytes(b"tampered")
+    corrupt = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert corrupt.status_code == 409 and corrupt.json()["detail"]["code"] == "package_corrupt"
+    target.unlink()
+    env.store.put(source["id"], raw, version["digest"])
+    project_source, project_version, project_raw = await create_publish(env, kind="project", name="项目导出")
+    own = await env.client.get(
+        f"/api/theme-versions/{project_version['id']}/package", params={"project_id": project.id}
+    )
+    assert own.status_code == 200 and own.content == project_raw
+    foreign = await env.client.get(
+        f"/api/theme-versions/{project_version['id']}/package", params={"project_id": env.projects[1].id}
+    )
+    assert foreign.status_code == 404 and foreign.json()["detail"]["code"] == "source_denied"
+    unscoped = await env.client.get(f"/api/theme-versions/{project_version['id']}/package")
+    assert unscoped.status_code == 404 and unscoped.json()["detail"]["code"] == "source_denied"
+    binding = (await env.client.get(f"/api/projects/{project.id}/theme")).json()
+    assert binding["binding"]["version_id"] == version["id"] and binding["generation"] == 1
+
+
+async def test_import_preflight_then_target_draft_preview_publish_and_assign(live_theme):
+    """A原包导出后只读预检，B保存草稿再显式发布／分配；A绑定不变。"""
+    env = live_theme
+    source, _, _ = await create_publish(env, archive="current-research")
+    path = f"/api/theme-sources/{source['id']}"
+    candidate = (await env.client.get(path + "/candidate")).json()["package"]
+    declared_source = candidate["manifest"]["source"]
+    candidate["theme"]["version"] = "3.1-portable"
+    candidate["theme"]["name"] = "迁移混合证据"
+    candidate["manifest"]["files"] = {"facts": "application/json"}
+    candidate["theme"]["pages"].append(
+        {
+            "id": "portable-evidence",
+            "title": "迁移证据",
+            "description": "目标项目资料",
+            "layout": "reading",
+            "blocks": [
+                {
+                    "id": "facts",
+                    "type": "json",
+                    "title": "资料",
+                    "region": "main",
+                    "binding": {"kind": "file", "alias": "facts"},
+                }
+            ],
+        }
+    )
+    saved = await env.client.put(
+        path + "/definition",
+        json={"expected_revision": 1, "manifest": candidate["manifest"], "theme": candidate["theme"]},
+    )
+    assert saved.status_code == 200, saved.text
+    published = (await env.client.post(path + "/publish", json={"expected_revision": 2})).json()
+    exported = await env.client.get(f"/api/theme-versions/{published['id']}/package")
+    assert exported.status_code == 200
+    raw = exported.content
+    assert hashlib.sha256(raw).hexdigest() == published["digest"]
+
+    async with env.db() as db:
+        before = {
+            "sources": await db.scalar(text("SELECT count(*) FROM project_theme_sources")),
+            "versions": await db.scalar(text("SELECT count(*) FROM project_theme_versions")),
+            "bindings": await db.scalar(text("SELECT count(*) FROM project_theme_bindings")),
+        }
+    preflight = await env.client.post("/api/theme-imports/preflight", content=raw)
+    assert preflight.status_code == 200, preflight.text
+    summary = preflight.json()
+    assert summary["compatible"] is True
+    assert summary["digest"] == published["digest"] and summary["size"] == len(raw)
+    assert summary["manifest"] == {"formatVersion": 1, "componentAbi": 3, "source": declared_source}
+    assert summary["theme"]["version"] == "3.1-portable"
+    assert summary["files"] == [{"alias": "facts", "mediaType": "application/json"}]
+    assert any(page["id"] == "portable-evidence" for page in summary["pages"])
+    async with env.db() as db:
+        after_preflight = {
+            "sources": await db.scalar(text("SELECT count(*) FROM project_theme_sources")),
+            "versions": await db.scalar(text("SELECT count(*) FROM project_theme_versions")),
+            "bindings": await db.scalar(text("SELECT count(*) FROM project_theme_bindings")),
+        }
+    assert after_preflight == before
+
+    imported = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": summary["digest"], "name": "B迁移草稿"},
+        content=raw,
+    )
+    assert imported.status_code == 200, imported.text
+    result = imported.json()
+    assert result["created"] is True and result["version_state"] == "new_source"
+    assert result["source"]["kind"] == "personal" and result["source"]["candidate_revision"] == 1
+    assert result["source"]["candidate_digest"] == summary["digest"]
+    assert result["package"]["digest"] == summary["digest"]
+    assert env.store.read(result["source"]["id"], summary["digest"]) == raw
+    async with env.db() as db:
+        assert await db.scalar(
+            text("SELECT count(*) FROM project_theme_versions WHERE source_id=:id"), {"id": result["source"]["id"]}
+        ) == 0
+        assert await db.scalar(text("SELECT count(*) FROM project_theme_bindings")) == before["bindings"]
+
+    target = env.projects[1]
+    preview = await env.client.post(
+        f"/api/projects/{target.id}/theme/preview-file",
+        json={
+            "source_id": result["source"]["id"],
+            "revision": result["source"]["candidate_revision"],
+            "expected_generation": 0,
+            "files": {"facts": "/data.json"},
+            "alias": "facts",
+        },
+    )
+    assert preview.status_code == 200 and preview.content == b'{"samples":12}'
+    publish = await env.client.post(
+        f"/api/theme-sources/{result['source']['id']}/publish", json={"expected_revision": 1}
+    )
+    assert publish.status_code == 200, publish.text
+    target_version = publish.json()
+    assert target_version["digest"] == summary["digest"]
+    selected = await env.client.put(
+        f"/api/projects/{target.id}/theme",
+        json={"version_id": target_version["id"], "files": {"facts": "/data.json"}, "expected_generation": 0},
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["generation"] == 1
+    assert (await env.client.get(f"/api/projects/{env.projects[0].id}/theme")).json()["generation"] == 0
+    rebound = await env.client.get(
+        f"/api/theme-versions/{target_version['id']}/package", params={"project_id": target.id}
+    )
+    assert rebound.content == raw and rebound.headers["x-theme-sha256"] == summary["digest"]
+
+
+async def test_import_rejections_conflicts_and_recovery_facts(live_theme):
+    """非法包、摘要变化、内置、越权、旧修订及版本冲突分别失败。"""
+    env = live_theme
+    source, version, raw = await create_publish(env, archive="research")
+    digest = hashlib.sha256(raw).hexdigest()
+    directory = (await env.client.get("/api/theme-sources")).json()["sources"]
+    builtin = next(item for item in directory if item["kind"] == "builtin" and item["status"] == "active")
+    async with env.db() as db:
+        before = await db.scalar(text("SELECT count(*) FROM project_theme_sources"))
+    long_version = changed_theme(raw, version="v" * 161)
+    length = await env.client.post("/api/theme-imports/preflight", content=long_version)
+    assert length.status_code == 422 and length.json()["detail"]["code"] == "version_length"
+    length_import = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": hashlib.sha256(long_version).hexdigest(), "name": "超长版本"},
+        content=long_version,
+    )
+    assert length_import.status_code == 422 and length_import.json()["detail"]["code"] == "version_length"
+    summary = await env.client.post("/api/theme-imports/preflight", content=raw)
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["files"] == [{"alias": "survey", "mediaType": "application/json"}]
+    assert [asset["alias"] for asset in summary.json()["assets"]] == ["distribution"]
+    assert summary.json()["assets"][0]["size"] > 0
+    long_name = changed_theme(raw, name="名" * 161)
+    name_summary = await env.client.post("/api/theme-imports/preflight", content=long_name)
+    assert name_summary.status_code == 200, name_summary.text
+    assert name_summary.json()["warnings"] == [
+        {"code": "name_length", "message": "主题显示名超过160字符；请填写更短的目标主题名称。"}
+    ]
+    name_import = await env.client.post(
+        "/api/theme-imports", params={"digest": hashlib.sha256(long_name).hexdigest()}, content=long_name
+    )
+    assert name_import.status_code == 422 and name_import.json()["detail"]["code"] == "source_name"
+    invalid = await env.client.post("/api/theme-imports/preflight", content=b"not-a-zip")
+    assert invalid.status_code == 422 and invalid.json()["detail"]["code"] == "invalid_zip"
+    changed = await env.client.post(
+        "/api/theme-imports", params={"digest": digest, "name": "摘要不符"}, content=variant_package(raw, name="摘要不符")
+    )
+    assert changed.status_code == 409 and changed.json()["detail"]["code"] == "preflight_changed"
+    readonly = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": digest, "source_id": builtin["id"], "expected_revision": 0},
+        content=raw,
+    )
+    assert readonly.status_code == 403 and readonly.json()["detail"]["code"] == "builtin_readonly"
+    foreign = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": digest, "source_id": source["id"], "expected_revision": 1},
+        headers=env.headers[1],
+        content=raw,
+    )
+    assert foreign.status_code == 404 and foreign.json()["detail"]["code"] == "source_denied"
+    async with env.db() as db:
+        assert await db.scalar(text("SELECT count(*) FROM project_theme_sources")) == before
+
+    same = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": digest, "source_id": source["id"], "expected_revision": 1},
+        content=raw,
+    )
+    assert same.status_code == 200, same.text
+    assert same.json()["version_state"] == "published_same_bytes"
+    assert same.json()["reusable_version_id"] == version["id"]
+    assert same.json()["source"]["candidate_revision"] == 2
+    stale = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": digest, "source_id": source["id"], "expected_revision": 1},
+        content=raw,
+    )
+    assert stale.status_code == 409 and stale.json()["detail"]["code"] == "candidate_conflict"
+    different = variant_package(raw, name="同版本异字节")
+    different_digest = hashlib.sha256(different).hexdigest()
+    conflict = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": different_digest, "source_id": source["id"], "expected_revision": 2},
+        content=different,
+    )
+    assert conflict.status_code == 200, conflict.text
+    assert conflict.json()["version_state"] == "same_version_different_bytes"
+    assert conflict.json()["source"]["candidate_digest"] == different_digest
+    refused = await env.client.post(f"/api/theme-sources/{source['id']}/publish", json={"expected_revision": 3})
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "version_conflict"
+    async with env.db() as db:
+        assert await db.scalar(
+            text("SELECT count(*) FROM project_theme_versions WHERE source_id=:id"), {"id": source["id"]}
+        ) == 1
+        candidate = (
+            await db.execute(
+                text("SELECT candidate_digest,candidate_revision FROM project_theme_sources WHERE id=:id"),
+                {"id": source["id"]},
+            )
+        ).one()
+        assert candidate.candidate_digest == different_digest and candidate.candidate_revision == 3
+    exported = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert exported.content == raw
+
+
+async def test_import_existing_project_source_and_incomplete_identity(live_theme):
+    """项目专属来源导入复用原授权；新建身份写入失败留下可核实身份。"""
+    env = live_theme
+    project, other = env.projects[:2]
+    source, version, raw = await create_publish(env, kind="project", name="项目导入目标")
+    digest = hashlib.sha256(raw).hexdigest()
+    same = await env.client.post(
+        "/api/theme-imports",
+        params={"digest": digest, "source_id": source["id"], "expected_revision": 1, "project_id": project.id},
+        content=raw,
+    )
+    assert same.status_code == 200, same.text
+    assert same.json()["source"]["kind"] == "project"
+    assert same.json()["version_state"] == "published_same_bytes"
+    assert same.json()["reusable_version_id"] == version["id"]
+    for project_id in (None, other.id):
+        params = {"digest": digest, "source_id": source["id"], "expected_revision": 2}
+        if project_id:
+            params["project_id"] = project_id
+        denied = await env.client.post("/api/theme-imports", params=params, content=raw)
+        assert denied.status_code == 404 and denied.json()["detail"]["code"] == "source_denied"
+
+    async with env.db() as db:
+        before = await db.scalar(text("SELECT count(*) FROM project_theme_sources"))
+        await db.execute(
+            text("""CREATE FUNCTION reject_import_candidate() RETURNS trigger AS $$
+            BEGIN RAISE EXCEPTION 'synthetic import failure'; END; $$ LANGUAGE plpgsql""")
+        )
+        await db.execute(
+            text("""CREATE TRIGGER reject_import_candidate BEFORE UPDATE ON project_theme_sources
+            FOR EACH ROW EXECUTE FUNCTION reject_import_candidate()""")
+        )
+        await db.commit()
+    result = await env.client.post(
+        "/api/theme-imports", params={"digest": digest, "name": "导入中断身份"}, content=raw
+    )
+    assert result.status_code == 500 and result.json()["detail"]["code"] == "import_incomplete"
+    assert "导入中断身份" in result.json()["detail"]["message"]
+    async with env.db() as db:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT id,candidate_digest,candidate_revision FROM project_theme_sources "
+                    "WHERE name='导入中断身份'"
+                )
+            )
+        ).one()
+        assert row.candidate_digest is None and row.candidate_revision == 0
+        assert await db.scalar(text("SELECT count(*) FROM project_theme_sources")) == before + 1
+        assert await db.scalar(
+            text("SELECT count(*) FROM project_theme_versions WHERE source_id=:id"), {"id": row.id}
+        ) == 0
+        await db.execute(text("DROP TRIGGER reject_import_candidate ON project_theme_sources"))
+        await db.execute(text("DROP FUNCTION reject_import_candidate()"))
+        await db.commit()
+    audit = (await env.client.get(f"/api/theme-sources/{row.id}/audit")).json()
+    assert len(audit["files"]) == 1 and audit["files"][0]["state"] == "orphan"
+    cleanup = (await env.client.post(f"/api/theme-sources/{row.id}/cleanup")).json()
+    assert cleanup["files"][0]["state"] == "removed_orphan"
+
+
+async def test_import_saved_unverified_branch(live_theme):
+    """候选已提交但回读失败时明确已保存待核实，修复后可发布。"""
+    env = live_theme
+    raw = (BUILTIN / "research.theme.zip").read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    with mock.patch.object(
+        ThemeStore, "read", side_effect=ThemeError("package_missing", "synthetic read failure", 409)
+    ):
+        result = await env.client.post(
+            "/api/theme-imports", params={"digest": digest, "name": "已保存回读失败"}, content=raw
+        )
+    assert result.status_code == 500 and result.json()["detail"]["code"] == "import_saved_unverified"
+    async with env.db() as db:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT id,candidate_digest,candidate_revision FROM project_theme_sources "
+                    "WHERE name='已保存回读失败'"
+                )
+            )
+        ).one()
+        assert row.candidate_digest == digest and row.candidate_revision == 1
+        assert await db.scalar(
+            text("SELECT count(*) FROM project_theme_versions WHERE source_id=:id"), {"id": row.id}
+        ) == 0
+        assert await db.scalar(
+            text("SELECT count(*) FROM project_theme_sources WHERE name='已保存回读失败'")
+        ) == 1
+    assert (env.store.root / row.id / f"{digest}.zip").is_file()
+    published = await env.client.post(f"/api/theme-sources/{row.id}/publish", json={"expected_revision": 1})
+    assert published.status_code == 200 and published.json()["digest"] == digest
+    exported = await env.client.get(f"/api/theme-versions/{published.json()['id']}/package")
+    assert exported.status_code == 200 and exported.content == raw

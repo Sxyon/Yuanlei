@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "既有来源响应丢失后显示待核实入口",
+    "既有来源核实要求revision前进且未新增版本",
+    "显式重新核实后定位原有来源草稿"
+  ],
+  "source": "d4169564-c131-41cb-ab03-e13b2c3e6d27",
+  "beforeRevision": 6,
+  "afterRevision": 7,
+  "versions": 1,
+  "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+  "sourcesBefore": 9,
+  "sourcesAfter": 9
+}

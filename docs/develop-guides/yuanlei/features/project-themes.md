@@ -1,6 +1,6 @@
 # 项目主题的可信多页运行时
 
-状态：S04-R／M1及S05-R2工程接线已交开发验证，当前真实词汇、项目证据与混合预览由LOG58拥有；人工验收及全量未完成，S06保持暂停。
+状态：S03—S06工程已接入；S06原包导出、导入草稿、目标资料预览与隔离A／B迁移完成相关检查，人工验收及前后端全量未执行。
 类型：新增能力
 主要 Owner：[全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)
 
@@ -60,4 +60,6 @@ AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航和有限�
 
 真实词汇、Project JSON／PNG资料及准确混合预览消费见[消费决策](../decisions/implemented/2026-10-17-theme-evidence-consumption.md)。目标Workdir映射、用户身份、业务数据及generation不进入可携ZIP，原声明assets原成员可携；源码与准确协议仍由真实Owner拥有。
 
-[S06迁移与专项收尾提案](../decisions/proposed/2026-10-17-theme-portability-closeout.md)规定后继导出原包、预检／目标草稿及原发布应用，保留目标重绑和人工验收时序；当前为规划，尚未提供S06产品实现或迁移证明。
+S06新增准确已发布版本原ZIP导出、导入只读预检及目标草稿保存；导入只创建或更新草稿，不自动发布或应用，发布与分配继续沿原不可变版本和唯一Project绑定。目标实例生成自己的来源身份，项目文件alias及Workdir映射在目标重新授权；预检不落库，确认时重传并核对摘要，结果不明先回读目标草稿。实现Owner为`ProjectThemeService`、主题router、`ProjectThemeManager`及主题API，未新增导入状态表或第二套绑定。
+
+S06实现取舍见[迁移收尾决策](../decisions/implemented/2026-10-17-theme-portability-closeout.md)；实际命令、A／B证据、人工路径和未验范围由[迁移交接](../../../元垒系统架构规划设计/图解/33-theme-migration-20261017/README.md)及[LOG第60节](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md#_60-s06主题迁移、专项收尾与试运行交接-2026-10-17)拥有。人工验收及前后端全量未完成，不将相关检查当作最终验收。

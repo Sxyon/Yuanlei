@@ -8,6 +8,18 @@ const sourcePath = (id, action, projectId, extra) => `/api/theme-sources/${encod
 export const projectThemeApi = {
   catalog: projectId => apiGet(`/api/theme-sources?${query(projectId)}`, { cache: 'no-store' }),
   create: body => apiPost('/api/theme-sources', body),
+  preflightImport: file => apiRequest('/api/theme-imports/preflight', { method: 'POST', body: file, headers: { 'Content-Type': 'application/zip' } }),
+  importDraft: (file, params) => apiRequest(`/api/theme-imports?${buildQuery(params)}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/zip' } }),
+  async exportVersion(versionId, projectId) {
+    const response = await apiGet(`/api/theme-versions/${encodeURIComponent(versionId)}/package?${query(projectId)}`, { cache: 'no-store' }, true, 'blob')
+    const blob = await response.blob()
+    return {
+      blob,
+      filename: attachmentFilename(response.headers.get('Content-Disposition')) || 'theme.zip',
+      digest: response.headers.get('X-Theme-Sha256') || '',
+      size: Number(response.headers.get('X-Theme-Size')) || blob.size
+    }
+  },
   candidate: (id, projectId) => apiGet(sourcePath(id, 'candidate', projectId), { cache: 'no-store' }),
   upload: (id, projectId, revision, file) => apiRequest(sourcePath(id, 'candidate', projectId, { expected_revision: revision }), { method: 'PUT', body: file, headers: { 'Content-Type': 'application/zip' } }),
   edit: (id, projectId, body) => apiPut(sourcePath(id, 'definition', projectId), body),
@@ -51,6 +63,16 @@ export function createProjectThemeLoader(projectId) {
       return { ...result.package, selection: result }
     }
   }
+}
+
+/** 优先读取服务端UTF-8下载名，回退到ASCII文件名。 */
+function attachmentFilename(disposition) {
+  if (!disposition) return ''
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  if (encoded) {
+    try { return decodeURIComponent(encoded) } catch { /* 回退到ASCII文件名。 */ }
+  }
+  return /filename="([^"]+)"/i.exec(disposition)?.[1] || ''
 }
 
 /** 响应元数据取服务端同一字节声明，宿主独立校验指纹与长度。 */

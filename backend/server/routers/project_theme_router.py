@@ -1,6 +1,8 @@
 """项目主题HTTP适配，认证与有界上传在请求边界执行。"""
 
+import re
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.routing import APIRoute
@@ -120,10 +122,49 @@ class PreviewFileInput(ClosedInput):
         return self
 
 
+async def read_archive(request: Request):
+    """导入预检与确认共用有界原始ZIP读取。"""
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > MAX_ARCHIVE_BYTES:
+            raise ThemeError("archive_limit", "压缩包超过8 MiB", 413)
+    return bytes(raw)
+
+
 @project_themes.get("/theme-sources")
 async def catalog(project_id: str | None = None, svc=Depends(service)):
     """读取真实有权来源目录。"""
     return await svc.catalog(project_id)
+
+
+@project_themes.post("/theme-imports/preflight")
+async def preflight_import(request: Request, _user=Depends(get_required_user)):
+    """只读预检上传包，不创建来源、候选或绑定。"""
+    return await ProjectThemeService.preflight_import(await read_archive(request))
+
+
+@project_themes.post("/theme-imports")
+async def import_theme(
+    request: Request,
+    digest: str = Query(pattern=r"^[a-f0-9]{64}$"),
+    source_id: str | None = Query(default=None, max_length=36),
+    expected_revision: int | None = Query(default=None, ge=0),
+    project_id: str | None = Query(default=None, max_length=64),
+    name: str | None = Query(default=None, max_length=160, pattern=r"^[^\x00]*$"),
+    description: str = Query(default="", max_length=2000, pattern=r"^[^\x00]*$"),
+    svc=Depends(service),
+):
+    """确认后只保存草稿；服务重新解析实际字节并核对预检摘要。"""
+    return await svc.import_draft(
+        await read_archive(request),
+        digest,
+        source_id=source_id,
+        expected_revision=expected_revision,
+        project_id=project_id,
+        name=name,
+        description=description,
+    )
 
 
 @project_themes.post("/theme-sources")
@@ -192,6 +233,32 @@ async def version(version_id: str, project_id: str | None = None, svc=Depends(se
     """读取准确授权版本的S03加载DTO。"""
     loaded, _ = await svc.version(version_id, project_id)
     return svc.dto(loaded["parsed"], version_id)
+
+
+def package_filename(theme):
+    """文件名只由主题显示名与版本生成，不暴露宿主路径。"""
+    raw = f"{theme.name}-{theme.version}"
+    clean = re.sub(r"[^\w.\-]+", "_", raw, flags=re.UNICODE).strip("._")[:120] or "theme"
+    fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", clean).strip("._")[:80] or "theme"
+    return f"{clean}.theme.zip", f"{fallback}.theme.zip"
+
+
+@project_themes.get("/theme-versions/{version_id}/package")
+async def export_version(version_id: str, project_id: str | None = None, svc=Depends(service)):
+    """下载授权版本原ZIP字节；不携项目业务、绑定或宿主路径。"""
+    loaded = await svc.export_version(version_id, project_id)
+    name, fallback = package_filename(loaded["parsed"].definition.theme)
+    return Response(
+        loaded["raw"],
+        media_type="application/zip",
+        headers={
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+            "X-Theme-Sha256": loaded["parsed"].digest,
+            "X-Theme-Size": str(len(loaded["raw"])),
+            "Content-Disposition": f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(name)}",
+        },
+    )
 
 
 @project_themes.get("/theme-versions/{version_id}/assets")

@@ -1,0 +1,149 @@
+{
+  "instances": {
+    "A": {
+      "api": "http://127.0.0.1:15064",
+      "db": "yuanlei_s04_repair_evidence",
+      "source": "f9f2762c-2114-44bb-8060-60f07090aa60",
+      "version": "360c5fce-4d21-4af8-a160-8b2015abc54a"
+    },
+    "B": {
+      "api": "http://127.0.0.1:15065",
+      "db": "yuanlei_s06_evidence_b",
+      "source": "d4169564-c131-41cb-ab03-e13b2c3e6d27",
+      "version": "1b45987d-e26e-4670-8128-e7580e61c141"
+    }
+  },
+  "original": {
+    "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+    "size": 1002
+  },
+  "counts": {
+    "A": {
+      "sources": "12",
+      "versions": "13",
+      "bindings": "6"
+    },
+    "B": {
+      "sources": "8",
+      "versions": "9",
+      "bindings": "2"
+    }
+  },
+  "pgRows": {
+    "A_version": "3.1.0-r2|353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|1002|2",
+    "A_binding": "04a1681b-02b9-47c8-ac57-54f1d8eb7562|22|{}",
+    "B_source": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|1|personal",
+    "B_version": "3.1.0-r2|353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|1002|1",
+    "B_binding": "34248024-60a6-497a-bc24-48bdf9b8370d|3|{}",
+    "B_control_binding": "b9e42381-4917-49fe-b312-4f354deed46d|1|{}"
+  },
+  "files": {
+    "A_store": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+    "B_store": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+    "B_workdir_facts": "2e4909f40315c19ca830c351aa1eb2b86f11f4e74a40fef919bea9cfe46f42c8",
+    "B_workdir_chart": "0524559890ebb4876bb92dfb489a357ae7e455a2c3cd8ce297552e7c9c5caed7"
+  },
+  "preview": {
+    "facts_sha256": "2e4909f40315c19ca830c351aa1eb2b86f11f4e74a40fef919bea9cfe46f42c8",
+    "facts_origin": "B",
+    "chart_sha256": "0524559890ebb4876bb92dfb489a357ae7e455a2c3cd8ce297552e7c9c5caed7"
+  },
+  "negative": [
+    {
+      "case": "A token on B",
+      "status": 401,
+      "code": null,
+      "passed": true
+    },
+    {
+      "case": "B token on A",
+      "status": 401,
+      "code": null,
+      "passed": true
+    },
+    {
+      "case": "foreign source",
+      "status": 404,
+      "code": "source_denied",
+      "passed": true
+    },
+    {
+      "case": "foreign project",
+      "status": 404,
+      "code": "project_denied",
+      "passed": true
+    },
+    {
+      "case": "invalid zip",
+      "status": 422,
+      "code": "invalid_zip",
+      "passed": true
+    },
+    {
+      "case": "unsupported ABI",
+      "status": 422,
+      "code": "package_contract",
+      "passed": true
+    },
+    {
+      "case": "preflight digest mismatch",
+      "status": 409,
+      "code": "preflight_changed",
+      "passed": true
+    },
+    {
+      "case": "builtin target",
+      "status": 403,
+      "code": "builtin_readonly",
+      "passed": true
+    },
+    {
+      "case": "stale candidate revision",
+      "status": 409,
+      "code": "candidate_conflict",
+      "passed": true
+    },
+    {
+      "case": "same version different bytes",
+      "status": 409,
+      "code": "version_conflict",
+      "passed": true
+    },
+    {
+      "case": "unbound alias",
+      "status": 409,
+      "code": "file_unbound",
+      "passed": true
+    },
+    {
+      "case": "wrong JSON media",
+      "status": 422,
+      "code": "invalid_json",
+      "passed": true
+    },
+    {
+      "case": "wrong PNG media",
+      "status": 422,
+      "code": "invalid_png",
+      "passed": true
+    },
+    {
+      "case": "missing file",
+      "status": 404,
+      "code": "file_missing",
+      "passed": true
+    },
+    {
+      "case": "old generation",
+      "status": 409,
+      "code": "binding_conflict",
+      "passed": true
+    }
+  ],
+  "writeAfterVerify": {
+    "candidate": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|3",
+    "version": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|1002",
+    "bindingGeneration": 3,
+    "exportDigest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4"
+  }
+}

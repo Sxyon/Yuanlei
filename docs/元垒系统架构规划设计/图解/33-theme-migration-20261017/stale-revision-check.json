@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "旧revision确认409后显示已刷新目录",
+    "目标候选修订已从目录刷新",
+    "409后文件、预检摘要和目标输入保留",
+    "409后UI目标显示刷新后的修订"
+  ],
+  "staleRevision": 7,
+  "currentRevision": 8,
+  "sources": 9,
+  "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4"
+}

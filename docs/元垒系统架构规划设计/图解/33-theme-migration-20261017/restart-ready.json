@@ -1,0 +1,53 @@
+{
+  "generatedBy": "backend/test/e2e/project_theme_migration_restart.py",
+  "restart": "done",
+  "health": {
+    "status": "ok",
+    "message": "进程正常运行",
+    "version": "0.7.3"
+  },
+  "ready": {
+    "httpStatus": 503,
+    "body": {
+      "status": "not_ready",
+      "degraded": false,
+      "checks": {
+        "startup": {
+          "status": "error",
+          "code": "not_complete"
+        },
+        "postgres": {
+          "status": "ok"
+        },
+        "redis": {
+          "status": "ok"
+        },
+        "worker": {
+          "status": "ok"
+        }
+      },
+      "components": {},
+      "version": "0.7.3"
+    },
+    "note": "A/B沿用既有project_theme_app证据入口，运行真实routers、认证、PG、migrator与主题文件域，但不执行server.main完整lifespan；startup not_complete不代表主题链路不可用，本证据以真实API成功、绑定回读和文件hash闭合。"
+  },
+  "B1": {
+    "status": 200,
+    "generation": 3,
+    "version": "34248024-60a6-497a-bc24-48bdf9b8370d"
+  },
+  "B2": {
+    "status": 200,
+    "generation": 1,
+    "version": "b9e42381-4917-49fe-b312-4f354deed46d"
+  },
+  "A": {
+    "status": 200,
+    "generation": 22,
+    "version": "04a1681b-02b9-47c8-ac57-54f1d8eb7562"
+  },
+  "crossTokens": {
+    "AonB": 401,
+    "BonA": 401
+  }
+}

@@ -123,6 +123,129 @@ class ProjectThemeService:
         await self.db.commit()
         return await self.candidate(source_id, project_id)
 
+    @staticmethod
+    async def preflight_import(raw):
+        """只读解析上传包，返回兼容性、页面、素材与文件要求，不写任何状态。"""
+        parsed = await asyncio.to_thread(parse_package, raw)
+        definition = parsed.definition
+        if len(definition.theme.version) > 160 or "\x00" in definition.theme.version:
+            raise ThemeError("version_length", "版本标识超过160字符或包含NUL，目标无法发布", 422)
+        warnings = []
+        if len(definition.theme.name) > 160:
+            warnings.append(
+                {"code": "name_length", "message": "主题显示名超过160字符；请填写更短的目标主题名称。"}
+            )
+        pages = [
+            {"id": page.id, "title": page.title, "layout": page.layout, "capability": page.capability}
+            for page in definition.theme.pages
+        ]
+        assets = [
+            {
+                "alias": alias,
+                "path": asset.path,
+                "mediaType": asset.mediaType,
+                "size": len(parsed.assets[alias]),
+                "sha256": asset.sha256,
+            }
+            for alias, asset in definition.manifest.assets.items()
+        ]
+        return {
+            "compatible": True,
+            "digest": parsed.digest,
+            "size": parsed.size,
+            "theme": {
+                "id": definition.theme.id,
+                "version": definition.theme.version,
+                "name": definition.theme.name,
+                "topicLabel": definition.theme.topicLabel,
+                "baseVersion": definition.theme.baseVersion,
+                "presentation": definition.theme.presentation,
+                "density": definition.theme.density,
+                "accent": definition.theme.accent,
+                "hiddenCapabilities": definition.theme.hiddenCapabilities,
+                "capabilities": [page.capability for page in definition.theme.pages if page.capability],
+            },
+            "manifest": {
+                "formatVersion": definition.manifest.formatVersion,
+                "componentAbi": definition.manifest.componentAbi,
+                "source": definition.manifest.source,
+            },
+            "pages": pages,
+            "files": [{"alias": alias, "mediaType": media} for alias, media in definition.manifest.files.items()],
+            "assets": assets,
+            "warnings": warnings,
+        }
+
+    async def import_draft(
+        self,
+        raw,
+        expected_digest,
+        *,
+        source_id=None,
+        expected_revision=None,
+        project_id=None,
+        name=None,
+        description="",
+    ):
+        """确认后保存原包草稿；来源身份与发布／应用状态保持独立。"""
+        parsed = await asyncio.to_thread(parse_package, raw)
+        if parsed.digest != expected_digest:
+            raise ThemeError("preflight_changed", "上传字节与预检摘要不一致，请重新预检", 409)
+        if len(parsed.definition.theme.version) > 160 or "\x00" in parsed.definition.theme.version:
+            raise ThemeError("version_length", "版本标识超过160字符或包含NUL，目标无法发布", 422)
+        if source_id:
+            if expected_revision is None:
+                raise ThemeError("candidate_revision_required", "写入既有主题必须携带当前候选修订", 422)
+            result = await self.save_candidate(source_id, raw, expected_revision, project_id)
+            created = False
+        else:
+            target_name = (name or parsed.definition.theme.name).strip()
+            if not target_name or len(target_name) > 160 or "\x00" in target_name:
+                raise ThemeError("source_name", "目标主题名称必须为1—160字符且不含NUL", 422)
+            source = await self.create(target_name, description.strip() or "从主题包导入", "personal")
+            try:
+                result = await self.save_candidate(source["id"], raw, 0)
+            except Exception as exc:
+                await self.db.rollback()
+                try:
+                    current = await self.source(source["id"], None, maintain=True)
+                except Exception:
+                    current = None
+                if current and current["candidate_digest"] == parsed.digest:
+                    try:
+                        result = await self.candidate(source["id"])
+                    except Exception as read_exc:
+                        raise ThemeError(
+                            "import_saved_unverified",
+                            f"主题身份“{target_name}”的草稿已保存但回读失败；请重新核实该身份，不要重复导入。",
+                            500,
+                        ) from read_exc
+                else:
+                    raise ThemeError(
+                        "import_incomplete",
+                        f"主题身份“{target_name}”已建立，草稿保存结果未确认；请打开该身份核对并重新上传此ZIP，不要重复导入。",
+                        500,
+                    ) from exc
+            created = True
+        versions = await self.repo.versions(result["source"]["id"])
+        conflict = next(
+            (version for version in versions if version["version"] == parsed.definition.theme.version), None
+        )
+        if conflict is None:
+            version_state, reusable_version_id = ("new_source" if created else "new_version"), None
+        elif conflict["digest"] == parsed.digest:
+            version_state, reusable_version_id = "published_same_bytes", conflict["id"]
+        else:
+            version_state, reusable_version_id = "same_version_different_bytes", None
+        return {
+            **result,
+            "created": created,
+            "digest": parsed.digest,
+            "size": parsed.size,
+            "version_state": version_state,
+            "reusable_version_id": reusable_version_id,
+        }
+
     async def edit_candidate(self, source_id, definition, expected_revision, project_id=None):
         """编辑受控JSON，资源内容只通过替换候选ZIP改变。"""
         source = await self.source(source_id, project_id, lock=True, maintain=True)
@@ -196,6 +319,13 @@ class ProjectThemeService:
         if parsed.size != version["size"] or parsed.definition.theme.version != version["version"]:
             raise ThemeError("package_corrupt", "发布记录与包内容不一致", 409)
         return {"raw": raw, "parsed": parsed, "version": version}, source
+
+    async def export_version(self, version_id, project_id=None):
+        """下载授权版本原ZIP；摘要由存储回读闭合，不重新打包。"""
+        loaded, _ = await self.version(version_id, project_id)
+        if loaded["parsed"].digest != loaded["version"]["digest"]:
+            raise ThemeError("package_corrupt", "发布记录与包摘要不一致", 409)
+        return loaded
 
     async def binding(self, project_id):
         """返回准确持久选择及其故障原因，始终保留原绑定。"""

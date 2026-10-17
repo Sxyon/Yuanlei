@@ -1,0 +1,14 @@
+原包成员与导出说明
+
+调研 · 依据阅读 · 1.0.0
+
+SHA-256 4747c05a6073ffc648fd1b5a171547b591b1a2dde9ce8eb57efba904088c54e0 · 18137 字节
+
+包内只含主题定义与作者声明素材；不自动携带项目绑定、文件路径、业务数据、凭据或身份。作者写入素材的内容原样保留，导出不承诺自动脱敏。
+
+项目文件alias（目标项目需重新绑定）
+survey · application/json
+包内素材
+distribution · assets/survey.png · image/png · 695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb
+下载原包
+关 闭

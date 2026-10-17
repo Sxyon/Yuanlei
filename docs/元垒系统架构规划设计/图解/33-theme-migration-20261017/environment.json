@@ -1,0 +1,45 @@
+{
+  "generatedBy": "per-file snapshot of the evidence code; aggregate diff intentionally not used",
+  "branch": "codex/dashboard",
+  "head": "6869da4de2b75ffe2efc0c15a37067eb007c9456",
+  "workingTree": "uncommitted S06 changes; file hashes below are the evidence code",
+  "image": "sha256:cd10bf612c13adfdcd681e73e0480816a7d10721ebe912513836a84794eb4b56",
+  "formatVersion": 1,
+  "componentAbi": [
+    1,
+    2,
+    3
+  ],
+  "baseVersion": 1,
+  "instances": {
+    "A": {
+      "container": "yuanlei-s04-repair",
+      "api": "http://127.0.0.1:15064",
+      "web": "http://127.0.0.1:15174",
+      "db": "yuanlei_s04_repair_evidence",
+      "instanceId": "instance-555d31511e2acb66"
+    },
+    "B": {
+      "container": "yuanlei-s06-b",
+      "api": "http://127.0.0.1:15065",
+      "web": "http://127.0.0.1:15175",
+      "db": "yuanlei_s06_evidence_b",
+      "instanceId": "instance-s06-b-evidence"
+    }
+  },
+  "files": {
+    "backend/package/yuxi/services/project_theme_service.py": "92d195fdd80869e5e29e65923c5494e4cb81da6300284ea0a0667d27d7e28f05",
+    "backend/server/routers/project_theme_router.py": "04c776892eb390167473ad02b5c39450df76b46ef9f35b745c58f4c6df228e83",
+    "backend/test/integration/api/test_project_themes_api.py": "939150197d69c4ce3436d287a6f3c17a94bffa28334d0b1ebfe448ae257117c8",
+    "web/src/apis/project_theme_api.js": "b632afcc39c309b6c969c4d88b4008b1a244f8478e28bd49b96e92db395ea4b5",
+    "web/src/components/project/ProjectThemeManager.vue": "3d231513693b1c55d4799e7034e2aa17cbe413dc6c8d4808d6b8c3478734694a",
+    "backend/test/e2e/project_theme_migration_app.py": "d21df2e3cc2455c249390067121ae686d6759fa5c4d6855a717d5836440d12e2",
+    "backend/test/e2e/project_theme_migration_browser.py": "2869d15fbdb9572da18ceb8d7ab1978dc2f5d55260e34dd4223d226e913f27e7",
+    "backend/test/e2e/project_theme_migration_evidence.py": "faf5450273c56f5e710f545c8e24605e5ecf5c820522250c49deea9052befb21",
+    "backend/test/e2e/project_theme_migration_recovery.py": "de9d5ad3317432392e63c8f43c5ff2fe330ae38667855a9233e0b5f734641476",
+    "backend/test/e2e/project_theme_migration_existing_recovery.py": "aeda204b9499c9c2e8aa2373436b3e6d65014a87791c111c5eb4e5c0c1dd063d",
+    "backend/test/e2e/project_theme_migration_stale.py": "e33bd60cfff405f6bb87cf5b10ebc5876724a46cfdf0448daa460c2a13f5a0f8",
+    "backend/test/e2e/project_theme_migration_restart.py": "d843480dc33540fadc8ff866bc4da307c04196d4230643ee6343412a14abe355",
+    "backend/test/e2e/start_project_theme_migration_b.sh": "2170eb33a7e38832faf9cf2f782d75538547493b35445a009a41ee1f3a3a73cc"
+  }
+}

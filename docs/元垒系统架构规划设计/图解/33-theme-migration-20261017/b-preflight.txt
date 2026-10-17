@@ -1,0 +1,36 @@
+导入主题包
+
+选择本平台导出的主题ZIP。预检只读，不创建来源或修改草稿；确认后仅保存目标草稿，不自动发布或应用。
+
+选择主题包 ZIP
+
+已选择：a-original.theme.zip（1002 字节）
+
+只读预检
+
+S05-R2证据 · 调研 · 阅读工作室 · 3.1.0-r2 · 课题
+
+作者声明：平台当前项目主题 · 包内 theme.id：current-research
+
+SHA-256 353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4 · 1002 字节 · format 1 · ABI 3 · 基础界面 1
+
+能力：overview、blueprints、topics、plans、work、inspection、files、agents、settings · 呈现 research
+
+页面 10 个
+项目文件要求 2 项
+facts · application/json
+chart · image/png
+
+保存后需在目标项目重新绑定这些alias；未绑定不能应用。
+
+包内素材 0 项
+保存到
+新建我的主题草稿（默认）
+写入既有主题草稿
+目标主题名称
+说明（可选）
+
+新建独立个人来源；重复导入不会覆盖已有主题，也不会自动发布或应用到项目。
+
+确认保存草稿
+取 消

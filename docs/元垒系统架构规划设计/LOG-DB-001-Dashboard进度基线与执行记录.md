@@ -1525,3 +1525,45 @@ S06先开发和相关自检，再交准确发布版下载、B预检与草稿、�
 工程信任检查通过（212 decisions／23 features／5 workflows／5 AGENTS／386 docs／42 routers／345 web sources），检查器71项单测通过，177个本轮相对链接目标无缺失，git diff --check通过。文档构建初轮因README将静态HTML索引当作Markdown路由而失败，已改原生链接；最终完整docs build通过（80.43s），保留大chunk提示。以上为文档相关检查，不是产品全量。
 
 独立Reviewer只读核源码与规划，发现旧DEV入口仍指向第11节并以现在时暂停S06；已精确标记历史范围，统一SYS16／DEV7为当前领取入口，原S07不自动接续。最终复核无剩余阻断。源码／规划复核不替代S06实现或人工验收。未画图、未运行产品或全量测试、未改变日常配置和数据；本轮仅9份文档／索引改动，留在工作区。
+
+## 60. S06主题迁移、专项收尾与试运行交接（2026-10-17）
+
+### 用户依据与本轮范围
+
+用户在当前工作区、当前分支明确执行S06：以S04-R-M1、S05-R2为已有基础，开工核最新代码与实际出口，不重复实现，不把历史未验记录改为通过；闭合“准确版本导出→目标实例导入预检→保存草稿→目标项目真实预览→明确发布→明确分配→重启保持与切回恢复”，随后进入试运行。用户要求开发中只做相关检查，人工反馈修完并明确验收后才跑全量；本阶段不画图、不跑全量、不拆批凑全量。起点分支`codex/dashboard`、HEAD`6869da4`、工作区干净；业务代码基线为`24416a40`。读取根／backend／web／专项AGENTS、SYS第16节、DEV第7节及LOG第59节，并按真实router／service／repository／ThemeStore／前端组件重建现状。
+
+### 基础核对与实际缺口
+
+沿用既有`ProjectThemeService`、`ProjectThemeRepository`、`ThemeStore`、`parse_package`、来源状态、候选revision、不可变版本和唯一Project绑定。已有复制／候选编辑／发布／分配／恢复、真实词汇／JSON／PNG／混合预览。实际缺口是：正式HTTP只有版本定义DTO，没有原ZIP下载；没有导入预检和确认保存草稿；没有导入入口、目标来源选择、结果不明核实。S01—S05的旧人工确认和全量状态保持原LOG事实，本轮未重测前段整包，也未把S04-R-M1／S05-R2报告改写成人工通过。
+
+### 实现结果
+
+- **原包导出**：`ProjectThemeService.export_version`按准确版本重新授权并回读`ThemeStore`原ZIP，校验digest／size／version；`GET /api/theme-versions/{id}/package`返回`application/zip`、原字节SHA-256、安全文件名。停用来源可读，撤回／越权／缺包／坏包拒绝。前端“包成员”可先查看项目文件alias、包内素材和不携内容；“导出原包”独立下载；提示明确作者素材原样保留、不承诺脱敏。
+- **导入预检**：`POST /api/theme-imports/preflight`有界接收ZIP，复用`parse_package`返回format／ABI／基础版本、页面、能力、文件alias、素材清单、摘要和长度警告；不创建来源、候选或绑定。
+- **确认草稿**：`POST /api/theme-imports`确认时重传实际字节，服务重新解析并核对预检摘要；默认新建个人来源草稿，也可写入有权维护的既有来源（含项目专属），核candidate revision；内置来源拒绝。只保存草稿，不自动发布、应用或覆盖发布版。
+- **接续与恢复**：导入后定位准确草稿；预览复用S05临时文件映射；发布走不可变版本，分配才改变Project绑定。导入响应丢失先回读有权目录和目标候选，记录确认前revision，要求revision前进且digest匹配；409候选冲突刷新目录并保留输入；新建身份写入中断保留身份并提示重新上传，不重复创建。
+- **前端落点**：`web/src/apis/project_theme_api.js`新增预检／导入／原包下载；`ProjectThemeManager.vue`增加导入弹窗、预检摘要、目标选择、包成员、文件映射、recovery、离开保护和项目来源提示。未新增导入状态表、第二套绑定、自动发布或前端伪授权。
+
+### 相关检查与真实证据
+
+**后端真实HTTP／PG／ZIP**：`docker compose exec -T api uv run --no-sync pytest test/integration/api/test_project_themes_api.py -q -k "export or import"`，5项通过、24项未选（33.54s）。覆盖原包字节、越权／撤回／停用／缺包／坏包、预检零写与含素材摘要、取消、新建与既有／项目专属来源、错误project、旧revision、同版本同／异字节、版本长度预检与确认、内置目标、文件alias错误类型／缺文件／旧generation、新建身份写入中断及孤儿清理、已保存但回读失败（`import_saved_unverified`）的恢复后发布。`uv run --group test`因容器内`/app/uv.lock`只读无法同步，改用镜像已有依赖的`--no-sync`；pytest缓存目录无写权限warning保留，不计为产品失败。
+
+**前端相关检查**：`node --test --test-concurrency=1 test/unit/projectThemeSwitch.test.js test/unit/projectThemePreview.test.js test/unit/projectThemeLive.test.js test/unit/projectThemeDraft.test.js test/unit/projectThemeContract.test.js` 31项通过（28.09s）；`pnpm run lint:check`通过；`pnpm run build`通过（6.92s，保留既有大chunk提示）。S05既有SSR路由提示保留，未新增失败。
+
+**隔离A／B真实迁移**：[迁移证据与人工路径](图解/33-theme-migration-20261017/README.md)拥有详细操作和截图。A为`yuanlei-s04-repair`／`yuanlei_s04_repair_evidence`／15064，B为`yuanlei-s06-b`／`yuanlei_s06_evidence_b`／15065，前端15174／15175；不同数据库、主题文件卷、用户Workdir和`YUXI_INSTANCE_ID`，共享同一PG进程。A token在B、B token在A均401。真实浏览器36项检查、201次API请求、0页面脚本错误：A包成员与导出→B预检（零写）→取消（零写）→导入草稿rev1（无版本、未发布）→目标B1资料预览（B的JSON／PNG）→发布（同digest）→分配（B1 generation推进、B2不变）→重启→切回旧默认；另以3项新来源响应丢失、3项既有来源响应丢失、4项旧revision并发（含409后目标修订、文件和预检摘要保留）及下载文件名、含素材包成员截图补充；A来源候选、来源／版本计数、项目绑定与当前摘要不变；B再导出与A原包逐字节一致。证据见[浏览器检查](图解/33-theme-migration-20261017/browser-checks.json)、[HTTP／PG／ZIP／Workdir及15项负例](图解/33-theme-migration-20261017/http-pg-files.json)、[新来源响应丢失恢复](图解/33-theme-migration-20261017/recovery-check.json)、[既有来源响应丢失恢复](图解/33-theme-migration-20261017/existing-recovery-check.json)、[旧revision并发刷新](图解/33-theme-migration-20261017/stale-revision-check.json)、[下载文件名](图解/33-theme-migration-20261017/download-filename-check.json)及截图。
+
+**证据边界与复现**：A／B沿用既有`project_theme_app`证据入口，运行真实routers、认证、PG、migrator、主题文件域和前端，但不执行`server.main`完整startup lifespan；`/api/system/ready`的`startup`为`not_complete`（503），`/health`、主题API、PG、ZIP和DOM均正常。本证据不宣称平台全量ready；这是证据服务边界，不是主题链路失败。[环境代码／文件摘要](图解/33-theme-migration-20261017/environment.json)记录HEAD、镜像、format／ABI和实际文件hash；[重启回读](图解/33-theme-migration-20261017/restart-ready.json)记录重启后A／B绑定与跨实例token结果。完整环境变量、B启动、两个前端源和六个证据脚本的执行顺序见[证据README的复现命令](图解/33-theme-migration-20261017/README.md#复现命令)；会话凭据不写入文档或Git。
+
+### 独立Review与修复
+
+全新不继承开发上下文的Reviewer核对了完整需求、diff、测试、证据和文档，未发现代码级阻断或越权／自动发布／第二套绑定。首轮高问题（LOG60缺失、导出成员／提示）已闭合；随后二轮复核发现入口文档仍把S06当未实施、A/B证据缺少可复制命令、409证据未断言刷新后修订与输入、既有来源响应丢失／`import_saved_unverified`缺少直接证据。已补：更新DEV-DB-001／DEV-MG-002当前入口并指向LOG60；新增[证据复现命令](图解/33-theme-migration-20261017/README.md#复现命令)与B启动脚本；409脚本断言UI目标显示刷新后修订并保留文件／摘要；新增既有草稿结果不明核实与已保存未核实分支的直接证据；同时补预检版本长度、项目专属来源、错误project、身份写入中断、停用／坏包导出、404错误码、存储hash、预览加载保护、来源切换包成员状态重置和项目来源提示。未做其他UI故障注入；409为单浏览器加外部HTTP推进revision，并回读目录及UI刷新后修订、文件与预检摘要保留。
+
+### 未验、限制与试运行交接
+
+前后端全量unit／integration／E2E未运行；人工验收未完成；S01—S05旧人工确认／全量状态保持原LOG，未补记通过。新增包成员、导入弹窗、恢复态和旧revision刷新只验证1440浅色真实页面；暗色、375／768窄屏、所有控件组合、跨浏览器矩阵和平台全量`/ready`未验。未运行付费模型、组织协作、外部执行器或生产数据演练；日常库、日常主题文件和三套内置ZIP未被覆盖或自动升级；协作接入与Andon继续暂停。
+
+S06当前只能交“开发交付待人工验收”，不能宣布专项最终完成。用户反馈修完并明确验收后，按当轮约定执行前后端全量；全量通过后再固定已验收代码／主题版本并进入试运行。试运行从实际项目管理、蓝图／议题／讨论／决定、计划／工作、证据资料和主题维护出发，实际问题继续记入本LOG后续试运行节；普通视觉／体验改进在试运行处理，数据丢失、越权、绑定错乱、核心办理或恢复不可用仍在专项内修复。原S07核心已前置，不自动启动整包S07；Agent专用主题生成／维护工具、有限自主发布授权、丰富素材库、更多格式、团队权限和第三方平台适配仍为后继目标。
+
+**工程与文档检查**：`python3 scripts/verify_engineering_contracts.py`通过（212 decisions／23 yuanlei features／5 workflows／5 agents files／387 docs／42 routers／345 web sources）；`python3 -m unittest scripts.test_verify_engineering_contracts` 71项通过（6.236s）；docs build通过（32.22s，保留既有大chunk提示）；`git diff --check`通过。首轮docs build因决策记录相对链接少一级而失败，已改到正确目录后重跑通过；没有扩大`ignoreDeadLinks`。首轮导出测试在注入损坏字节时因存储文件0444权限失败，测试显式`chmod`并先删除损坏文件后恢复，产品代码未因此放宽文件权限。SYS16／DEV7／README、Feature、Decision及迁移交接的相对链接和LOG60锚点已核对。
+
+本轮未提交commit；改动已留在当前工作区并stage，可复核后提交。

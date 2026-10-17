@@ -1,0 +1,1250 @@
+{
+  "checks": [
+    "A导出前展示包成员与不携内容",
+    "A导出原包摘要与版本记录一致",
+    "A下载完成提示展示原包SHA-256",
+    "A原包字节与容器存储逐字节一致",
+    "B真实业务议题已创建",
+    "B预检展示版本与原包摘要",
+    "B预检展示目标项目文件alias要求",
+    "B预检展示format与ABI兼容信息",
+    "B只读预检不创建来源、版本或绑定",
+    "取消预检不产生来源或候选写入",
+    "B导入定位准确草稿修订与原摘要",
+    "B导入只保存草稿，未自动发布",
+    "B编辑器显示导入草稿定义",
+    "B草稿预览进入只读模式",
+    "预览不改变B持久主题选择",
+    "B预览读取B自己的PNG资料",
+    "B预览读取B自己的JSON资料",
+    "B直接发布生成相同原包摘要",
+    "B发布只新增一条不可变版本",
+    "B明确分配后推进唯一绑定",
+    "B对照项目选择未改变",
+    "B绑定generation与PG一致",
+    "B项目页读取准确已分配版本",
+    "B项目页展示B自己的业务议题",
+    "B重启后准确版本选择保持",
+    "B重启后业务与资料仍可读取",
+    "B显式切回旧主题并推进generation",
+    "B切回后读取旧主题版本",
+    "A导出源候选摘要与修订不变",
+    "A来源、版本与项目绑定在迁移后不变",
+    "A项目当前主题及摘要不变",
+    "B发布版本可再次导出",
+    "B发布后再导出与A原包字节一致",
+    "B发布版本文件与A原包摘要一致",
+    "B导出响应摘要与A原包一致",
+    "浏览器无页面脚本错误"
+  ],
+  "requests": [
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/health",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/auth/check-first-run",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/auth/oidc/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/auth/token",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-sources/f9f2762c-2114-44bb-8060-60f07090aa60/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-versions/360c5fce-4d21-4af8-a160-8b2015abc54a",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-versions/360c5fce-4d21-4af8-a160-8b2015abc54a/package",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15174",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/health",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/check-first-run",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/oidc/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/token",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-imports/preflight",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-imports/preflight",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-imports",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources/d4169564-c131-41cb-ab03-e13b2c3e6d27/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources/d4169564-c131-41cb-ab03-e13b2c3e6d27/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/topics",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/blueprint",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/decisions",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/preview-file",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/preview-file",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources/d4169564-c131-41cb-ab03-e13b2c3e6d27/candidate",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources/d4169564-c131-41cb-ab03-e13b2c3e6d27/publish",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-versions/1b45987d-e26e-4670-8128-e7580e61c141",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/check",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/check",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/check",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/topics",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/blueprint",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/decisions",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/files",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/files",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/topics",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/work/tasks",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/decisions",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/topics",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/work/tasks",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/decisions",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/files",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/files",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-versions/34248024-60a6-497a-bc24-48bdf9b8370d",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/check",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme/check",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/theme-sources",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/info",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/tools",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/mcp-servers",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/skills/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/agent/default-chatbot",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/system/config",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/chat/threads",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/knowledge/databases/accessible",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/theme",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/git-actions",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/topics",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/git-occupancies",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/governance/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "origin": "http://127.0.0.1:15175",
+      "path": "/api/projects/66debb87-8e06-431e-ba77-fa342590ca66/blueprint",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "sha256": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4"
+}
