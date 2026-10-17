@@ -59,3 +59,5 @@ AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航和有限�
 主题制作管理沿原来源与候选／发布服务，以编辑草稿／已发布版本区分查看和写入；创建可编辑副本确认准确出处，异常先核实已创建身份，结果不明不重复创建。我的主题仅供本人项目复用；存储检查与维护不改变业务或绑定。当前取舍见[主题制作模式与创建结果核实](../decisions/implemented/2026-10-16-theme-authoring-feedback.md)，开发与人工验收时序由专项LOG57拥有。
 
 真实词汇、Project JSON／PNG资料及准确混合预览消费见[消费决策](../decisions/implemented/2026-10-17-theme-evidence-consumption.md)。目标Workdir映射、用户身份、业务数据及generation不进入可携ZIP，原声明assets原成员可携；源码与准确协议仍由真实Owner拥有。
+
+[S06迁移与专项收尾提案](../decisions/proposed/2026-10-17-theme-portability-closeout.md)规定后继导出原包、预检／目标草稿及原发布应用，保留目标重绑和人工验收时序；当前为规划，尚未提供S06产品实现或迁移证明。
