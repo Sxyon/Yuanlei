@@ -6,8 +6,8 @@ const states = { empty: '暂无记录', unbound: '尚未选择或绑定', missin
 </script>
 <template>
   <section class="theme-block" :data-block="block.id" :data-state="result.state">
-    <header><h2>{{ block.title }}</h2><button v-if="block.action" class="theme-link" @click="$emit('navigate', block.action)">查看 →</button></header>
-    <template v-if="result.state === 'ready' || result.previous || result.state === 'empty' && ['records', 'discussion'].includes(block.type)"><p v-if="result.previous" class="theme-meta" role="status">正在刷新当前列表，当前内容为上次读取。</p><slot /></template>
+    <p v-if="['json', 'image'].includes(block.type)" class="theme-meta">{{ block.binding.kind === 'file' ? '项目级指定文件' : '包内素材' }} · {{ block.binding.alias }}</p><header><h2>{{ block.title }}</h2><button v-if="block.action" class="theme-link" @click="$emit('navigate', block.action)">查看 →</button></header>
+    <template v-if="result.state === 'ready' || result.previous || result.state === 'empty' && ['records', 'discussion'].includes(block.type)"><p v-if="result.previous" class="theme-meta" role="status">正在刷新当前列表，当前内容为上次读取。</p><slot /><details v-if="result.metadata"><summary>文件指纹与读取信息</summary><p class="theme-meta theme-fingerprint">{{ result.metadata.mediaType }} · {{ result.metadata.size }} bytes · SHA-256 {{ result.metadata.sha256 }}</p></details></template>
     <div v-else-if="result.state === 'loading'" class="theme-state" role="status"><LoaderCircle :size="18" class="theme-loading" />正在读取…</div>
     <div v-else class="theme-state" :class="{ error: ['error', 'denied'].includes(result.state) }" :role="['error', 'denied'].includes(result.state) ? 'alert' : 'status'">
       <h3><AlertCircle v-if="['error', 'denied'].includes(result.state)" :size="16" />{{ states[result.state] || '响应不受支持' }}</h3>
@@ -16,3 +16,6 @@ const states = { empty: '暂无记录', unbound: '尚未选择或绑定', missin
     </div>
   </section>
 </template>
+<style scoped>
+.theme-fingerprint { overflow-wrap: anywhere; }
+</style>

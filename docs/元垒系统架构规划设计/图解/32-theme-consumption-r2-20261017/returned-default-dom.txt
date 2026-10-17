@@ -1,0 +1,149 @@
+- generic "元垒平台导航":
+  - button "展开平台导航":
+  - button "项目与对话":
+  - link "新建对话":
+    - /url: /agent
+    - generic: 新建对话
+  - button "搜索":
+  - link "项目":
+    - /url: /projects
+    - generic: 项目
+  - link "智能体":
+    - /url: /agent-manage
+    - generic: 智能体
+  - link "个人空间":
+    - /url: /workspace
+    - generic: 个人空间
+  - link "收件箱":
+    - /url: /inbox
+    - generic: 收件箱
+  - link "知识库 · 技能":
+    - /url: /extensions
+    - generic: 知识库 · 技能
+  - link "督查板":
+    - /url: /inspection
+    - generic: 督查板
+  - link "github GitHub":
+    - /url: https://github.com/sxyon/Yuanlei
+    - img "github":
+    - generic: GitHub
+  - img "s04r-7723d19866"
+- navigation "项目工作空间导航":
+  - generic: 项目空间
+  - button "收起项目导航":
+  - heading "S05-R2验例A" [level=2]
+  - paragraph: 隔离合成主题验例
+  - generic: 方向与思考
+  - link "总览":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/dashboard?theme_page=current-default-overview
+    - text: 总览
+  - link "蓝图":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/blueprints?theme_page=current-default-blueprints
+    - text: 蓝图
+  - link "议题":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/topics?theme_page=current-default-topics
+    - text: 议题
+  - generic: 行动与反馈
+  - link "行动计划":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/plans?theme_page=current-default-plans
+    - text: 行动计划
+  - link "工作":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/work/tasks?theme_page=current-default-work
+    - text: 工作
+  - link "督查":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/reports?theme_page=current-default-inspection
+    - text: 督查
+  - generic: 项目资源
+  - link "资料":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/files?theme_page=current-default-files
+    - text: 资料
+  - link "智能体":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/agents?theme_page=current-default-agents
+    - text: 智能体
+  - link "设置":
+    - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/settings?theme_page=current-default-settings
+    - text: 设置
+  - generic: 默认 · 项目管理 · 3.0.0 · generation 3
+  - link "项目列表":
+    - /url: /projects
+    - text: 项目列表
+- region "议题工作区":
+  - button "返回目录":
+    - text: 返回目录
+  - button "编辑正文":
+  - button "生命周期与更多":
+  - article:
+    - heading "同一议题跨主题验证" [level=1]
+    - generic: 研讨中
+    - generic: 正文 v3
+    - generic: 更新于 10/17 10:21
+    - paragraph:
+      - text: 用户原文保留：议题与课题。
+      - text: 默认主题补充事实。
+      - text: 调研主题继续维护。
+    - generic "决策 1"
+    - text: ›
+    - heading "动态" [level=2]
+    - button "全部" [pressed]
+    - button "讨论"
+    - button "执行"
+    - button "历史"
+    - combobox "动态顺序":
+      - option "由早到晚" [selected]
+      - option "最新在前"
+    - article:
+      - strong: 创建议题
+      - generic: s04r-7723d19866 · 2026/10/17 10:17:27
+      - generic "查看当时正文 · 修订 1"
+    - article:
+      - strong: 纳入通过
+      - generic: s04r-7723d19866 · 2026/10/17 10:17:27
+      - generic "查看当时正文 · 修订 1"
+    - article:
+      - strong: 修改正文
+      - generic: s04r-7723d19866 · 2026/10/17 10:18:32
+      - paragraph: 默认主题跨主题验证
+      - generic "查看当时正文 · 修订 2"
+    - article:
+      - strong: 修改正文
+      - generic: s04r-7723d19866 · 2026/10/17 10:20:48
+      - paragraph: 调研主题继续同一对象
+      - generic "查看当时正文 · 修订 3"
+    - article:
+      - generic "s04r-7723d19866 研讨 调研主题记录证据讨论，用户原文中的议题不替换。 2026/10/17 10:20:48":
+        - strong: s04r-7723d19866
+        - generic: 研讨
+        - generic: 调研主题记录证据讨论，用户原文中的议题不替换。
+        - time: 2026/10/17 10:20:48
+      - generic "查看当时正文 · 修订 3"
+    - article:
+      - strong: 新增决策草案
+      - generic: s04r-7723d19866 · 2026/10/17 10:21:02
+      - paragraph: 新增草案
+      - paragraph:
+        - text: 决策记录：跨主题证据决定
+        - link "查看决策详情":
+          - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/topics?theme_page=current-default-topics&topic_id=4fef2b15-187f-4ed8-bf34-6532691f574a&decision_id=78216eb7-b0e9-45c4-bcba-a3e37882265a
+      - generic "查看当时正文 · 修订 3"
+    - article:
+      - strong: 批准决策
+      - generic: s04r-7723d19866 · 2026/10/17 10:21:14
+      - paragraph: 隔离业务验例批准
+      - paragraph:
+        - text: 决策记录：跨主题证据决定
+        - link "查看决策详情":
+          - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/topics?theme_page=current-default-topics&topic_id=4fef2b15-187f-4ed8-bf34-6532691f574a&decision_id=78216eb7-b0e9-45c4-bcba-a3e37882265a
+      - generic "查看当时正文 · 修订 3"
+    - article:
+      - link "跨主题证据决定":
+        - /url: /projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/work/tasks/cb13f94d-cbb3-4d64-99e8-4fc4807f4cd8
+        - strong: 跨主题证据决定
+        - paragraph
+      - text: R2-CASE-000001 · 待办
+    - textbox "发表讨论":
+      - /placeholder: 留下讨论、证据或反馈…
+    - generic "讨论类型":
+      - combobox
+      - generic: 研讨
+    - button "发 表" [disabled]:
+      - generic: 发 表

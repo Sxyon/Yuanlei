@@ -23,6 +23,10 @@ export const projectThemeApi = {
     const response = await apiGet(`/api/projects/${encodeURIComponent(projectId)}/theme/files?${buildQuery({ expected_generation: generation, alias })}`, { signal, cache: 'no-store' }, true, 'blob')
     return resourceResponse(response)
   },
+  async previewFile(projectId, body, signal) {
+    const response = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/theme/preview-file`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }, true, 'blob')
+    return resourceResponse(response)
+  },
   async asset({ versionId, sourceId, revision, projectId, generation, alias, signal }) {
     const path = generation
       ? `/api/projects/${encodeURIComponent(projectId)}/theme/assets?${buildQuery({ expected_generation: generation, alias })}`
@@ -57,12 +61,12 @@ async function resourceResponse(response) {
 }
 
 /** 固定逻辑绑定消费原业务API，每轮重查当前绑定，不持久缓存业务事实。 */
-export function createProjectThemeAdapter(projectId, generation) {
+export function createProjectThemeAdapter(projectId, generation, preview = null) {
   const checks = new WeakMap()
   async function checkSelection(signal) {
     try {
       const selection = await projectThemeApi.binding(projectId, signal)
-      if (selection.state !== 'ready' || selection.generation !== generation) throw new Error(selection.error?.message || '项目主题选择已变化，请重新读取')
+      if ((!preview && selection.state !== 'ready') || selection.generation !== generation) throw new Error(selection.error?.message || '项目主题选择已变化，请重新读取')
     } catch (error) {
       if (error.name !== 'AbortError') error.contextInvalid = true
       throw error
@@ -76,7 +80,7 @@ export function createProjectThemeAdapter(projectId, generation) {
     try { await authorize(signal); const result = await action(); await checkSelection(signal); return result }
     catch (error) {
       if (error.status === 404 && !error.contextInvalid) await checkSelection(signal)
-      if ([401, 403].includes(error.status) || error.contextInvalid || error.response?.data?.detail?.code === 'project_denied' || error.response?.data?.detail?.code === 'binding_conflict') {
+      if ([401, 403].includes(error.status) || error.contextInvalid || error.response?.data?.detail?.code === 'project_denied' || ['binding_conflict','candidate_conflict','source_withdrawn','source_denied','version_missing'].includes(error.response?.data?.detail?.code)) {
         error.contextInvalid = true
         throw error
       }
@@ -90,8 +94,10 @@ export function createProjectThemeAdapter(projectId, generation) {
     read(binding, context, signal) {
       return guarded(signal, async () => {
         if (context.projectId !== projectId || context.bindingGeneration !== generation) throw Object.assign(new Error('项目主题上下文已变化'), { contextInvalid: true })
-        if (binding.kind === 'asset') return projectThemeApi.asset({ projectId, generation, alias: binding.alias, signal })
-        if (binding.kind === 'file') return projectThemeApi.file(projectId, generation, binding.alias, signal)
+        if (binding.kind === 'asset') return projectThemeApi.asset({ projectId, ...(preview ? preview : { generation }), alias: binding.alias, signal })
+        if (binding.kind === 'file') return preview
+          ? projectThemeApi.previewFile(projectId, { ...(preview.versionId ? { version_id:preview.versionId } : { source_id:preview.sourceId, revision:preview.revision }), files:preview.files, expected_generation:generation, alias:binding.alias }, signal)
+          : projectThemeApi.file(projectId, generation, binding.alias, signal)
         const { offset = 0, limit = 20, search = '', progress = '', statuses = [] } = context.query || {}
         const topicId = context.selectedTopicId
         if ((binding.scope === 'selectedTopic' || ['selectedTopic', 'discussions'].includes(binding.resource)) && !topicId) return { state: 'unbound', message: '请先选择当前议题' }

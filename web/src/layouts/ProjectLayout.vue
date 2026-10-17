@@ -8,7 +8,7 @@ import { useUserStore } from '@/stores/user'
 import { projectThemeApi } from '@/apis/project_theme_api'
 import { validateLoadedPackage } from '@/components/project/themes/contract'
 import { resolveWorkspacePages, workspaceNavigationPages, routeCapability, legacyThemeTarget } from '@/components/project/themes/workspaceCapabilities'
-import { readThemePreview, themePreviewKeys, supportsWorkspacePreview } from '@/utils/projectThemePreview'
+import { readThemePreview, readThemePreviewFiles, themePreviewKeys, supportsWorkspacePreview } from '@/utils/projectThemePreview'
 import { Modal } from 'ant-design-vue'
 import { clearGovernanceDrafts } from '@/utils/governanceDrafts'
 import { clearReviewScope } from '@/utils/resultReviewDrafts'
@@ -32,7 +32,7 @@ const preferenceKey = computed(() => JSON.stringify([user.uid, projectId.value])
 const collapsed = computed(() => Boolean(ui.projectNavigationCollapsed[preferenceKey.value]))
 const selection = shallowRef(null), themeError = ref(''), themeLoading = ref(false), themeDenied = ref(false)
 let themeSequence = 0
-const previewLoaded = shallowRef(null), previewError = ref('')
+const previewLoaded = shallowRef(null), previewError = ref(''), previewIntent = shallowRef(null)
 const previewQuery = computed(() => Object.fromEntries(themePreviewKeys.filter(key => route.query[key] !== undefined).map(key => [key, route.query[key]])))
 const previewKey = computed(() => JSON.stringify(previewQuery.value))
 const previewRequested = computed(() => themePreviewKeys.some(key => route.query[key] !== undefined))
@@ -70,7 +70,7 @@ async function beforeSwitch(exclude = null) {
   })).finally(() => {editPrompt = null})
   return editPrompt
 }
-const themeContext = computed(() => ({ selection:selection.value, package:pack.value, loading:themeLoading.value, error:themeError.value, scope:themeScope.value, reload:loadTheme, apply:applyTheme, beforeSwitch }))
+const themeContext = computed(() => ({ selection:selection.value, package:pack.value, loading:themeLoading.value, error:themeError.value, scope:themeScope.value, reload:loadTheme, apply:applyTheme, beforeSwitch, preview:previewIntent.value }))
 provide('projectThemeContext', themeContext)
 function denyProject() {
   themeSequence++; themeDenied.value = true; themeLoading.value = false; selection.value = null; previewLoaded.value = null; pendingTheme.value = null
@@ -127,10 +127,11 @@ async function loadTheme() {
       catch(cause){result={...result,state:'error',package:null,error:{message:cause.message}}}
     }
     if (request !== themeSequence || id !== projectId.value || owner !== user.uid) return
-    let loadedPreview = null, loadError = ''
+    let loadedPreview = null, loadedIntent = null, loadError = ''
     if (previewRequested.value) {
       try {
         const intent = readThemePreview(route.query)
+        loadedIntent = { ...intent, files:readThemePreviewFiles(route.query) ?? result.binding?.files ?? {} }
         if (intent.versionId) loadedPreview = validateLoadedPackage(await projectThemeApi.version(intent.versionId,id))
         else {
           const candidate = await projectThemeApi.candidate(intent.sourceId,id)
@@ -138,6 +139,7 @@ async function loadTheme() {
           if (!candidate.package) throw new Error('候选尚无可预览包。')
           loadedPreview = validateLoadedPackage(candidate.package)
         }
+        loadedIntent.files = Object.fromEntries(Object.entries(loadedIntent.files).filter(([alias]) => alias in loadedPreview.manifest.files))
         if (!supportsWorkspacePreview(loadedPreview)) throw new Error('此包使用区块展示，请从主题管理使用对应的只读区块预览。')
       } catch(cause) { loadedPreview = null; loadError = cause.message || '预览包读取失败' }
     }
@@ -147,7 +149,7 @@ async function loadTheme() {
       pendingTheme.value = result; themeError.value = '另一窗口已改变选择。当前保留旧版编辑，处理本地草稿后重新核对。'; return
     }
     if (request !== themeSequence) return
-    previewLoaded.value = loadedPreview; previewError.value = loadError
+    previewLoaded.value = loadedPreview; previewIntent.value = loadedPreview ? loadedIntent : null; previewError.value = loadError
     await applyTheme(result)
   } catch (cause) {
     if (request !== themeSequence) return

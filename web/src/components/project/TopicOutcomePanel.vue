@@ -2,13 +2,13 @@
   <section class="topic-outcome">
     <h4>预期结果 / 验证情况（可选）</h4>
     <MarkdownPreview v-if="topic.expected_outcome" :content="topic.expected_outcome" />
-    <p v-else>未填写预期结果，问题型议题可以保持为空。</p>
+    <p v-else>{{ themeText('未填写预期结果，问题型议题可以保持为空。') }}</p>
     <MarkdownPreview
       v-if="topic.verification_conditions"
       :content="topic.verification_conditions"
     />
     <p v-else>未填写核对条件。</p>
-    <p>现实达成由你明确确认；任务完成和工作结果被接受不会自动确认议题。</p>
+    <p>{{ themeText('现实达成由你明确确认；任务完成和工作结果被接受不会自动确认议题。') }}</p>
     <a-alert
       v-if="conditionsChanged"
       type="warning"
@@ -23,8 +23,7 @@
     </div>
     <div v-if="formOpen && !topic.archived_at" class="record-form">
       <p>
-        {{ actionLabels[outcomeDraft.action] }} · 本次按议题修订
-        {{ outcomeDraft.expectedRevision }} 的条件记录
+        {{ actionLabels[outcomeDraft.action] }}{{ themeText('· 本次按议题修订') }}{{ outcomeDraft.expectedRevision }} 的条件记录
       </p>
       <a-textarea
         v-model:value="outcomeDraft.explanation"
@@ -77,7 +76,7 @@
         {{ record.version }} · {{ record.author_name }} · {{ timestamp(record.created_at) }}
       </summary>
       <p>{{ record.explanation }}</p>
-      <p>当时议题修订 {{ record.revision_number }}</p>
+      <p>{{ themeText('当时议题修订') }}{{ record.revision_number }}</p>
       <MarkdownPreview
         :content="`预期结果：${record.expected_outcome || '未填写'}\n\n核对条件：${record.verification_conditions || '未填写'}`"
       />
@@ -109,6 +108,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'

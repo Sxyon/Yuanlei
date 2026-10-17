@@ -4,7 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from server.utils.auth_middleware import get_db, get_required_user
@@ -98,6 +98,26 @@ class SelectionInput(ClosedInput):
     version_id: str = Field(min_length=1, max_length=36)
     expected_generation: int = Field(ge=0)
     files: dict[str, str]
+
+
+class PreviewFileInput(ClosedInput):
+    """预览只携准确引用、当前选择修订与临时逻辑映射。"""
+
+    version_id: str | None = Field(default=None, min_length=1, max_length=36)
+    source_id: str | None = Field(default=None, min_length=1, max_length=36)
+    revision: int | None = Field(default=None, ge=1)
+    expected_generation: int = Field(ge=0)
+    files: dict[str, str]
+    alias: str = Field(min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def exact_reference(self):
+        """拒绝缺失或混合的版本与候选引用。"""
+        published = self.version_id is not None and self.source_id is None and self.revision is None
+        candidate = self.version_id is None and self.source_id is not None and self.revision is not None
+        if not (published or candidate):
+            raise ValueError("预览必须指定准确版本或准确草稿修订")
+        return self
 
 
 @project_themes.get("/theme-sources")
@@ -244,6 +264,24 @@ async def project_file(
     if set(request.query_params) - {"alias", "expected_generation"}:
         raise ThemeError("file_query", "项目文件读取只接受alias与当前选择修订")
     raw, media, digest = await svc.project_file(project_id, expected_generation, alias)
+    return Response(
+        raw,
+        media_type=media,
+        headers={
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+            "X-Theme-Sha256": digest,
+            "X-Theme-Size": str(len(raw)),
+        },
+    )
+
+
+@project_themes.post("/projects/{project_id}/theme/preview-file")
+async def preview_file(project_id: str, body: PreviewFileInput, svc=Depends(service)):
+    """只读临时映射；复用项目授权和Workdir文件边界。"""
+    raw, media, digest = await svc.preview_file(
+        project_id, body.model_dump(), body.files, body.expected_generation, body.alias
+    )
     return Response(
         raw,
         media_type=media,

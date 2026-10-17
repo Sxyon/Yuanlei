@@ -113,3 +113,30 @@ test('第三份独立定义复用同宿主；旧选择/项目数据与错误不�
     await state().navigate({ kind: 'page', pageId: 'other' }); assert.equal(state().pageId, 'other')
   } finally { app?.unmount(); await vite.close(); globalThis.localStorage = savedStorage }
 })
+
+test('混合页块动作交回项目路由，不能在内层渲染合成能力页', async () => {
+  const oldStorage = globalThis.localStorage
+  globalThis.localStorage = {getItem:()=>null,setItem(){},removeItem(){}}
+  const vite = await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'})
+  let app
+  try {
+    const {default:Host}=await vite.ssrLoadModule('/src/components/project/themes/ThemeHost.vue')
+    const pack={manifest:{formatVersion:1,componentAbi:3,theme:'theme.json',source:'independent',files:{facts:'application/json'},assets:{}},theme:{id:'third-mixed',version:'3',name:'第三混合定义',topicLabel:'战略规划',baseVersion:1,pages:[{id:'home',title:'真实总览',description:'能力',layout:'overview',capability:'overview',blocks:[]},{id:'evidence',title:'资料',description:'独立资料',layout:'full',blocks:[{id:'facts',title:'资料',type:'json',region:'main',binding:{kind:'file',alias:'facts'},action:{kind:'page',pageId:'home'}}]}]},reference:'v',digest:'a'.repeat(64)}
+    let instance
+    const pages=[]
+    const props=reactive({workspacePageId:'evidence'})
+    const renderer=createRenderer({createElement:()=>({}),createText:()=>({}),createComment:()=>({}),insert(){},remove(){},setText(){},setElementText(){},patchProp(){},parentNode:()=>null,nextSibling:()=>null})
+    const Captured={...Host,render(){instance=getCurrentInstance();return h('div')}}
+    app=renderer.createApp({render:()=>h(Captured,{themePackage:pack,projectId:'p',userId:'u',workspacePageId:props.workspacePageId,initialContext:{userId:'u',projectId:'p',packageRef:'v',digest:'a'.repeat(64),bindingGeneration:0,pageId:'home'},adapter:{read:async()=>({state:'unbound',message:'未映射'})},onPage:id=>pages.push(id)})})
+    app.provide(ssrContextKey,{modules:new Set()});app.mount({})
+    assert.equal(instance.setupState.pageId,'evidence')
+    await instance.setupState.navigate({kind:'page',pageId:'home'})
+    assert.deepEqual(pages,['home'])
+    assert.equal(instance.setupState.pageId,'evidence','必须由外层真实路由切能力页，内层不渲染CapabilityPreview')
+    await instance.setupState.navigate({kind:'page',pageId:'unknown'})
+    assert.deepEqual(pages,['home'])
+    assert.match(instance.setupState.navigationError,/没有此页面/)
+    props.workspacePageId='home';await flush()
+    assert.match(instance.setupState.definitionError,/没有此资料页/)
+  } finally {app?.unmount();await vite.close();globalThis.localStorage=oldStorage}
+})

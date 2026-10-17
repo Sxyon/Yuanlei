@@ -21,11 +21,11 @@
         </div><aside class="work-review-aside">
         <section class="work-task-section">
           <h2>工作依据 <a-button size="small" @click="editSource">调整来源</a-button></h2>
-          <p v-if="!task.source?.topic && !task.source?.decision" class="work-task-muted">独立工作，未关联议题或决策。</p>
+          <p v-if="!task.source?.topic && !task.source?.decision" class="work-task-muted">{{ themeText('独立工作，未关联议题或决策。') }}</p>
           <p v-for="suggestion in task.suggestions || []" :key="suggestion.id">工作建议：<RouterLink class="work-task-link" :to="inspectionLink({ task_id: suggestion.id })">{{ suggestion.title }}</RouterLink>
             <RouterLink v-if="suggestion.decision_id" class="work-task-link" :to="inspectionLink({ decision_id: suggestion.decision_id })">建议来源决策</RouterLink>
           </p>
-          <p v-if="task.source?.topic">来源议题：<RouterLink class="work-task-link" :to="inspectionLink({ topic_id: task.topic_id })">{{ task.source.topic.title }}</RouterLink>
+          <p v-if="task.source?.topic">{{ themeText('来源议题：') }}<RouterLink class="work-task-link" :to="inspectionLink({ topic_id: task.topic_id })">{{ task.source.topic.title }}</RouterLink>
             {{ task.source.topic.archived ? ' · 已归档' : '' }}</p>
           <template v-if="task.source?.decision">
             <p>来源决策：<RouterLink class="work-task-link" :to="inspectionLink({ decision_id: task.source_decision_id })">{{ task.source.decision.title }}</RouterLink>
@@ -174,7 +174,7 @@
               <span class="work-execution-main">
                 {{ agentName(item.agent_slug) }} · {{ executionStatusLabel(item.status) }} · {{ formatTime(item.created_at) }}
                 <span v-if="item.source_decision_id"> · 当次来源：<RouterLink class="work-task-link" :to="inspectionLink({ decision_id: item.source_decision_id })">决策版本 {{ item.source_decision_revision }}</RouterLink></span>
-                <span v-if="item.source_topic_id"> · <RouterLink class="work-task-link" :to="inspectionLink({ topic_id: item.source_topic_id })">当次议题</RouterLink></span>
+                <span v-if="item.source_topic_id"> · <RouterLink class="work-task-link" :to="inspectionLink({ topic_id: item.source_topic_id })">{{ themeText('当次议题') }}</RouterLink></span>
                 <span v-if="item.current_run_id" class="work-execution-run"> · Run {{ item.current_run_id }}</span>
                 <span v-if="item.error_message" class="work-task-error"> · {{ item.error_message }}</span>
               </span>
@@ -263,6 +263,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { themeReturnTarget } from '@/utils/projectThemeReturn'
 

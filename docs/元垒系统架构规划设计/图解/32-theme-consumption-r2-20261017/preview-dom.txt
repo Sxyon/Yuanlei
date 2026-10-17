@@ -1,0 +1,139 @@
+- generic "元垒平台导航":
+  - link "元垒":
+    - /url: /
+    - generic: 元垒
+  - generic "侧边栏操作":
+    - button "取消固定平台导航" [pressed]:
+    - button "搜索":
+    - button "收起平台导航":
+  - link "新建对话":
+    - /url: /agent
+    - generic: 新建对话
+  - link "项目":
+    - /url: /projects
+    - generic: 项目
+  - link "智能体":
+    - /url: /agent-manage
+    - generic: 智能体
+  - link "个人空间":
+    - /url: /workspace
+    - generic: 个人空间
+  - link "收件箱":
+    - /url: /inbox
+    - generic: 收件箱
+  - link "知识库 · 技能":
+    - /url: /extensions
+    - generic: 知识库 · 技能
+  - link "督查板":
+    - /url: /inspection
+    - generic: 督查板
+  - button "项目" [expanded]:
+    - generic: 项目
+  - generic "筛选项目"
+  - option "全部类型" [selected]
+  - option "未指定"
+  - option "长期经营"
+  - option "阶段交付"
+  - option "全部分类" [selected]
+  - option "全部标签" [selected]
+  - button "S05-R2验例B":
+    - generic "S05-R2验例B"
+  - button "在项目“S05-R2验例B”中新建对话":
+  - button "进入项目“S05-R2验例B”":
+  - button "S05-R2验例A":
+    - generic "S05-R2验例A"
+  - button "在项目“S05-R2验例A”中新建对话":
+  - button "进入项目“S05-R2验例A”":
+  - button "S04-R验证项目C":
+    - generic "S04-R验证项目C"
+  - button "在项目“S04-R验证项目C”中新建对话":
+  - button "进入项目“S04-R验证项目C”":
+  - button "S04-R验证项目B":
+    - generic "S04-R验证项目B"
+  - button "在项目“S04-R验证项目B”中新建对话":
+  - button "进入项目“S04-R验证项目B”":
+  - button "S04-R验证项目A":
+    - generic "S04-R验证项目A"
+  - button "在项目“S04-R验证项目A”中新建对话":
+  - button "进入项目“S04-R验证项目A”":
+  - button "最近" [expanded]:
+    - generic: 最近
+  - generic: 暂无对话历史
+  - link "github GitHub":
+    - /url: https://github.com/sxyon/Yuanlei
+    - img "github":
+    - generic: GitHub
+  - img "s04r-7723d19866"
+  - generic: s04r-7723d19866
+- status:
+  - strong: 只读预览：S05-R2证据 · 调研 · 阅读工作室 · 3.1.0-r2
+  - generic: 当前已保存：默认 · 项目管理 · 3.0.0。预览不修改项目选择，正文办理已禁用。
+  - button "结束预览"
+  - link "应用此版本…":
+    - /url: /projects?tab=themes&project_id=f1c31b95-0af2-4179-a301-3cacc5ecb1bc&theme_action=select&theme_version=360c5fce-4d21-4af8-a160-8b2015abc54a
+  - link "返回主题管理":
+    - /url: /projects?tab=themes&project_id=f1c31b95-0af2-4179-a301-3cacc5ecb1bc
+- navigation "项目工作空间导航":
+  - generic: 项目空间
+  - button "收起项目导航":
+  - heading "S05-R2验例A" [level=2]
+  - paragraph: 隔离合成主题验例
+  - generic: 方向与思考
+  - link "总览":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/dashboard?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-overview"
+    - text: 总览
+  - link "蓝图":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/blueprints?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-blueprints"
+    - text: 蓝图
+  - link "课题":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/topics?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-topics"
+    - text: 课题
+  - generic: 行动与反馈
+  - link "行动计划":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/plans?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-plans"
+    - text: 行动计划
+  - link "工作":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/work/tasks?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-work"
+    - text: 工作
+  - link "督查":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/reports?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-inspection"
+    - text: 督查
+  - generic: 项目资源
+  - link "资料":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/files?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-files"
+    - text: 资料
+  - link "智能体":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/agents?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-agents"
+    - text: 智能体
+  - link "设置":
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/settings?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=current-research-settings"
+    - text: 设置
+  - link "项目证据" [active]:
+    - /url: "/projects/f1c31b95-0af2-4179-a301-3cacc5ecb1bc/theme-display?theme_preview_version=360c5fce-4d21-4af8-a160-8b2015abc54a&theme_preview_files={%22facts%22:%22/facts.json%22,%22chart%22:%22/chart.png%22}&theme_page=project-evidence"
+  - generic: 只读预览 · S05-R2证据 · 调研 · 阅读工作室 · 3.1.0-r2
+  - link "项目列表":
+    - /url: /projects
+    - text: 项目列表
+- generic: 只读预览：S05-R2证据 · 调研 · 阅读工作室 · 3.1.0-r2 · 选择修订 1
+- link "选择 / 更换主题":
+  - /url: /projects?tab=themes&project_id=f1c31b95-0af2-4179-a301-3cacc5ecb1bc&theme_action=select
+- button "重新读取":
+  - generic: 重新读取
+- main:
+  - generic: S05-R2证据 · 调研 · 阅读工作室 / 当前项目
+  - heading "项目证据" [level=1]
+  - paragraph: 当前Project指定资料；不随课题选择改变。
+  - paragraph: 项目级指定文件 · chart
+  - heading "项目证据图" [level=2]
+  - figure "项目调查图示 · 18509 bytes":
+    - img "项目调查图示"
+    - generic: 项目调查图示 · 18509 bytes
+  - generic "文件指纹与读取信息"
+  - paragraph: 项目级指定文件 · facts
+  - heading "项目调查资料" [level=2]
+  - paragraph: application/json · 41 bytes
+  - text: 样本
+  - strong: "12"
+  - paragraph: 项目：S05-R2验例A
+  - generic "查看资料 JSON 原文与局限"
+  - generic "文件指纹与读取信息"

@@ -1,4 +1,7 @@
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { inject, computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -287,8 +290,8 @@ onBeforeUnmount(() => generation++)
             aria-label="计划内容与预期结果"
             :auto-size="{ minRows: 8, maxRows: 18 }"
             :disabled="busy" /></a-form-item
-        ><a-form-item label="来源议题"
-          ><a-select v-model:value="draft.topic_id" allow-clear aria-label="计划来源议题"
+        ><a-form-item :label="themeText('来源议题')"
+          ><a-select v-model:value="draft.topic_id" allow-clear :aria-label="themeText('计划来源议题')"
             ><a-select-option v-for="item in board.topics || []" :key="item.id" :value="item.id">{{
               item.title
             }}</a-select-option></a-select

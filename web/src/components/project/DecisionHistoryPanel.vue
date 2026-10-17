@@ -21,7 +21,7 @@
           governanceStatusLabel(decision.status)
         }}</a-tag>
       </header>
-      <p v-if="showSource" class="decision-source"><span>{{ decision.topic_id ? '来源议题' : '独立决定' }}</span><a v-if="decision.topic_id && topics.some(item => item.id === decision.topic_id)" @click="$emit('topic', decision.topic_id)">{{ topics.find(item => item.id === decision.topic_id)?.title }}</a><span v-else-if="decision.topic_id">来源议题不可见</span><span v-else>未关联议题</span></p>
+      <p v-if="showSource" class="decision-source"><span>{{ decision.topic_id ? themeText('来源议题') : '独立决定' }}</span><a v-if="decision.topic_id && topics.some(item => item.id === decision.topic_id)" @click="$emit('topic', decision.topic_id)">{{ topics.find(item => item.id === decision.topic_id)?.title }}</a><span v-else-if="decision.topic_id">{{ themeText('来源议题不可见') }}</span><span v-else>{{ themeText('未关联议题') }}</span></p>
       <p>{{ relationLabels[decision.relation_type] }} · 版本 {{ decision.revision_number }}</p>
       <a-alert
         v-if="decision.requires_review"
@@ -33,7 +33,7 @@
         v-if="decision.topic_execution_hint === 'pause_recommended'"
         type="warning"
         show-icon
-        message="关联议题建议暂停原方案"
+        :message="themeText('关联议题建议暂停原方案')"
         description="仅为业务提示，不暂停任务或执行记录。"
       />
       <MarkdownPreview :content="decision.conclusion" />
@@ -50,7 +50,7 @@
       >
         <strong>{{ decision.title }}</strong
         ><a-tag>{{ governanceStatusLabel(decision.status) }}</a-tag>
-        <p v-if="showSource" class="decision-source"><span>{{ decision.topic_id ? '来源议题' : '独立决定' }}</span><a v-if="decision.topic_id && topics.some(item => item.id === decision.topic_id)" @click="$emit('topic', decision.topic_id)">{{ topics.find(item => item.id === decision.topic_id)?.title }}</a><span v-else-if="decision.topic_id">来源议题不可见</span><span v-else>未关联议题</span></p>
+        <p v-if="showSource" class="decision-source"><span>{{ decision.topic_id ? themeText('来源议题') : '独立决定' }}</span><a v-if="decision.topic_id && topics.some(item => item.id === decision.topic_id)" @click="$emit('topic', decision.topic_id)">{{ topics.find(item => item.id === decision.topic_id)?.title }}</a><span v-else-if="decision.topic_id">{{ themeText('来源议题不可见') }}</span><span v-else>{{ themeText('未关联议题') }}</span></p>
         <a-button @click="open(decision)">查看原文与历史</a-button>
       </article>
     </details>
@@ -67,8 +67,7 @@
           message="原依据已变化，需复核。此补充不自动成为新的整体方案。"
         />
         <RouterLink class="source-work-link" v-if="detail.status === 'approved'" :to="workLink(detail)">基于此决策创建工作</RouterLink>
-        <p v-if="detail.topic_id">
-          关联议题：<a @click="$emit('topic', detail.topic_id)">{{
+        <p v-if="detail.topic_id">{{ themeText('关联议题：') }}<a @click="$emit('topic', detail.topic_id)">{{
             topics.find((t) => t.id === detail.topic_id)?.title || detail.topic_id
           }}</a>
         </p>
@@ -98,8 +97,7 @@
         <h4>{{ detail.status === 'draft' ? '当前草案' : '批准原文' }}</h4>
         <MarkdownPreview :content="`${detail.conclusion}\n\n---\n\n${detail.rationale || ''}`" />
         <p v-if="detail.decided_at">
-          批准人 {{ detail.decided_by }} · {{ timestampLabel(detail.decided_at) }} · 议题依据版本
-          {{ detail.topic_revision_number || (detail.topic_id ? '旧依据版本未知' : '无关联议题') }}
+          批准人 {{ detail.decided_by }} · {{ timestampLabel(detail.decided_at) }}{{ themeText('· 议题依据版本') }}{{ detail.topic_revision_number || (detail.topic_id ? '旧依据版本未知' : themeText('无关联议题')) }}
         </p>
         <article v-for="erratum in detail.errata" :key="erratum.id" class="history-node">
           <strong>文字勘误 · {{ fieldLabels[erratum.field] }}</strong>
@@ -139,7 +137,7 @@
           <a-alert
             v-if="action === 'approve'"
             type="info"
-            message="批准仅记录正式依据；确认议题需单独操作，不改变任务或执行记录。"
+            :message="themeText('批准仅记录正式依据；确认议题需单独操作，不改变任务或执行记录。')"
           />
           <a-alert
             v-if="
@@ -148,7 +146,7 @@
               detail.topic_id
             "
             type="warning"
-            message="来源议题尚未纳入，请核对；此提示不阻止批准。"
+            :message="themeText('来源议题尚未纳入，请核对；此提示不阻止批准。')"
           />
           <section
             v-if="action === 'approve' && detail.relation_type === 'replacement'"
@@ -271,10 +269,9 @@
               :content="`${event.snapshot.conclusion}\n\n${event.snapshot.rationale || ''}`"
             />
             <p>
-              形成方式：{{ relationLabels[event.snapshot.relation_type] }} · 议题依据版本
-              {{
+              形成方式：{{ relationLabels[event.snapshot.relation_type] }}{{ themeText('· 议题依据版本') }}{{
                 event.snapshot.topic_revision_number ||
-                (event.snapshot.topic_id ? '旧依据版本未知' : '无关联议题')
+                (event.snapshot.topic_id ? '旧依据版本未知' : themeText('无关联议题'))
               }}
             </p>
           </details>
@@ -289,6 +286,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'

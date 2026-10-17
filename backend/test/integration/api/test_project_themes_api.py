@@ -1115,3 +1115,119 @@ async def test_authoring_private_source_denies_foreign_copy_edit_and_publish(liv
         ).one()
         assert row.candidate_revision == 1 and row.candidate_digest == version["digest"]
     assert env.store.read(source["id"], version["digest"]) == raw
+
+
+async def test_mixed_preview_files_exact_revision_and_workdir(live_theme):
+    """混合定义在不应用时读取真实文件，引用、越界及失权均拒绝。"""
+    env = live_theme
+    source, _, _ = await create_publish(env, archive="current-research")
+    path = f"/api/theme-sources/{source['id']}"
+    candidate = (await env.client.get(path + "/candidate")).json()["package"]
+    candidate["theme"]["version"] = "3.1-evidence"
+    candidate["manifest"]["files"] = {"facts": "application/json", "chart": "image/png"}
+    candidate["theme"]["pages"].append(
+        {
+            "id": "project-evidence",
+            "title": "项目证据",
+            "description": "Project级资料",
+            "layout": "reading",
+            "blocks": [
+                {
+                    "id": "facts",
+                    "type": "json",
+                    "title": "资料",
+                    "region": "main",
+                    "binding": {"kind": "file", "alias": "facts"},
+                },
+                {
+                    "id": "chart",
+                    "type": "image",
+                    "title": "图示",
+                    "region": "aside",
+                    "binding": {"kind": "file", "alias": "chart"},
+                    "alt": "项目图示",
+                },
+            ],
+        }
+    )
+    saved = await env.client.put(
+        path + "/definition",
+        json={
+            "expected_revision": 1,
+            "manifest": candidate["manifest"],
+            "theme": candidate["theme"],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    base = f"/api/projects/{env.projects[0].id}/theme"
+    body = {
+        "source_id": source["id"],
+        "revision": 2,
+        "expected_generation": 0,
+        "files": {"facts": "/data.json"},
+        "alias": "facts",
+    }
+    before = (await env.client.get(base)).json()
+    for raw in (b'{"samples":12}', b'{"samples":34}'):
+        env.root.joinpath("data.json").write_bytes(raw)
+        result = await env.client.post(base + "/preview-file", json=body)
+        assert result.status_code == 200, result.text
+        assert result.content == env.root.joinpath("data.json").read_bytes() == raw
+        assert result.headers["x-theme-sha256"] == hashlib.sha256(raw).hexdigest()
+    for extra, code in [
+        ({"revision": 1}, "candidate_conflict"),
+        ({"expected_generation": 1}, "binding_conflict"),
+        ({"alias": "unknown"}, "file_alias"),
+        ({"files": {}}, "file_unbound"),
+        ({"files": {"unknown": "/data.json"}}, "file_mapping"),
+        ({"files": {"facts": "/missing.json"}}, "file_missing"),
+        ({"files": {"facts": "/bad.json"}}, "invalid_json"),
+        ({"files": {"facts": "/link.json"}}, "file_denied"),
+        ({"files": {"facts": "/../data.json"}}, "file_boundary"),
+    ]:
+        result = await env.client.post(base + "/preview-file", json={**body, **extra})
+        assert result.json()["detail"]["code"] == code, result.text
+    env.root.joinpath("large.json").write_bytes(b"x" * (8 * 1024 * 1024 + 1))
+    result = await env.client.post(base + "/preview-file", json={**body, "files": {"facts": "/large.json"}})
+    assert result.status_code == 413 and result.json()["detail"]["code"] == "file_limit"
+    foreign = await env.client.post(base + "/preview-file", json=body, headers=env.headers[1])
+    assert foreign.status_code == 404 and foreign.json()["detail"]["code"] == "project_denied"
+    foreign_source = await env.client.post(
+        f"/api/projects/{env.projects[2].id}/theme/preview-file", json=body, headers=env.headers[1]
+    )
+    assert foreign_source.status_code == 404 and foreign_source.json()["detail"]["code"] == "source_denied"
+    malformed = await env.client.post(base + "/preview-file", json={**body, "version_id": "v"})
+    assert malformed.status_code == 422
+    from PIL import Image
+
+    for color in ["red", "blue"]:
+        png = io.BytesIO()
+        Image.new("RGB", (20, 10), color).save(png, format="PNG")
+        env.root.joinpath("chart.png").write_bytes(png.getvalue())
+        result = await env.client.post(
+            base + "/preview-file",
+            json={
+                **body,
+                "alias": "chart",
+                "files": {"chart": "/chart.png"},
+            },
+        )
+        assert result.status_code == 200 and result.content == png.getvalue()
+        assert result.headers["x-theme-sha256"] == hashlib.sha256(png.getvalue()).hexdigest()
+    env.root.joinpath("chart.png").write_bytes(b"{}")
+    result = await env.client.post(
+        base + "/preview-file",
+        json={
+            **body,
+            "alias": "chart",
+            "files": {"chart": "/chart.png"},
+        },
+    )
+    assert result.json()["detail"]["code"] == "invalid_png"
+    version = (await env.client.post(path + "/publish", json={"expected_revision": 2})).json()
+    published = {k: v for k, v in body.items() if k not in {"source_id", "revision"}}
+    published["version_id"] = version["id"]
+    assert (await env.client.post(base + "/preview-file", json=published)).content == b'{"samples":34}'
+    assert (await env.client.get(base)).json() == before
+    async with env.db() as db:
+        assert await db.scalar(text("SELECT count(*) FROM project_theme_bindings")) == 0

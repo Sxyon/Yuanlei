@@ -166,12 +166,10 @@ async function save() {
 }
 
 /** 真实能力预览另开临时项目页，选择草稿仍留在原弹窗。 */
-function showPreview() {
-  if (supportsWorkspacePreview(bundle.value)) {
-    const target = router.resolve(themePreviewTarget(props.projectId, { versionId: versionId.value }))
-    window.open(target.href, '_blank', 'noopener')
-  } else preview.value = true
-}
+const workspacePreviewHref = computed(() => bundle.value && supportsWorkspacePreview(bundle.value)
+  ? router.resolve(themePreviewTarget(props.projectId, { versionId:versionId.value, files:{...files.value} })).href : '')
+function showPreview() { if (!workspacePreviewHref.value) preview.value = true }
+
 async function cancel() { if (await canDiscard()) emit('cancel') }
 defineExpose({refreshCatalog, canDiscard})
 watch(() => [props.projectId,user.uid,props.initialVersionId],load,{immediate:true})
@@ -195,7 +193,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload',beforeUnload);wind
         <a-button :loading="checking" :disabled="!bundle || saving || !!pending" @click="checkConditions">重新检查条件</a-button>
         <h3>确认应用</h3><p>目标项目：{{project?.name || '尚未选择'}}</p><p>拟用：{{target ? `${target.source.name} · ${target.version}` : versionId || '未选择'}}</p><p v-for="[alias] in aliases" :key="alias">{{alias}} → {{files[alias] || '尚未填写'}}</p>
         <p class="help">切换影响此项目已打开页面；平台无法代为处理其他标签未保存内容。业务权限、状态、历史和项目文件保持原语义。</p>
-        <div class="actions"><a-button :disabled="!bundle || saving" @click="showPreview">预览此准确版本</a-button><a-button type="primary" :loading="saving" :disabled="!condition?.selectable || checking || !!pending" @click="save">应用主题</a-button></div>
+        <div class="actions"><a-button :href="workspacePreviewHref || undefined" :target="workspacePreviewHref ? '_blank' : undefined" rel="noopener" :disabled="!bundle || saving" @click="showPreview">预览此准确版本</a-button><a-button type="primary" :loading="saving" :disabled="!condition?.selectable || checking || !!pending" @click="save">应用主题</a-button></div>
         <RouterLink v-if="notice && !stayInProject" :to="{name:'ProjectDashboardComp',params:{project_id:projectId}}">进入项目（可选）</RouterLink>
         <details v-if="bundle"><summary>版本与包详情</summary><p>目标项目ID：{{projectId}}</p><p v-if="initialVersionId">版本行带入：{{initialVersionId}}</p><p>{{bundle.reference}} · SHA-256 {{bundle.digest}} · ABI{{bundle.manifest.componentAbi}}</p></details>
       </section>

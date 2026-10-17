@@ -53,3 +53,30 @@ test('真实适配保留原页状态；读取中改绑定与失权使整上下�
     } finally { projectThemeApi.binding = originalBinding; governanceBoardApi.topicsPage = originalPage }
   } finally { await vite.close(); globalThis.localStorage = oldStorage }
 })
+
+test('混合预览适配消费准确新版本及临时映射，未绑定项目不借用当前资源', async t => {
+  const oldStorage = globalThis.localStorage
+  globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
+  const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+  try {
+    const { projectThemeApi, createProjectThemeAdapter } = await vite.ssrLoadModule('/src/apis/project_theme_api.js')
+    t.mock.method(projectThemeApi, 'binding', async () => ({ state:'unbound', generation:0 }))
+    const files = { facts:'/draft-facts.json' }, calls = []
+    t.mock.method(projectThemeApi, 'previewFile', async (project, body) => { calls.push({project,body}); return { state:'ready',bytes:new Uint8Array([1]) } })
+    t.mock.method(projectThemeApi, 'file', async () => assert.fail('预览不能读取已应用版文件'))
+    t.mock.method(projectThemeApi, 'select', async () => assert.fail('预览不能应用'))
+    t.mock.method(projectThemeApi, 'asset', async body => { calls.push(body); return {state:'ready'} })
+    const context = { projectId:'p',bindingGeneration:0 }
+    const adapter = createProjectThemeAdapter('p',0,{versionId:'new-version',files})
+    await adapter.read({kind:'file',alias:'facts'},context,new AbortController().signal)
+    assert.deepEqual(calls[0],{project:'p',body:{version_id:'new-version',expected_generation:0,files:{facts:'/draft-facts.json'},alias:'facts'}})
+    await adapter.read({kind:'asset',alias:'chart'},context,new AbortController().signal)
+    assert.equal(calls[1].versionId,'new-version'); assert.equal(calls[1].generation,undefined)
+    const candidate = createProjectThemeAdapter('p',0,{sourceId:'source',revision:4,files})
+    await candidate.read({kind:'asset',alias:'chart'},context,new AbortController().signal)
+    assert.equal(calls[2].sourceId,'source'); assert.equal(calls[2].revision,4); assert.equal(calls[2].generation,undefined)
+    t.mock.method(projectThemeApi,'previewFile',async()=>{throw Object.assign(new Error('旧候选修订'),{status:409,response:{data:{detail:{code:'candidate_conflict'}}}})})
+    await assert.rejects(candidate.read({kind:'file',alias:'facts'},context,new AbortController().signal),error=>error.contextInvalid)
+    assert.deepEqual(files,{facts:'/draft-facts.json'})
+  } finally { await vite.close(); globalThis.localStorage = oldStorage }
+})

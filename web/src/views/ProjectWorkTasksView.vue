@@ -6,7 +6,7 @@
       </a-alert>
       <a-spin v-else-if="loading" class="tasks-loading" />
       <template v-else>
-        <div class="collection-tools"><div class="collection-discovery"><a-input v-model:value="search" allow-clear placeholder="搜索工作标题" aria-label="搜索任务" /><div class="work-view-switch" role="group" aria-label="工作视图"><button v-for="option in views" :key="option.value" type="button" :aria-label="option.label" :title="option.label" :aria-pressed="view === option.value" :class="{ active: view === option.value }" @click="view = option.value"><component :is="option.icon" :size="16" /><span>{{ option.label }}</span></button></div><details class="work-list-more"><summary aria-label="工作筛选与管理">···</summary><div><a-select v-model:value="filter" aria-label="筛选任务状态"><a-select-option value="all">全部状态</a-select-option><a-select-option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</a-select-option></a-select><a-button type="text" @click="openTopicCodes">议题编号</a-button><a-button type="text" :disabled="loading" @click="load">刷新</a-button></div></details></div><a-button type="primary" @click="openCreate">新建</a-button></div>
+        <div class="collection-tools"><div class="collection-discovery"><a-input v-model:value="search" allow-clear placeholder="搜索工作标题" aria-label="搜索任务" /><div class="work-view-switch" role="group" aria-label="工作视图"><button v-for="option in views" :key="option.value" type="button" :aria-label="option.label" :title="option.label" :aria-pressed="view === option.value" :class="{ active: view === option.value }" @click="view = option.value"><component :is="option.icon" :size="16" /><span>{{ option.label }}</span></button></div><details class="work-list-more"><summary aria-label="工作筛选与管理">···</summary><div><a-select v-model:value="filter" aria-label="筛选任务状态"><a-select-option value="all">全部状态</a-select-option><a-select-option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</a-select-option></a-select><a-button type="text" @click="openTopicCodes">{{ themeText('议题编号') }}</a-button><a-button type="text" :disabled="loading" @click="load">刷新</a-button></div></details></div><a-button type="primary" @click="openCreate">新建</a-button></div>
         <section class="tasks-panel" :class="`view-${view}`" aria-label="工作内容">
           <div v-if="!tasks.length && view === 'board'" class="tasks-empty">
             <div class="tasks-empty-icon">✓</div>
@@ -90,7 +90,7 @@
         <label><span class="field-title">任务标题 <em>*</em></span><a-input v-model:value="title" maxlength="512" placeholder="例如：完成季度客户访谈" /></label>
         <WorkSourceFields v-model:topic-id="topicId" v-model:decision-id="decisionId"
           v-model:review-confirmed="reviewConfirmed" :topics="topics" :decisions="decisions" :disabled="saving" />
-        <p v-if="selectedTopicMissingCode" class="tasks-hint">所选议题尚未配置缩写，任务编号需要它。<a @click.prevent="openTopicCodes">前往配置议题编号</a></p>
+        <p v-if="selectedTopicMissingCode" class="tasks-hint">{{ themeText('所选议题尚未配置缩写，任务编号需要它。') }}<a @click.prevent="openTopicCodes">{{ themeText('前往配置议题编号') }}</a></p>
         <label>任务详情<a-textarea v-model:value="description" :rows="4" placeholder="写明工作目标与交付范围" /></label>
         <label>验收条件（可选，Markdown）<a-textarea v-model:value="acceptanceCriteria" aria-label="新工作验收条件" :rows="3" :maxlength="100000" placeholder="如何判断工作完成；可稍后完善" /></label>
         <div class="form-pair">
@@ -105,15 +105,15 @@
         <div class="form-actions"><a-button @click="createOpen = false">取消</a-button><a-button type="primary" :loading="saving" :disabled="!title.trim() || (!codeSaved && !projectCode.trim())" @click="createTask">创建工作</a-button></div>
       </div>
     </a-modal>
-    <a-modal v-model:open="topicCodeOpen" title="议题编号缩写" :footer="null" :width="560">
+    <a-modal v-model:open="topicCodeOpen" :title="themeText('议题编号缩写')" :footer="null" :width="560">
       <div class="task-form">
-        <p class="tasks-hint">议题缩写首次保存后固化，任务编号形如 <code>{项目缩写}-{议题缩写}-{序号}</code>。</p>
-        <p v-if="!topics.length" class="tasks-hint">当前项目还没有议题，请先在项目工作台创建议题。</p>
+        <p class="tasks-hint">{{ themeText('议题缩写首次保存后固化，任务编号形如') }}<code>{{ themeText('{项目缩写}-{议题缩写}-{序号}') }}</code>。</p>
+        <p v-if="!topics.length" class="tasks-hint">{{ themeText('当前项目还没有议题，请先在项目工作台创建议题。') }}</p>
         <div v-for="topic in topics" :key="topic.id" class="topic-code-row">
           <div class="topic-code-name"><strong>{{ topic.title }}</strong><small>{{ topicAdmissionLabel(topic.admission_status) }} · {{ topicProgressLabel(topic.progress) }}</small></div>
           <span v-if="topic.code" class="topic-code-locked">{{ topic.code }} · 已固化</span>
           <template v-else>
-            <a-input v-model:value="topicCodeDrafts[topic.id]" maxlength="12" placeholder="例如 REG" aria-label="议题编号缩写" />
+            <a-input v-model:value="topicCodeDrafts[topic.id]" maxlength="12" placeholder="例如 REG" :aria-label="themeText('议题编号缩写')" />
             <a-button :loading="saving" :disabled="!(topicCodeDrafts[topic.id] || '').trim()" @click="saveTopicCode(topic)">保存</a-button>
           </template>
         </div>
@@ -144,6 +144,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { List, Columns3, CalendarRange } from '@lucide/vue'
 import { useReturnScroll } from '@/utils/pageReturnScroll'
 import { topicAdmissionLabel, topicProgressLabel } from '@/utils/governanceBoard'

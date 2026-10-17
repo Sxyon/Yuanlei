@@ -1,8 +1,7 @@
 <template>
   <section class="discussion-card" :id="`topic-comment-${comment.id}`">
     <p>
-      {{ comment.author_name }} · {{ timestamp(comment.created_at) }} · 议题修订
-      {{ comment.revision_number || '未知' }}
+      {{ comment.author_name }} · {{ timestamp(comment.created_at) }}{{ themeText('· 议题修订') }}{{ comment.revision_number || '未知' }}
     </p>
     <MarkdownPreview :content="comment.content" />
     <template v-if="currentDisposition">
@@ -39,8 +38,7 @@
     <p v-else class="hint">尚未处置</p>
     <article v-for="reply in comment.replies || []" :key="reply.id" class="reply">
       <p>
-        {{ reply.author_name }} · {{ timestamp(reply.created_at) }} · 发布时议题修订
-        {{ reply.revision_number || '未知' }}
+        {{ reply.author_name }} · {{ timestamp(reply.created_at) }}{{ themeText('· 发布时议题修订') }}{{ reply.revision_number || '未知' }}
       </p>
       <MarkdownPreview :content="reply.content" />
     </article>
@@ -101,6 +99,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'

@@ -1,4 +1,7 @@
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { inject, computed, onBeforeUnmount, ref, watch } from 'vue'
 import { governanceBoardApi as api } from '@/apis/governance_board_api'
 import { useRoute } from 'vue-router'
@@ -38,7 +41,7 @@ const groups = computed(() =>
     { key: 'results', title: '待验收', note: '结果接受与工作完成分别办理' },
     { key: 'exceptions', title: '执行异常', note: '以准确工作中的当前尝试为准' },
     { key: 'work', title: '工作进展', note: '当前工作状态' },
-    { key: 'pending', title: '待处理', note: '议题、计划与草案' }
+    { key: 'pending', title: '待处理', note: themeText('议题、计划与草案') }
   ].map((item) => ({ ...item, ...overview.value[item.key] }))
 )
 const attentionGroups = computed(() => groups.value.filter(item => ['results', 'pending', 'exceptions'].includes(item.key)))
@@ -243,7 +246,7 @@ onBeforeUnmount(() => generation++)
           <footer v-if="blueprintSummary && blueprintCount > 1">— {{ blueprintSummary.source }}</footer>
         </section>
         <section class="overview-panel recent-activity"><header><h2>最近动态</h2></header>
-          <RouterLink v-for="item in activity" :key="item.event_key" class="recent-item object-target" :to="topicLink(item)"><span class="recent-kind">{{ { decision: '决策', comment: '讨论', topic: '议题' }[item.kind] }}</span><strong>{{ clip(item.title, 44) }}</strong><time :title="`${item.author_name || ''} · ${item.created_at}`">{{ activityTime(item.created_at) }}</time></RouterLink>
+          <RouterLink v-for="item in activity" :key="item.event_key" class="recent-item object-target" :to="topicLink(item)"><span class="recent-kind">{{ { decision: '决策', comment: '讨论', topic: themeText('议题') }[item.kind] }}</span><strong>{{ clip(item.title, 44) }}</strong><time :title="`${item.author_name || ''} · ${item.created_at}`">{{ activityTime(item.created_at) }}</time></RouterLink>
           <p v-if="!activity.length && !loading" class="metadata">暂无动态</p>
         </section>
         <ProjectGitAttentionSummary :project-id="projectId" section="occupancies" />

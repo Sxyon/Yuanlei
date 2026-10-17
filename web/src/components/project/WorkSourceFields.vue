@@ -1,12 +1,11 @@
 <template>
   <div class="work-source-fields">
     <label
-      >来源议题（可选）
-      <a-select
+      >{{ themeText('来源议题（可选）') }}<a-select
         :value="topicId"
         allow-clear
         :disabled="disabled"
-        placeholder="无议题也可创建工作"
+        :placeholder="themeText('无议题也可创建工作')"
         @update:value="$emit('update:topicId', $event)"
       >
         <a-select-option v-for="topic in topics" :key="topic.id" :value="topic.id">{{
@@ -34,7 +33,7 @@
         </a-select-option>
       </a-select>
     </label>
-    <p v-if="mismatch" role="alert">议题须与所选决策的来源议题一致；项目级决策只关联决策。</p>
+    <p v-if="mismatch" role="alert">{{ themeText('议题须与所选决策的来源议题一致；项目级决策只关联决策。') }}</p>
     <a-alert
       v-if="selected?.requires_review"
       type="warning"
@@ -53,6 +52,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { computed } from 'vue'
 import { governanceStatusLabel } from '@/utils/governanceBoard'
 const props = defineProps({

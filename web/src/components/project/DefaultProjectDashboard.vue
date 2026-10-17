@@ -94,8 +94,8 @@
             v-if="decision.topic_execution_hint === 'pause_recommended'"
             type="warning"
             show-icon
-            message="关联议题建议暂停原方案"
-            description="仅为议题提示，不撤销决策或暂停任务或执行记录。"
+            :message="themeText('关联议题建议暂停原方案')"
+            :description="themeText('仅为议题提示，不撤销决策或暂停任务或执行记录。')"
           />
           <MarkdownPreview :content="decision.conclusion" compact />
         </article>
@@ -159,21 +159,18 @@
 
     <section class="overview-card">
       <div class="card-heading">
-        <h2>最近议题反馈</h2>
-        <a-button type="link" @click="openList('feedback', '议题反馈')">更多</a-button>
+        <h2>{{ themeText('最近议题反馈') }}</h2>
+        <a-button type="link" @click="openList('feedback', themeText('议题反馈'))">更多</a-button>
       </div>
       <ul class="item-list">
         <li v-for="item in overview.feedback?.items || []" :key="item.id">
           <RouterLink :to="item.url">{{ item.summary }}</RouterLink>
-          <p>
-            议题修订 {{ item.topic_revision }} · {{ item.created_at }} ·
+          <p>{{ themeText('议题修订') }}{{ item.topic_revision }} · {{ item.created_at }} ·
             <RouterLink :to="item.result_url">查看来源结果</RouterLink>
           </p>
         </li>
       </ul>
-      <p v-if="!overview.feedback?.items?.length" class="empty-copy">
-        暂无议题反馈；蓝图复盘保留在正文中。
-      </p>
+      <p v-if="!overview.feedback?.items?.length" class="empty-copy">{{ themeText('暂无议题反馈；蓝图复盘保留在正文中。') }}</p>
       <a-button type="link" @click="openList('historical_exceptions', '历史执行异常')"
         >历史执行异常（{{ overview.historical_exceptions?.total || 0 }}）</a-button
       >
@@ -182,6 +179,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -222,7 +222,7 @@ const groups = computed(() => {
       key: 'pending',
       title: '待处理',
       count: `${data.pending?.total || 0} 条`,
-      note: `议题 ${counts.pending_topics || 0} · 工作建议 ${counts.pending_tasks || 0} · 草稿决策 ${counts.pending_decisions || 0}`
+      note: `${themeText('议题')} ${counts.pending_topics || 0} · 工作建议 ${counts.pending_tasks || 0} · 草稿决策 ${counts.pending_decisions || 0}`
     },
     {
       key: 'work',
@@ -245,7 +245,7 @@ const groups = computed(() => {
   ].sort((a, b) => ['results', 'exceptions', 'work', 'pending'].indexOf(a.key) - ['results', 'exceptions', 'work', 'pending'].indexOf(b.key)).map((group) => ({ ...group, items: data[group.key]?.items || [] }))
 })
 const itemLabel = (item) =>
-  `${item.kind ? ({ topic: '议题', suggestion: '工作建议', decision: '草稿决策', execution: '智能体尝试', delegation: '外部委派' }[item.kind] || item.kind) + ' · ' : ''}${item.number ? item.number + ' · ' : ''}${item.title || item.summary || '议题反馈'}`
+  `${item.kind ? ({ topic: themeText('议题'), suggestion: '工作建议', decision: '草稿决策', execution: '智能体尝试', delegation: '外部委派' }[item.kind] || item.kind) + ' · ' : ''}${item.number ? item.number + ' · ' : ''}${item.title || item.summary || themeText('议题反馈')}`
 const detailLabel = (item) =>
   [
     item.kind === 'topic' ? topicAdmissionLabel(item.admission_status) : overviewStatusLabel(

@@ -610,6 +610,30 @@ A1 的源码／部署盘点和尚缺证据由 LOG 第48节拥有。批准记录�
 
 **退出：** 同ID办理、词汇贯穿、双数据、预览／应用一致、三份独立定义及S06交接逐项交已实现／实际观察／失败／未验；独立Review之后供用户系统验收，不以此前S04测试、总览截图或模板个数代替S05。外部协作／计量任务、S06及组织治理继续暂停。
 
+#### B1—B5开发交付及实际消费协议（2026-10-17）
+
+用户本轮明确执行S05-R2，覆盖先前M1人工未验时“不领取S05”的排期限制；没有把M1记为已验收。起点c27ebaef、干净当前工作区，核对原复制／编辑／校验／预览／发布／分配实现及相关HTTP，随后用隔离新来源生成调研和默认证据派生版。原已发布ZIP、日常三套内置及业务Owner保留。未改变formatVersion 1、componentAbi 3或yuanlei v41；实际接线、错误和人工路径见LOG58。
+
+| 定义字段 | 真实消费者及边界 |
+| --- | --- |
+| manifest格式／ABI／source、reference／digest | parser与加载校验、版本详情及作用域；source是声明，不授予权限；theme.id只标识定义，不选择布局 |
+| name／version、accent／density | ProjectLayout主题摘要与有限token类；ThemeHost沿原样式消费 |
+| presentation／hiddenCapabilities／baseVersion | 真实总览组织、导航过滤、可信能力继承；精简仅三项导航，准确对象不被删除 |
+| topicLabel | 真实导航、TopicWorkspace及讨论／维护／决定／工作关联提示、两类总览；开发者界面文案响应变化，用户历史原文保持 |
+| page.id／title／capability／layout | 稳定业务路由与附加区块路由；reading给能力页有限阅读样式，区块页复用原reading／overview／full布局；能力页正文仍由可信组件组织 |
+| page.description | 区块资料页说明；能力页的description仅留定义，不自动插入真实业务正文，不据此声明新布局生效 |
+| block类型／region／variant／binding／action | 原ThemeHost注册组件、受控导航及固定DTO；主题不自行拼HTTP、写业务或执行代码 |
+| manifest.files | 声明alias与application/json／image/png；绑定时映射Project虚拟绝对路径（如/facts.json），最终归入Workdir；声明本身不自动生成资料视图，需受控块引用 |
+| manifest.assets | 包内path／mediaType／sha256；声明本身不自动显示，需块引用；新素材仍需完整ZIP，JSON编辑不能凭空生成成员 |
+
+附加资料区域从项目主导航进入，JSON主区及PNG辅区沿原reading布局，页首说明项目级范围；有限指纹信息折叠。加载／缺失／类型错误／越界／超限沿原块状态与重试，未绑定明确提示。没有新关键布局或逐课题资料关系，复用既有区块设计与三套已确认总览，不画图、不新增设计器。
+
+真实混合预览由baseVersion 1且至少一个capability页识别；纯区块旧包继续明确合成。ProjectThemePanel消费宿主临时准确包及适配器，workspacePageId使附加页不进入CapabilityPreview；块跨页动作交回真实路由，嵌入页拒绝capability／未知目标，旧返回只能恢复当前资料页。选择器预览链接另开页，携准确版本及当前未提交files映射；草稿预览仍携source＋revision，可复用当前项目同名映射，缺项提示未绑定。预览资料POST只接受准确引用、generation、files和声明alias，在服务内重验授权与Workdir边界，不写选择。预览包内素材按准确version／revision读取。原已应用资源GET仍只接受alias和generation。
+
+可携ZIP包含manifest.json、theme.json及声明assets原成员；目标需要ABI3可信Vue组件、基础能力v1、原治理／正式工作API和有权Project／Workdir。业务记录、身份、权限、选择generation、Project文件字节及files路径映射不随包迁移。JSON／PNG每文件8 MiB，PNG解码预算及绑定总字节／总像素预算继续由包与文件Owner执行；预览每次读取一个alias，未引入多文件聚合。默认日常版仍无资料要求。跨实例迁移未验，S06保持暂停。
+
+人工只需核对实际交付的代表路径：正常主题选择调研证据版→目录／表单词汇；同对象编辑讨论、决定历史和关联工作→切回默认；更新指定JSON／PNG→重新读取及缺文件错误；预览准确新版本→原选择与映射保持→应用后一致；精简准确工作链接返回及取消草稿保持。全量未运行，由用户验收后执行；不把相关检查或独立Review当作人工验收。
+
 #### 2026-10-16 本地样例整改：已实施前置的历史依据
 
 本轮用户授权目标由SYS15.10拥有，具体稿为DB-P09／DB-G27。只细化旧样例退出、默认与应急共用基线、精简三项导航／两区总览以及有明显组织差异的调研样例；S05-R2整包及双数据仍未据此完成，S06和协作／Andon暂停。

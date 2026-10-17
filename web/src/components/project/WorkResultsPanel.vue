@@ -12,7 +12,7 @@
         <span>{{ formatDateTime(item.created_at) }} · {{ summaryTitle(item.summary) }}</span>
       </button>
     </div>
-    <p v-if="!task.results?.length" class="muted">尚无业务结果记录，可直接人工交付，无需议题或智能体。</p>
+    <p v-if="!task.results?.length" class="muted">{{ themeText('尚无业务结果记录，可直接人工交付，无需议题或智能体。') }}</p>
     <article v-for="result in selectedResult ? [selectedResult] : []" :key="result.id" :id="`work-result-${result.id}`" class="result-card">
       <h3>{{ summaryTitle(result.summary) }}</h3><pre class="result-body">{{ result.summary }}</pre><p class="muted">{{ statusName(result.status) }} · {{ formatDateTime(result.created_at) }}</p>
       <p class="muted">{{ result.origin_kind === 'automatic' ? '执行自动导入' : '人工提交' }} · 要求修订 {{ result.criteria_revision || '未记录' }}</p>
@@ -86,6 +86,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import ResultFeedbackPanel from './ResultFeedbackPanel.vue'
 import { projectWorkApi } from '@/apis/project_work_api'

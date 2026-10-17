@@ -1,4 +1,7 @@
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { confirmationConditionsChanged } from '@/utils/topicFollowup'
 import { themeReturnTarget } from '@/utils/projectThemeReturn'
@@ -47,7 +50,7 @@ const composer = ref(null),
   discussionDrafts = ref({})
 const originalForm = ref('')
 watch(composer, () => {originalForm.value=JSON.stringify(form.value)}, {flush:'post'})
-useProjectThemeEdit('议题／决定表单及讨论', () => props.projectId, () => Boolean(composer.value && JSON.stringify(form.value)!==originalForm.value), () => {if(composer.value)setGovernanceDraft(user.uid,props.projectId,draftKey(composer.value),null);composer.value=null;form.value={}}, () => busy.value, true)
+useProjectThemeEdit(() => themeText('议题／决定表单及讨论'), () => props.projectId, () => Boolean(composer.value && JSON.stringify(form.value)!==originalForm.value), () => {if(composer.value)setGovernanceDraft(user.uid,props.projectId,draftKey(composer.value),null);composer.value=null;form.value={}}, () => busy.value, true)
 let generation = 0
 const selected = computed(() => topics.value.find((item) => item.id === selectedId.value))
 const achievements = ref({})
@@ -324,27 +327,27 @@ onBeforeUnmount(() => generation++)
 </script>
 
 <template>
-  <section class="topic-workspace" aria-label="议题工作区">
+  <section class="topic-workspace" :aria-label="themeText('议题工作区')">
     <RouterLink v-if="themeOrigin" :to="themeOrigin" class="source-return">返回来源</RouterLink>
     <div v-if="!detailVisible" class="collection-tools">
-      <div class="collection-filters"><a-input v-model:value="search" aria-label="搜索议题" placeholder="搜索标题或关键词" allow-clear />
-        <a-select :value="progress" aria-label="筛选议题" @change="setProgress"><a-select-option value="all">全部进展</a-select-option><a-select-option value="open">研讨中</a-select-option><a-select-option value="decided">已形成决定</a-select-option><a-select-option value="achieved">目标已达成</a-select-option><a-select-option value="closed">已关闭</a-select-option></a-select>
-        <details class="directory-more"><summary aria-label="更多议题筛选"><MoreHorizontal :size="18" /></summary><div><a-select v-model:value="admission" aria-label="议题准入筛选"><a-select-option value="all">全部准入</a-select-option><a-select-option value="proposed">待纳入</a-select-option><a-select-option value="canonical">已纳入</a-select-option><a-select-option value="rejected">已拒绝</a-select-option></a-select><a-checkbox v-model:checked="showArchived">归档</a-checkbox></div></details>
+      <div class="collection-filters"><a-input v-model:value="search" :aria-label="themeText('搜索议题')" placeholder="搜索标题或关键词" allow-clear />
+        <a-select :value="progress" :aria-label="themeText('筛选议题')" @change="setProgress"><a-select-option value="all">全部进展</a-select-option><a-select-option value="open">研讨中</a-select-option><a-select-option value="decided">已形成决定</a-select-option><a-select-option value="achieved">目标已达成</a-select-option><a-select-option value="closed">已关闭</a-select-option></a-select>
+        <details class="directory-more"><summary :aria-label="themeText('更多议题筛选')"><MoreHorizontal :size="18" /></summary><div><a-select v-model:value="admission" :aria-label="themeText('议题准入筛选')"><a-select-option value="all">全部准入</a-select-option><a-select-option value="proposed">待纳入</a-select-option><a-select-option value="canonical">已纳入</a-select-option><a-select-option value="rejected">已拒绝</a-select-option></a-select><a-checkbox v-model:checked="showArchived">归档</a-checkbox></div></details>
       </div><a-button type="primary" @click="open('create')">新建</a-button>
     </div>
     <a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button @click="load">重试</a-button></template></a-alert>
-    <p v-if="loading" role="status">正在读取议题…</p>
-    <a-alert v-if="conflictingSource" type="warning" show-icon message="入口议题与决定真实来源不一致，原地址保留。"><template #action><a-button @click="selectDecision(route.query.decision_id)">打开决定真实来源</a-button></template></a-alert>
-    <section v-if="!detailVisible" class="topic-directory" aria-label="议题目录">
+    <p v-if="loading" role="status">{{ themeText('正在读取议题…') }}</p>
+    <a-alert v-if="conflictingSource" type="warning" show-icon :message="themeText('入口议题与决定真实来源不一致，原地址保留。')"><template #action><a-button @click="selectDecision(route.query.decision_id)">打开决定真实来源</a-button></template></a-alert>
+    <section v-if="!detailVisible" class="topic-directory" :aria-label="themeText('议题目录')">
       <RouterLink v-for="topic in filtered" :key="topic.id" class="topic-directory-row object-target" :to="{ query: { theme_page: route.query.theme_page, topic_id: topic.id } }"><div><strong>{{ topic.title }}</strong><p>{{ topicSummary(topic) }}</p></div><span class="topic-status">{{ topic.archived_at ? '已归档' : topicProgressLabel(topic.progress) }}</span></RouterLink>
-      <p v-if="!filtered.length && !loading" class="metadata">没有符合条件的议题。</p>
+      <p v-if="!filtered.length && !loading" class="metadata">{{ themeText('没有符合条件的议题。') }}</p>
     </section>
     <div v-else class="topic-detail-layout">
       <div class="object-toolbar"><button type="button" class="quiet return-directory" @click="returnToDirectory"><ArrowLeft :size="16" />返回目录</button><div class="toolbar-actions" v-if="selected"><button v-if="!selected.archived_at" class="icon-control" type="button" aria-label="编辑正文" :disabled="busy" @click="open('edit')"><Pencil :size="18" /></button><button class="icon-control" type="button" aria-label="生命周期与更多" @click="historyPanel?.openMaintenance()"><MoreHorizontal :size="18" /></button></div></div>
       <article v-if="selected" class="topic-reading-body">
         <div class="topic-document-surface"><h1>{{ selected.title }}</h1><div class="object-meta"><span class="topic-status">{{ topicProgressLabel(selected.progress) }}</span><span v-if="selected.admission_status !== 'canonical'">{{ topicAdmissionLabel(selected.admission_status) }}</span><span>正文 v{{ selected.revision_number }}</span><span v-if="selected.updated_at">更新于 {{ updatedLabel(selected.updated_at) }}</span><span v-if="selected.archived_at">已归档</span></div>
         <div class="topic-prose"><MarkdownPreview :content="selected.summary || '尚未填写正文。'" /><template v-if="selected.expected_outcome"><h2>预期结果</h2><MarkdownPreview :content="selected.expected_outcome" /></template><template v-if="selected.verification_conditions"><h2>验证条件</h2><MarkdownPreview :content="selected.verification_conditions" /></template></div>
-        <div v-if="selected.admission_status === 'proposed' && !selected.archived_at" class="admission-actions"><span>纳入审核</span><a-button :disabled="busy" danger @click="review(false)">拒绝纳入</a-button><a-button :disabled="busy" @click="review(true)">纳入议题</a-button></div>
+        <div v-if="selected.admission_status === 'proposed' && !selected.archived_at" class="admission-actions"><span>纳入审核</span><a-button :disabled="busy" danger @click="review(false)">拒绝纳入</a-button><a-button :disabled="busy" @click="review(true)">{{ themeText('纳入议题') }}</a-button></div>
         </div>
         <details class="topic-decisions" :open="Boolean(route.query.decision_id && relatedDecisions.some(item => item.id === route.query.decision_id))"><summary>决策 <span class="count-badge">{{ relatedDecisions.length }}</span></summary><div class="decision-rows">
           <details v-for="decision in relatedDecisions" :key="decision.id" :id="`topic-decision-${decision.id}`" tabindex="-1" class="decision-row" :open="decisionExpanded.has(decision.id) || route.query.decision_id === decision.id" @toggle="toggleDecision(decision.id, $event)"><summary><span>{{ decision.title }}</span><span class="topic-status">{{ governanceStatusLabel(decision.status) }}</span></summary><div class="decision-content"><DecisionHistoryPanel v-if="decisionExpanded.has(decision.id) || route.query.decision_id === decision.id" v-show="!loading" embedded :project-id="projectId" :decisions="[decision]" :topics="topics" :selected-id="decision.id" @updated="load" @visibility-lost="failure" @select="selectDecision" @compose="(decision, relation) => open('decision', decision, relation)" @topic="choose" /></div></details>
@@ -352,7 +355,7 @@ onBeforeUnmount(() => generation++)
         </div></details>
         <TopicHistoryPanel ref="historyPanel" :key="`${projectId}:${selected.id}`" :project-id="projectId" :topic="selected" :decisions="decisions" :works="works.filter((item) => item.topic_id === selected.id)" :draft="discussionDraft(selected.id)" presentation="continuous" @updated="load" @visibility-lost="failure" />
       </article>
-      <p v-else-if="!loading" role="status">指定议题不存在或无权访问，原地址保留。</p>
+      <p v-else-if="!loading" role="status">{{ themeText('指定议题不存在或无权访问，原地址保留。') }}</p>
     </div>
     <details
       v-if="!detailVisible"
@@ -364,8 +367,8 @@ onBeforeUnmount(() => generation++)
         )
       "
     >
-      <summary><span class="decision-index-title">决定索引</span><span class="decision-index-count">{{ decisions.length }} 条决定 · {{ unlinkedDecisionCount }} 条未关联议题</span><span class="decision-index-chevron" aria-hidden="true">⌄</span></summary>
-      <div class="decision-index-tools"><div class="decision-scope" role="group" aria-label="决定查看范围"><button type="button" :aria-pressed="decisionScope === 'all'" @click="decisionScope = 'all'">全部决定<span>{{ decisions.length }}</span></button><button type="button" :aria-pressed="decisionScope === 'unlinked'" @click="decisionScope = 'unlinked'">未关联议题<span>{{ unlinkedDecisionCount }}</span></button></div><a-tooltip title="创建暂不关联议题的决定草案，仍需按原流程批准。"><a-button size="small" @click="open('decision', { id: null, topic_id: null })">新建独立决定</a-button></a-tooltip></div>
+      <summary><span class="decision-index-title">决定索引</span><span class="decision-index-count">{{ decisions.length }} 条决定 · {{ unlinkedDecisionCount }}{{ themeText('条未关联议题') }}</span><span class="decision-index-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="decision-index-tools"><div class="decision-scope" role="group" aria-label="决定查看范围"><button type="button" :aria-pressed="decisionScope === 'all'" @click="decisionScope = 'all'">全部决定<span>{{ decisions.length }}</span></button><button type="button" :aria-pressed="decisionScope === 'unlinked'" @click="decisionScope = 'unlinked'">{{ themeText('未关联议题') }}<span>{{ unlinkedDecisionCount }}</span></button></div><a-tooltip :title="themeText('创建暂不关联议题的决定草案，仍需按原流程批准。')"><a-button size="small" @click="open('decision', { id: null, topic_id: null })">新建独立决定</a-button></a-tooltip></div>
       <a-alert
         v-if="
           route.query.decision_id &&
@@ -392,7 +395,7 @@ onBeforeUnmount(() => generation++)
     <a-modal
       :open="!!composer"
       :title="
-        { create: '新建议题', edit: '修改议题提议', decision: '新建决定草案' }[composer?.kind]
+        { create: themeText('新建议题'), edit: themeText('修改议题提议'), decision: '新建决定草案' }[composer?.kind]
       "
       :width="820"
       :mask-closable="false"
@@ -408,11 +411,11 @@ onBeforeUnmount(() => generation++)
       <a-alert v-if="formError" type="error" show-icon :message="formError" />
       <a-form layout="vertical"
         ><a-form-item label="标题" required
-          ><a-input v-model:value="form.title" aria-label="议题或决定标题" :disabled="busy"
+          ><a-input v-model:value="form.title" :aria-label="themeText('议题或决定标题')" :disabled="busy"
         /></a-form-item>
         <template v-if="composer?.kind === 'decision'"
-          ><a-form-item label="关联议题"
-            ><a-select v-model:value="form.topic_id" allow-clear aria-label="关联议题"
+          ><a-form-item :label="themeText('关联议题')"
+            ><a-select v-model:value="form.topic_id" allow-clear :aria-label="themeText('关联议题')"
               ><a-select-option
                 v-for="topic in topics.filter((item) => !item.archived_at)"
                 :key="topic.id"
@@ -455,7 +458,7 @@ onBeforeUnmount(() => generation++)
           ><a-form-item label="正文"
             ><a-textarea
               v-model:value="form.summary"
-              aria-label="议题正文"
+              :aria-label="themeText('议题正文')"
               :disabled="busy"
               :maxlength="100000"
               :auto-size="{ minRows: 12, maxRows: 24 }" /></a-form-item
@@ -471,7 +474,7 @@ onBeforeUnmount(() => generation++)
                 aria-label="核对条件"
                 :disabled="busy" /></a-form-item
             ><a-form-item label="修改原因" required
-              ><a-input v-model:value="form.reason" aria-label="议题修改原因" :disabled="busy"
+              ><a-input v-model:value="form.reason" :aria-label="themeText('议题修改原因')" :disabled="busy"
             /></a-form-item>
             <p class="metadata">
               基于修订 {{ form.expected_revision }}，冲突后保留草稿供核对。

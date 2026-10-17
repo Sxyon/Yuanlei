@@ -39,6 +39,7 @@ after(async () => {
   delete globalThis.localStorage
   delete globalThis.window
 })
+const themeVocabulary = reactive({ value:{package:{theme:{topicLabel:'议题'}}} })
 const renderer = createRenderer({
   createElement: () => ({}),
   createText: () => ({}),
@@ -74,6 +75,7 @@ function mount(t, View, route = { query: {}, hash: '' }, router = { push: async 
   app.provide(routeLocationKey, reactive(route))
   app.provide(routerKey, router)
   app.provide('projectAccessLost', accessLost)
+  app.provide('projectThemeContext', themeVocabulary)
   app.mount({})
   t.after(() => app.unmount())
   return () => instance.setupState
@@ -335,4 +337,28 @@ test('决定索引按真实议题关联筛选，切换范围不改变原决定�
   state().decisionScope='unlinked';await flush()
   assert.deepEqual(state().indexedDecisions.map(row=>row.id),['independent'])
   assert.equal(state().decisions.length,2)
+})
+
+test('真实课题消费者切换词汇保留同一业务对象与未保存草稿', async (t) => {
+  const original = { id:'same-topic', title:'用户议题标题', summary:'历史课题与议题原文', admission_status:'canonical', progress:'open' }
+  t.mock.method(api, 'listTopics', async () => [original])
+  t.mock.method(api, 'listDecisions', async () => [])
+  t.mock.method(workApi, 'listTasks', async () => [])
+  themeVocabulary.value.package.theme.topicLabel = '议题'
+  const state = mount(t, Topics)
+  await settle(() => !state().loading)
+  state().selectedId = original.id
+  state().open('edit')
+  state().form.summary = '未保存议题原文'
+  themeVocabulary.value.package.theme.topicLabel = '课题'
+  await flush()
+  assert.equal(state().themeText('修改议题'), '修改课题')
+  assert.equal(state().selected.id, original.id)
+  assert.equal(state().selected.summary, '历史课题与议题原文')
+  assert.equal(state().form.summary, '未保存议题原文')
+  themeVocabulary.value.package.theme.topicLabel = '战略规划'
+  await flush()
+  assert.equal(state().themeText('创建议题'), '创建战略规划')
+  assert.equal(state().form.summary, '未保存议题原文')
+  themeVocabulary.value.package.theme.topicLabel = '议题'
 })

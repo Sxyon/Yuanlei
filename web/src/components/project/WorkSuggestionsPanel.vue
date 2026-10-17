@@ -6,7 +6,7 @@
         <header><span class="plan-indicator">{{ item.work ? '已关联工作' : item.status === 'rejected' ? '已拒绝' : '待落实' }}</span></header><h2>{{ item.title }}</h2>
         <p class="plan-result">{{ (item.description || '尚未补充预期结果与计划内容。').slice(0,180) }}</p>
         <details v-if="item.description"><summary>计划内容</summary><p class="plan-content">{{ item.description }}</p></details>
-        <div class="plan-source"><span>依据</span><RouterLink v-if="item.topic_id" :to="{name:'ProjectTopics',params:{project_id:projectId},query:{topic_id:item.topic_id}}">{{ topics.find(t=>t.id===item.topic_id)?.title || '来源议题' }}</RouterLink><RouterLink v-if="item.decision_id" :to="{name:'ProjectTopics',params:{project_id:projectId},query:{decision_id:item.decision_id,...(item.topic_id?{topic_id:item.topic_id}:{})}}">{{ decisions.find(d=>d.id===item.decision_id)?.title || '来源决定' }}</RouterLink><a v-if="item.source?.url" :href="item.source.url" target="_blank" rel="noopener noreferrer">来源原文</a><a-dropdown v-if="item.status === 'proposed'" :trigger="['click']"><a-button aria-label="行动计划更多操作">···</a-button><template #overlay><a-menu @click="$emit('reject',item)"><a-menu-item key="reject">不采用</a-menu-item></a-menu></template></a-dropdown></div>
+        <div class="plan-source"><span>依据</span><RouterLink v-if="item.topic_id" :to="{name:'ProjectTopics',params:{project_id:projectId},query:{topic_id:item.topic_id}}">{{ topics.find(t=>t.id===item.topic_id)?.title || themeText('来源议题') }}</RouterLink><RouterLink v-if="item.decision_id" :to="{name:'ProjectTopics',params:{project_id:projectId},query:{decision_id:item.decision_id,...(item.topic_id?{topic_id:item.topic_id}:{})}}">{{ decisions.find(d=>d.id===item.decision_id)?.title || '来源决定' }}</RouterLink><a v-if="item.source?.url" :href="item.source.url" target="_blank" rel="noopener noreferrer">来源原文</a><a-dropdown v-if="item.status === 'proposed'" :trigger="['click']"><a-button aria-label="行动计划更多操作">···</a-button><template #overlay><a-menu @click="$emit('reject',item)"><a-menu-item key="reject">不采用</a-menu-item></a-menu></template></a-dropdown></div>
         <footer><RouterLink v-if="item.work" :to="workLink(item.work.id)">{{ item.work.number }} · {{ item.work.title }}</RouterLink><template v-else-if="item.status !== 'rejected'"><a-button type="primary" @click="open(item, 'create')">转为工作</a-button><a-button type="text" @click="open(item, 'link')">关联已有工作</a-button></template></footer>
         <p v-if="item.review?.note" class="plan-source">{{ item.review.note }}</p>
       </article>
@@ -30,8 +30,7 @@
             >原文</a
           >
         </p>
-        <p v-if="item.topic_id">
-          议题：{{ topics.find((t) => t.id === item.topic_id)?.title || '历史议题' }}
+        <p v-if="item.topic_id">{{ themeText('议题：') }}{{ topics.find((t) => t.id === item.topic_id)?.title || themeText('历史议题') }}
         </p>
         <p v-if="item.decision_id">
           决策：{{ decisions.find((d) => d.id === item.decision_id)?.title || '历史决策' }}
@@ -85,12 +84,12 @@
           </div>
           <div v-if="topicId && !workTopics.find((t) => t.id === topicId)?.code">
             <label
-              >所选议题编号缩写<a-input
+              >{{ themeText('所选议题编号缩写') }}<a-input
                 v-model:value="topicCodeDraft"
                 placeholder="如 PLAN"
                 :disabled="busy"
             /></label>
-            <a-button :loading="busy" @click="saveTopicCode">保存议题缩写</a-button>
+            <a-button :loading="busy" @click="saveTopicCode">{{ themeText('保存议题缩写') }}</a-button>
           </div>
         </template>
         <label v-else
@@ -122,6 +121,9 @@
   </div>
 </template>
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { ref, watch } from 'vue'
 import { useUserStore } from '@/stores/user'

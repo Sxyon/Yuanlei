@@ -1443,3 +1443,45 @@ S05可复用正常我的主题制作入口、准确source／revision／version�
 独立Reviewer已核两项P2修复与负例、权限及三种独立回读，未发现新代码阻断；最终限定结论待完整文档与最新截图复核。当前仅交开发与相关自检，未执行前后端全量单测、全量integration／E2E；人工尚未验收，不创建最终提交或启动S05。
 
 独立末轮复核完整工作区diff、两项P2修复、相关测试与独立回读证据、当前Owner文档及最新三张最终截图，结论“可以作为开发完成、待人工测试交付，未发现阻断问题”。结论仅覆盖M1开发交付，人工验收／全量仍未完成，不授权S05／S06。
+
+## 58. S05-R2真实主题消费与项目证据（2026-10-17）
+
+### 用户依据、起点与前置复核
+
+用户本轮明确执行“S05-R2：真实主题消费、项目证据与跨主题业务验证”，要求在当前最新工作区直接修改、保留已有成果、不画图、不跑全量，验收后由用户执行全量。此指令覆盖LOG57中M1待人工导致的S05排期限制，没有将M1记为已人工验收。起点HEAD c27ebaef、分支codex/dashboard、工作区干净。读取根／web／backend／docs及专项目录AGENTS、推进机制、SYS15、DEV12.3与LOG57，从真实代码及接口重新核对。
+
+M1已具备复制→编辑草稿→保存校验→准确预览→发布→显式分配，未发现阻断S05的制作缺口。相关真实HTTP重验同版本不可变／冲突；隔离新来源再次从当前内置复制，保存修订2、预览真实JSON／PNG、发布3.1.0-r2并分配。未吞并M1整包或宣布其人工验收。复制结果不完整仍沿原目录核实／同身份上传完整ZIP恢复，未新增自动重拷；日常库无验证性写入。
+
+### 差额设计与实际落点
+
+复用SYS15.10已确认三套总览和导航。差额盘点、字段实际消费者及包依赖更新在DEV12.3；page.description在完整能力正文不自动生效，声明alias或asset也不自动产生视图。真实词汇原先仅旧Host／合成消费者生效，现由真实目录、详情、表单、讨论、维护、决定历史、工作关联和总览消费。统一词汇只处理开发者提供的界面文字，用户标题／正文／讨论／原因／历史快照保持。没有新业务对象模型或通用写代理。
+
+资料从项目导航的附加“项目证据”进入，JSON主区／PNG辅区沿原reading区块设计，页首说明Project级；加载、缺失、类型与边界错误由原块状态显示，hash低频展开。复用原块／导航，没有新关键布局或课题附件关系。两种证据派生包只在隔离来源中发布，不覆盖三套已发布ZIP、不增加第四套日常模板。默认日常版仍无必填文件。
+
+混合定义复用真实ProjectLayout预览，ProjectThemePanel接临时准确包和原真实适配；workspacePageId避免内层切入合成CapabilityPreview。新增有限只读preview-file用例核准确version或source＋revision、Project、generation、声明alias与临时映射，复用Workdir读取、8MiB限制及实际类型解码；已应用资源GET保持。临时映射由原选择弹窗另页预览，不写binding或业务。formatVersion1、ABI3及yuanlei v41保持。工程取舍见[消费决策](../develop-guides/yuanlei/decisions/implemented/2026-10-17-theme-evidence-consumption.md)。
+
+### 真实业务及项目证据
+
+[开发交付、人工步骤、截图及限制](图解/32-theme-consumption-r2-20261017/README.md)拥有详细操作，[HTTP／PG／Workdir与原ZIP回读](图解/32-theme-consumption-r2-20261017/http-pg-files.json)拥有准确结果。复用具名隔离服务yuanlei-s04-repair／独立库，另建A、B及不同Workdir；浏览器15174通过本地反向代理访问真实前端及隔离API，无业务mock。会话凭据只留私有session，未写文档或Git。
+
+浏览器从项目列表进入A默认，编辑同一议题到正文v2；项目设置选择调研证据3.1.0-r2、填facts／chart，预览仍持久默认generation1且原映射保留；显式应用推进generation2，资料页与预览DOM正文相同。调研真实目录／表单／决定提示用课题；同ID继续编辑到v3、发讨论、建决定并批准到v2，从该准确决定创建正式工作，冻结来源revision2／课题依据3。切回默认generation3后原文、讨论、决定、工作与历史保持；又验精简generation4，仅三项导航，准确工作可打开并返回总览；最后明确恢复默认generation5。取消离开保留未发送讨论输入，验证后清空未发输入。
+
+A JSON样本12→24、PNG18509→135bytes后重读显示及hash变化；暂移JSON显示missing／指定文件不存在，恢复后可读。B独立应用默认证据版generation2，同名alias读其独立Workdir样本99及原调查图，无A课题。只读验证工具再次比较HTTP、PG绑定行与业务行、文件字节／hash和原ZIPdigest，A仍默认5、B仍默认证据2；两个准确发布包字节保持。
+
+### 相关检查、失败与Review
+
+相关前端命令按受影响组件选择，不运行全量：首组projectThemePreview／Host／Switch／projectWorkspaceState／topicHistoryPanel／decisionHistoryPanel共43项通过（82.75s）；projectThemeSamples／projectThemeLive6项通过（31.73s）。关联工作／资源等九个相关文件组51项中50通过，新增预览fixture description为空导致1失败；显式修正必填说明后又发现该SSR辅助路由缺总览命名路由，补齐测试装配，最终projectThemeSamples5项通过（10.01s）。测试未放松产品断言；早期旧混合预览期待false也显式改为本任务真实混合预览true。最终新增映射负例及相关自检结果在本节末补记。
+
+真实HTTP命令docker compose exec -T api python -m pytest test/integration/api/test_project_themes_api.py -q -k 'mixed_preview_files_exact_revision_and_workdir or candidate_edit_immutable_version or bound_png_actual_bytes'：3项通过（40.35s），其余21项未选。覆盖准确候选／发布版读取JSON／PNG及更新hash、缺失／类型错误／符号链接／越界／8MiB／旧revision与generation／未声明alias／额外映射／失权；PG确认预览不写binding。初轮负例将symlink预期写为file_boundary，真实Workdir为PermissionError→file_denied，核对Owner后显式修正期待，重跑通过。保留pytest缓存目录权限warning。
+
+独立新Reviewer不继承开发上下文，首轮发现旧持久binding错误会遮蔽未绑定／坏绑定的准确混合预览，已按临时预览与持久选择分离修复，增加实际SSR负例；另两处保护提示／编号例词汇残留已补齐。最终独立复核及工程检查结果在本节末登记；Reviewer结论不替用户验收。
+
+本轮开发结果待人工验收。前后端全量unit／integration／E2E均未运行，未分批跑完全量；用户明确验收后自行全量。S06、外部计量、协作／Andon和组织权限继续暂停。未验范围包括跨实例原包迁移、生产数据、所有表单组合、暗色及完整窄屏矩阵，详见人工交付记录。
+
+末轮补查资料块的page动作：混合页目标为capability时，原内层navigate可能进入CapabilityPreview。已交回ProjectThemePanel真实路由并保留准确预览引用／映射；嵌入模式拒绝未知／能力资料ID，旧返回不能覆盖当前资料路由。针对该原因的Host与父路由相关组8项通过（107.45s）；随后加入旧返回／错误嵌入目标负例，最终Host＋M1草稿相关10项通过（42.42s）。未绑定C项目的准确草稿revision2也实页进入资料页：两个alias均明确unbound，持久generation0，没有样例兜底。独立Reviewer逐轮复核两文件、对应新负例、完整需求及diff，未发现剩余阻断；没有替用户验收。
+
+最后preview映射纯逻辑4项通过（0.65s），真实预览适配3项通过（102.44s），新增foreign source拒绝后的HTTP单项复跑通过（135.99s）。曾将两个Vite相关进程并行运行，出现optimizer争用／端口提示，主动停止本轮进程并串行重跑；未把中止运行记为通过。SSR既有Markdown sanitize／未注册控件／非RouterView守卫提示仍保留。容器uv run ruff曾尝试同步既有依赖，tavily镜像下载超时而失败；改用已安装Ruff0.11.13，生产修改及新证据脚本检查通过，新增integration行无问题；旧整个integration文件的既有E501未顺手修改。
+
+工程信任gate通过，检查器unit71项通过（9.08s）；159个变更Markdown相对链接目标无缺失；docs build通过（180.06s，保留既有大chunk提示）。只读最终HTTP／PG／文件与ZIP回读再次与交付JSON逐项一致。最终lint／build及提交状态在本节末补记，全量仍未运行。
+
+开发交付终检：最终web lint通过，最后生产build通过（1m16s，保留既有defineExpose／大chunk提示）；git diff --check及暂存补丁检查通过。SYS／DEV／LOG、Feature、决策和人工路径已同步。独立末轮含资料块跨页及嵌入路由／旧返回负例源码复核，未发现剩余阻断。本轮按用户授权保存开发提交，不推送；人工未验、全量未运行，由用户验收后执行，不宣布S05整体或系统验收通过，不启动S06。

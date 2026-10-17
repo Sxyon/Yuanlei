@@ -1,10 +1,10 @@
 <template>
   <div>
-    <a-button @click="open('topic')">反馈到议题</a-button>
+    <a-button @click="open('topic')">{{ themeText('反馈到议题') }}</a-button>
     <a-button @click="open('blueprint')">补入蓝图复盘</a-button>
-    <p v-for="item in result.topic_feedbacks || []" :key="item.comment_id"><router-link :to="{name:'ProjectTopics',params:{project_id:projectId},query:{topic_id:item.topic_id,comment_id:item.comment_id}}">查看议题反馈 · 修订 {{ item.topic_revision }}</router-link></p>
-    <a-modal v-model:open="visible" :title="mode === 'topic' ? '反馈到议题' : '蓝图复盘预览'" :confirm-loading="busy" :ok-button-props="{ disabled: !ready }" ok-text="确认保存" @ok="save">
-      <p>请核对目标和文字后确认。反馈不会自动重开议题或改变工作状态。</p>
+    <p v-for="item in result.topic_feedbacks || []" :key="item.comment_id"><router-link :to="{name:'ProjectTopics',params:{project_id:projectId},query:{topic_id:item.topic_id,comment_id:item.comment_id}}">{{ themeText('查看议题反馈 · 修订') }}{{ item.topic_revision }}</router-link></p>
+    <a-modal v-model:open="visible" :title="mode === 'topic' ? themeText('反馈到议题') : '蓝图复盘预览'" :confirm-loading="busy" :ok-button-props="{ disabled: !ready }" ok-text="确认保存" @ok="save">
+      <p>{{ themeText('请核对目标和文字后确认。反馈不会自动重开议题或改变工作状态。') }}</p>
       <a-select v-model:value="target" :disabled="busy" aria-label="反馈目标" style="width: 100%" @change="selectTarget(false)">
         <a-select-option v-for="item in choices" :key="item.id || item.name" :value="item.id || item.name" :disabled="!!item.archived_at">{{ item.title || item.name }}{{ item.archived_at ? '（已归档，请先恢复）' : '' }}</a-select-option>
       </a-select>
@@ -20,6 +20,9 @@
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { projectWorkApi } from '@/apis/project_work_api'
 import { governanceBoardApi } from '@/apis/governance_board_api'

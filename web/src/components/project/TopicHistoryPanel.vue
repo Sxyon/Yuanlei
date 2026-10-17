@@ -1,15 +1,15 @@
 <template>
   <section class="topic-history" :class="{ 'continuous-history': presentation === 'continuous' }">
     <template v-if="presentation === 'continuous' && !maintenanceOpen"><a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button @click="loadMore(true)">重试动态</a-button></template></a-alert><a-alert v-if="followupError" type="error" show-icon :message="followupError"><template #action><a-button @click="loadFollowup">重试讨论与确认</a-button></template></a-alert></template>
-    <component :is="presentation === 'continuous' ? Modal : 'div'" :open="maintenanceOpen" title="议题维护与实际达成" :footer="null" :width="720" @cancel="maintenanceOpen = false">
+    <component :is="presentation === 'continuous' ? Modal : 'div'" :open="maintenanceOpen" :title="themeText('议题维护与实际达成')" :footer="null" :width="720" @cancel="maintenanceOpen = false">
     <a-alert
       v-if="topic.execution_hint"
       show-icon
       :type="topic.execution_hint === 'pause_recommended' ? 'warning' : 'info'"
       :message="topic.execution_hint === 'pause_recommended' ? '建议暂停原方案' : '原方案继续执行'"
-      description="此提示仅记录议题意见，不暂停关联任务或执行记录，也不撤销正式决策。"
+      :description="themeText('此提示仅记录议题意见，不暂停关联任务或执行记录，也不撤销正式决策。')"
     />
-    <p>纳入议题不等于批准决策。正文修改保留修订，不覆盖正式决策。</p>
+    <p>{{ themeText('纳入议题不等于批准决策。正文修改保留修订，不覆盖正式决策。') }}</p>
     <RouterLink
       class="source-work-link"
       v-if="!topic.archived_at"
@@ -18,12 +18,12 @@
         params: { project_id: projectId },
         query: { create: '1', topic_id: topic.id }
       }"
-      >从此议题创建工作</RouterLink
+      >{{ themeText('从此议题创建工作') }}</RouterLink
     >
     <a-alert v-if="error" type="error" show-icon :message="error" />
     <details v-if="!topic.archived_at" :open="presentation === 'continuous' || !!action" class="topic-maintenance">
-      <summary v-if="presentation !== 'continuous'">议题维护（关闭、重开、归档等）</summary>
-      <a-select v-model:value="action" aria-label="议题操作" style="min-width: 160px">
+      <summary v-if="presentation !== 'continuous'">{{ themeText('议题维护（关闭、重开、归档等）') }}</summary>
+      <a-select v-model:value="action" :aria-label="themeText('议题操作')" style="min-width: 160px">
         <a-select-option v-if="topic.admission_status === 'rejected'" value="resubmit"
           >重新提交纳入</a-select-option
         >
@@ -32,8 +32,8 @@
           value="decide"
           >标记已形成决策</a-select-option
         >
-        <a-select-option v-if="topic.progress !== 'closed'" value="close">关闭议题</a-select-option>
-        <a-select-option v-if="topic.progress !== 'open'" value="reopen">重开议题</a-select-option>
+        <a-select-option v-if="topic.progress !== 'closed'" value="close">{{ themeText('关闭议题') }}</a-select-option>
+        <a-select-option v-if="topic.progress !== 'open'" value="reopen">{{ themeText('重开议题') }}</a-select-option>
         <a-select-option value="archive">归档</a-select-option>
         <a-select-option value="delete">删除</a-select-option>
       </a-select>
@@ -50,9 +50,7 @@
           >{{ decision.title }}</a-select-option
         >
       </a-select>
-      <p v-if="action === 'decide'">
-        确认后将清除本议题的继续执行或建议暂停提示；任务和执行记录保持各自状态。
-      </p>
+      <p v-if="action === 'decide'">{{ themeText('确认后将清除本议题的继续执行或建议暂停提示；任务和执行记录保持各自状态。') }}</p>
       <a-select
         v-if="action === 'reopen'"
         v-model:value="executionHint"
@@ -65,17 +63,15 @@
       <a-input
         v-model:value="reason"
         placeholder="操作原因（重开、关闭、重新提交、删除必填）"
-        aria-label="议题操作原因"
+        :aria-label="themeText('议题操作原因')"
         :maxlength="100000"
       />
-      <p v-if="action === 'delete'">
-        删除后，议题将从页面移除。已关联决策或任务的议题无法删除，请使用归档。
-      </p>
+      <p v-if="action === 'delete'">{{ themeText('删除后，议题将从页面移除。已关联决策或任务的议题无法删除，请使用归档。') }}</p>
       <a-button :danger="action === 'delete'" :disabled="busy || !action" @click="operate">{{
         actionLabel
       }}</a-button>
     </details>
-    <a-button v-else :disabled="busy" @click="restore">恢复归档议题</a-button>
+    <a-button v-else :disabled="busy" @click="restore">{{ themeText('恢复归档议题') }}</a-button>
     <a-alert v-if="followupError" type="error" show-icon :message="followupError" />
     <a-button v-if="followupError" @click="loadFollowup">重新加载引用与确认</a-button>
     <TopicOutcomePanel
@@ -213,12 +209,15 @@
       </a-select>
       <a-button :disabled="busy || !content.trim()" @click="post">{{ presentation === 'continuous' ? '发表' : '发布讨论' }}</a-button>
       </div>
-      <span v-if="presentation !== 'continuous'">讨论类型表达意图，发帖不会自动重开议题。</span>
+      <span v-if="presentation !== 'continuous'">{{ themeText('讨论类型表达意图，发帖不会自动重开议题。') }}</span>
     </div>
   </section>
 </template>
 
 <script setup>
+import { useProjectThemeVocabulary } from '@/composables/useProjectThemeVocabulary'
+const { themeText } = useProjectThemeVocabulary()
+
 import { useProjectThemeEdit } from '@/composables/useProjectThemeEdit'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -279,14 +278,14 @@ const decisionId = toRef(sharedDraft, 'decisionId')
 const executionHint = toRef(sharedDraft, 'executionHint')
 const discussionType = toRef(sharedDraft, 'discussionType', 'discussion')
 const content = toRef(sharedDraft, 'content')
-useProjectThemeEdit('议题讨论与维护', () => props.projectId, () => Boolean(content.value?.trim() || reason.value?.trim() || action.value || decisionId.value || executionHint.value), () => {Object.assign(sharedDraft,{content:'',reason:'',action:undefined,decisionId:undefined,executionHint:undefined})}, () => busy.value, true)
+useProjectThemeEdit(() => themeText('议题讨论与维护'), () => props.projectId, () => Boolean(content.value?.trim() || reason.value?.trim() || action.value || decisionId.value || executionHint.value), () => {Object.assign(sharedDraft,{content:'',reason:'',action:undefined,decisionId:undefined,executionHint:undefined})}, () => busy.value, true)
 const actionLabel = computed(
   () =>
     ({
       resubmit: '重新提交纳入',
       decide: '确认已形成决策',
-      close: '关闭议题',
-      reopen: '重开议题',
+      close: themeText('关闭议题'),
+      reopen: themeText('重开议题'),
       archive: '归档',
       delete: '删除'
     })[action.value] || '选择操作'
@@ -335,7 +334,7 @@ const discussionLabels = { discussion: '研讨', reconsideration: '重议', corr
 function eventLabel(event) {
   return event.kind === 'comment'
     ? discussionLabels[event.comment?.discussion_type || 'discussion']
-    : labels[event.kind] || event.kind
+    : themeText(labels[event.kind] || event.kind)
 }
 async function loadFollowup() {
   const seq = ++followupGeneration
@@ -438,7 +437,7 @@ async function operate() {
     return
   }
   if (action.value === 'decide' && !decisionId.value) {
-    error.value = '请选择当前议题已批准的关联决策'
+    error.value = themeText('请选择当前议题已批准的关联决策')
     return
   }
   if (action.value === 'reopen' && !executionHint.value) {
@@ -446,15 +445,15 @@ async function operate() {
     return
   }
   if (action.value === 'delete' && content.value.trim()) {
-    error.value = '请先发布或清空讨论草稿，再删除议题'
+    error.value = themeText('请先发布或清空讨论草稿，再删除议题')
     return
   }
   if (action.value === 'delete') {
     const confirmed = await new Promise((resolve) => {
       cancelDeleteConfirmation = () => resolve(false)
       deleteConfirmation = Modal.confirm({
-        title: '确认删除此议题？',
-        content: '删除后将无法在页面查看或恢复；已关联决策或任务的议题无法删除。',
+        title: themeText('确认删除此议题？'),
+        content: themeText('删除后将无法在页面查看或恢复；已关联决策或任务的议题无法删除。'),
         okText: '删除',
         okType: 'danger',
         cancelText: '取消',

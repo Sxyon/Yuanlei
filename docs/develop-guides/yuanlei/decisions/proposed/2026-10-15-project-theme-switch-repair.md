@@ -1,7 +1,7 @@
 # 项目主题切换与真实视图消费的分段修复
 
 状态：proposed
-S04-R当前决定：[双入口绑定与宿主一致性](../implemented/2026-10-16-project-theme-switch.md)；本提案保留S05-R2尚未实施方向。
+S04-R当前决定：[双入口绑定与宿主一致性](../implemented/2026-10-16-project-theme-switch.md)；S05-R2工程决定见[真实消费](../implemented/2026-10-17-theme-evidence-consumption.md)，实际验证及人工未验由LOG58拥有。下文Not run及未启动描述保留提案基线，不代表当前工程状态。
 类型：feature
 Owner：web/src/layouts/ProjectLayout.vue
 关联 Feature：[项目主题](../../features/project-themes.md)

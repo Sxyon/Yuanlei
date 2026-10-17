@@ -1,5 +1,5 @@
 /** 临时预览意图只携准确引用；返回与应用始终由宿主生成固定平台路由。 */
-export const themePreviewKeys = ['theme_preview_version', 'theme_preview_source', 'theme_preview_revision']
+export const themePreviewKeys = ['theme_preview_version', 'theme_preview_source', 'theme_preview_revision', 'theme_preview_files']
 
 /** 解析互斥的准确版本或候选修订引用。 */
 export function readThemePreview(query) {
@@ -12,7 +12,9 @@ export function readThemePreview(query) {
 
 /** 生成不参与持久绑定的临时查询。 */
 export function themePreviewQuery(intent) {
-  return intent.versionId ? { theme_preview_version: intent.versionId } : { theme_preview_source: intent.sourceId, theme_preview_revision: String(intent.revision) }
+  const query = intent.versionId ? { theme_preview_version: intent.versionId } : { theme_preview_source: intent.sourceId, theme_preview_revision: String(intent.revision) }
+  if (intent.files) query.theme_preview_files = JSON.stringify(intent.files)
+  return query
 }
 
 /** 固定进入目标项目总览，不接受任意返回地址。 */
@@ -22,5 +24,14 @@ export function themePreviewTarget(projectId, intent) {
 
 /** 完整能力页复用真实宿主，区块包沿原预览。 */
 export function supportsWorkspacePreview(pack) {
-  return pack?.theme.baseVersion === 1 && pack.theme.pages.every(page => page.capability)
+  return pack?.theme.baseVersion === 1 && pack.theme.pages.some(page => page.capability)
+}
+
+/** 临时映射只接受字符串字典；实际路径由服务端Workdir校验。 */
+export function readThemePreviewFiles(query) {
+  if (query.theme_preview_files === undefined) return null
+  if (typeof query.theme_preview_files !== 'string') throw new Error('预览文件映射无效')
+  const files = JSON.parse(query.theme_preview_files)
+  if (!files || Array.isArray(files) || typeof files !== 'object' || Object.values(files).some(path => typeof path !== 'string')) throw new Error('预览文件映射无效')
+  return files
 }

@@ -67,11 +67,12 @@ export function resolveWorkspacePages(pack) {
     ...overrides.map((page) => ({
       ...baseWorkspacePages.find((base) => base.capability === page.capability),
       ...page,
+      title: page.capability === 'topics' ? (page.title || '议题').replace(/议题|课题/g, pack.theme.topicLabel || '议题') : page.title,
       inherited: false
     })),
     ...baseWorkspacePages
       .filter((page) => !overridden.has(page.capability))
-      .map((page) => ({ ...page, inherited: Boolean(pack) }))
+      .map((page) => ({ ...page, title:page.capability === 'topics' ? pack?.theme.topicLabel || page.title : page.title, inherited: Boolean(pack) }))
   ]
 }
 

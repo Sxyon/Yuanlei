@@ -1,0 +1,94 @@
+{
+  "projects": [
+    {
+      "id": "f1c31b95-0af2-4179-a301-3cacc5ecb1bc",
+      "name": "S05-R2验例A",
+      "workdir_path": "projects/s05-r2-94666ec8",
+      "binding": {
+        "version_id": "47ca0b08-0c37-420e-80b7-7c1bfaf7cf45",
+        "generation": 5,
+        "files": {}
+      },
+      "resources": {
+        "facts": {
+          "sha256": "3f9a929088de7585392ef617e21650cc616ff872c323baf58bdd4bd77532082f",
+          "size": 71
+        },
+        "chart": {
+          "sha256": "a1ca9598ede0b798cf6345673e1d853887fd2b03c5aca9d557de5fe9a7f00cef",
+          "size": 135
+        }
+      },
+      "topic_count": 1
+    },
+    {
+      "id": "af78609f-711b-4a3d-a252-062e11945a07",
+      "name": "S05-R2验例B",
+      "workdir_path": "projects/s05-r2-e37417d7",
+      "binding": {
+        "version_id": "5a0c889c-f68f-4474-b3f3-d7f95e979a1b",
+        "generation": 2,
+        "files": {
+          "chart": "/chart.png",
+          "facts": "/facts.json"
+        }
+      },
+      "resources": {
+        "facts": {
+          "sha256": "4c55db33d578e99dd2da56882db294c27e408f197f7a0d14622b2ae5315639cc",
+          "size": 41
+        },
+        "chart": {
+          "sha256": "695a3f0aaf6a926475d805c8b7a28fb9e5f175794538dc89564a0110585bb4fb",
+          "size": 18509
+        }
+      },
+      "topic_count": 0
+    }
+  ],
+  "packages": [
+    {
+      "source_id": "f9f2762c-2114-44bb-8060-60f07090aa60",
+      "revision": 2,
+      "version_id": "360c5fce-4d21-4af8-a160-8b2015abc54a",
+      "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4"
+    },
+    {
+      "source_id": "9950cef5-3523-4714-8c5b-5df7f94f4b92",
+      "revision": 2,
+      "version_id": "5a0c889c-f68f-4474-b3f3-d7f95e979a1b",
+      "digest": "64723f537061495544ffa660f5735efbccdbb6496224a2bc1f156990e2f5c393"
+    }
+  ],
+  "business": {
+    "topic": {
+      "id": "4fef2b15-187f-4ed8-bf34-6532691f574a",
+      "project_id": "f1c31b95-0af2-4179-a301-3cacc5ecb1bc",
+      "title": "同一议题跨主题验证",
+      "summary": "用户原文保留：议题与课题。\n默认主题补充事实。\n调研主题继续维护。",
+      "revision_number": 3
+    },
+    "comments": [
+      {
+        "topic_id": "4fef2b15-187f-4ed8-bf34-6532691f574a",
+        "content": "调研主题记录证据讨论，用户原文中的议题不替换。"
+      }
+    ],
+    "works": [
+      {
+        "id": "cb13f94d-cbb3-4d64-99e8-4fc4807f4cd8",
+        "topic_id": "4fef2b15-187f-4ed8-bf34-6532691f574a",
+        "source_decision_id": "78216eb7-b0e9-45c4-bcba-a3e37882265a",
+        "source_decision_revision": 2,
+        "title": "跨主题证据决定"
+      }
+    ],
+    "decision": {
+      "id": "78216eb7-b0e9-45c4-bcba-a3e37882265a",
+      "status": "approved",
+      "topic_id": "4fef2b15-187f-4ed8-bf34-6532691f574a",
+      "revision_number": 2,
+      "topic_revision_number": 3
+    }
+  }
+}

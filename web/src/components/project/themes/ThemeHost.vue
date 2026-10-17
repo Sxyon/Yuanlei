@@ -7,8 +7,8 @@ import ThemeObjectDetail from './ThemeObjectDetail.vue'
 import { themeComponentRegistry } from './registry'
 import { createContextGate, validateComponentInput, validateLoadedPackage, validateNavigation, validateResource, validateSourceRevision } from './contract'
 
-const props = defineProps({ themePackage: { type: Object, required: true }, projectId: { type: String, required: true }, projectLabel: { type: String, default: '' }, userId: { type: String, required: true }, bindingGeneration: { type: Number, default: 0 }, adapter: { type: Object, required: true }, paused: { type: Boolean, default: false }, simulation: { type: Boolean, default: false }, initialContext: { type: Object, default: null }, openBusiness: { type: Function, default: null } })
-const emit = defineEmits(['context-invalid'])
+const props = defineProps({ workspacePageId: { type: String, default: '' }, themePackage: { type: Object, required: true }, projectId: { type: String, required: true }, projectLabel: { type: String, default: '' }, userId: { type: String, required: true }, bindingGeneration: { type: Number, default: 0 }, adapter: { type: Object, required: true }, paused: { type: Boolean, default: false }, simulation: { type: Boolean, default: false }, initialContext: { type: Object, default: null }, openBusiness: { type: Function, default: null } })
+const emit = defineEmits(['context-invalid', 'page'])
 const pack = shallowRef(null), definitionError = ref(''), pageId = ref(''), selectedTopicId = ref('')
 const results = shallowRef({}), queries = ref({}), detail = shallowRef(null), detailEvent = ref(null)
 const content = ref(null), mobileOpen = ref(false), navigationError = ref('')
@@ -138,6 +138,7 @@ async function navigate(value) {
     navigationError.value = ''
     if (event.kind === 'page') {
       if (!pack.value.theme.pages.some(item => item.id === event.pageId)) throw new Error('当前主题没有此页面')
+      if (props.workspacePageId && event.pageId !== props.workspacePageId) { emit('page', event.pageId); return }
       cancel()
       detail.value = null; detailEvent.value = null; returnContext = null
       const samePage = pageId.value === event.pageId
@@ -171,7 +172,7 @@ function componentEvents(block) {
   return events
 }
 
-watch(() => [props.themePackage, props.projectId, props.userId, props.bindingGeneration, props.adapter], () => {
+watch(() => [props.themePackage, props.projectId, props.userId, props.bindingGeneration, props.adapter, props.workspacePageId], () => {
   cancel(); pendingRestore = null; definitionError.value = ''; detail.value = null; detailEvent.value = null; returnContext = null
   const sameProject = scopeKey && JSON.parse(scopeKey)[0] === props.userId && JSON.parse(scopeKey)[1] === props.projectId
   const samePackage = sameProject && JSON.parse(scopeKey)[2] === props.themePackage.digest && JSON.parse(scopeKey)[4] === props.themePackage.reference
@@ -182,9 +183,10 @@ watch(() => [props.themePackage, props.projectId, props.userId, props.bindingGen
   knownTopics = []; results.value = {}; queries.value = sameSelection ? previousQueries : {}; scopeKey = ''
   try {
     pack.value = validateLoadedPackage(props.themePackage)
-    pageId.value = sameSelection && pack.value.theme.pages.some(item => item.id === previousPage) ? previousPage : pack.value.theme.pages[0].id
+    if (props.workspacePageId && !pack.value.theme.pages.some(item => item.id === props.workspacePageId && !item.capability)) throw new Error('当前主题没有此资料页，请返回项目导航重新选择。')
+    pageId.value = props.workspacePageId || (sameSelection && pack.value.theme.pages.some(item => item.id === previousPage) ? previousPage : pack.value.theme.pages[0].id)
     const initial = props.initialContext
-    if (initial && initial.userId === props.userId && initial.projectId === props.projectId && initial.packageRef === pack.value.reference && initial.digest === pack.value.digest && initial.bindingGeneration === props.bindingGeneration && pack.value.theme.pages.some(item => item.id === initial.pageId)) {
+    if (initial && (!props.workspacePageId || initial.pageId === props.workspacePageId) && initial.userId === props.userId && initial.projectId === props.projectId && initial.packageRef === pack.value.reference && initial.digest === pack.value.digest && initial.bindingGeneration === props.bindingGeneration && pack.value.theme.pages.some(item => item.id === initial.pageId)) {
       pageId.value = initial.pageId; selectedTopicId.value = initial.selectedTopicId || ''; queries.value = initial.queries || {}; pendingRestore = initial
     }
     void loadPage()
@@ -216,7 +218,7 @@ defineExpose({ navigate, selectedTopicId, pageId, captureContext })
   <section class="theme-host">
     <div v-if="definitionError" class="theme-definition-error" role="alert"><h2>主题定义不受支持</h2><p>{{ definitionError }}</p><p>请返回主题预览选择其他包；不会自动启用默认主题。</p></div>
     <template v-else-if="pack && page">
-      <nav class="theme-page-navigation" aria-label="项目主题页面"><button class="theme-mobile-menu" :aria-expanded="mobileOpen" @click="mobileOpen = !mobileOpen"><PanelLeft :size="18" />主题导航</button><div :class="{ open: mobileOpen }"><small>主题页面</small><button v-for="item in pack.theme.pages.filter(item => !pack.theme.hiddenCapabilities.includes(item.capability))" :key="item.id" :aria-current="pageId === item.id ? 'page' : undefined" @click="navigate({ kind: 'page', pageId: item.id })">{{ item.title }}</button><slot name="platform-navigation" /></div></nav>
+      <nav v-if="!workspacePageId" class="theme-page-navigation" aria-label="项目主题页面"><button class="theme-mobile-menu" :aria-expanded="mobileOpen" @click="mobileOpen = !mobileOpen"><PanelLeft :size="18" />主题导航</button><div :class="{ open: mobileOpen }"><small>主题页面</small><button v-for="item in pack.theme.pages.filter(item => !pack.theme.hiddenCapabilities.includes(item.capability))" :key="item.id" :aria-current="pageId === item.id ? 'page' : undefined" @click="navigate({ kind: 'page', pageId: item.id })">{{ item.title }}</button><slot name="platform-navigation" /></div></nav>
       <main ref="content" class="theme-content">
         <p v-if="navigationError" class="theme-state error" role="alert">{{ navigationError }}</p>
         <template v-if="detailEvent"><button data-return class="theme-back" @click="returnToPage"><ArrowLeft :size="16" />返回 {{ page.title }}</button><ThemeObjectDetail v-if="detail?.state === 'ready'" :result="detail" :object-type="detailEvent.objectType" :project-name="projectName" :simulation="simulation" @navigate="navigate" /><ThemeBlockFrame v-else :block="{ id: 'object-detail', title: '对象详情' }" :result="detail || { state: 'loading' }" @retry="openObject(detailEvent)" /></template>

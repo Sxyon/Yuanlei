@@ -18,7 +18,7 @@ before(async () => {
 })
 after(async () => {await vite?.close();delete globalThis.localStorage;delete globalThis.document;delete globalThis.window})
 async function render(component, props, provide = {}) {
-  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/',name:'ProjectsComp',component:{render:()=>null}},{path:'/projects/:project_id/blueprints',name:'ProjectBlueprints',component:{render:()=>null}},{path:'/projects/:project_id/topics',name:'ProjectTopics',component:{render:()=>null}}]})
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/projects/:project_id/dashboard',name:'ProjectDashboardComp',component:{render:()=>null}},{path:'/projects/:project_id/inspection',name:'ProjectInspectionBoardComp',component:{render:()=>null}},{path:'/',name:'ProjectsComp',component:{render:()=>null}},{path:'/projects/:project_id/blueprints',name:'ProjectBlueprints',component:{render:()=>null}},{path:'/projects/:project_id/topics',name:'ProjectTopics',component:{render:()=>null}}]})
   await router.push('/')
   const app=createSSRApp({render:()=>h(component,props)});app.use(createPinia());app.use(router)
   app.component('a-popover',{setup:(_, {slots})=>()=>h('div',slots.default?.())})
@@ -32,7 +32,7 @@ test('精简总览仅蓝图与最近动态；调研使用课题正文与真实�
   assert.match(focus,/data-overview-presentation="focus"/);assert.match(focus,/正式蓝图/);assert.match(focus,/最近动态/)
   assert.equal((focus.match(/<section /g)||[]).length,2)
   assert.doesNotMatch(focus,/需要你处理|当前推进|课题目录/)
-  const research=await render(Overview,{...props,presentation:'research'})
+  const research=await render(Overview,{...props,presentation:'research'},{projectThemeContext:ref({package:{theme:{topicLabel:'课题'}}})})
   assert.match(research,/课题目录/);assert.match(research,/现有问题/);assert.match(research,/暂无已记录决定/)
   assert.doesNotMatch(research,/采用两周|已批准/)
   const empty=await render(Overview,{presentation:'focus',projectId:'p'})
@@ -58,7 +58,7 @@ test('自动核对目录保留候选草稿，迟到目录不覆盖最新读取�
   const pack={manifest:{},theme:{id:'test'}}
   t.mock.method(api,'catalog',async()=>({sources:[source]}))
   const pinia=createPinia();setActivePinia(pinia)
-  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/',name:'ProjectsComp',component:{render:()=>null}}]});await router.push('/')
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/projects/:project_id/dashboard',name:'ProjectDashboardComp',component:{render:()=>null}},{path:'/projects/:project_id/inspection',name:'ProjectInspectionBoardComp',component:{render:()=>null}},{path:'/',name:'ProjectsComp',component:{render:()=>null}}]});await router.push('/')
   let instance
   const Host={...Manager,render(){instance=getCurrentInstance();return h('div')}}
   const app=renderer.createApp({render:()=>h(Host,{projectId:'',projects:[]})});app.use(pinia);app.use(router);app.provide(ssrContextKey,{modules:new Set()});app.mount({});t.after(()=>app.unmount())
@@ -113,4 +113,30 @@ test('真实项目宿主导航消费隐藏配置，移除宿主接线会重新�
   for(const visible of ['总览','蓝图','议题'])assert.match(nav,new RegExp('>'+visible+'<'))
   for(const hidden of ['行动计划','工作','督查','资料','智能体','设置'])assert.doesNotMatch(nav,new RegExp('>'+hidden+'<'))
   assert.match(html,/data-theme-version="v"/);assert.match(html,/data-theme-generation="4"/)
+})
+
+test('未绑定或当前包损坏不遮蔽准确混合资料页真实预览',async t=>{
+  const {default:Panel}=await vite.ssrLoadModule('/src/components/project/ProjectThemePanel.vue')
+  const pack={manifest:{formatVersion:1,componentAbi:3,theme:'theme.json',source:'fixture',files:{facts:'application/json'},assets:{}},theme:{id:'independent',version:'3',name:'真实混合资料',topicLabel:'课题',baseVersion:1,pages:[{id:'evidence',title:'项目证据',description:'项目级',layout:'full',blocks:[{id:'facts',type:'json',title:'真实资料',region:'main',binding:{kind:'file',alias:'facts'}}]},{id:'home',title:'总览',description:'项目总览',layout:'overview',capability:'overview',blocks:[]}]},reference:'v',digest:'a'.repeat(64)}
+  t.mock.method(api,'binding',async()=>({state:'unbound',generation:0}))
+  t.mock.method(api,'previewFile',async()=>({state:'unbound',message:'未绑定'}))
+  for(const state of ['unbound','error']) {
+    const html=await render(Panel,{projectId:'p'},{projectThemeContext:ref({package:pack,preview:{versionId:'v',files:{}},selection:{state,generation:0},error:'旧绑定不可用',loading:false})})
+    assert.match(html,/class="theme-host/)
+    assert.match(html,/项目证据/)
+    assert.doesNotMatch(html,/原项目绑定保留/)
+  }
+  const saved=await render(Panel,{projectId:'p'},{projectThemeContext:ref({package:null,preview:null,selection:{state:'error',generation:1},error:'旧绑定不可用',loading:false})})
+  assert.doesNotMatch(saved,/class="theme-host/)
+})
+
+test('资料块到能力页的动作保留准确预览引用并进入真实项目路由',async()=>{
+  const {default:Panel}=await vite.ssrLoadModule('/src/components/project/ProjectThemePanel.vue')
+  const pack={manifest:{},theme:{name:'混合',version:'3',pages:[{id:'body',title:'课题',capability:'topics'}]}}
+  let state
+  const Captured={...Panel,setup(props,context){state=Panel.setup(props,context);return state}}
+  await render(Captured,{projectId:'p'},{projectThemeContext:ref({package:pack,selection:{state:'ready',generation:2},preview:{sourceId:'source',revision:4,files:{facts:'/facts.json'}},loading:true})})
+  await state.openPage('body')
+  assert.equal(state.router.currentRoute.value.name,'ProjectTopics')
+  assert.deepEqual(state.router.currentRoute.value.query,{theme_preview_source:'source',theme_preview_revision:'4',theme_preview_files:'{"facts":"/facts.json"}',theme_page:'body'})
 })

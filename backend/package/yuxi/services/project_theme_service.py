@@ -255,6 +255,29 @@ class ProjectThemeService:
         raw = await asyncio.to_thread(self.read_project_file, project, path, media)
         return raw, media, hashlib.sha256(raw).hexdigest()
 
+    async def preview_file(self, project_id, reference, files, expected_generation, alias):
+        """准确预览引用只读项目资料；临时映射不写入项目选择。"""
+        await self.project(project_id)
+        if reference.get("version_id"):
+            loaded, _ = await self.version(reference["version_id"], project_id)
+            parsed = loaded["parsed"]
+        else:
+            parsed = await self.candidate_resource(reference["source_id"], alias, reference["revision"], project_id)
+        project = await self.project(project_id, lock=True)
+        current = await self.repo.binding(project_id)
+        if (current["generation"] if current else 0) != expected_generation:
+            raise ThemeError("binding_conflict", "项目主题选择已变化，请重新读取", 409)
+        media = parsed.definition.manifest.files.get(alias)
+        if media is None:
+            raise ThemeError("file_alias", "预览版本未声明此项目文件alias", 404)
+        if set(files) - set(parsed.definition.manifest.files):
+            raise ThemeError("file_mapping", "预览映射含未声明alias")
+        path = files.get(alias)
+        if not path:
+            raise ThemeError("file_unbound", "预览项目文件尚未绑定，请在选择弹窗填写映射后预览", 409)
+        raw = await asyncio.to_thread(self.read_project_file, project, path, media)
+        return raw, media, hashlib.sha256(raw).hexdigest()
+
     @staticmethod
     def read_project_file(project, path, media):
         """复用Workdir逐段no-follow；明确区分缺失、边界与实际类型失败。"""
