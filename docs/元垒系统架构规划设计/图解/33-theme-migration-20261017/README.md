@@ -1,6 +1,6 @@
 # S06主题迁移、专项收尾与试运行交接
 
-状态：开发交付待人工验收。S06相关HTTP／PG／ZIP／DOM检查与隔离A／B迁移证据已完成；人工反馈、明确验收及前后端全量未执行，专项不得标记最终完成。
+状态：开发交付待人工验收。下文保留2026-10-17首版证据；2026-10-18独立审查修复及证据边界见本页末节和LOG61。正式部署启动／迁移证据、人工验收及前后端全量未闭合，专项不得标记最终完成。
 
 ## 本轮实现的能力
 
@@ -137,3 +137,17 @@ python3 backend/test/e2e/project_theme_migration_restart.py
 - 未运行付费模型、组织协作、外部执行器和生产数据演练；协作接入与Andon继续暂停。
 - 试运行从实际项目管理、蓝图／议题／讨论／决定、计划／工作、证据资料和主题维护出发；实际问题继续记入[LOG](../../LOG-DB-001-Dashboard进度基线与执行记录.md)的试运行节，按影响等级记录恢复动作，不在试运行后清理真实数据。
 - Agent专用主题生成／维护工具和有限自主发布授权、丰富素材／模板库、更多内容格式、组织协作及第三方平台适配仍是后继目标，不计入本次结项。
+
+## 2026-10-18独立审查
+
+审查基线为`858f91d5`，当前需求达成、每项修复前后效果、影响面、实际命令及未验清单由[LOG第61节](../../LOG-DB-001-Dashboard进度基线与执行记录.md#_61-s06独立审查与定向修复-2026-10-18-待人工验收)拥有，原第60节保留历史。本轮没有提交、推送、画图或运行全量。
+
+直接材料：[保存成功却禁用再次导入的修复前页面](review-20261018/before-repeat-import.png)、[相同场景修复后按钮可用](review-20261018/b-imported-draft-1440.png)、[目标B真实资料预览](review-20261018/b-preview-1440.png)、[B准确议题办理返回](review-20261018/b-applied-1440.png)、[正式部署边界回读](review-20261018/deployment-boundary.json)、[重启后PG绑定与原ZIP摘要](review-20261018/restart-pg-bytes.json)。截图与PG本身不替代浏览器恢复；B恢复可访问后已独立补验，主脚本超时事实保留，正式启动检查仍未完成。
+
+主浏览器脚本重复执行时可设置`THEME_EVIDENCE_IMPORT_NAME`为本轮独立样本名，按本次新增的准确来源ID写入`browser-checks.json`；独立对账脚本读取该ID，不再选择目录第一个同名历史来源。主脚本失败时不得运行依赖成功报告的后续脚本或复用旧报告冒充本次通过。新增`project_theme_import_review.py`验证连续导入与切回新建后真实提交但响应丢失的恢复，使用相同的私有会话及输出变量；未完成的实际结果按LOG61登记。
+
+A／B省略正式startup且都未登记schema版本；`/ready`均503。本轮不通过补写版本表、调整ready或清空数据来补齐证据，正式部署迁移／启动链仍按SYS16.4验收。
+
+补验结果：[连续导入及最终模式恢复6项检查](review-20261018/import-review.json)、[连续导入页面](review-20261018/after-repeat-import.png)、[切回新建后响应丢失恢复](review-20261018/after-new-target-recovery.png)、[重启后浏览器读取及显式切回](review-20261018/restart-browser-review.json)、[重启后B资料页面](review-20261018/restart-browser-recovered.png)、[旧版恢复页面](review-20261018/restart-browser-restored.png)。`project_theme_migration_finish_review.py`用于已重启B恢复可访问后的独立读取及切回；它沿用相同私有会话／输出变量，不再次重启、不改A，不作为正式startup验证。运行前B1须仍绑定本次迁移主题，成功后恢复旧默认版本。
+
+[目标B发布版真实再导出](review-20261018/reexport-review.json)已与A下载ZIP逐字节比较，SHA一致。旧`recovery／existing_recovery／stale`脚本仍依赖首版固定合成名称，仅按首版环境复现；本轮使用独立审查脚本，不把旧输出混入本轮结果。

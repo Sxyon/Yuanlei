@@ -1575,3 +1575,87 @@ S06当前只能交“开发交付待人工验收”，不能宣布专项最终�
 新增说明页后docs build再次通过（37.15s），顶部“项目主题”导航、侧栏和正文锚点已核对；web lint通过，build通过（9.92s）；工程信任检查通过（212 decisions／23 features／5 workflows／5 agents／389 docs／42 routers／345 web sources）。未运行前后端全量，未把本次说明补记成人工验收或业务能力完成。
 
 本轮未提交commit；改动已留在当前工作区并stage，可复核后提交。
+
+## 61. S06独立审查与定向修复（2026-10-18，待人工验收）
+
+### 用户依据、代码范围与审查口径
+
+用户要求独立核验DeepSeek的S06代码及配套文档并修复确认的问题，明确不重开整个Dashboard、不画图、不全量、不提交或推送。起点HEAD为`858f91d5`，工作区干净；DeepSeek产品提交为`fabc09f0`（相对`6869da4d`新增导入／导出、前端管理及证据脚本），说明补充提交为`858f91d5`。本轮依据SYS第16节、DEV第7节及LOG59—60，不采用旧S06／S07安排，不以开发报告、旧截图或HTTP 200替代当前事实。
+
+任务类型为bug-fix／testing。目标是准确原包→只读预检→目标草稿→目标真实预览→发布→分配→重启／恢复；非目标为主题新协议、业务迁移、UI重设计、Agent维护工具及S07。复用隔离A／B，仅在合成证据项目／来源执行写入和重启；日常项目、日常库及日常文件不作故障注入或清理。前端交互审查使用ui-ux-pro-max的忙碌反馈、输入保留和恢复约束，不改变页面布局。
+
+### 需求与实现对照
+
+| 原需求 | 审查状态及判断依据 |
+| --- | --- |
+| 准确发布版本原ZIP导出，授权、版本、摘要正确且不附带业务／绑定 | 已实现且已验证（相关真实HTTP／PG／ZIP范围）：`export_version`回读`ThemeStore`原字节，版本记录／响应摘要／实际ZIP一致；越权、撤回、缺包／坏包、项目专属错误project拒绝，停用保留读取。没有DTO重打包或扫描Workdir |
+| 只读预检展示兼容、页面、素材及alias，非法／未知／超限拒绝，取消零写 | 已实现且已验证（相关HTTP及代表浏览器范围）：预检仅parser，不建立数据库身份；确认重传核SHA；严格契约及ZIP预算拥有拒绝语义，不新增预检状态表 |
+| 确认保存新个人或有权既有来源草稿，revision保护，重复／冲突／部分失败可恢复 | 原实现部分实现且存在偏离；本轮修复连续导入、最终目标模式、核实候选竞争及既有草稿写后回读反馈。发布／绑定保持独立，旧revision仍拒绝，详细前后行为见下表 |
+| 复用M1预览／发布与双入口分配，读目标项目业务／文件，简化主题仍能平台管理 | 已实现；定向unit和真实HTTP覆盖准确预览、混合文件、发布不升级、分配及负例。平台管理不依赖主题settings页，未新增第二套绑定。全页及全部前段人工验收不在本轮补记 |
+| 正式隔离A／B、原字节往返、重启保持及旧版切回 | 部分实现／尚未完整验证。现有A／B数据库、主题根、Workdir和实例ID分离，真实路由／认证／前端及PG／文件有效；重启等待超时后已用独立浏览器补验资料读取、准确旧版切回、HTTP／PG一致及A／B2不变；但证据入口`project_theme_app`省略正式startup，两库均无`yuxi_schema_migrations`，`/ready`均503。不能把它们写成正式migrator／启动检查已通过；原LOG60历史证据保留，此处校正其证明范围 |
+| 收尾说明、限制／恢复／未验及试运行交接 | 部分实现：使用指南、字段参考、维护说明及现有SYS／DEV／LOG可用；本轮同步修复事实和验证边界。人工验收、全量及正式部署证据未闭合，当前不具备宣布专项结项／正式进入试运行的条件 |
+
+### 调整前后效果、影响与直接证据
+
+| 原需求 | 调整前实际行为／问题 | 调整方式 | 调整后可观察效果、影响与证据 |
+| --- | --- | --- | --- |
+| 草稿保存后继续沿正常入口维护／导入 | 保存成功定位来源会推进页面generation，旧finally无法清除importBusy；同页“导入主题包”永久禁用 | 关闭导入统一清理忙碌状态，保留新请求的generation约束 | 成功定位后按钮可用，可再次打开导入；影响仅主题管理交互。真实页面修复前截图与定向unit均复现，新增unit由失败转通过 |
+| 最终选择新建时追踪新个人来源 | 先选择既有来源再切回新建，POST正确新建，但pending仍记录旧sourceId；丢响应后核实错误对象 | pending按最终模式记录sourceId；新来源候选限新增身份、个人归属及确认名称 | 新建响应丢失后核实本次新来源，排除其他同摘要不同名身份；不重复POST、不发布／绑定。新增unit由错误定位转准确定位 |
+| 核实准确候选，不能误报相邻修订 | 目录匹配后候选再变化，仍显示“已核实”；定位又重读一次，或保存接口提交后回读到另一候选，可能把本次摘要与其他字节混合 | 候选回读再次核SHA／修订；接口成功返回前再核digest，变化返回500 `import_result_changed`并保留输入；使用已保存／已核实响应直接定位，不追加另一候选读取 | 竞争变化显示“目标草稿已变化”，保留文件／预检与待核实状态，不猜已成功。新增竞争unit在原实现失败、修复后通过；不改持久revision或发布规则 |
+| 既有来源部分失败须区分未保存和已保存待核实 | 既有来源候选已提交后读取缺包返回409；前端把4xx按拒绝处理，丢失核实入口。新来源已有专用恢复，既有来源缺失 | 共用写后回读：先rollback并查当前摘要／推进修订，确认保存后回读失败返回500 `import_saved_unverified`及准确身份；候选冲突409直接保留 | 相同故障从409拒绝变为已保存待核实；真实PG确认revision 2／新digest，原发布版1条且原ZIP不变；恢复读接口可回读准确草稿。新增真实HTTP负例先红（409），修复后通过；影响仅导入恢复语义，不改提交点、表或绑定 |
+| 迁移证据定位本次准确来源，不依赖清空实例 | 原脚本按固定名称取目录第一个来源，重复运行会误用旧来源；业务议题同名导致严格DOM定位失败 | 捕获本次新增source ID并传给独立对账脚本；导入名可由证据运行参数区分；议题标题随本次样本，增加准确正文编辑／HTTP回读及返回 | 在保留旧证据数据的B上可区分本次来源，不通过删除旧数据让验证变绿；这是证据修复，不扩大产品协议。首次重跑暴露旧样本歧义，保留失败事实 |
+
+### 已执行的相关检查与失败记录
+
+- `cd web && node --test test/unit/projectThemeDraft.test.js`：原实现8通过／3新增失败；修复后11通过；补充准确保存响应定位及项目来源排除断言后12通过。覆盖M1草稿离开保护、创建恢复及S06新增恢复，不是全量前端unit。
+- `docker compose exec -T api pytest test/integration/api/test_project_themes_api.py -k 'version_package_export or import_preflight or import_rejections or import_existing_project or import_saved_unverified or mixed_preview' -q`：6通过、23未选择；真实TCP HTTP／PG／主题文件。
+- `docker compose exec -T api pytest test/integration/api/test_project_themes_api.py -k existing_import_committed -q`：新增负例在原实现失败（返回409），未计通过。
+- `docker compose exec -T api pytest test/integration/api/test_project_themes_api.py -k 'existing_import_committed or import_saved_unverified or import_existing_project or import_rejections' -q -o cache_dir=/tmp/pytest-s06-review`：4通过、26未选择；已有并发拒绝和身份中断保持。
+- `cd web && node --test --test-concurrency=1 test/unit/projectThemePreview.test.js test/unit/projectThemeSwitch.test.js test/unit/projectThemeSamples.test.js`：18通过。保留SSR测试原有DOMPurify／路由guard告警，不以此证明真实Markdown显示；浏览器正文另行读取。
+- `cd web && pnpm run lint:check`通过；`pnpm run build`通过（保留原有chunk体积提示）。
+- `python3 scripts/verify_engineering_contracts.py`通过（212 decisions／23 features／389 docs）；`python3 -m unittest scripts.test_verify_engineering_contracts` 71通过。
+- 标准`uv run --group test`在当前api容器尝试写`/app/uv.lock`被拒绝；未修改lock或放宽权限，改用容器已安装pytest执行相同选择器。最初pytest缓存权限提示通过将本轮缓存放到`/tmp`解决；不改变产品权限。
+- 隔离迁移主脚本重跑曾因旧同名议题歧义终止；修正准确定位后到达B正文编辑及返回，再因重启等待窗口未恢复health终止，不能记作整链通过。其后B已恢复health 200；正式startup／schema证据缺口仍独立存在。
+
+### 未验、人工路径与试运行条件
+
+前后端全量unit／integration／E2E均未执行，人工验收未完成；既有LOG57／58人工状态保持，S07、协作接入与Andon不启动。暗色、窄屏、跨浏览器、生产恢复及付费执行链路未补验。正式部署A／B需要按原第16.4节，用独立数据与存储运行正式migrator及应用入口并补迁移／重启证据；不能通过补写schema版本号或放宽ready冒充完成。
+
+人工只需代表路径：主题管理准确发布版导出→导入预检取消（无新来源）→确认保存（定位草稿，未发布／应用，再次导入按钮可用）→选目标项目及alias真实预览（目标资料、原选择不变）→发布（项目仍旧版）→准确版本分配（目标项目改变）→项目主题设置切回旧版（原版恢复）。一次版本冲突或结果待核实只需观察解释和输入保留，不要求人工制造数据库／文件故障。明确人工验收后才进入约定全量；当前仅交审查修复待验，不能自行宣布专项完成。
+
+### 本轮证据与当前出口补充（浏览器恢复前）
+
+[本轮证据入口](图解/33-theme-migration-20261017/README.md#_2026-10-18独立审查)提供同场景前后截图、B目标资料及办理返回、正式部署边界回读和重启后的PG／ZIP独立结果。A下载ZIP、B不可变版本记录和B存储SHA均为`353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4`；重启后数据库仍绑定该准确版本。只读文件和PG结果不替代未通过的重启后HTTP恢复及旧版切回，本轮迁移主脚本未完整通过，不运行依赖新成功报告的独立负例脚本冒充整链通过。
+
+新增`project_theme_import_review.py`使用真实请求提交后丢响应验证连续导入及最终目标模式；本轮尝试先因B读超时、再因热重载断连未到达浏览器断言，未记通过。为其补充liveness等待；实际重启恢复仍需独立核实。保留隔离B的合成来源／发布／绑定用于排查，不删除数据库、主题卷或原历史证据。
+
+`docs`构建通过（247.75s）；核心服务及新增审查脚本Ruff通过，`git diff --check`通过。对所有涉及Python文件的Ruff检查仍有原有S06证据／integration样式诊断（旧长行／导入等），未用关闭规则掩盖；新增改动行逐项检查。容器未安装ruff可执行文件，检查使用宿主已有Ruff。文档构建只证明编译／链接，不等于业务验收。当前结论仍为“S06定向修复待验，正式部署及重启恢复证据阻断”；不建议直接宣布进入试运行。
+
+### 独立浏览器恢复补验与最终交付状态
+
+B稳定后运行`project_theme_import_review.py`通过6项真实检查：连续导入后按钮可用、既有目标切回新建并在真实POST提交后丢弃响应、准确新来源核实、排除另一同摘要来源、两个来源各revision 1／零版本及既有来源不变、项目绑定不变。以DOM、实际PG候选行和HTTP共同断言，结果见[import-review.json](图解/33-theme-migration-20261017/review-20261018/import-review.json)；同场景页面见证据入口，未使用模拟API保存结果。
+
+随后`project_theme_migration_finish_review.py`从已重启的B真实页面独立补验：准确主题版本仍在、B自己的JSON／PNG可读；从平台项目主题设置明确切回默认3.0.0，generation推进，页面／HTTP／PG一致；A绑定及B2对照项目保持。结果见[restart-browser-review.json](图解/33-theme-migration-20261017/review-20261018/restart-browser-review.json)。这是超时后的补验，主迁移脚本此前的失败保留，不改记为一次完整通过；也不代表正式startup／migrator已验证。
+
+执行上述脚本时沿用证据README的`THEME_EVIDENCE_OUTPUT`与A／B私有会话变量，输出放在本轮独立目录，未覆盖2026-10-17证据。所有产品写入仅在原隔离B的合成主题／项目，已显式恢复B1旧主题；不清理真实数据。当前产品四类缺陷有定向回归及代表浏览器结果，剩余阻断为正式A／B的migrator／startup证据，另有人工验收和验收后全量尚未执行。应先交人工验证，不能把本轮审查宣布为专项完成或直接进入正式试运行。
+
+
+B准确发布版的真实HTTP再导出与A下载ZIP逐字节相等，响应SHA亦一致，见[reexport-review.json](图解/33-theme-migration-20261017/review-20261018/reexport-review.json)。独立恢复脚本的`verify_reexport`已在该准确版本上实际执行；后续运行脚本将同时执行这一断言。`docker compose exec -T api pytest test/unit/test_project_theme_packages.py test/unit/test_project_theme_contract.py -q -o cache_dir=/tmp/pytest-s06-review`48项通过，覆盖未知契约／路径、ZIP实际展开量、资源指纹、alias／图片预算及ABI／基础版本边界；重复ZIP成员负例的stdlib警告保留。这是主题parser／契约相关集合，不是后端全量。
+
+
+最后补强接口返回前的候选一致性：提交后若另一窗口已将目标改成其他digest，返回500 `import_result_changed`并进入核实，不混用本次ZIP摘要与其他候选；前端在目录已推进到其他字节时显示实际修订，保留ZIP／预检。`projectThemeDraft.test.js`最终13通过，lint再次通过；新增HTTP负例在回读边界注入真实PG候选推进，预期拒绝混合响应并保留原发布版。
+
+该末次真实HTTP复验命令为`docker compose exec -T api pytest test/integration/api/test_project_themes_api.py -k 'existing_import_committed or another_windows_candidate or import_rejections' -q -o cache_dir=/tmp/pytest-s06-review`；Docker控制API返回500，未获得pytest结果，不能计为通过。随后的Docker查询亦长时间无响应，已中止待执行的重试和查询，不重启承载日常服务的Docker。最新服务端竞争guard的真实回归列为新增未验阻断，先前6／4项HTTP、48项parser／契约、31项前端相关用例及浏览器补验证据分别保留，不升级为当前全部通过。
+
+文档构建最后一次通过（348.20s）；服务及新增证据脚本Ruff通过，补充结果文字与相关链接检查后`git diff --check`通过。末次结果记录追加在构建之后，未再次构建纯结果文字；没有更改导航或链接目标。当前最终交付是“审查修复待验”：先恢复隔离验证环境、完成新增并发guard真实回归及正式A／B启动迁移证据，再交明确人工验收；人工验收后才做全量。没有提交、stage或推送，没有启动S07。
+
+
+Docker控制面恢复后查询到服务容器处于刚重启的启动状态；本轮未调用Docker或日常容器重启。只重试上述相同选择器，将cache目录置为`/tmp/pytest-s06-review-final`，结果为3通过／28未选择（137.69s），覆盖写后回读、提交与回读间真实PG候选变化以及旧revision／冲突拒绝。最新服务端竞争guard的真实回归阻断解除，之前控制API故障记录保留。最终前端相关集合为13＋18项通过，parser／契约48项通过，HTTP／PG各轮结果如上；没有全量。
+
+本轮最后结论：四类产品问题已修复并有相关证据；真实A→B主链各段及重启后的独立读取／显式切回有代表验证，主脚本超时不改记为一次完整通过。正式隔离A／B的migrator／startup及schema就绪证据仍未满足；人工验收、验收后全量、暗色／窄屏／完整错误态浏览器组合仍未完成。当前仅交“独立审查修复待人工审阅”，不宣布专项完成或直接进入正式试运行。无提交、stage、推送、日常数据清理或S07启动。
+
+### 本轮提交授权与开发快照
+
+用户在本轮审查交付后明确要求“提交一次commit，记录本次工作内容”，授权将本轮S06修复、相关测试、审查文档及证据保存为一次本地开发快照；不推送。该授权不代表人工验收、正式A／B启动迁移验证或专项结项通过。全量仍待人工反馈修完并明确验收后执行。
+
+提交前由未继承开发上下文的全新Reviewer核对需求、完整暂存diff、源码、证据和提交授权，未发现阻止待验快照提交的功能／权限／恢复问题；指出的5份JSON回执末尾换行已补齐并复核。Reviewer独立重跑草稿相关unit 13／13通过；提交前工程信任检查及71项脚本单测再次通过，暂存空白检查通过。未运行全量，未把本地快照当作人工验收或试运行批准。

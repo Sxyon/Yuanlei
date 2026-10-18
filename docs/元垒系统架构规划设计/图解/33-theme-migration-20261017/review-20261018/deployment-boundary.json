@@ -1,0 +1,54 @@
+{
+  "A": {
+    "schemaVersionTablePresent": false,
+    "readyStatus": 503,
+    "ready": {
+      "status": "not_ready",
+      "degraded": false,
+      "checks": {
+        "startup": {
+          "status": "error",
+          "code": "not_complete"
+        },
+        "postgres": {
+          "status": "ok"
+        },
+        "redis": {
+          "status": "ok"
+        },
+        "worker": {
+          "status": "ok"
+        }
+      },
+      "components": {},
+      "version": "0.7.3"
+    }
+  },
+  "B": {
+    "schemaVersionTablePresent": false,
+    "readyStatus": 503,
+    "ready": {
+      "status": "not_ready",
+      "degraded": false,
+      "checks": {
+        "startup": {
+          "status": "error",
+          "code": "not_complete"
+        },
+        "postgres": {
+          "status": "error",
+          "code": "timeout"
+        },
+        "redis": {
+          "status": "ok"
+        },
+        "worker": {
+          "status": "error",
+          "code": "timeout"
+        }
+      },
+      "components": {},
+      "version": "0.7.3"
+    }
+  }
+}

@@ -193,40 +193,53 @@ class ProjectThemeService:
             raise ThemeError("preflight_changed", "上传字节与预检摘要不一致，请重新预检", 409)
         if len(parsed.definition.theme.version) > 160 or "\x00" in parsed.definition.theme.version:
             raise ThemeError("version_length", "版本标识超过160字符或包含NUL，目标无法发布", 422)
+        created = not source_id
         if source_id:
             if expected_revision is None:
                 raise ThemeError("candidate_revision_required", "写入既有主题必须携带当前候选修订", 422)
-            result = await self.save_candidate(source_id, raw, expected_revision, project_id)
-            created = False
         else:
             target_name = (name or parsed.definition.theme.name).strip()
             if not target_name or len(target_name) > 160 or "\x00" in target_name:
                 raise ThemeError("source_name", "目标主题名称必须为1—160字符且不含NUL", 422)
             source = await self.create(target_name, description.strip() or "从主题包导入", "personal")
+            source_id, expected_revision, project_id = source["id"], 0, None
+        try:
+            result = await self.save_candidate(source_id, raw, expected_revision, project_id)
+        except Exception as exc:
+            await self.db.rollback()
+            if isinstance(exc, ThemeError) and exc.code == "candidate_conflict":
+                raise
             try:
-                result = await self.save_candidate(source["id"], raw, 0)
-            except Exception as exc:
-                await self.db.rollback()
+                current = await self.source(source_id, project_id, maintain=True)
+            except Exception:
+                current = None
+            if (
+                current
+                and current["candidate_digest"] == parsed.digest
+                and current["candidate_revision"] > expected_revision
+            ):
                 try:
-                    current = await self.source(source["id"], None, maintain=True)
-                except Exception:
-                    current = None
-                if current and current["candidate_digest"] == parsed.digest:
-                    try:
-                        result = await self.candidate(source["id"])
-                    except Exception as read_exc:
-                        raise ThemeError(
-                            "import_saved_unverified",
-                            f"主题身份“{target_name}”的草稿已保存但回读失败；请重新核实该身份，不要重复导入。",
-                            500,
-                        ) from read_exc
-                else:
+                    result = await self.candidate(source_id, project_id)
+                except Exception as read_exc:
                     raise ThemeError(
-                        "import_incomplete",
-                        f"主题身份“{target_name}”已建立，草稿保存结果未确认；请打开该身份核对并重新上传此ZIP，不要重复导入。",
+                        "import_saved_unverified",
+                        f"主题身份“{current['name']}”（{source_id}）的草稿已保存但回读失败；请重新核实该身份，不要重复导入。",
                         500,
-                    ) from exc
-            created = True
+                    ) from read_exc
+            elif created:
+                raise ThemeError(
+                    "import_incomplete",
+                    f"主题身份“{target_name}”（{source_id}）已建立，草稿保存结果未确认；请打开该身份核对并重新上传此ZIP，不要重复导入。",
+                    500,
+                ) from exc
+            else:
+                raise
+        if result["source"]["candidate_digest"] != parsed.digest:
+            raise ThemeError(
+                "import_result_changed",
+                "导入后目标草稿已被另一窗口更新；请保留此ZIP并重新核实目标，不要重复创建来源。",
+                500,
+            )
         versions = await self.repo.versions(result["source"]["id"])
         conflict = next(
             (version for version in versions if version["version"] == parsed.definition.theme.version), None

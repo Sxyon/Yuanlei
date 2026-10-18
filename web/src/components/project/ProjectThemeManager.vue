@@ -96,14 +96,14 @@ async function run(action) {
   try { await action(token); if (token === generation) await refreshCatalog() } catch (cause) { if (token === generation) error.value = (cause.message || '操作失败；原选择保留') + (cause.response?.data?.detail?.code==='version_conflict' ? '。请回到编辑草稿修改 theme.version，再保存校验并发布。' : '') }
   finally { if (token === generation) busy.value = false }
 }
-async function openSource(source, confirmed = false) {
+async function openSource(source, confirmed = false, savedCandidate = null) {
   if(!confirmed && !await canDiscard()) return false
   const token = ++generation; activeId.value = source.id; candidate.value = null; audit.value = null; preview.value = null; operation.value = ''; notice.value = ''; error.value = ''
   packageBusy.value = false; packageError.value = ''; packageOpen.value = false; packageDetail.value = null
   mode.value = source.kind === 'builtin' ? 'versions' : 'candidate'
   if (source.kind === 'builtin') { await run(async () => {}); return true }
   await run(async () => {
-    const result = await projectThemeApi.candidate(source.id, sourceProjectId.value)
+    const result = savedCandidate || await projectThemeApi.candidate(source.id, sourceProjectId.value)
     if (token !== generation || activeId.value !== source.id) return
     candidate.value = result; definition.value = result.package ? JSON.stringify({ manifest: result.package.manifest, theme: result.package.theme }, null, 2) : ''
   })
@@ -203,6 +203,7 @@ async function openImport() {
 }
 function closeImport(force = false) {
   if (importBusy.value && !force) return
+  importBusy.value = false
   importOpen.value = false; importFile.value = null; importSummary.value = null; importError.value = ''
   importMatches.value = []; pendingImport.value = null; importTarget.value = 'new'; importName.value = ''
   importDescription.value = ''; importSourceId.value = ''
@@ -252,7 +253,7 @@ async function confirmImport() {
   pendingImport.value = {
     mode: importTarget.value,
     name: importName.value.trim(),
-    sourceId: selected?.id || '',
+    sourceId: importTarget.value === 'existing' ? selected.id : '',
     beforeRevision: importTarget.value === 'existing' ? selected.candidate_revision : null,
     digest: summary.digest,
     beforeIds: sources.value.map(item => item.id)
@@ -303,20 +304,26 @@ async function verifyImport(auto = false) {
       ) {
         const result = await projectThemeApi.candidate(target.id, target.project_id || '')
         if (token !== generation || pendingImport.value !== pending) return
+        if (result.source.candidate_digest !== pending.digest || result.source.candidate_revision <= pending.beforeRevision) {
+          importError.value = '核实期间目标草稿已变化，请重新核实；当前文件与预检输入已保留。'
+          return
+        }
         await landImported({ ...result, created: false, digest: pending.digest, version_state: 'verified' })
         return
       }
       importError.value = target?.candidate_digest === pending.digest
         ? '目标主题已是相同字节的草稿，但没有证据表明本次写入推进了修订；请核对现有草稿后重新提交。'
         : target
-          ? '核实后目标主题草稿仍为原修订，没有发现本次字节；请稍后重新核实，或重新预检后再提交。'
+          ? target.candidate_revision > pending.beforeRevision
+            ? `目标草稿已更新为其他字节（修订 ${target.candidate_revision}）；本次保存结果无法从当前草稿核实。请保留此ZIP并核对目标，不要重复提交。`
+            : '核实后目标主题草稿仍为原修订，没有发现本次字节；请稍后重新核实，或重新预检后再提交。'
           : '目标主题当前不可见或已被移除，未发现本次草稿；请重新读取目录后核实。'
       return
     }
     const directory = await projectThemeApi.catalog('')
     if (token !== generation || pendingImport.value !== pending) return
     sources.value = directory.sources
-    const created = sources.value.filter(item => !pending.beforeIds.includes(item.id))
+    const created = sources.value.filter(item => !pending.beforeIds.includes(item.id) && item.kind === 'personal' && item.name === pending.name)
     importMatches.value = created.filter(item => item.candidate_digest === pending.digest)
     if (importMatches.value.length === 1) {
       await openImportMatch(importMatches.value[0])
@@ -341,6 +348,10 @@ async function openImportMatch(source) {
   try {
     const result = await projectThemeApi.candidate(source.id, source.project_id || '')
     if (token !== generation) return
+    if (result.package && result.source.candidate_digest !== pending?.digest) {
+      importError.value = '核实期间目标草稿已变化，请重新核实；当前文件与预检输入已保留。'
+      return
+    }
     if (!result.package) {
       await landImported({ ...result, created: true, digest: pending?.digest || '', version_state: 'identity_only' })
       notice.value = `主题身份“${source.name}”已建立，草稿尚未完成；请在此身份上传完整ZIP，不要重复创建。`
@@ -358,7 +369,7 @@ async function landImported(result) {
   if (!sources.value.some(item=>item.id===source.id)) sources.value.push({...source,versions:[]})
   scope.value = source.kind
   if (source.status !== 'active') showHistory.value = true
-  if (!await openSource(source, true)) return
+  if (!await openSource(source, true, result)) return
   if (state === 'published_same_bytes') notice.value = `导入草稿已保存（修订 ${source.candidate_revision}，尚未发布／应用）。目标主题已有相同版本、相同字节的发布版，可在“已发布版本”中复用；未自动发布。`
   else if (state === 'same_version_different_bytes') notice.value = `导入草稿已保存（修订 ${source.candidate_revision}，尚未发布／应用），但目标主题已发布同版本标识的不同字节；发布会被拒绝，请先在编辑草稿修改 theme.version。`
   else if (state === 'identity_only') notice.value = `主题身份“${source.name}”已建立，草稿尚未完成；请在此身份上传完整ZIP。`

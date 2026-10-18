@@ -18,6 +18,8 @@ A_API = os.environ.get("THEME_EVIDENCE_A_API", "http://127.0.0.1:15064")
 B_API = os.environ.get("THEME_EVIDENCE_B_API", "http://127.0.0.1:15065")
 WEB_A = os.environ.get("THEME_EVIDENCE_WEB_A", "http://127.0.0.1:15174")
 WEB_B = os.environ.get("THEME_EVIDENCE_WEB_B", "http://127.0.0.1:15175")
+IMPORT_NAME = os.environ.get("THEME_EVIDENCE_IMPORT_NAME", "B迁移草稿-UI")
+TOPIC_TITLE = f"B跨实例议题标题 · {IMPORT_NAME}"
 A = json.loads(Path(os.environ["THEME_EVIDENCE_A_SESSION"]).read_text())
 B = json.loads(Path(os.environ["THEME_EVIDENCE_B_SESSION"]).read_text())
 OUT.mkdir(parents=True, exist_ok=True)
@@ -86,6 +88,8 @@ def isolated_session(browser, origin, credentials):
     ) if "/api/" in response.url else None)
     page.goto(f"{origin}/login")
     page.get_by_label("登录账号").wait_for()
+    page.wait_for_load_state("networkidle")
+    page.evaluate("sessionStorage.setItem('redirect', '/projects?tab=themes')")
     agreement = page.locator('input[type="checkbox"]')
     if agreement.count():
         agreement.first.check()
@@ -187,9 +191,9 @@ def main():
                 B["token"],
                 f"/api/projects/{b1['id']}/governance/topics",
                 method="POST",
-                body={"title": "B跨实例议题标题", "summary": "B自己的业务内容", "source_channel": "project"},
+                body={"title": TOPIC_TITLE, "summary": "B自己的业务内容", "source_channel": "project"},
             )
-            check(topic["title"] == "B跨实例议题标题", "B真实业务议题已创建")
+            check(topic["title"] == TOPIC_TITLE, "B真实业务议题已创建")
 
             b_context, page_b = isolated_session(browser, WEB_B, B)
             page_b.goto(f"{WEB_B}/projects?tab=themes")
@@ -231,11 +235,17 @@ def main():
             import_modal.wait_for()
             import_modal.locator('input[aria-label="导入主题包ZIP"]').set_input_files(str(download_path))
             import_modal.get_by_text("只读预检", exact=True).wait_for()
-            import_modal.get_by_label("导入目标主题名称").fill("B迁移草稿-UI")
+            before_ids = {source["id"] for source in api(B_API, B["token"], "/api/theme-sources")["sources"]}
+            import_modal.get_by_label("导入目标主题名称").fill(IMPORT_NAME)
             import_modal.get_by_role("button", name="确认保存草稿", exact=True).click()
             page_b.get_by_text(re.compile("导入草稿已保存")).wait_for(timeout=30000)
             imported_catalog = api(B_API, B["token"], "/api/theme-sources")
-            imported = next(source for source in imported_catalog["sources"] if source["name"] == "B迁移草稿-UI")
+            matches = [
+                source for source in imported_catalog["sources"]
+                if source["name"] == IMPORT_NAME and source["id"] not in before_ids
+            ]
+            check(len(matches) == 1, "B本次导入只创建一个准确来源，排除历史同名身份")
+            imported = matches[0]
             check(
                 imported["candidate_revision"] == 1 and imported["candidate_digest"] == a_version["digest"],
                 "B导入定位准确草稿修订与原摘要",
@@ -246,6 +256,11 @@ def main():
                 "B编辑器显示导入草稿定义",
             )
             page_b.screenshot(path=OUT / "b-imported-draft-1440.png", full_page=True)
+            page_b.get_by_role("button", name="导入主题包", exact=True).click()
+            import_modal.wait_for()
+            check(import_modal.is_visible(), "成功导入后可再次打开导入")
+            import_modal.locator(".ant-modal-close").click()
+            import_modal.wait_for(state="hidden")
 
             page_b.get_by_role("button", name="预览已保存草稿", exact=True).click()
             preview_modal = page_b.locator(".ant-modal").filter(has_text="选择预览项目")
@@ -280,12 +295,12 @@ def main():
 
             page_b.goto(f"{WEB_B}/projects?tab=themes")
             page_b.get_by_text("我的主题", exact=True).click()
-            page_b.locator(".source", has_text="B迁移草稿-UI").click()
+            page_b.locator(".source", has_text=IMPORT_NAME).click()
             page_b.get_by_role("button", name="发布新版本", exact=True).click()
             page_b.locator(".ant-popconfirm-buttons button").last.click()
-            page_b.get_by_text(re.compile("已发布 B迁移草稿-UI")).wait_for(timeout=30000)
+            page_b.get_by_text(re.compile("已发布 " + re.escape(IMPORT_NAME))).wait_for(timeout=30000)
             published_catalog = api(B_API, B["token"], "/api/theme-sources")
-            published_source = next(source for source in published_catalog["sources"] if source["name"] == "B迁移草稿-UI")
+            published_source = next(source for source in published_catalog["sources"] if source["id"] == imported["id"])
             b_version = next(version for version in published_source["versions"] if version["version"] == "3.1.0-r2")
             check(b_version["digest"] == a_version["digest"], "B直接发布生成相同原包摘要")
             check(
@@ -342,8 +357,24 @@ def main():
             page_b.get_by_role("link", name="项目证据", exact=True).click()
             page_b.get_by_text("B项目真实资料").first.wait_for()
             page_b.get_by_role("link", name="课题", exact=True).click()
-            page_b.get_by_text("B跨实例议题标题", exact=True).wait_for()
+            page_b.get_by_text(TOPIC_TITLE, exact=True).wait_for()
             check(True, "B项目页展示B自己的业务议题")
+            page_b.get_by_text(TOPIC_TITLE, exact=True).click()
+            page_b.get_by_role("button", name="编辑正文", exact=True).click()
+            edit_modal = page_b.locator(".ant-modal").filter(has_text="修改原因")
+            edit_modal.get_by_label("课题正文", exact=True).fill("B迁移后真实办理正文")
+            edit_modal.get_by_label("课题修改原因", exact=True).fill("S06隔离迁移审查")
+            edit_modal.get_by_role("button", name=re.compile(r"保\s*存")).click()
+            edit_modal.wait_for(state="hidden")
+            page_b.get_by_text("B迁移后真实办理正文", exact=True).first.wait_for()
+            saved_topic = api(B_API, B["token"], f"/api/projects/{b1['id']}/governance/topics/{topic['id']}")
+            check(saved_topic["summary"] == "B迁移后真实办理正文", "B准确议题办理后HTTP回读持久正文")
+            page_b.get_by_role("button", name="返回目录", exact=True).click()
+            page_b.get_by_text(TOPIC_TITLE, exact=True).wait_for()
+            check(
+                page_b.locator(".project-space").get_attribute("data-theme-version") == b_version["id"],
+                "办理返回保持B已分配主题",
+            )
             page_b.screenshot(path=OUT / "b-applied-1440.png", full_page=True)
 
             subprocess.run(["docker", "restart", "yuanlei-s06-b"], check=True, capture_output=True)
@@ -436,7 +467,10 @@ def main():
         finally:
             browser.close()
 
-    report = {"checks": checks, "requests": requests, "errors": errors, "sha256": sha256(exported)}
+    report = {
+        "checks": checks, "requests": requests, "errors": errors,
+        "sha256": sha256(exported), "importedSourceId": imported["id"],
+    }
     (OUT / "browser-checks.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
     print(json.dumps({"checked": len(checks), "sha256": report["sha256"], "errors": errors}, ensure_ascii=False))
 

@@ -1,0 +1,28 @@
+{
+  "published": {
+    "id": "39b73c46-bf74-4d81-bf7b-bc71f600b39e",
+    "source_id": "57d8b6f2-764b-4078-8b36-5e64423e5f2c",
+    "version": "3.1.0-r2",
+    "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+    "size": 1002,
+    "format_version": 1,
+    "component_abi": 3,
+    "candidate_revision": 1,
+    "created_by": "s06b-a320bc115cdb4ee09d8149305c906044",
+    "created_at": "2026-10-18T12:56:07.768423"
+  },
+  "bindingAfterRestart": {
+    "project_id": "66debb87-8e06-431e-ba77-fa342590ca66",
+    "version_id": "39b73c46-bf74-4d81-bf7b-bc71f600b39e",
+    "files": {
+      "chart": "/chart.png",
+      "facts": "/facts.json"
+    },
+    "generation": 6,
+    "updated_by": "s06b-a320bc115cdb4ee09d8149305c906044",
+    "updated_at": "2026-10-18T12:56:16.427276"
+  },
+  "downloadDigest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+  "storedZipDigest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+  "apiRestartJourney": "failed waiting for health; PG and ZIP persisted, HTTP recovery separately unverified"
+}

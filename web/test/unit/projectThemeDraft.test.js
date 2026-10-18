@@ -185,3 +185,74 @@ test('核实副本时取消离开旧草稿，恢复对象与未保存正文都�
   t.mock.method(Modal,'confirm',options=>options.onOk())
   await state.verifyCreate();assert.equal(state.activeId,'recover-copy');assert.equal(state.pendingCreate,null)
 })
+
+async function prepareImport(state) {
+  await state.openImport()
+  state.importFile = new Blob(['原ZIP'])
+  state.importSummary = { digest: 'import-digest', theme: { name: '迁移目标' } }
+  state.importName = '迁移目标'
+}
+test('导入成功定位草稿后可再次打开导入，不残留忙碌状态', async t => {
+  const target = { ...copied(), name: '迁移目标', candidate_digest: 'import-digest' }
+  const state = await mountManager(t, [target])
+  t.mock.method(api, 'importDraft', async () => ({ source: target, version_state: 'new_source' }))
+  await prepareImport(state)
+  await state.confirmImport()
+  assert.equal(state.activeId, target.id)
+  assert.equal(state.importBusy, false)
+  await state.openImport()
+  assert.equal(state.importOpen, true)
+})
+test('由既有目标切回新建后，响应丢失核实新来源并排除其他同摘要身份', async t => {
+  const old = copied(), target = { ...copied(), id: 'import-new', name: '迁移目标', candidate_digest: 'import-digest' }
+  const unrelated = { ...target, id: 'unrelated', name: '并发其他主题' }
+  const projectSource = { ...target, id: 'project-source', kind: 'project', project_id: 'another-project' }
+  const state = await mountManager(t, [old])
+  await prepareImport(state)
+  state.importSourceId = old.id
+  state.importTarget = 'existing'
+  state.importTarget = 'new'
+  t.mock.method(api, 'importDraft', async () => { throw new Error('响应丢失') })
+  t.mock.method(api, 'catalog', async () => ({ sources: [old, target, unrelated, projectSource] }))
+  t.mock.method(api, 'candidate', async id => ({ source: [old, target, unrelated].find(s => s.id === id), package: { manifest: {}, theme: {} } }))
+  await state.confirmImport()
+  assert.equal(state.activeId, target.id)
+  assert.equal(state.pendingImport, null)
+  assert.equal(state.importBusy, false)
+})
+test('核实目录后候选又更新时保留待核实输入，不把其他字节报为已核实', async t => {
+  const target = { ...copied(), candidate_digest: 'import-digest', candidate_revision: 2 }
+  const state = await mountManager(t, [target])
+  await prepareImport(state)
+  state.pendingImport = { sourceId: target.id, digest: 'import-digest', beforeRevision: 1 }
+  t.mock.method(api, 'candidate', async () => ({ source: { ...target, candidate_digest: 'other-digest', candidate_revision: 3 }, package: { manifest: {}, theme: {} } }))
+  await state.verifyImport()
+  assert.ok(state.pendingImport)
+  assert.equal(state.importOpen, true)
+  assert.match(state.importError, /已变化/)
+  assert.equal(state.activeId, '')
+})
+test('成功定位使用保存响应的准确候选，不追加读取其他修订', async t => {
+  const target = { ...copied(), candidate_digest: 'import-digest', candidate_revision: 2 }
+  const state = await mountManager(t, [target])
+  const saved = { source: target, package: { manifest: {}, theme: { name: '准确导入内容' } } }
+  t.mock.method(api, 'importDraft', async () => saved)
+  t.mock.method(api, 'candidate', async () => ({ source: { ...target, candidate_revision: 3 }, package: { manifest: {}, theme: { name: '其他窗口内容' } } }))
+  await prepareImport(state)
+  await state.confirmImport()
+  assert.equal(state.candidate.source.candidate_revision, 2)
+  assert.match(state.definition, /准确导入内容/)
+  assert.doesNotMatch(state.definition, /其他窗口内容/)
+})
+test('核实发现目标已推进到其他字节时解释实际修订并保留原输入', async t => {
+  const target = { ...copied(), candidate_digest: 'other-digest', candidate_revision: 3 }
+  const state = await mountManager(t, [target])
+  await prepareImport(state)
+  state.pendingImport = { sourceId: target.id, digest: 'import-digest', beforeRevision: 1 }
+  await state.verifyImport()
+  assert.ok(state.pendingImport)
+  assert.equal(state.importOpen, true)
+  assert.match(state.importError, /其他字节（修订 3）/)
+  assert.doesNotMatch(state.importError, /仍为原修订/)
+  assert.equal(state.importSummary.digest, 'import-digest')
+})

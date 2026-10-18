@@ -80,7 +80,8 @@ A_PROJECT = A["projects"][0]
 A_BINDING = request(A_API, A["token"], "GET", f"/api/projects/{A_PROJECT['id']}/theme")[1]
 
 B_CATALOG = request(B_API, B["token"], "GET", "/api/theme-sources")[1]["sources"]
-B_SOURCE = next(source for source in B_CATALOG if source["name"] == "B迁移草稿-UI")
+browser_report = json.loads((OUT / "browser-checks.json").read_text())
+B_SOURCE = next(source for source in B_CATALOG if source["id"] == browser_report["importedSourceId"])
 B_VERSION = next(version for version in B_SOURCE["versions"] if version["version"] == "3.1.0-r2")
 B1, B2 = B["projects"]
 B1_BINDING = request(B_API, B["token"], "GET", f"/api/projects/{B1['id']}/theme")[1]

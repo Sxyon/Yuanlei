@@ -1,0 +1,27 @@
+{
+  "restartBrowserRecovered": true,
+  "targetJsonAndPngRead": true,
+  "before": {
+    "project_id": "66debb87-8e06-431e-ba77-fa342590ca66",
+    "version_id": "39b73c46-bf74-4d81-bf7b-bc71f600b39e",
+    "files": {
+      "chart": "/chart.png",
+      "facts": "/facts.json"
+    },
+    "generation": 6,
+    "updated_by": "s06b-a320bc115cdb4ee09d8149305c906044",
+    "updated_at": "2026-10-18T12:56:16.427276"
+  },
+  "restored": {
+    "project_id": "66debb87-8e06-431e-ba77-fa342590ca66",
+    "version_id": "34248024-60a6-497a-bc24-48bdf9b8370d",
+    "files": {},
+    "generation": 7,
+    "updated_by": "s06b-a320bc115cdb4ee09d8149305c906044",
+    "updated_at": "2026-10-18T13:07:01.096466"
+  },
+  "pgRestored": "34248024-60a6-497a-bc24-48bdf9b8370d|7",
+  "AUnchangedDuringRecovery": true,
+  "B2Unchanged": true,
+  "scope": "既有隔离证据入口，正式startup与migrator仍未验证"
+}

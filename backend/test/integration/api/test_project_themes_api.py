@@ -26,6 +26,7 @@ from server.routers.project_work_router import project_work
 from server.routers.project_files_router import project_files
 from server.utils.auth_middleware import get_db
 from yuxi.services.project_theme_service import install_builtin_themes
+from yuxi.services.project_theme_service import ProjectThemeService
 from yuxi.storage.postgres.manager import PostgresManager
 from yuxi.storage.postgres.models_business import Department, Project, User
 from yuxi.themes.packages import ThemeError
@@ -1610,3 +1611,65 @@ async def test_import_saved_unverified_branch(live_theme):
     assert published.status_code == 200 and published.json()["digest"] == digest
     exported = await env.client.get(f"/api/theme-versions/{published.json()['id']}/package")
     assert exported.status_code == 200 and exported.content == raw
+
+
+async def test_existing_import_committed_read_failure_is_not_reported_as_rejection(live_theme):
+    """既有来源写后回读失败须进入核实，不能以409冒充未保存。"""
+    env = live_theme
+    source, version, original = await create_publish(env)
+    raw = (BUILTIN / "research.theme.zip").read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    with mock.patch.object(
+        ThemeStore, "read", side_effect=ThemeError("package_missing", "synthetic read failure", 409)
+    ):
+        response = await env.client.post(
+            "/api/theme-imports",
+            params={"digest": digest, "source_id": source["id"], "expected_revision": 1},
+            content=raw,
+        )
+    assert response.status_code == 500 and response.json()["detail"]["code"] == "import_saved_unverified"
+    async with env.db() as db:
+        row = (
+            await db.execute(
+                text("SELECT candidate_digest,candidate_revision FROM project_theme_sources WHERE id=:id"),
+                {"id": source["id"]},
+            )
+        ).one()
+        assert row.candidate_digest == digest and row.candidate_revision == 2
+        assert (
+            await db.scalar(
+                text("SELECT count(*) FROM project_theme_versions WHERE source_id=:id"), {"id": source["id"]}
+            )
+            == 1
+        )
+    saved = (await env.client.get(f"/api/theme-sources/{source['id']}/candidate")).json()
+    assert saved["source"]["candidate_revision"] == 2 and saved["package"]["digest"] == digest
+    exported = await env.client.get(f"/api/theme-versions/{version['id']}/package")
+    assert exported.content == original
+
+
+async def test_import_does_not_report_another_windows_candidate_as_its_saved_package(live_theme):
+    """提交与回读间推进真实PG候选，不能混用导入摘要与另一窗口内容。"""
+    env = live_theme
+    source, version, original = await create_publish(env)
+    raw = (BUILTIN / "research.theme.zip").read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    read_candidate = ProjectThemeService.candidate
+
+    async def competing_candidate(service, source_id, project_id=None):
+        """在候选提交后的回读边界注入另一次真实候选写入。"""
+        await service.repo.candidate(source_id, hashlib.sha256(original).hexdigest())
+        await service.db.commit()
+        return await read_candidate(service, source_id, project_id)
+
+    with mock.patch.object(ProjectThemeService, "candidate", competing_candidate):
+        response = await env.client.post(
+            "/api/theme-imports",
+            params={"digest": digest, "source_id": source["id"], "expected_revision": 1},
+            content=raw,
+        )
+    assert response.status_code == 500 and response.json()["detail"]["code"] == "import_result_changed"
+    current = (await env.client.get(f"/api/theme-sources/{source['id']}/candidate")).json()
+    assert current["source"]["candidate_revision"] == 3
+    assert current["package"]["digest"] == hashlib.sha256(original).hexdigest()
+    assert (await env.client.get(f"/api/theme-versions/{version['id']}/package")).content == original

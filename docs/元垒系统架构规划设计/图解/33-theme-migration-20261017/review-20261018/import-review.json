@@ -1,0 +1,27 @@
+{
+  "checks": [
+    "连续导入不残留忙碌态",
+    "既有目标切回新建后响应丢失定位新来源",
+    "排除另一个同摘要不同名称来源",
+    "每次只创建一个来源且未发布",
+    "既有草稿修订不变",
+    "项目绑定不变"
+  ],
+  "sources": [
+    {
+      "id": "fab37386-e262-40a1-8fd2-bf1fde9219ac",
+      "revision": 1,
+      "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+      "publishedVersions": 0,
+      "pg": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|1"
+    },
+    {
+      "id": "8ca33f3c-06a6-48e0-9ba3-febf80ed10e0",
+      "revision": 1,
+      "digest": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4",
+      "publishedVersions": 0,
+      "pg": "353d7fdcd262a43efd992fa9f7807eb78879b380c6729df241503f953c3854c4|1"
+    }
+  ],
+  "bindingsUnchanged": true
+}
