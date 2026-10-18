@@ -10,23 +10,13 @@ export default defineConfig({
   title: "Yuanlei",
   description: "Yuanlei AI 时代的 个人 / 企业 的AI中枢系统，是您的总裁办、CEO办公室，集参谋与决策、督查与汇报、执行与协同为一体 的 AI 平台。",
   base: '/Yuanlei/',
-  srcExclude: ['vibe/**', '元垒系统架构规划设计/归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/experiment/**'],
+  srcExclude: ['vibe/**'],
   async buildEnd(siteConfig) {
     // 独立图稿由规划目录维护，静态站点复制相同字节以保留校验身份。
     const diagrams = '元垒系统架构规划设计/图解'
     await cp(join(siteConfig.srcDir, diagrams), join(siteConfig.outDir, diagrams), {
       recursive: true,
-      filter: (source) => !source.includes('/12-s02-20261011/experiment') && !source.endsWith('/12-s02-20261011/browser-check.cjs') && !source.endsWith('/14-s03-design-20261012/verify-prototype.mjs') && !source.endsWith('/16-s04-design-20261012/verify-prototype.mjs') && !source.endsWith('.json') && !source.endsWith('.md')
-    })
-    const archive = '元垒系统架构规划设计/归档'
-    await cp(join(siteConfig.srcDir, archive), join(siteConfig.outDir, archive), {
-      recursive: true,
-      filter: (source) => {
-        if (source.includes('/2026-10-12-DB-S02技术调研/')) {
-          return !source.includes('/experiment') && !/\.(?:md|json|cjs|mjs|py)$/.test(source) && !source.endsWith('.DS_Store')
-        }
-        return !source.endsWith('.md') && !source.endsWith('.DS_Store')
-      }
+      filter: (source) => !source.endsWith('.DS_Store') && !/\.(?:md|cjs|mjs|py)$/.test(source)
     })
   },
   sitemap: {
@@ -156,20 +146,16 @@ export default defineConfig({
             text: '系统架构与专项规划',
             collapsed: true,
             items: [
-              { text: '当前入口与图解', link: '/元垒系统架构规划设计/' },
+              { text: '规划入口与专项状态', link: '/元垒系统架构规划设计/' },
               { text: '系统架构与阶段边界', link: '/元垒系统架构规划设计/SYS-PL-001-系统架构与阶段边界' },
-              { text: '项目主题需求与方向', link: '/元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计' },
-              { text: '项目主题实施指南（已采纳）', link: '/元垒系统架构规划设计/DEV-DB-002-项目主题实施指南' },
-              { text: '当前阶段审阅入口', link: '/元垒系统架构规划设计/DEV-MG-002-DB-D00设计审阅阅读计划' },
-              { text: '项目主题渐进开发', link: '/元垒系统架构规划设计/DEV-DB-001-Dashboard开发任务与实施约束' },
-              { text: 'Dashboard进度', link: '/元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录' },
-              { text: '议题设计审阅示范', link: '/元垒系统架构规划设计/SYS-DB-002-议题详情设计审阅示范' },
+              { text: '项目主题需求与设计', link: '/元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计' },
+              { text: '项目主题维护与接续', link: '/元垒系统架构规划设计/DEV-DB-002-项目主题实施指南' },
+              { text: '平台证据与待验边界', link: '/元垒系统架构规划设计/LOG-PL-001-平台能力证据与待验边界' },
+              { text: '主题状态与证据', link: '/元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录' },
               { text: '协作冻结设计', link: '/元垒系统架构规划设计/SYS-CA-001-协作接入与Andon系统设计' },
               { text: '协作冻结细节', link: '/元垒系统架构规划设计/DEV-CA-001-协作接入与Andon冻结落地细节' },
               { text: '协作暂停进展', link: '/元垒系统架构规划设计/LOG-CA-001-协作接入与Andon暂停盘点与事实进展' },
               { text: '专项推进与设计汇报', link: '/元垒系统架构规划设计/DEV-MG-001-专项推进与设计汇报机制' },
-              { text: '目录重整与图文核对', link: '/元垒系统架构规划设计/LOG-MG-002-目录重整与图文核对记录' },
-              { text: '历史归档', link: '/元垒系统架构规划设计/归档/2026-10-10-重整前/' }
             ]
           },
           { text: '测试规范', link: '/develop-guides/testing-guidelines' },

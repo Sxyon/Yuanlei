@@ -4,8 +4,8 @@
   "status": "current",
   "command": "deliver",
   "type": "sequence",
-  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
-  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
+  "input": "./docs/元垒系统架构规划设计/图解/06-andon/candidate.json",
+  "output": "./docs/元垒系统架构规划设计/图解/06-andon/andon-return.html",
   "specification": {
     "sha256": "a22633462c64422a401609638f4a3f6ab3033fec956e48b6136f1eeff33ac936",
     "bytes": 3599

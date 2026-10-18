@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f80d5eb1-52b3-45d2-a7b2-4722cae46554",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "./docs/元垒系统架构规划设计/图解/34-theme-overview-20261018/candidate.json",
+  "output": "./docs/元垒系统架构规划设计/图解/34-theme-overview-20261018/project-theme.html",
+  "specification": {
+    "sha256": "7e4504d4f62e91e95e092973a069112ca926f22aab97a04f01f8717b05371714",
+    "bytes": 5650
+  },
+  "artifact": {
+    "sha256": "19a6faccff0f9c127f8da45672545d70dd36bad535e2d23a26f4ff9972ddc850",
+    "bytes": 759321
+  }
+}

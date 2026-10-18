@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "项目主题｜宿主、业务与持久事实",
+    "locale": "zh-CN",
+    "output": "docs/元垒系统架构规划设计/图解/34-theme-overview-20261018/project-theme.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github:Sxyon/Yuanlei.git",
+      "revision": "63dc5af7442812a928ed0af0c4795a2a8acc3621",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "项目主题宿主",
+      "sublabel": "导航／草稿／准确预览",
+      "pos": [
+        480,
+        80
+      ],
+      "size": [
+        220,
+        75
+      ],
+      "sources": [
+        {
+          "path": "web/src/layouts/ProjectLayout.vue",
+          "line": 43,
+          "end_line": 82
+        }
+      ]
+    },
+    {
+      "id": "views",
+      "type": "frontend",
+      "label": "可信业务界面",
+      "sublabel": "九类能力／详情／编辑",
+      "pos": [
+        900,
+        80
+      ],
+      "size": [
+        220,
+        75
+      ],
+      "sources": [
+        {
+          "path": "web/src/components/project/themes/workspaceCapabilities.js",
+          "line": 1,
+          "end_line": 89
+        }
+      ]
+    },
+    {
+      "id": "business",
+      "type": "backend",
+      "label": "原业务用例",
+      "sublabel": "原授权／状态／历史",
+      "pos": [
+        1320,
+        80
+      ],
+      "size": [
+        220,
+        75
+      ],
+      "sources": [
+        {
+          "path": "web/src/components/project/capabilities/PlanWorkspace.vue",
+          "line": 80,
+          "end_line": 145
+        },
+        {
+          "path": "backend/package/yuxi/services/governance_service.py",
+          "line": 216,
+          "end_line": 269
+        }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "backend",
+      "label": "主题用例与授权",
+      "sublabel": "解析／发布／应用／文件读取",
+      "pos": [
+        480,
+        350
+      ],
+      "size": [
+        220,
+        85
+      ],
+      "sources": [
+        {
+          "path": "backend/package/yuxi/services/project_theme_service.py",
+          "line": 299,
+          "end_line": 470
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "来源／版本／唯一项目绑定",
+      "pos": [
+        900,
+        350
+      ],
+      "size": [
+        250,
+        85
+      ],
+      "sources": [
+        {
+          "path": "backend/package/yuxi/repositories/project_theme_repository.py",
+          "line": 34,
+          "end_line": 154
+        }
+      ]
+    },
+    {
+      "id": "manager",
+      "type": "frontend",
+      "label": "平台主题管理",
+      "sublabel": "导入草稿／发布／分配",
+      "pos": [
+        60,
+        350
+      ],
+      "size": [
+        220,
+        85
+      ],
+      "sources": [
+        {
+          "path": "web/src/components/project/ProjectThemeManager.vue",
+          "line": 1,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "zip",
+      "type": "database",
+      "label": "受保护主题文件域",
+      "sublabel": "原ZIP／摘要校验／不可变",
+      "pos": [
+        480,
+        650
+      ],
+      "size": [
+        240,
+        80
+      ],
+      "sources": [
+        {
+          "path": "backend/package/yuxi/themes/store.py",
+          "line": 14,
+          "end_line": 104
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "type": "database",
+      "label": "目标Project Workdir",
+      "sublabel": "alias重绑／no-follow读取",
+      "pos": [
+        900,
+        650
+      ],
+      "size": [
+        250,
+        80
+      ],
+      "sources": [
+        {
+          "path": "backend/package/yuxi/services/project_theme_service.py",
+          "line": 387,
+          "end_line": 439
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "render",
+      "from": "shell",
+      "to": "views",
+      "label": "受控定义"
+    },
+    {
+      "id": "act",
+      "from": "views",
+      "to": "business",
+      "label": "原API办理"
+    },
+    {
+      "id": "read-binding",
+      "from": "shell",
+      "to": "theme",
+      "label": "授权包与选择"
+    },
+    {
+      "id": "record",
+      "from": "theme",
+      "to": "pg",
+      "label": "事务与修订"
+    },
+    {
+      "id": "manage",
+      "from": "manager",
+      "to": "theme",
+      "label": "同一主题API",
+      "variant": "dashed"
+    },
+    {
+      "id": "package",
+      "from": "theme",
+      "to": "zip",
+      "label": "回读原包"
+    },
+    {
+      "id": "file",
+      "from": "theme",
+      "to": "files",
+      "label": "授权后读文件"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "完整项目主题",
+      "items": [
+        "AppLayout承载平台外壳；ProjectLayout统一项目导航及能力继承。",
+        "原业务Owner拥有状态和授权；包定义不提供自由脚本或请求。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "制作与使用",
+      "items": [
+        "主题管理调用同一主题服务；保存草稿、发布、应用分别生效。",
+        "精确版本与文件映射由PG绑定；编辑或发布不自动升级项目。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "迁移与证据",
+      "items": [
+        "迁移携原包及声明素材；目标身份、业务与Workdir映射留在目标。",
+        "图按63dc5af7源码核对；正式A／B启动迁移、人工及全量仍待验。"
+      ]
+    }
+  ]
+}

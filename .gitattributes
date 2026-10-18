@@ -7,6 +7,3 @@ Dockerfile* text eol=lf
 # Archify图稿保留已验证原始字节；仅允许生成器的行尾空白。
 # 不做换行规范化，其他空白检查继续执行。
 docs/元垒系统架构规划设计/图解/*/*.html -text whitespace=-blank-at-eol
-
-# S02冻结Archify图稿沿用原生成器空白规则，保持回执字节。
-docs/元垒系统架构规划设计/归档/2026-10-12-DB-S02技术调研/图解/12-s02-20261011/theme-*.html -text whitespace=-blank-at-eol

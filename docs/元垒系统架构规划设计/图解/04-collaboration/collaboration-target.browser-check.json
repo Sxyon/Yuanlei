@@ -8,7 +8,7 @@
   "provenance": "current",
   "deliveryReceiptId": "6eecba40-b62b-47f3-bcca-3d52af813729",
   "artifact": {
-    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
+    "path": "./docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
     "sha256": "053a5b9eee99538183e49ded606120923339e0332caf9403433114ca4f4a0996",
     "bytes": 759766
   },
@@ -18,7 +18,7 @@
   },
   "chrome": {
     "status": "available",
-    "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    "executable": "Google Chrome"
   },
   "diagnostics": [],
   "containment": {

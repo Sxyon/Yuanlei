@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 1,
-  "command": "deliver",
-  "status": "pending",
-  "receiptId": "a61d0b6b-0685-4667-af9e-357ccc03dfba",
-  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/08-progressive/candidate.json",
-  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/08-progressive/progressive-review.html"
-}

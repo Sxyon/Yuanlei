@@ -8,7 +8,7 @@
   "provenance": "current",
   "deliveryReceiptId": "784a5fb0-be35-44e5-90e7-da5f8f67bfdc",
   "artifact": {
-    "path": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/01-platform/platform-target.html",
+    "path": "./docs/元垒系统架构规划设计/图解/01-platform/platform-target.html",
     "sha256": "8e5c8bcc2c90dd163fd5e2416125e05a1ec30874cce6f8b915c35412eef19ce1",
     "bytes": 760389
   },
@@ -18,7 +18,7 @@
   },
   "chrome": {
     "status": "available",
-    "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    "executable": "Google Chrome"
   },
   "diagnostics": [],
   "containment": {

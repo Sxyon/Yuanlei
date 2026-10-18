@@ -1,9 +1,0 @@
-{
-  "kind": "isolated-design-prototype-negative-control",
-  "result": "Passed",
-  "mutation": "移除captured!==sequence的拒绝分支",
-  "expectedFailure": "旧项目DTO未污染当前项目",
-  "actualExitCode": 1,
-  "prototypeSha256": "2b64cda3ef0695b597742ae947922e05a716d9916711d763d333391eab73dec8",
-  "scope": "合成页面DOM，非生产请求与后端"
-}

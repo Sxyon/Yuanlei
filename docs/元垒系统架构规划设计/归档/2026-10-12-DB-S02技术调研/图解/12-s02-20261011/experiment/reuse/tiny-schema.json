@@ -1,1 +1,0 @@
-{"componentName":"div","props":{"class":"tiny-output"},"state":{},"methods":{},"lifeCycles":{},"css":".tiny-output { padding: 24px; }","children":[{"componentName":"h2","props":{},"children":"TinyEngine 真实出码验证"},{"componentName":"p","props":{},"children":"同一 Vue/Vite 编译宿主"}]}

@@ -1,40 +1,9 @@
-# DB-S04-R 隔离实施证据
+# 双入口切换与恢复证据
 
-本目录仅保存合成项目的实际执行证据，不是新规划。需求、实施约束和实际结果分别归原SYS15、DEV12.2及LOG51。A1原稿与平台增补保持原目录。
+历史范围：2026-10-16隔离合成项目；本次整理未重跑。平台准确版本分配与项目快捷入口使用同一绑定，主导航和正文共同失效，草稿及故障保留明确恢复。当前状态由[主题LOG](../../LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。
 
-- `browser-proof.json`：正常平台入口及项目快捷入口的可见DOM、URL、准确版本、generation和故障协议摘录。
-- `binding-final.json`、`binding-restart.json`：分别在API重启前后，通过真实HTTP、PG绑定联结版本行、ZIP字节摘要回读；A默认13、B默认4、C未绑定0。
-- `default-baseline.jpg`、`default-settings-baseline.jpg`：产品修改前默认基线；`default-restored.jpg`：最终恢复默认。
-- `platform-research.jpg`、`platform-no-settings.jpg`：平台分配调研及无settings声明主题后原地回读。
-- `platform-fault.jpg`、`saved-load-failed.jpg`、`emergency-fallback.jpg`、`permission-loss.jpg`、`dual-entry-conflict.jpg`：坏包、写后网络故障、应急、失权和双入口冲突。
+[浏览器回读](browser-proof.json)记录入口、DOM、URL、版本及generation；[最终HTTP／PG／ZIP](binding-final.json)和[重启回读](binding-restart.json)记录准确绑定、版本行及包字节。结果为A默认generation13、B默认4、C未绑定0，仅表示当时样本。截图保存坏包、失权、双入口冲突和应急等代表状态。
 
-## 复现环境
+实际AppLayout移除scope接线后，页面卸载断言失败；ProjectLayout移除同代故障守卫或稳定能力路由后，分别恢复草稿丢失和展示路由缺陷。Selection另覆盖未知结果、409及迟到返回；移除read epoch或共享确认Promise分别恢复旧结果覆盖和重复确认，相关17项通过。精确命令见整理前提交`63dc5af7`的LOG51。
 
-从仓库Compose创建独立数据库`yuanlei_s04_repair_evidence`，不要覆盖日常数据库。隔离脚本固定该库及独立文件根，不接受任意项目作为故障目标。若同名环境已存在，复核其归属后复用；不要通过删除日常卷重建。
-
-```bash
-docker compose exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" yuanlei_s04_repair_evidence'
-docker compose run --no-deps -d --name yuanlei-s04-repair -p 127.0.0.1:15064:5060 api python /app/test/e2e/project_theme_switch_app.py
-docker exec yuanlei-s04-repair python /app/test/e2e/project_theme_switch_evidence.py prepare
-VITE_API_URL=http://127.0.0.1:15064 pnpm --dir web exec vite --host 127.0.0.1 --port 15174 --strictPort
-```
-
-随机合成身份仅留容器私有`/tmp/s04-repair/session.json`，不输出或提交凭据。用该身份登录隔离站点，从首页→项目列表→A卡片／主题管理开始。完整步骤及版本账在LOG51；版本行路径从个人来源“S04-R无设置声明”→发布版本→分配到项目开始。
-
-```bash
-docker exec yuanlei-s04-repair python /app/test/e2e/project_theme_switch_evidence.py read
-# 以下仅用于该具名隔离包，成对恢复
-docker exec yuanlei-s04-repair python /app/test/e2e/project_theme_switch_evidence.py corrupt
-docker exec yuanlei-s04-repair python /app/test/e2e/project_theme_switch_evidence.py restore
-# 以下只切换隔离A的可见性，成对恢复
-docker exec yuanlei-s04-repair python /app/test/e2e/project_theme_switch_evidence.py deny
-docker exec yuanlei-s04-repair python /app/test/e2e/project_theme_switch_evidence.py allow
-```
-
-浏览器故障在响应阶段放行已成功PUT再拒绝GET，或拒绝PUT响应后放行核实GET；仅影响隔离API的Fetch资源，结束清空拦截。重新聚焦使用真实focus监听的受控事件，未声称操作系统级自动切窗。预览只用合成数据。主切换均用UI操作；旧书签测试单独打开陈旧展示URL，不算分配入口证明。
-
-## 可拒绝的宿主证据
-
-`web/test/unit/platformPageCache.test.js`编译当前真实AppLayout模板，断言同路由换版本generation会卸载旧页面并清理其局部输入。去掉非缓存component的scope key后，卸载数从1变0，测试失败；恢复后通过。`projectThemeHostSwitch.test.js`加载实际ProjectLayout及编辑登记，去掉同代state守卫或真实能力路由后，分别因草稿消失、仍停展示路由失败。Selection协议测试另证未知结果、409、加载失败、迟到返回与预检期间切目标。最终补齐平台focus回读：保留本次意图且使旧条件失效，保存前发出的旧回读不能覆盖成功；连续focus／visibility共享同一草稿确认。移除读epoch或确认Promise后分别因旧0覆盖新1、确认框2个而应1个失败，恢复后共17项通过。
-
-本目录截图不证明调研内容组织或双数据已完成。未逐一浏览器穷举全部业务表单，详见LOG51的未验边界。
+隔离脚本位于`backend/test/e2e/project_theme_switch_*`；只对明确归属的合成数据库及文件域执行，故障注入与恢复成对。重新执行前核对当前源码和隔离归属，不自动复用旧账号、删除日常卷或核销旧样本。所有表单未逐字段浏览器穷举；此证据不代表调研内容、双数据或最终人工验收完成。

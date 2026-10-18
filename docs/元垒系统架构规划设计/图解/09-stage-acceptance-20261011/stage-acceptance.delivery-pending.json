@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 1,
-  "command": "deliver",
-  "status": "pending",
-  "receiptId": "2460cbbe-e33e-4771-9d4c-b4927df963b6",
-  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/candidate.json",
-  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/09-stage-acceptance-20261011/stage-acceptance.html"
-}

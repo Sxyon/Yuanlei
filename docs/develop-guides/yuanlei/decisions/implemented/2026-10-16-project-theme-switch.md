@@ -4,7 +4,7 @@
 类型：feature
 Owner：web/src/layouts/ProjectLayout.vue
 关联 Feature：[项目主题](../../features/project-themes.md)
-关联提案：[分段修复](../proposed/2026-10-15-project-theme-switch-repair.md)，其S05-R2表达部分仍未实施。
+关联提案：[分段修复](../proposed/2026-10-15-project-theme-switch-repair.md)，S05-R2已按[消费决策](2026-10-17-theme-evidence-consumption.md)接入，阶段暂停及待验范围由专项LOG拥有。
 
 ## 问题
 
@@ -28,4 +28,4 @@ ProjectLayout拥有唯一绑定投影；Panel及所有路由正文消费账号�
 
 ## 验证
 
-真实HTTP／PG集成、隔离浏览器双入口、准确对象／刷新／新标签／重启／失权／草稿／409／故障及包digest对账见[LOG51](../../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md#_51-db-s04-r-双入口真实切换与恢复实施包-2026-10-16)。实际AppLayout模板移除scope接线后卸载断言失败；实际Layout移除同代故障守卫或稳定能力路由后分别恢复草稿丢失和模拟页缺陷。独立Review及未逐字段浏览器穷举等限制由LOG记录，机制实施不等于用户整体验收。
+真实HTTP／PG集成、隔离浏览器双入口、准确对象／刷新／新标签／重启／失权／草稿／409／故障及包digest对账见[主题状态与证据](../../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)。实际AppLayout模板移除scope接线后卸载断言失败；实际Layout移除同代故障守卫或稳定能力路由后分别恢复草稿丢失和模拟页缺陷。独立Review及未逐字段浏览器穷举等限制由LOG记录，机制实施不等于用户整体验收。

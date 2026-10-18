@@ -1,65 +1,58 @@
 # 项目主题的可信多页运行时
 
-状态：S03—S06工程已接入；S06原包导出、导入草稿、目标资料预览与隔离A／B迁移完成相关检查，人工验收及前后端全量未执行。
+状态：S03—S06工程已接入；2026-10-18按用户要求阶段暂停。正式A／B启动迁移证据、人工验收及验收后全量未完成，当前状态由[专项LOG](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。
 类型：新增能力
-主要 Owner：[全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)
+主要 Owner：[全项目主题决策](../decisions/proposed/2026-10-14-full-project-theme.md)
 
 ## 需求与失败场景
 
-同一主题机制需要承载日常管理和课题调研两种项目页面组织，同时保留议题、决定和正式任务的身份、关系及后端语义。为两个样例各写一套页面宿主，会在存储、数据和迁移接入时分叉；让上传页面执行任意脚本或自行拼请求，会破坏平台数据与授权边界。
+项目需要以日常管理、精简观察、课题调研等不同方式组织全部页面、详情、编辑和办理，同时保留原业务身份、状态、权限与历史。只替换概览或导航会遗漏项目作用域；各主题复制业务代码会分叉授权与状态；上传页面自由执行脚本及请求会突破数据边界。
 
-S03原固定样例作为历史协议资产保留；当前完整能力主题预览从真实候选或准确发布版本进入有权项目的真实页面，正文只读且不写绑定；纯区块历史页面仍使用明确合成的只读适配；含可信能力的混合资料页使用同一真实宿主与准确预览资源，旧独立演示地址重定向到主题管理。主题按受控JSON定义编排平台可信Vue组件，组件输入、导航与资源引用经过纯契约；正式项目可明确选择S04持久版本；可信原项目入口保留，正式业务与指定文件由固定适配读取，完整能力预览与正式项目复用同一ProjectLayout及能力页，临时路由引用与持久binding分离，候选修订变化明确失败。
+主题采用受控JSON定义与平台可信Vue能力组合。当前三套组织和ABI3有限呈现共用同一宿主；自定义主题缺失能力在同一壳内继承基础版本。用户制作和字段说明分别见[使用指南](../../../intro/project-theme-authoring.md)与[配置参考](../../../advanced/project-theme-reference.md)，稳定产品范围见[主题设计](../../../元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计.md)。
 
 ## 必须保留的业务语义
 
-- 页面表现可以称议题为课题或战略规划，业务对象仍是原议题、决定与正式任务；正式任务来源决定ID及冻结版本必须保持成对，当前决定不能替代当次依据。
-- 主题只声明逻辑业务绑定和文件alias，不提供用户／项目授权、请求URL、SQL、脚本、SFC或宿主路径。元数据与资源字节必须一致，未知组件／不支持ABI／非法引用明确失败。
-- 宿主按当前用户、Project、包digest、绑定generation、页面与选择隔离异步结果及错误。准确详情再次读取对象归属，返回仅使用宿主捕获的原页、选择、查询、滚动与焦点。
-- 完整能力预览使用原授权读取与真实页面，正文inert禁用办理，导航可切页，结束后回读已保存选择；正常导航不常驻恢复链接。合成适配只由纯区块历史预览消费，不能进入日常项目store或模拟真实保存、批准、验收。Redis或浏览器状态不拥有真实主题选择的最终事实。
+- 主题改变组织、有限布局及平台词汇，业务对象ID、DTO、用户正文、历史、状态和最终授权由原Owner执行。正式任务来源决定ID与冻结修订成对，当前决定不替换执行当次依据。
+- 包仅声明可信能力、有限布局、逻辑业务引用、文件alias和声明素材；不授予用户／Project权限，不携任意脚本、SFC、SQL、请求URL或宿主路径。未知依赖、组件及非法资源明确拒绝。
+- 草稿、不可变发布版、唯一Project绑定分别拥有事实；保存或发布不自动应用，选择以generation拒绝旧写，共用Workdir不共享主题选择。来源停用保留旧加载，安全撤回拒绝加载并保存原因，故障保留原绑定及显式恢复入口。
+- 宿主按当前用户、Project、准确包、generation和页面选择隔离异步结果，切换保护未保存输入，准确对象再次核对归属；返回使用宿主保存的原页、查询、滚动和焦点。
+- 完整能力及混合主题预览复用有权Project的真实宿主，绑定准确version或候选revision，临时文件映射不写持久选择。正文inert只读，后端继续最终授权；历史纯区块预览明确使用合成适配。
+- Project文件由目标alias映射经原Workdir no-follow边界读取，实际JSON／PNG与包内素材分别校验。alias为项目级，文件是实时字节，不能暗示逐议题附件或固定文件快照。
+- 导出读取准确授权已发布版本的原ZIP；导入只读预检，确认重传核SHA后保存目标草稿，发布与应用分别确认。目标身份、业务行、凭据、路径／映射及generation留在目标环境；作者自行写入包素材的内容随原字节携带。
 
 ## 与 Yuxi 的边界
 
-AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航和有限能力继承；平台明暗token继续共用。原治理和ProjectWork Owner拥有业务DTO、历史依据及最终授权；Workdir拥有指定文件的安全读取边界。元垒在这些Owner旁增加纯主题契约、有限组件与ThemeHost，不向原静态HTML视图授予数据bridge。
-
-包加载器返回已校验manifest／theme与原包字节digest；业务适配器提供固定read／readObject及资源字节。S04版本加载与S05真实业务／资源在此接口替换当前样例来源，页面定义和组件无需重建。S04生产parser、来源授权、不可变发布与数据库绑定由实际服务、文件域及PG约束拥有，取舍见[存储决策](../decisions/implemented/2026-10-13-project-theme-storage.md)。源停用保留旧加载，安全撤回拒绝加载且保留绑定；任何故障不能隐式改选内置版本。
+AppLayout拥有平台外壳，ProjectLayout拥有项目主题、导航、有限能力继承、预览及草稿作用域。可信能力组件直接消费原治理、工作、结果、资料、智能体和设置Owner；旧URL解析到新能力，静态HTML Dashboard继续保持无脚本隔离。
 
 ## 稳定集成点
 
-纯Pydantic契约拥有可携定义、宿主加载DTO、组件投影、资源元数据和有限导航；生成Schema供前端加载边界消费。ThemeHost按同一协议渲染，原业务Owner继续拥有真实状态。加载reference独立于作者theme.id及digest，S04使用已授权版本引用替换样例引用；S05的业务和文件适配沿当前Project及原DTO接线，原业务有界分页保持身份／状态和议题归属；返回令牌只保存阅读上下文，原业务Owner继续拥有办理。DB-S05-R增加componentAbi 2的有限capability页与baseVersion 1继承，formatVersion保持1；原ABI1展示页保留，旧项目URL解析到准确新能力。新内置完整主题使用独立来源和版本，任何版本调整都不能覆盖已发布字节或静默改变绑定。项目资料在Workspace前增加Project授权与相对路径边界，动态从原治理事件投影，均不复制业务状态。
+Pydantic主题契约及包parser拥有定义、ZIP和媒体校验，生成Schema供前端边界使用。ProjectThemeService拥有来源／Project授权、来源→Project锁顺序、文件及PG提交；ProjectThemeRepository拥有持久查询和可见性；ThemeStore拥有原ZIP的无覆盖持久化、摘要和no-follow。yuanlei域保存来源／版本／Project绑定／维护事件，业务及knowledge域继续归上游。
 
 ## 上游依赖
 
-依赖Project可见性、原治理／正式工作DTO、准确来源版本、Vue外壳与明暗样式，以及Workdir普通文件读取。S03合成适配不授予后台权限；真实接通必须继续走原认证与repository归属查询。
+依赖Project可见性、原业务DTO及状态用例、Conversation／Run身份、Vue外壳、明暗token与Workdir安全原语。
 
 ## 合并判断
 
-上游重排组件或路由时可迁移实现，保留同一包契约、业务身份、冻结来源及可信返回。上游提供等价运行时后，按业务语义选择采用或缩小差异；不能以自由脚本renderer取代受控包，并向其直接暴露项目数据。
+上游重构时允许迁移实现位置，需保留完整项目作用域、准确来源版本、冻结依据、旧链接、可信返回、草稿保护和目标文件授权。
+
+上游提供等价主题后，比较能力组合、来源／版本、持久选择、不可变字节、恢复和授权语义，再采用或缩小差异。
 
 ## 替换或删除条件
 
-上游提供等价多页主题时，比较固定组件、DTO身份、冻结依据、来源返回、文件授权和迟到隔离后采用或缩小差异。纯展示需求终止时可移除独立预览和合成适配；已有持久主题包及项目绑定若已产生，需先明确迁移路径与用户承诺，不能直接删运行时。
+已有用户包和绑定需要明确迁移路径；需求结束后才按消费者及数据承诺删除。自由脚本renderer不能直接替代当前受控边界。
 
 ## 决策与证据
 
-当前需求／确认范围见[SYS-DB-001第15节](../../../元垒系统架构规划设计/SYS-DB-001-Dashboard系统需求与架构设计.md)，契约和交接由[DEV-DB-002](../../../元垒系统架构规划设计/DEV-DB-002-项目主题实施指南.md)拥有，实际命令、模拟边界及阶段验收由[LOG-DB-001](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有。纯契约、组件／第三份定义测试、真实浏览器DOM和样例ZIP字节回读分别验证其边界，不以用户评分或单个HTTP状态代替事实。
+| 取舍 | 决策 |
+| --- | --- |
+| 可信组件、受控包与原业务Owner | [实施路线](../decisions/proposed/2026-10-12-project-theme-implementation.md)、[全项目覆盖](../decisions/proposed/2026-10-14-full-project-theme.md) |
+| 不可变存储及业务／文件消费 | [存储](../decisions/implemented/2026-10-13-project-theme-storage.md)、[真实数据](../decisions/implemented/2026-10-13-project-theme-live-data.md) |
+| 双入口、三套组织及真实预览 | [切换恢复](../decisions/implemented/2026-10-16-project-theme-switch.md)、[内置样例](../decisions/implemented/2026-10-16-project-theme-samples.md)、[预览一致性](../decisions/implemented/2026-10-16-project-theme-preview-parity.md) |
+| 制作、词汇／资料及迁移恢复 | [制作反馈](../decisions/implemented/2026-10-16-theme-authoring-feedback.md)、[真实消费](../decisions/implemented/2026-10-17-theme-evidence-consumption.md)、[原包迁移](../decisions/implemented/2026-10-17-theme-portability-closeout.md) |
 
-- [已采纳主题实施方案](../decisions/proposed/2026-10-12-project-theme-implementation.md)：S03当前子范围与后继未交付边界分别登记。
-- 纯契约与输入Owner：`backend/package/yuxi/services/project_theme_contract.py`；消费路径为 `web/src/components/project/themes/ThemeHost.vue`，呈现与真实宿主消费回归为 `web/test/unit/projectThemeSamples.test.js`，HTTP／PG及包字节回读为 `backend/test/integration/api/test_project_themes_api.py`，浏览器实际结果由专项LOG第53节拥有。
+[专项LOG](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)集中当前阶段确认与证据入口；测试分别覆盖纯契约、实际宿主、第三份定义、真实HTTP／PG、文件字节和DOM，不用模拟或HTTP状态替代最终事实。S06现有证据app省略正式startup且无schema版本登记，不能证明正式migrator／ready；分段补验不改记主迁移脚本一次整链通过。
 
-- [真实数据与可信返回接通决策](../decisions/implemented/2026-10-13-project-theme-live-data.md)：固定业务适配、有界查询、绑定alias文件读取和原宿主返回的取舍及验证边界。
+多实例、Agent生成维护工具及有限自动发布授权、更多格式／素材、团队权限与第三方平台适配仍待按真实需求细化，边界见[维护与接续](../../../元垒系统架构规划设计/DEV-DB-002-项目主题实施指南.md)。当前工程实现和相关检查不补记人工验收或最终结项。
 
-- [全项目主题实施决策](../decisions/proposed/2026-10-14-full-project-theme.md)：九个能力及详情在同一主题内办理；当前工程及人工验收状态由专项最新LOG拥有。yuanlei v40仅放宽主题ABI约束，保留原版本、绑定和业务数据。
-
-- [多主题切换与真实视图修复提案](../decisions/proposed/2026-10-15-project-theme-switch-repair.md)：当前默认样式为基础，S04-R修复选择与宿主一致性，S05-R2验证实际主题表达与双数据；S04-R已按确认稿实施平台完整分配、项目快捷选择、同源预检与宿主恢复；S05-R2当前接线及人工未验范围由LOG58拥有。切换机制证据见专项LOG第51节，不代替调研内容组织及双数据验收。
-
-- [本地样例整改决策](../decisions/implemented/2026-10-16-project-theme-samples.md)：当前目录清理、默认／应急共同基线、精简导航与有限总览呈现；DB-P09已获用户明确确认，ABI3有限呈现与显式导航隐藏已有消费，主题管理直接整理获授权；当前执行与证据由专项LOG第53节拥有，S05双数据不据此完成。
-
-本轮预览一致性与管理弹窗决定见[真实项目只读预览](../decisions/implemented/2026-10-16-project-theme-preview-parity.md)。恢复或替换时保留准确包、只读预览不写绑定及原草稿语义；不恢复独立能力页模拟来冒充实际效果。
-
-主题制作管理沿原来源与候选／发布服务，以编辑草稿／已发布版本区分查看和写入；创建可编辑副本确认准确出处，异常先核实已创建身份，结果不明不重复创建。我的主题仅供本人项目复用；存储检查与维护不改变业务或绑定。当前取舍见[主题制作模式与创建结果核实](../decisions/implemented/2026-10-16-theme-authoring-feedback.md)，开发与人工验收时序由专项LOG57拥有。
-
-真实词汇、Project JSON／PNG资料及准确混合预览消费见[消费决策](../decisions/implemented/2026-10-17-theme-evidence-consumption.md)。目标Workdir映射、用户身份、业务数据及generation不进入可携ZIP，原声明assets原成员可携；源码与准确协议仍由真实Owner拥有。
-
-S06新增准确已发布版本原ZIP导出、导入只读预检及目标草稿保存；导入只创建或更新草稿，不自动发布或应用，发布与分配继续沿原不可变版本和唯一Project绑定。目标实例生成自己的来源身份，项目文件alias及Workdir映射在目标重新授权；预检不落库，确认时重传并核对摘要，结果不明先回读目标草稿。实现Owner为`ProjectThemeService`、主题router、`ProjectThemeManager`及主题API，未新增导入状态表或第二套绑定。
-
-S06实现取舍见[迁移收尾决策](../decisions/implemented/2026-10-17-theme-portability-closeout.md)；实际命令、A／B证据、人工路径和未验范围由[迁移交接](../../../元垒系统架构规划设计/图解/33-theme-migration-20261017/README.md)及[LOG第60节](../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md#_60-s06主题迁移、专项收尾与试运行交接-2026-10-17)拥有。用户制作步骤见[制作和使用项目主题](../../../intro/project-theme-authoring.md)，字段、页面/区块、文件alias、素材、兼容和限制见[项目主题配置参考](../../../advanced/project-theme-reference.md)；主题管理页及编辑草稿提供入口。人工验收及前后端全量未完成，不将相关检查当作最终验收。
+契约Owner：`backend/package/yuxi/services/project_theme_contract.py`；原ZIP与HTTP／PG回归：`backend/test/integration/api/test_project_themes_api.py`；宿主与制作交互回归：`web/test/unit/projectThemeDraft.test.js`及相关主题用例。

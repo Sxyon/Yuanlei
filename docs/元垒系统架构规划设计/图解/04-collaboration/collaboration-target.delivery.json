@@ -4,8 +4,8 @@
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/04-collaboration/candidate.json",
-  "output": "/Users/sam/Documents/AI/PAT(Project_Agent_Teams)/Yuanlei/docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
+  "input": "./docs/元垒系统架构规划设计/图解/04-collaboration/candidate.json",
+  "output": "./docs/元垒系统架构规划设计/图解/04-collaboration/collaboration-target.html",
   "specification": {
     "sha256": "d5fff44d0351f3bd24a22d7cfb69fd523564636c292a8ce1a63aa5e852379dba",
     "bytes": 4995

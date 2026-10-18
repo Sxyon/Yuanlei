@@ -35,4 +35,4 @@ ProjectLayout与OverviewWorkspace消费ABI3有限presentation和hiddenCapabiliti
 | 调研有真实组织与准确对象 | 仅颜色或虚构结论 | ThemedOverview／原DTO | 同一合成项目平台分配、目录改选及准确议题跨版本恢复 | 无决定显示空态，原议题ID与正文保持 | Passed |
 | 自动回读不覆盖草稿及新结果 | 迟到成功、错误或busy清除 | ProjectThemeManager | projectThemeSamples及projectThemeDraft | 初始load迟到resolve／reject，保留新目录、草稿及操作busy | Passed |
 
-命令、完整gate、失败修复和未验范围由[专项LOG第53节](../../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有；浏览器、HTTP／PG及包字节证据在其引用目录，当前事实不由设计稿截图替代。
+命令、完整gate、失败修复和未验范围由[主题状态与证据](../../../../元垒系统架构规划设计/LOG-DB-001-Dashboard进度基线与执行记录.md)拥有；浏览器、HTTP／PG及包字节证据在其引用目录，当前事实不由设计稿截图替代。
