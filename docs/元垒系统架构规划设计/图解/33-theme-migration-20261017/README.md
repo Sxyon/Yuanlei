@@ -14,7 +14,7 @@
 
 ## 人工测试入口
 
-日常产品入口即可验证主流程；跨实例文件重绑由执行者在隔离A／B完成，用户不需要查数据库或构造故障。
+日常产品入口即可验证主流程；主题配置字段、制作步骤和限制见[制作和使用项目主题](../../../intro/project-theme-authoring.md)与[项目主题配置参考](../../../advanced/project-theme-reference.md)。主题管理页右上角提供“使用说明”，编辑草稿下方提供“配置参考”，导入弹窗也提供使用说明入口。跨实例文件重绑由执行者在隔离A／B完成，用户不需要查数据库或构造故障。
 
 1. **导出**：项目→主题管理→平台内置或我的主题→准确来源→已发布版本→“导出原包”。观察下载文件名、完成提示中的版本／字节数／SHA-256，以及下载文件仍是原ZIP而不是页面定义。
 2. **预检与取消**：主题管理→“导入主题包”→选择ZIP。观察只读预检摘要；直接取消后目录来源数、草稿修订和项目选择均不变。
@@ -47,9 +47,9 @@
 - [浏览器36项检查与请求计数](browser-checks.json)
 - [HTTP／PG／ZIP／Workdir对账及15项负例](http-pg-files.json)
 - [新来源响应丢失检查](recovery-check.json)、[既有来源响应丢失检查](existing-recovery-check.json)、[旧revision并发刷新检查](stale-revision-check.json)、[下载文件名检查](download-filename-check.json)
-- [运行代码／镜像与文件摘要](environment.json)、[重启后健康与绑定回读](restart-ready.json)
+- [运行代码／镜像与文件摘要](environment.json)、[重启后健康与绑定回读](restart-ready.json)、[主题管理使用说明入口检查](theme-guide-links.json)
 - [预检实际文本](b-preflight.txt)、[包成员实际文本](a-package-details.txt)、[含素材包成员文本](a-package-assets.txt)
-- 截图：[A导出](a-export-1440.png)、[A包成员](a-package-details-1440.png)、[A含素材包成员](a-package-assets-1440.png)、[B预检](b-preflight-1440.png)、[B导入草稿](b-imported-draft-1440.png)、[B目标资料预览](b-preview-1440.png)、[B发布](b-published-1440.png)、[B应用](b-applied-1440.png)、[B切回](b-restored-loaded-1440.png)、[B对照项目](b-control-1440.png)、[新来源响应丢失恢复](b-import-recovery-1440.png)、[既有来源响应丢失恢复](b-import-existing-recovery-1440.png)、[旧revision并发刷新](b-import-stale-1440.png)。
+- 截图：[A导出](a-export-1440.png)、[A包成员](a-package-details-1440.png)、[A含素材包成员](a-package-assets-1440.png)、[B预检](b-preflight-1440.png)、[B导入草稿](b-imported-draft-1440.png)、[B目标资料预览](b-preview-1440.png)、[B发布](b-published-1440.png)、[B应用](b-applied-1440.png)、[B切回](b-restored-loaded-1440.png)、[B对照项目](b-control-1440.png)、[新来源响应丢失恢复](b-import-recovery-1440.png)、[既有来源响应丢失恢复](b-import-existing-recovery-1440.png)、[旧revision并发刷新](b-import-stale-1440.png)、[主题管理使用说明入口](theme-guide-entry-1440.png)。
 - [A原包](a-original.theme.zip)：原ZIP样本；不自动携带项目业务、绑定、凭据或宿主路径，作者声明素材原样保留。
 
 ## 隔离环境

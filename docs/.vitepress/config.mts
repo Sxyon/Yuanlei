@@ -63,6 +63,7 @@ export default defineConfig({
     nav: [
       { text: '项目介绍', link: '/intro/project-overview' },
       { text: '项目工作台', link: '/intro/project-workbench' },
+      { text: '项目主题', link: '/intro/project-theme-authoring' },
       { text: '快速开始', link: '/intro/quick-start' },
       { text: '智能体开发', link: '/agents/agents-config' },
       { text: '机制详解', link: '/mechanisms/' },
@@ -85,6 +86,8 @@ export default defineConfig({
         text: '项目管理',
         items: [
           { text: '项目工作台与治理', link: '/intro/project-workbench' },
+          { text: '制作和使用项目主题', link: '/intro/project-theme-authoring' },
+          { text: '项目主题配置参考', link: '/advanced/project-theme-reference' },
           { text: '主题文件维护与恢复', link: '/advanced/project-theme-storage' },
           { text: '项目 Git 操作快速入门', link: '/intro/project-git' },
         ]

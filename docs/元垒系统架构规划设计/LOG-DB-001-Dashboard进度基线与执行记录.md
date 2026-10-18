@@ -1566,4 +1566,12 @@ S06当前只能交“开发交付待人工验收”，不能宣布专项最终�
 
 **工程与文档检查**：`python3 scripts/verify_engineering_contracts.py`通过（212 decisions／23 yuanlei features／5 workflows／5 agents files／387 docs／42 routers／345 web sources）；`python3 -m unittest scripts.test_verify_engineering_contracts` 71项通过（6.236s）；docs build通过（32.22s，保留既有大chunk提示）；`git diff --check`通过。首轮docs build因决策记录相对链接少一级而失败，已改到正确目录后重跑通过；没有扩大`ignoreDeadLinks`。首轮导出测试在注入损坏字节时因存储文件0444权限失败，测试显式`chmod`并先删除损坏文件后恢复，产品代码未因此放宽文件权限。SYS16／DEV7／README、Feature、Decision及迁移交接的相对链接和LOG60锚点已核对。
 
+### 主题配置说明与页面入口补充（2026-10-17）
+
+用户反馈从用户角度缺少主题配置操作指南：编辑草稿时不知道可以设置哪些字段、哪些不能设置，不应通过阅读代码理解配置。已在`docs/intro/project-theme-authoring.md`补充制作与使用指南（来源、草稿、发布、选择的关系；复制、编辑、保存校验、预览、发布、分配、导入导出、常见问题、限制），在`docs/advanced/project-theme-reference.md`补充字段参考（包结构、manifest／theme／page／block、九项能力、文件alias与包内素材、ABI组合、配额、错误处理、安全边界及JSON示例）。两页已加入VitePress顶部“项目主题”和“项目管理”侧栏。
+
+主题管理页右上角新增“使用说明”链接，编辑草稿下方新增“配置参考／使用说明”链接，导入弹窗补充使用说明入口。链接指向公开文档页，页面路径与构建产物一致；自托管部署如需改地址，替换组件中的两个文档常量。实际浏览器核对链接href及编辑器帮助文案，截图`图解/33-theme-migration-20261017/theme-guide-entry-1440.png`与`theme-guide-links.json`。
+
+新增说明页后docs build再次通过（37.15s），顶部“项目主题”导航、侧栏和正文锚点已核对；web lint通过，build通过（9.92s）；工程信任检查通过（212 decisions／23 features／5 workflows／5 agents／389 docs／42 routers／345 web sources）。未运行前后端全量，未把本次说明补记成人工验收或业务能力完成。
+
 本轮未提交commit；改动已留在当前工作区并stage，可复核后提交。
